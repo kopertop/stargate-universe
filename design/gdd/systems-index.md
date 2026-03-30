@@ -31,7 +31,7 @@ The game pillars that constrain system design:
 |---|-------------|----------|----------|--------|------------|------------|
 | 1 | Event Bus | Core | MVP | Designed | design/gdd/event-bus.md | (none — foundation) |
 | 2 | Player Controller (third-person) | Core | MVP | Designed | design/gdd/player-controller.md | ggez Gameplay Runtime, ggez Physics |
-| 3 | Camera System (third-person) | Core | MVP | Not Started | — | Player Controller |
+| 3 | Camera System (third-person) | Core | MVP | Designed | design/gdd/camera-system.md | Player Controller |
 | 4 | Ship State System | Gameplay | MVP | Not Started | — | Event Bus, Save/Load (interface) |
 | 5 | Ship Exploration System | Gameplay | MVP | Not Started | — | Player Controller, Camera, Ship State, ggez Scene Mgmt |
 | 6 | Resource & Inventory System | Economy | MVP | Not Started | — | Event Bus, Save/Load (interface) |
@@ -192,10 +192,10 @@ design phase. Implement the full Save/Load system in Vertical Slice tier.
 | Metric | Count |
 |--------|-------|
 | Total systems identified | 18 |
-| Design docs started | 2 |
+| Design docs started | 3 |
 | Design docs reviewed | 0 |
 | Design docs approved | 0 |
-| MVP systems designed | 2/11 |
+| MVP systems designed | 3/11 |
 | Vertical Slice systems designed | 0/6 |
 
 ---

@@ -6,7 +6,7 @@ A 3D exploration/adventure game set in the Stargate universe, built with ggez (T
 
 - **Engine**: ggez (Three.js game framework) + Three.js 0.181
 - **Renderer**: WebGPU (via `three/webgpu`, WebGL fallback)
-- **Physics**: Crashcat (ggez built-in) — upgrade to Rapier if needed later
+- **Physics**: Crashcat (ggez built-in) — always Crashcat, never Rapier
 - **Language**: TypeScript (strict mode)
 - **Build**: Vite + Bun
 - **Package Manager**: Bun

@@ -49,5 +49,5 @@
 ## Architecture Decisions Log
 
 - [ADR-001] Use ggez + vanilla Three.js (not React Three Fiber) for direct scene control
-- [ADR-002] Use Crashcat physics (ggez built-in), upgrade to Rapier if needed
+- [ADR-002] Use Crashcat physics (ggez built-in) — no Rapier
 - [ADR-003] WebGPU renderer with WebGL fallback for modern performance

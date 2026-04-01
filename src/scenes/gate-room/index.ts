@@ -5,6 +5,8 @@ import {
 } from "../../game/runtime-scene-sources";
 import type { GameSceneModuleContext, GameSceneLifecycle } from "../../game/scene-types";
 import { perfMetrics } from "../../game/app";
+import { ShipState, SHIP_STATE_CONFIG, type Section, type Subsystem } from "../../systems/ship-state";
+import { emit, scopedBus } from "../../systems/event-bus";
 
 const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 	import: "default",
@@ -53,23 +55,23 @@ type GateRuntime = {
 
 function createWallMaterial(): THREE.MeshStandardMaterial {
 	return new THREE.MeshStandardMaterial({
-		color: COLOR_WALL,
-		roughness: 0.95,
-		metalness: 0.05,
-		side: THREE.DoubleSide,
-		transparent: true,
-		opacity: 1.0
+		color: 0x222238,
+		emissive: 0x141428,
+		emissiveIntensity: 1.0,
+		roughness: 0.9,
+		metalness: 0.1,
+		side: THREE.DoubleSide
 	});
 }
 
 function buildRoom(scene: THREE.Scene): void {
 	const ceilingMat = new THREE.MeshStandardMaterial({
-		color: COLOR_CEILING,
-		roughness: 0.98,
-		metalness: 0.02,
-		side: THREE.DoubleSide,
-		transparent: true,
-		opacity: 1.0
+		color: 0x181828,
+		emissive: 0x060612,
+		emissiveIntensity: 1.0,
+		roughness: 0.95,
+		metalness: 0.05,
+		side: THREE.DoubleSide
 	});
 
 	// Back wall (behind gate)
@@ -81,14 +83,30 @@ function buildRoom(scene: THREE.Scene): void {
 	scene.add(backWall);
 	wallMeshes.push(backWall);
 
-	// Front wall
-	const frontWall = new THREE.Mesh(
-		new THREE.BoxGeometry(ROOM_WIDTH, ROOM_HEIGHT, 0.5),
+	// Front wall — split into two pieces with doorway gap (4m wide)
+	const doorwayWidth = 4;
+	const frontPieceWidth = (ROOM_WIDTH - doorwayWidth) / 2;
+	for (const xSign of [-1, 1]) {
+		const piece = new THREE.Mesh(
+			new THREE.BoxGeometry(frontPieceWidth, ROOM_HEIGHT, 0.5),
+			createWallMaterial()
+		);
+		piece.position.set(
+			xSign * (doorwayWidth / 2 + frontPieceWidth / 2),
+			ROOM_HEIGHT / 2,
+			ROOM_DEPTH / 2
+		);
+		scene.add(piece);
+		wallMeshes.push(piece);
+	}
+	// Door frame top piece
+	const doorTop = new THREE.Mesh(
+		new THREE.BoxGeometry(doorwayWidth + 0.5, ROOM_HEIGHT - 3.5, 0.5),
 		createWallMaterial()
 	);
-	frontWall.position.set(0, ROOM_HEIGHT / 2, ROOM_DEPTH / 2);
-	scene.add(frontWall);
-	wallMeshes.push(frontWall);
+	doorTop.position.set(0, ROOM_HEIGHT - (ROOM_HEIGHT - 3.5) / 2, ROOM_DEPTH / 2);
+	scene.add(doorTop);
+	wallMeshes.push(doorTop);
 
 	// Left wall
 	const leftWall = new THREE.Mesh(
@@ -368,78 +386,39 @@ function buildLighting(scene: THREE.Scene, debugObjects: THREE.Object3D[]): THRE
 	scene.add(rightSide);
 	lights.push(rightSide);
 
-	// 7-10. Floor spotlights aimed at gate faces — 2 front, 2 back
-	// Each pair flanks the gate left/right, angled inward to hit the flat ring surface
-	const gateY = GATE_CENTER.y; // center height of gate ring
-	// Aim at the RING SURFACE (at the ring radius), not through the hole
-	// Target the near-side ring face at ~45° up from floor to mid-ring
-	const ringTargetY = gateY;  // mid-ring height
-	const spotPositions = [
-		// Front-left: aim at front face of ring, left side of ring
-		{ pos: [-2.5, 0.1, gateZ + 3.5], target: [-GATE_RADIUS * 0.5, ringTargetY, gateZ + 0.15], zDir: -1 },
-		// Front-right: aim at front face of ring, right side of ring
-		{ pos: [2.5, 0.1, gateZ + 3.5], target: [GATE_RADIUS * 0.5, ringTargetY, gateZ + 0.15], zDir: -1 },
-		// Back-left: aim at back face of ring, left side
-		{ pos: [-2.5, 0.1, gateZ - 3.5], target: [-GATE_RADIUS * 0.5, ringTargetY, gateZ - 0.15], zDir: 1 },
-		// Back-right: aim at back face of ring, right side
-		{ pos: [2.5, 0.1, gateZ - 3.5], target: [GATE_RADIUS * 0.5, ringTargetY, gateZ - 0.15], zDir: 1 },
-	];
+	// Gate floor fixtures — emissive only (no SpotLights for performance)
+	const housingMat = new THREE.MeshStandardMaterial({ color: 0x222233, roughness: 0.6, metalness: 0.4 });
+	const lensMat = new THREE.MeshStandardMaterial({ color: 0xccddff, emissive: 0xbbddff, emissiveIntensity: 1.5 });
 
-	const housingMat = new THREE.MeshStandardMaterial({
-		color: 0x222233,
-		roughness: 0.6,
-		metalness: 0.4
-	});
-	const lensMat = new THREE.MeshStandardMaterial({
-		color: 0xccddff,
-		emissive: 0xbbddff,
-		emissiveIntensity: 1.5
-	});
+	for (const zOffset of [3.5, -3.5]) {
+		for (const xSign of [-1, 1]) {
+			const fixtureGroup = new THREE.Group();
+			fixtureGroup.position.set(xSign * 2.5, 0.18, gateZ + zOffset);
+			const tiltDir = zOffset > 0 ? -1 : 1;
+			fixtureGroup.rotation.x = tiltDir * 0.65;
 
-	for (const sp of spotPositions) {
-		const spot = new THREE.SpotLight(0xbbddff, 30, 20, Math.PI / 5, 0.5, 1.0);
-		spot.position.set(sp.pos[0], sp.pos[1], sp.pos[2]);
-		spot.target.position.set(sp.target[0], sp.target[1], sp.target[2]);
-		scene.add(spot);
-		scene.add(spot.target);
-
-		// Debug: spotlight cone helper (hidden by default)
-		const helper = new THREE.SpotLightHelper(spot, 0xffff00);
-		helper.visible = false;
-		scene.add(helper);
-		requestAnimationFrame(() => helper.update());
-		debugObjects.push(helper);
-
-		// Group housing + lens together so we can rotate as one unit
-		const fixtureGroup = new THREE.Group();
-		fixtureGroup.position.set(sp.pos[0], 0.18, sp.pos[2]);
-
-		// Rotate fixture to aim at the gate — tilt up on X axis
-		const dx = sp.target[0] - sp.pos[0];
-		const dy = sp.target[1] - sp.pos[1];
-		const dz = sp.target[2] - sp.pos[2];
-		const horizontalDist = Math.sqrt(dx * dx + dz * dz);
-		const tiltAngle = Math.atan2(dy, horizontalDist);
-		// Rotate around X, sign depends on front vs back
-		fixtureGroup.rotation.x = sp.zDir * -tiltAngle;
-
-		// Housing box
-		const housing = new THREE.Mesh(
-			new THREE.BoxGeometry(0.5, 0.35, 0.6),
-			housingMat
-		);
-		fixtureGroup.add(housing);
-
-		// Glowing lens on the gate-facing end
-		const lens = new THREE.Mesh(
-			new THREE.BoxGeometry(0.35, 0.25, 0.05),
-			lensMat
-		);
-		lens.position.set(0, 0, sp.zDir * 0.33);
-		fixtureGroup.add(lens);
-
-		scene.add(fixtureGroup);
+			const housing = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.35, 0.6), housingMat);
+			fixtureGroup.add(housing);
+			const lens = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.25, 0.05), lensMat);
+			lens.position.set(0, 0, tiltDir * -0.33);
+			fixtureGroup.add(lens);
+			scene.add(fixtureGroup);
+		}
 	}
+
+	// 7-8. Corridor + Storage room lights (1 each — actual point lights so walls are visible)
+	const corridorCZ = ROOM_DEPTH / 2 + CORRIDOR_LENGTH / 2;
+	const storageCZ = ROOM_DEPTH / 2 + CORRIDOR_LENGTH + STORAGE_DEPTH / 2;
+
+	const corridorLight = new THREE.PointLight(0xddccaa, 1.5, 20, 1.5);
+	corridorLight.position.set(0, EXT_ROOM_HEIGHT - 0.5, corridorCZ);
+	scene.add(corridorLight);
+	lights.push(corridorLight);
+
+	const storageLight = new THREE.PointLight(0xddccaa, 0.8, 15, 1.5);
+	storageLight.position.set(0, EXT_ROOM_HEIGHT - 0.5, storageCZ);
+	scene.add(storageLight);
+	lights.push(storageLight);
 
 	// Use EMISSIVE MATERIALS instead of point lights for accent strips
 	const stripMat = new THREE.MeshStandardMaterial({
@@ -717,40 +696,7 @@ function updateShutdown(gate: GateRuntime, delta: number): void {
 	}
 }
 
-// ─── Camera wall transparency (throttled for performance) ────────────────────
-
-const WALL_FADE_SPEED = 8.0;
-const WALL_MIN_OPACITY = 0.15;
-const WALL_CHECK_INTERVAL = 3; // check every Nth frame
-const raycaster = new THREE.Raycaster();
-let wallCheckFrame = 0;
-let lastOccludingWalls = new Set<THREE.Object3D>();
-
-function updateWallTransparency(camera: THREE.PerspectiveCamera, playerPos: THREE.Vector3, delta: number): void {
-	wallCheckFrame++;
-
-	// Only raycast every few frames — use cached result otherwise
-	if (wallCheckFrame % WALL_CHECK_INTERVAL === 0) {
-		const cameraPos = camera.position;
-		const direction = scratchWallDir.subVectors(playerPos, cameraPos).normalize();
-		const distance = cameraPos.distanceTo(playerPos);
-
-		raycaster.set(cameraPos, direction);
-		raycaster.far = distance;
-		const hits = raycaster.intersectObjects(wallMeshes, false);
-		lastOccludingWalls = new Set(hits.map(h => h.object));
-	}
-
-	// Smooth opacity transitions run every frame
-	for (const wall of wallMeshes) {
-		const mat = wall.material as THREE.MeshStandardMaterial;
-		const targetOpacity = lastOccludingWalls.has(wall) ? WALL_MIN_OPACITY : 1.0;
-		mat.opacity += (targetOpacity - mat.opacity) * Math.min(1, delta * WALL_FADE_SPEED);
-		mat.depthWrite = mat.opacity > 0.9;
-	}
-}
-
-const scratchWallDir = new THREE.Vector3();
+// Wall transparency disabled for performance — re-enable when optimized
 
 // ─── Debug overlay ───────────────────────────────────────────────────────────
 
@@ -927,76 +873,460 @@ function setupFullscreen(domElement: HTMLCanvasElement, menu: EscapeMenu): () =>
 	};
 }
 
+// ─── Corridor & Storage Room extension ───────────────────────────────────────
+
+const CORRIDOR_Z_START = ROOM_DEPTH / 2;     // starts at the front wall of gate room
+const CORRIDOR_WIDTH_EXT = 4;
+const CORRIDOR_LENGTH = 12;
+const STORAGE_WIDTH = 10;
+const STORAGE_DEPTH = 8;
+const EXT_ROOM_HEIGHT = 5;
+const ANCIENT_GLOW_THRESHOLD = 0.6;
+
+// Shared materials for corridor/storage — reuse, don't recreate
+const extWallMat = new THREE.MeshStandardMaterial({
+	color: 0x222238, emissive: 0x141428, emissiveIntensity: 1.0,
+	roughness: 0.9, metalness: 0.1, side: THREE.DoubleSide
+});
+const extCeilingMat = new THREE.MeshStandardMaterial({
+	color: 0x181828, emissive: 0x0c0c20, emissiveIntensity: 1.0,
+	roughness: 0.95, metalness: 0.05
+});
+
+function buildCorridor(scene: THREE.Scene): void {
+	const cz = CORRIDOR_Z_START + CORRIDOR_LENGTH / 2;
+
+	// Left & right walls
+	for (const xSign of [-1, 1]) {
+		const wall = new THREE.Mesh(
+			new THREE.BoxGeometry(0.3, EXT_ROOM_HEIGHT, CORRIDOR_LENGTH), extWallMat
+		);
+		wall.position.set(xSign * CORRIDOR_WIDTH_EXT / 2, EXT_ROOM_HEIGHT / 2, cz);
+		scene.add(wall);
+	}
+
+	// Ceiling
+	const ceil = new THREE.Mesh(
+		new THREE.BoxGeometry(CORRIDOR_WIDTH_EXT, 0.3, CORRIDOR_LENGTH), extCeilingMat
+	);
+	ceil.position.set(0, EXT_ROOM_HEIGHT, cz);
+	scene.add(ceil);
+
+	// Floor strip emissives
+	const stripMat = new THREE.MeshStandardMaterial({
+		color: COLOR_ANCIENT_GLOW, emissive: COLOR_ANCIENT_GLOW, emissiveIntensity: 0.3
+	});
+	for (const xSign of [-1, 1]) {
+		const strip = new THREE.Mesh(
+			new THREE.BoxGeometry(0.05, 0.08, CORRIDOR_LENGTH - 1), stripMat
+		);
+		strip.position.set(xSign * (CORRIDOR_WIDTH_EXT / 2 - 0.2), 0.05, cz);
+		scene.add(strip);
+	}
+}
+
+function buildStorageRoom(scene: THREE.Scene): void {
+	const sz = CORRIDOR_Z_START + CORRIDOR_LENGTH + STORAGE_DEPTH / 2;
+
+	// Back wall
+	const back = new THREE.Mesh(
+		new THREE.BoxGeometry(STORAGE_WIDTH, EXT_ROOM_HEIGHT, 0.3), extWallMat
+	);
+	back.position.set(0, EXT_ROOM_HEIGHT / 2, sz + STORAGE_DEPTH / 2);
+	scene.add(back);
+
+	// Side walls with doorway gap
+	const sideWidth = (STORAGE_WIDTH - CORRIDOR_WIDTH_EXT) / 2;
+	for (const xSign of [-1, 1]) {
+		// Front piece flanking corridor opening
+		const front = new THREE.Mesh(
+			new THREE.BoxGeometry(sideWidth, EXT_ROOM_HEIGHT, 0.3), extWallMat
+		);
+		front.position.set(
+			xSign * (CORRIDOR_WIDTH_EXT / 2 + sideWidth / 2),
+			EXT_ROOM_HEIGHT / 2, sz - STORAGE_DEPTH / 2
+		);
+		scene.add(front);
+
+		// Full side wall
+		const side = new THREE.Mesh(
+			new THREE.BoxGeometry(0.3, EXT_ROOM_HEIGHT, STORAGE_DEPTH), extWallMat
+		);
+		side.position.set(xSign * STORAGE_WIDTH / 2, EXT_ROOM_HEIGHT / 2, sz);
+		scene.add(side);
+	}
+
+	// Ceiling
+	const ceil = new THREE.Mesh(
+		new THREE.BoxGeometry(STORAGE_WIDTH, 0.3, STORAGE_DEPTH), extCeilingMat
+	);
+	ceil.position.set(0, EXT_ROOM_HEIGHT, sz);
+	scene.add(ceil);
+}
+
+// ─── Ship State driven room lighting ─────────────────────────────────────────
+
+interface RoomLighting {
+	sectionId: string;
+	ancientPanels: THREE.Mesh[];
+	emergencyStrips: THREE.Mesh[];
+}
+
+function createRoomLighting(
+	scene: THREE.Scene, sectionId: string,
+	cx: number, cz: number, width: number, depth: number, height: number
+): RoomLighting {
+	// NO point lights — use emissive-only for perf. One emissive ceiling panel
+	// acts as a fake "overhead light" via emissive intensity.
+	const ceilingLight = new THREE.Mesh(
+		new THREE.BoxGeometry(width * 0.3, 0.05, depth * 0.3),
+		new THREE.MeshStandardMaterial({
+			color: 0xffeedd, emissive: 0xffeedd, emissiveIntensity: 0,
+		})
+	);
+	ceilingLight.position.set(cx, height - 0.15, cz);
+	scene.add(ceilingLight);
+
+	// Ancient glow panels on walls
+	const ancientPanels: THREE.Mesh[] = [ceilingLight];
+	const glowMat = new THREE.MeshStandardMaterial({
+		color: 0x44ddcc, emissive: 0x44ddcc, emissiveIntensity: 0,
+	});
+	for (const xSign of [-1, 1]) {
+		const panel = new THREE.Mesh(
+			new THREE.BoxGeometry(0.04, 0.6, depth * 0.5), glowMat.clone()
+		);
+		panel.position.set(cx + xSign * (width / 2 - 0.25), height * 0.55, cz);
+		scene.add(panel);
+		ancientPanels.push(panel);
+	}
+
+	// Emergency floor strips
+	const emergencyStrips: THREE.Mesh[] = [];
+	const eMat = new THREE.MeshStandardMaterial({
+		color: 0xff2200, emissive: 0xff2200, emissiveIntensity: 0,
+	});
+	for (const xSign of [-1, 1]) {
+		const strip = new THREE.Mesh(
+			new THREE.BoxGeometry(0.06, 0.04, depth - 1), eMat.clone()
+		);
+		strip.position.set(cx + xSign * (width / 2 - 0.25), 0.03, cz);
+		scene.add(strip);
+		emergencyStrips.push(strip);
+	}
+
+	return { sectionId, ancientPanels, emergencyStrips };
+}
+
+function updateRoomLighting(rl: RoomLighting, section: Section): void {
+	const power = section.powerLevel;
+
+	// Ancient glow panels (first one is the ceiling emissive "light")
+	// Ceiling emissive acts as the overhead — scales with power
+	for (let i = 0; i < rl.ancientPanels.length; i++) {
+		const mat = rl.ancientPanels[i].material as THREE.MeshStandardMaterial;
+		if (i === 0) {
+			// Ceiling light — emissive intensity scales with power
+			const target = power * 1.5;
+			mat.emissiveIntensity += (target - mat.emissiveIntensity) * 0.1;
+		} else {
+			// Wall glow panels — activate above threshold
+			const glowTarget = power > ANCIENT_GLOW_THRESHOLD
+				? ((power - ANCIENT_GLOW_THRESHOLD) / (1.0 - ANCIENT_GLOW_THRESHOLD)) * 0.8 : 0;
+			mat.emissiveIntensity += (glowTarget - mat.emissiveIntensity) * 0.1;
+		}
+	}
+
+	// Emergency strips — activate below 0.3 power
+	const emergTarget = power < 0.3 ? (1 - power / 0.3) * 0.6 : 0;
+	for (const strip of rl.emergencyStrips) {
+		const mat = strip.material as THREE.MeshStandardMaterial;
+		mat.emissiveIntensity += (emergTarget - mat.emissiveIntensity) * 0.1;
+	}
+}
+
+// ─── Subsystem visual markers ────────────────────────────────────────────────
+
+interface SubsystemVisual {
+	id: string;
+	mesh: THREE.Mesh;
+	indicator: THREE.Mesh;
+}
+
+function createSubsystemVisual(scene: THREE.Scene, sub: Subsystem, pos: THREE.Vector3): SubsystemVisual {
+	const bodyMat = new THREE.MeshStandardMaterial({ color: 0x333348, roughness: 0.5, metalness: 0.6 });
+	const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.8, 0.3), bodyMat);
+	mesh.position.copy(pos);
+	scene.add(mesh);
+
+	const indMat = new THREE.MeshStandardMaterial({ color: 0x44ff88, emissive: 0x44ff88, emissiveIntensity: 0.5 });
+	const indicator = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.1, 0.05), indMat);
+	indicator.position.set(pos.x, pos.y + 0.5, pos.z + 0.18);
+	scene.add(indicator);
+
+	return { id: sub.id, mesh, indicator };
+}
+
+function updateSubsystemVisual(sv: SubsystemVisual, sub: Subsystem): void {
+	const mat = sv.indicator.material as THREE.MeshStandardMaterial;
+	if (sub.condition >= 0.8) {
+		mat.color.set(0x44ff88); mat.emissive.set(0x44ff88); mat.emissiveIntensity = 0.8;
+	} else if (sub.condition >= 0.3) {
+		mat.color.set(0xffaa44); mat.emissive.set(0xffaa44); mat.emissiveIntensity = 0.6;
+	} else {
+		mat.color.set(0xff2200); mat.emissive.set(0xff2200); mat.emissiveIntensity = 0.3;
+	}
+}
+
+// ─── Interaction prompt ──────────────────────────────────────────────────────
+
+function createInteractionPrompt(): HTMLDivElement {
+	const el = document.createElement("div");
+	el.id = "interact-prompt";
+	Object.assign(el.style, {
+		position: "fixed", bottom: "100px", left: "50%", transform: "translateX(-50%)",
+		color: "#44ddcc", fontFamily: "'Courier New', monospace", fontSize: "14px",
+		textAlign: "center", textShadow: "0 0 8px #44ddcc44",
+		pointerEvents: "none", userSelect: "none", display: "none"
+	});
+	document.body.appendChild(el);
+	return el;
+}
+
 // ─── Scene mount ─────────────────────────────────────────────────────────────
 
 async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycle> {
 	const { scene, camera, player, renderer } = context;
+	const bus = scopedBus();
 
 	wallMeshes.length = 0;
 	const debugObjects: THREE.Object3D[] = [];
 	let debugMode = false;
 
+	// ─── Build the gate room (existing prototype) ────────────────────────
 	buildRoom(scene);
 	const gate = buildStargate(scene);
 	const lights = buildLighting(scene, debugObjects);
 	gate.pointLights = lights;
+
+	// ─── Player-attached ambient light (Eli's subtle glow) ──────────────
+	const playerLight = new THREE.PointLight(0xccddff, 1.2, 10, 2);
+	playerLight.position.set(0, 2, 0);
+	if (player) {
+		player.object.add(playerLight);
+	}
+
+	// ─── Build corridor + storage room extending from gate room ──────────
+	buildCorridor(scene);
+	buildStorageRoom(scene);
+
+	const corridorCZ = CORRIDOR_Z_START + CORRIDOR_LENGTH / 2;
+	const storageCZ = CORRIDOR_Z_START + CORRIDOR_LENGTH + STORAGE_DEPTH / 2;
+
+	// ─── Initialize Ship State ───────────────────────────────────────────
+	const shipState = new ShipState();
+	shipState.init();
+
+	// Register sections
+	const sections: Section[] = [
+		{
+			id: "gate-room", discovered: true, accessible: true,
+			atmosphere: 0.8, powerLevel: 0.7, structuralIntegrity: 0.95,
+			accessState: "explored", subsystems: []
+		},
+		{
+			id: "corridor-a1", discovered: false, accessible: true,
+			atmosphere: 0.6, powerLevel: 0.4, structuralIntegrity: 0.85,
+			accessState: "unexplored", subsystems: []
+		},
+		{
+			id: "storage-bay", discovered: false, accessible: true,
+			atmosphere: 0.5, powerLevel: 0.2, structuralIntegrity: 0.8,
+			accessState: "unexplored", subsystems: []
+		},
+	];
+	for (const sec of sections) shipState.addSection(sec);
+
+	// Register subsystems
+	const subsystemDefs: Array<{ sub: Subsystem; pos: THREE.Vector3 }> = [
+		{
+			sub: { id: "corridor-conduit-1", type: "conduit", sectionId: "corridor-a1",
+				condition: 0.25, repairCost: 5, functionalThreshold: 0.2 },
+			pos: new THREE.Vector3(CORRIDOR_WIDTH_EXT / 2 - 0.4, 1.5, corridorCZ)
+		},
+		{
+			sub: { id: "storage-lights", type: "lighting-panel", sectionId: "storage-bay",
+				condition: 0.1, repairCost: 3, functionalThreshold: 0.2 },
+			pos: new THREE.Vector3(STORAGE_WIDTH / 2 - 0.4, 1.5, storageCZ + 1)
+		},
+		{
+			sub: { id: "storage-console", type: "console", sectionId: "storage-bay",
+				condition: 0.35, repairCost: 5, functionalThreshold: 0.2 },
+			pos: new THREE.Vector3(-STORAGE_WIDTH / 2 + 0.4, 1.2, storageCZ + 2)
+		},
+	];
+
+	const subsystemVisuals: SubsystemVisual[] = [];
+	for (const { sub, pos } of subsystemDefs) {
+		shipState.addSubsystem(sub);
+		subsystemVisuals.push(createSubsystemVisual(scene, sub, pos));
+	}
+
+	shipState.distributePower();
+
+	// ─── Room lighting (Ship State driven) ───────────────────────────────
+	const roomLights: RoomLighting[] = [
+		createRoomLighting(scene, "corridor-a1", 0, corridorCZ, CORRIDOR_WIDTH_EXT, CORRIDOR_LENGTH, EXT_ROOM_HEIGHT),
+		createRoomLighting(scene, "storage-bay", 0, storageCZ, STORAGE_WIDTH, STORAGE_DEPTH, EXT_ROOM_HEIGHT),
+	];
+
+	// ─── UI elements ─────────────────────────────────────────────────────
 	const hud = createHUD();
 	const debug = createDebugOverlay();
-	debug.element.style.display = "none"; // hidden by default
+	debug.element.style.display = "none";
 	const menu = createEscapeMenu(renderer.domElement);
 	const cleanupFullscreen = setupFullscreen(renderer.domElement, menu);
+	const interactPrompt = createInteractionPrompt();
 
-	// Disable shadows — huge perf cost for a prototype
 	renderer.shadowMap.enabled = false;
+
+	// ─── Debug + Ship State overlay ──────────────────────────────────────
+	const shipDebugEl = document.createElement("div");
+	shipDebugEl.id = "ship-debug";
+	Object.assign(shipDebugEl.style, {
+		position: "fixed", top: "8px", right: "8px",
+		color: "#44ddcc", fontFamily: "'Courier New', monospace", fontSize: "11px",
+		lineHeight: "1.5", background: "rgba(0,0,0,0.7)", padding: "8px 12px",
+		borderRadius: "4px", pointerEvents: "none", userSelect: "none",
+		zIndex: "999", minWidth: "200px", whiteSpace: "pre", display: "none"
+	});
+	document.body.appendChild(shipDebugEl);
 
 	const toggleDebug = () => {
 		debugMode = !debugMode;
 		debug.element.style.display = debugMode ? "block" : "none";
-		for (const obj of debugObjects) {
-			obj.visible = debugMode;
-		}
+		shipDebugEl.style.display = debugMode ? "block" : "none";
+		for (const obj of debugObjects) obj.visible = debugMode;
 	};
 
-	// Track backtick presses for // toggle (two rapid Backquote presses)
 	let lastBackquoteTime = 0;
+	let currentSection = "gate-room";
+
+	// ─── Interaction state ───────────────────────────────────────────────
+	let nearestSub: SubsystemVisual | null = null;
 
 	const handleKeyDown = (e: KeyboardEvent) => {
 		if (e.code === "Backquote") {
 			const now = performance.now();
-			if (now - lastBackquoteTime < 400) {
-				toggleDebug();
-				lastBackquoteTime = 0;
-			} else {
-				lastBackquoteTime = now;
-			}
+			if (now - lastBackquoteTime < 400) { toggleDebug(); lastBackquoteTime = 0; }
+			else lastBackquoteTime = now;
 			return;
 		}
 		if (e.code === "KeyG" && !menu.visible) {
-			if (gate.state === "idle") {
-				startDial(gate);
-			} else if (gate.state === "active") {
-				shutdownGate(gate);
+			if (gate.state === "idle") startDial(gate);
+			else if (gate.state === "active") shutdownGate(gate);
+		}
+		if (e.code === "KeyE" && nearestSub && !menu.visible) {
+			const sub = shipState.getSubsystem(nearestSub.id);
+			if (sub && sub.condition < 1.0) {
+				const result = shipState.repairSubsystem(sub.id);
+				if (result.success) {
+					// Recalculate section power after repair
+					shipState.distributePower();
+				}
 			}
 		}
 	};
 	window.addEventListener("keydown", handleKeyDown);
 
+	let debugFrame = 0;
+
 	return {
 		update(delta: number) {
 			updateGate(gate, delta);
 
-			if (player) {
-				updateWallTransparency(camera, player.object.position, delta);
+			// ─── Ship State driven lighting ──────────────────────────────
+			for (const rl of roomLights) {
+				const sec = shipState.getSection(rl.sectionId);
+				if (sec) updateRoomLighting(rl, sec);
 			}
 
-			debug.update();
+			// ─── Subsystem visuals ───────────────────────────────────────
+			for (const sv of subsystemVisuals) {
+				const sub = shipState.getSubsystem(sv.id);
+				if (sub) updateSubsystemVisual(sv, sub);
+			}
+
+			// ─── Player section tracking + interaction ───────────────────
+			if (player) {
+				const pz = player.object.position.z;
+				let newSection = "gate-room";
+				if (pz > CORRIDOR_Z_START + CORRIDOR_LENGTH) newSection = "storage-bay";
+				else if (pz > CORRIDOR_Z_START) newSection = "corridor-a1";
+
+				if (newSection !== currentSection) {
+					currentSection = newSection;
+					emit("player:entered:section", { sectionId: newSection });
+				}
+
+				// Find nearest interactable subsystem
+				nearestSub = null;
+				let nearestDist = 2.5;
+				for (const sv of subsystemVisuals) {
+					const dist = sv.mesh.position.distanceTo(player.object.position);
+					if (dist < nearestDist) { nearestSub = sv; nearestDist = dist; }
+				}
+
+				if (nearestSub) {
+					const sub = shipState.getSubsystem(nearestSub.id);
+					if (sub && sub.condition < 1.0) {
+						interactPrompt.style.display = "block";
+						const newCond = Math.min(1, sub.condition + SHIP_STATE_CONFIG.BASE_REPAIR_AMOUNT * SHIP_STATE_CONFIG.REPAIR_SKILL_MODIFIER);
+						interactPrompt.textContent = `[E] Repair ${sub.type} (${(sub.condition * 100).toFixed(0)}% \u2192 ${(newCond * 100).toFixed(0)}%)`;
+					} else if (sub) {
+						interactPrompt.style.display = "block";
+						interactPrompt.textContent = `${sub.type} \u2014 Optimal`;
+					}
+				} else {
+					interactPrompt.style.display = "none";
+				}
+			}
+
+			// ─── Debug overlays ──────────────────────────────────────────
+			if (debugMode) {
+				debug.update();
+				debugFrame++;
+				if (debugFrame % 15 === 0) {
+					const lines: string[] = ["=== SHIP STATE ==="];
+					for (const sys of shipState.getAllSystems()) {
+						const bar = "\u2588".repeat(Math.round(sys.condition * 10)) + "\u2591".repeat(10 - Math.round(sys.condition * 10));
+						lines.push(`${sys.powered ? "\u26A1" : "  "} ${sys.id.padEnd(16)} ${bar} ${(sys.condition * 100).toFixed(0)}%`);
+					}
+					lines.push("", `=== SECTIONS === (current: ${currentSection})`);
+					for (const sec of shipState.getAllSections()) {
+						const marker = sec.id === currentSection ? ">" : " ";
+						lines.push(`${marker} ${sec.id.padEnd(14)} P:${(sec.powerLevel * 100).toFixed(0)}% A:${(sec.atmosphere * 100).toFixed(0)}% [${sec.accessState}]`);
+					}
+					lines.push("", "=== SUBSYSTEMS ===");
+					for (const sec of shipState.getAllSections()) {
+						for (const sub of shipState.getSubsystemsInSection(sec.id)) {
+							lines.push(`  ${sub.id.padEnd(20)} ${sub.type.padEnd(14)} ${(sub.condition * 100).toFixed(0)}%`);
+						}
+					}
+					shipDebugEl.textContent = lines.join("\n");
+				}
+			}
 		},
 		dispose() {
 			window.removeEventListener("keydown", handleKeyDown);
 			cleanupFullscreen();
 			hud.remove();
 			debug.element.remove();
+			shipDebugEl.remove();
+			interactPrompt.remove();
 			menu.dispose();
+			shipState.dispose();
+			bus.cleanup();
 			wallMeshes.length = 0;
 		}
 	};

@@ -2,7 +2,7 @@
   "assets": [],
   "entities": [
     {
-      "id": "entity:player-spawn:gate-room",
+      "id": "entity:player-spawn:corridor",
       "name": "Player Spawn",
       "properties": {},
       "transform": {
@@ -18,22 +18,22 @@
   "materials": [
     {
       "color": "#1a1a2e",
-      "id": "material:gate-room:floor",
+      "id": "material:destiny:floor",
       "metallicFactor": 0.1,
-      "name": "Ancient Floor",
+      "name": "Destiny Floor",
       "roughnessFactor": 0.92,
       "side": "double"
     }
   ],
   "metadata": {
-    "exportedAt": "2026-03-31T12:00:00.000Z",
+    "exportedAt": "2026-04-01T12:00:00.000Z",
     "format": "web-hammer-engine",
     "version": 6
   },
   "nodes": [
     {
       "data": {
-        "materialId": "material:gate-room:floor",
+        "materialId": "material:destiny:floor",
         "physics": {
           "angularDamping": 0,
           "bodyType": "fixed",
@@ -52,7 +52,7 @@
         },
         "role": "brush",
         "shape": "cube",
-        "size": { "x": 26, "y": 1, "z": 60 }
+        "size": { "x": 30, "y": 1, "z": 40 }
       },
       "geometry": {
         "primitives": [
@@ -60,19 +60,19 @@
             "indices": [0, 2, 1, 2, 3, 1, 4, 6, 5, 6, 7, 5, 8, 10, 9, 10, 11, 9, 12, 14, 13, 14, 15, 13, 16, 18, 17, 18, 19, 17, 20, 22, 21, 22, 23, 21],
             "material": {
               "color": "#1a1a2e",
-              "id": "material:gate-room:floor",
+              "id": "material:destiny:floor",
               "metallicFactor": 0.1,
-              "name": "Ancient Floor",
+              "name": "Destiny Floor",
               "roughnessFactor": 0.92,
               "side": "double"
             },
             "normals": [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1],
-            "positions": [13, 0.5, 30, 13, 0.5, -30, 13, -0.5, 30, 13, -0.5, -30, -13, 0.5, -30, -13, 0.5, 30, -13, -0.5, -30, -13, -0.5, 30, -13, 0.5, -30, 13, 0.5, -30, -13, 0.5, 30, 13, 0.5, 30, -13, -0.5, 30, 13, -0.5, 30, -13, -0.5, -30, 13, -0.5, -30, -13, 0.5, 30, 13, 0.5, 30, -13, -0.5, 30, 13, -0.5, 30, 13, 0.5, -30, -13, 0.5, -30, 13, -0.5, -30, -13, -0.5, -30],
+            "positions": [15, 0.5, 20, 15, 0.5, -20, 15, -0.5, 20, 15, -0.5, -20, -15, 0.5, -20, -15, 0.5, 20, -15, -0.5, -20, -15, -0.5, 20, -15, 0.5, -20, 15, 0.5, -20, -15, 0.5, 20, 15, 0.5, 20, -15, -0.5, 20, 15, -0.5, 20, -15, -0.5, -20, 15, -0.5, -20, -15, 0.5, 20, 15, 0.5, 20, -15, -0.5, 20, 15, -0.5, 20, 15, 0.5, -20, -15, 0.5, -20, 15, -0.5, -20, -15, -0.5, -20],
             "uvs": [0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0]
           }
         ]
       },
-      "id": "node:gate-room:floor",
+      "id": "node:destiny:floor",
       "kind": "primitive",
       "name": "Floor",
       "transform": {
@@ -85,13 +85,13 @@
     {
       "data": {
         "castShadow": false,
-        "color": "#0a0a1a",
+        "color": "#1a1a3a",
         "enabled": true,
-        "groundColor": "#050510",
-        "intensity": 1.0,
+        "groundColor": "#0a0a15",
+        "intensity": 0.25,
         "type": "hemisphere"
       },
-      "id": "node:gate-room:light:hemisphere",
+      "id": "node:destiny:light:hemisphere",
       "kind": "light",
       "name": "Hemisphere Light",
       "transform": {
@@ -116,32 +116,14 @@
     },
     "world": {
       "ambientColor": "#1a1a3a",
-      "ambientIntensity": 0.7,
+      "ambientIntensity": 0.15,
       "fogColor": "#050510",
-      "fogFar": 50,
-      "fogNear": 25,
-      "gravity": {
-        "x": 0,
-        "y": -9.81,
-        "z": 0
-      },
-      "lod": {
-        "bakedAt": "",
-        "enabled": false,
-        "lowDetailRatio": 0.2,
-        "midDetailRatio": 0.5
-      },
+      "fogFar": 40,
+      "fogNear": 20,
+      "gravity": { "x": 0, "y": -9.81, "z": 0 },
+      "lod": { "bakedAt": "", "enabled": false, "lowDetailRatio": 0.2, "midDetailRatio": 0.5 },
       "physicsEnabled": true,
-      "skybox": {
-        "affectsLighting": false,
-        "blur": 0,
-        "enabled": false,
-        "format": "image",
-        "intensity": 1,
-        "lightingIntensity": 1,
-        "name": "",
-        "source": ""
-      }
+      "skybox": { "affectsLighting": false, "blur": 0, "enabled": false, "format": "image", "intensity": 1, "lightingIntensity": 1, "name": "", "source": "" }
     }
   }
 }

@@ -37,7 +37,7 @@ The game pillars that constrain system design:
 | 6 | Resource & Inventory System | Economy | MVP | Designed | design/gdd/resource-inventory.md | Event Bus, Save/Load (interface) |
 | 7 | Timer & Pressure System | Gameplay | MVP | Designed | design/gdd/timer-pressure-system.md | Event Bus |
 | 8 | Stargate & Planetary Runs | Gameplay | MVP | Designed | design/gdd/stargate-planetary-runs.md | Player Controller, Camera, Timer, ggez Scene Mgmt, Resource System |
-| 9 | Crew Dialogue & Choice System | Narrative | MVP | Not Started | — | Event Bus, Save/Load (interface) |
+| 9 | Crew Dialogue & Choice System | Narrative | MVP | Designed | design/gdd/crew-dialogue-choice.md | Event Bus, Save/Load (interface) |
 | 10 | Kino Remote (diegetic menu) | UI | MVP | Not Started | — | Ship State, Resource System, ggez Scene Mgmt |
 | 11 | Ship Atmosphere & Lighting | Audio/Visual | MVP | Not Started | — | Ship State, ggez Render Pipeline |
 | 12 | Save/Load System | Persistence | Vertical Slice | Not Started | — | Event Bus |
@@ -192,10 +192,10 @@ design phase. Implement the full Save/Load system in Vertical Slice tier.
 | Metric | Count |
 |--------|-------|
 | Total systems identified | 18 |
-| Design docs started | 8 |
+| Design docs started | 9 |
 | Design docs reviewed | 0 |
 | Design docs approved | 0 |
-| MVP systems designed | 8/11 |
+| MVP systems designed | 9/11 |
 | Vertical Slice systems designed | 0/6 |
 
 ---

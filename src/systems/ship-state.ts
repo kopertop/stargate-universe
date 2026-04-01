@@ -199,6 +199,9 @@ export class ShipState {
 		const powerGrid = this.systems.get("power-grid");
 		if (!powerGrid) return;
 
+		// Power grid is always "powered" if it has any condition
+		powerGrid.powered = powerGrid.condition > 0;
+
 		const availablePower = powerGrid.condition * config.MAX_POWER_OUTPUT;
 		let remaining = availablePower;
 
@@ -220,23 +223,25 @@ export class ShipState {
 		}
 	}
 
-	/** Simplified power calculation for MVP (no DAG routing yet). */
+	/** Simplified power calculation for MVP.
+	 * All subsystems in a section contribute to its power level.
+	 * Average subsystem condition = section power. No subsystems = base power. */
 	private calculateSectionPower(section: Section): number {
 		const powerGrid = this.systems.get("power-grid");
 		if (!powerGrid || !powerGrid.powered) return 0;
+		if (!section.accessible) return 0;
 
-		// Find conduit subsystems in this section
-		const conduits = this.getSubsystemsInSection(section.id)
-			.filter(s => s.type === "conduit");
-
-		if (conduits.length === 0) {
-			// No conduits — section gets base power from grid condition
-			return section.accessible ? powerGrid.condition : 0;
+		const subs = this.getSubsystemsInSection(section.id);
+		if (subs.length === 0) {
+			// No subsystems — gets base power from grid
+			return powerGrid.condition;
 		}
 
-		// Average conduit condition determines section power
-		const avgConduitCondition = conduits.reduce((sum, c) => sum + c.condition, 0) / conduits.length;
-		return powerGrid.condition * avgConduitCondition;
+		// Average condition of ALL subsystems in this section drives power
+		const avgCondition = subs.reduce((sum, s) => sum + s.condition, 0) / subs.length;
+
+		// Scale: 0% condition = 0.15 power (barely lit), 100% = 1.0 (full power)
+		return 0.15 + 0.85 * avgCondition;
 	}
 
 	/** Calculate breathable atmosphere from life support, structural integrity, and power. */

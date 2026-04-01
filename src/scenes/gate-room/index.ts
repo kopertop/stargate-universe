@@ -428,19 +428,7 @@ function buildLighting(scene: THREE.Scene, debugObjects: THREE.Object3D[]): THRE
 		scene.add(fixtureGroup);
 	}
 
-	// 7-8. Corridor + Storage room lights (1 each — actual point lights so walls are visible)
-	const corridorCZ = ROOM_DEPTH / 2 + CORRIDOR_LENGTH / 2;
-	const storageCZ = ROOM_DEPTH / 2 + CORRIDOR_LENGTH + STORAGE_DEPTH / 2;
-
-	const corridorLight = new THREE.PointLight(0xddccaa, 1.5, 20, 1.5);
-	corridorLight.position.set(0, EXT_ROOM_HEIGHT - 0.5, corridorCZ);
-	scene.add(corridorLight);
-	lights.push(corridorLight);
-
-	const storageLight = new THREE.PointLight(0xddccaa, 0.8, 15, 1.5);
-	storageLight.position.set(0, EXT_ROOM_HEIGHT - 0.5, storageCZ);
-	scene.add(storageLight);
-	lights.push(storageLight);
+	// NOTE: corridor/storage point lights created in mount() for direct reference
 
 	// Use EMISSIVE MATERIALS instead of point lights for accent strips
 	const stripMat = new THREE.MeshStandardMaterial({
@@ -724,46 +712,56 @@ function updateShutdown(gate: GateRuntime, delta: number): void {
 // camera position — if it hits something, camera snaps to the hit point.
 
 const CAMERA_MIN_DISTANCE = 1.0;
-const CAMERA_PULL_IN_OFFSET = 0.3; // pull in slightly past the hit to avoid z-fighting
-const CAMERA_RECOVER_SPEED = 5.0;  // how fast camera returns to full distance
+const CAMERA_PULL_IN_OFFSET = 0.5;
+const CAMERA_RECOVER_SPEED = 1.5;
+const CAMERA_PULL_IN_SPEED = 15.0;
 const cameraRaycaster = new THREE.Raycaster();
 const scratchCamDir = new THREE.Vector3();
 const occludableMeshes: THREE.Mesh[] = [];
-let currentCameraDistance = -1; // -1 = uninitialized
+let smoothedCamDistance = -1;
+let lastHitDistance = Infinity; // track where the wall actually is
 
 function updateCameraPullIn(camera: THREE.PerspectiveCamera, playerPos: THREE.Vector3, delta: number): void {
-	// Direction from player to camera (reverse of view direction)
 	const camDir = scratchCamDir.subVectors(camera.position, playerPos);
 	const desiredDistance = camDir.length();
 	if (desiredDistance < 0.01) return;
-
 	camDir.normalize();
 
-	// Raycast from player toward camera to find obstacles
+	// Raycast from player toward desired camera position
 	cameraRaycaster.set(playerPos, camDir);
-	cameraRaycaster.far = desiredDistance;
+	cameraRaycaster.far = desiredDistance + 1.0;
 	const hits = cameraRaycaster.intersectObjects(occludableMeshes, false);
 
-	let targetDistance = desiredDistance;
 	if (hits.length > 0) {
-		// Pull camera to just in front of the first hit
-		targetDistance = Math.max(CAMERA_MIN_DISTANCE, hits[0].distance - CAMERA_PULL_IN_OFFSET);
-	}
-
-	// Smooth the distance — snap in fast, recover slowly
-	if (currentCameraDistance < 0) currentCameraDistance = desiredDistance;
-
-	if (targetDistance < currentCameraDistance) {
-		// Snap in immediately (responsive)
-		currentCameraDistance = targetDistance;
+		lastHitDistance = hits[0].distance;
 	} else {
-		// Recover slowly back to desired distance
-		currentCameraDistance += (targetDistance - currentCameraDistance) * Math.min(1, delta * CAMERA_RECOVER_SPEED);
+		lastHitDistance = Infinity;
 	}
 
-	// Apply — move camera along the ray to the clamped distance
-	if (currentCameraDistance < desiredDistance - 0.1) {
-		camera.position.copy(playerPos).addScaledVector(camDir, currentCameraDistance);
+	// Target: pull in if wall is between player and camera
+	const wallClearance = lastHitDistance - CAMERA_PULL_IN_OFFSET;
+	const targetDistance = lastHitDistance < desiredDistance + 0.5
+		? Math.max(CAMERA_MIN_DISTANCE, wallClearance)
+		: desiredDistance;
+
+	if (smoothedCamDistance < 0) smoothedCamDistance = desiredDistance;
+
+	// Pull in fast, recover slowly — but ONLY recover if we're safely past the wall
+	if (targetDistance < smoothedCamDistance) {
+		// Pulling in
+		smoothedCamDistance += (targetDistance - smoothedCamDistance) * Math.min(1, delta * CAMERA_PULL_IN_SPEED);
+	} else if (smoothedCamDistance < desiredDistance - 0.1) {
+		// Recovering — only if the wall is far enough away (dead zone prevents bounce)
+		const safeToRecover = lastHitDistance > smoothedCamDistance + 1.0;
+		if (safeToRecover) {
+			smoothedCamDistance += (desiredDistance - smoothedCamDistance) * Math.min(1, delta * CAMERA_RECOVER_SPEED);
+		}
+	} else {
+		smoothedCamDistance = desiredDistance;
+	}
+
+	if (smoothedCamDistance < desiredDistance - 0.05) {
+		camera.position.copy(playerPos).addScaledVector(camDir, smoothedCamDistance);
 	}
 }
 
@@ -1126,15 +1124,36 @@ interface SubsystemVisual {
 	indicator: THREE.Mesh;
 }
 
-function createSubsystemVisual(scene: THREE.Scene, sub: Subsystem, pos: THREE.Vector3): SubsystemVisual {
+function createSubsystemVisual(scene: THREE.Scene, sub: Subsystem, pos: THREE.Vector3, wallSide: "left" | "right" | "back"): SubsystemVisual {
 	const bodyMat = new THREE.MeshStandardMaterial({ color: 0x333348, roughness: 0.5, metalness: 0.6 });
-	const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.8, 0.3), bodyMat);
-	mesh.position.copy(pos);
-	scene.add(mesh);
-
 	const indMat = new THREE.MeshStandardMaterial({ color: 0x44ff88, emissive: 0x44ff88, emissiveIntensity: 0.5 });
-	const indicator = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.1, 0.05), indMat);
-	indicator.position.set(pos.x, pos.y + 0.5, pos.z + 0.18);
+
+	// Body: thin against wall, taller than wide
+	const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.8, 0.6), bodyMat);
+	mesh.position.copy(pos);
+
+	// Indicator: on the face pointing toward room center
+	const indicator = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.1, 0.3), indMat);
+	indicator.position.copy(pos);
+	indicator.position.y += 0.5;
+
+	if (wallSide === "right") {
+		// Mounted on right wall — body flush, indicator on left face (toward center)
+		mesh.position.x = pos.x - 0.15;
+		indicator.position.x = pos.x - 0.18; // flush with body, on the room-facing side
+		indicator.position.z = pos.z;
+	} else if (wallSide === "left") {
+		// Mounted on left wall — indicator faces right
+		mesh.position.x = pos.x + 0.15;
+		indicator.position.x = pos.x + 0.18;
+		indicator.position.z = pos.z;
+	} else {
+		// Back wall — indicator faces toward player (positive Z)
+		mesh.rotation.y = Math.PI / 2;
+		indicator.position.z = pos.z + 0.18;
+	}
+
+	scene.add(mesh);
 	scene.add(indicator);
 
 	return { id: sub.id, mesh, indicator };
@@ -1192,7 +1211,19 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	// Register gate room walls for camera pull-in collision
 	occludableMeshes.length = 0;
 	for (const w of wallMeshes) occludableMeshes.push(w);
-	currentCameraDistance = -1;
+	smoothedCamDistance = -1;
+
+	// ─── Corridor/storage point lights (created here for direct reference) ─
+	const corrLightZ = ROOM_DEPTH / 2 + CORRIDOR_LENGTH / 2;
+	const storLightZ = ROOM_DEPTH / 2 + CORRIDOR_LENGTH + STORAGE_DEPTH / 2;
+
+	const corridorPointLight = new THREE.PointLight(0xddccaa, 0.5, 25, 1.5);
+	corridorPointLight.position.set(0, EXT_ROOM_HEIGHT - 0.5, corrLightZ);
+	scene.add(corridorPointLight);
+
+	const storagePointLight = new THREE.PointLight(0xddccaa, 0.3, 20, 1.5);
+	storagePointLight.position.set(0, EXT_ROOM_HEIGHT - 0.5, storLightZ);
+	scene.add(storagePointLight);
 
 	// ─── Build corridor + storage room extending from gate room ──────────
 	buildCorridor(scene);
@@ -1226,28 +1257,31 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	for (const sec of sections) shipState.addSection(sec);
 
 	// Register subsystems
-	const subsystemDefs: Array<{ sub: Subsystem; pos: THREE.Vector3 }> = [
+	const subsystemDefs: Array<{ sub: Subsystem; pos: THREE.Vector3; wall: "left" | "right" | "back" }> = [
 		{
 			sub: { id: "corridor-conduit-1", type: "conduit", sectionId: "corridor-a1",
 				condition: 0.25, repairCost: 5, functionalThreshold: 0.2 },
-			pos: new THREE.Vector3(CORRIDOR_WIDTH_EXT / 2 - 0.4, 1.5, corridorCZ)
+			pos: new THREE.Vector3(CORRIDOR_WIDTH_EXT / 2, 1.5, corridorCZ),
+			wall: "right"
 		},
 		{
 			sub: { id: "storage-lights", type: "lighting-panel", sectionId: "storage-bay",
 				condition: 0.1, repairCost: 3, functionalThreshold: 0.2 },
-			pos: new THREE.Vector3(STORAGE_WIDTH / 2 - 0.4, 1.5, storageCZ + 1)
+			pos: new THREE.Vector3(STORAGE_WIDTH / 2, 1.5, storageCZ + 1),
+			wall: "right"
 		},
 		{
 			sub: { id: "storage-console", type: "console", sectionId: "storage-bay",
 				condition: 0.35, repairCost: 5, functionalThreshold: 0.2 },
-			pos: new THREE.Vector3(-STORAGE_WIDTH / 2 + 0.4, 1.2, storageCZ + 2)
+			pos: new THREE.Vector3(-STORAGE_WIDTH / 2, 1.2, storageCZ + 2),
+			wall: "left"
 		},
 	];
 
 	const subsystemVisuals: SubsystemVisual[] = [];
-	for (const { sub, pos } of subsystemDefs) {
+	for (const { sub, pos, wall } of subsystemDefs) {
 		shipState.addSubsystem(sub);
-		subsystemVisuals.push(createSubsystemVisual(scene, sub, pos));
+		subsystemVisuals.push(createSubsystemVisual(scene, sub, pos, wall));
 	}
 
 	shipState.distributePower();
@@ -1324,9 +1358,24 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			updateGate(gate, delta);
 
 			// ─── Ship State driven lighting ──────────────────────────────
+			// Recalculate power distribution so section power reflects repairs
+			shipState.distributePower();
+
 			for (const rl of roomLights) {
 				const sec = shipState.getSection(rl.sectionId);
 				if (sec) updateRoomLighting(rl, sec);
+			}
+
+			// Drive corridor/storage overhead point light intensity from section power
+			const corridorSec = shipState.getSection("corridor-a1");
+			if (corridorSec) {
+				const target = corridorSec.powerLevel * 4.0;
+				corridorPointLight.intensity += (target - corridorPointLight.intensity) * 0.1;
+			}
+			const storageSec = shipState.getSection("storage-bay");
+			if (storageSec) {
+				const target = storageSec.powerLevel * 4.0;
+				storagePointLight.intensity += (target - storagePointLight.intensity) * 0.1;
 			}
 
 			// ─── Subsystem visuals ───────────────────────────────────────

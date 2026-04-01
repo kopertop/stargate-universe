@@ -718,7 +718,54 @@ function updateShutdown(gate: GateRuntime, delta: number): void {
 	}
 }
 
-// Wall transparency disabled for performance — re-enable when optimized
+// ─── Camera arm pull-in (professional third-person camera technique) ─────────
+// Instead of making walls transparent, pull the camera closer to the player
+// when geometry is between them. Uses a single raycast from player to desired
+// camera position — if it hits something, camera snaps to the hit point.
+
+const CAMERA_MIN_DISTANCE = 1.0;
+const CAMERA_PULL_IN_OFFSET = 0.3; // pull in slightly past the hit to avoid z-fighting
+const CAMERA_RECOVER_SPEED = 5.0;  // how fast camera returns to full distance
+const cameraRaycaster = new THREE.Raycaster();
+const scratchCamDir = new THREE.Vector3();
+const occludableMeshes: THREE.Mesh[] = [];
+let currentCameraDistance = -1; // -1 = uninitialized
+
+function updateCameraPullIn(camera: THREE.PerspectiveCamera, playerPos: THREE.Vector3, delta: number): void {
+	// Direction from player to camera (reverse of view direction)
+	const camDir = scratchCamDir.subVectors(camera.position, playerPos);
+	const desiredDistance = camDir.length();
+	if (desiredDistance < 0.01) return;
+
+	camDir.normalize();
+
+	// Raycast from player toward camera to find obstacles
+	cameraRaycaster.set(playerPos, camDir);
+	cameraRaycaster.far = desiredDistance;
+	const hits = cameraRaycaster.intersectObjects(occludableMeshes, false);
+
+	let targetDistance = desiredDistance;
+	if (hits.length > 0) {
+		// Pull camera to just in front of the first hit
+		targetDistance = Math.max(CAMERA_MIN_DISTANCE, hits[0].distance - CAMERA_PULL_IN_OFFSET);
+	}
+
+	// Smooth the distance — snap in fast, recover slowly
+	if (currentCameraDistance < 0) currentCameraDistance = desiredDistance;
+
+	if (targetDistance < currentCameraDistance) {
+		// Snap in immediately (responsive)
+		currentCameraDistance = targetDistance;
+	} else {
+		// Recover slowly back to desired distance
+		currentCameraDistance += (targetDistance - currentCameraDistance) * Math.min(1, delta * CAMERA_RECOVER_SPEED);
+	}
+
+	// Apply — move camera along the ray to the clamped distance
+	if (currentCameraDistance < desiredDistance - 0.1) {
+		camera.position.copy(playerPos).addScaledVector(camDir, currentCameraDistance);
+	}
+}
 
 // ─── Debug overlay ───────────────────────────────────────────────────────────
 
@@ -925,6 +972,7 @@ function buildCorridor(scene: THREE.Scene): void {
 		);
 		wall.position.set(xSign * CORRIDOR_WIDTH_EXT / 2, EXT_ROOM_HEIGHT / 2, cz);
 		scene.add(wall);
+		occludableMeshes.push(wall);
 	}
 
 	// Ceiling
@@ -933,6 +981,7 @@ function buildCorridor(scene: THREE.Scene): void {
 	);
 	ceil.position.set(0, EXT_ROOM_HEIGHT, cz);
 	scene.add(ceil);
+	occludableMeshes.push(ceil);
 
 	// Floor strip emissives
 	const stripMat = new THREE.MeshStandardMaterial({
@@ -956,11 +1005,11 @@ function buildStorageRoom(scene: THREE.Scene): void {
 	);
 	back.position.set(0, EXT_ROOM_HEIGHT / 2, sz + STORAGE_DEPTH / 2);
 	scene.add(back);
+	occludableMeshes.push(back);
 
 	// Side walls with doorway gap
 	const sideWidth = (STORAGE_WIDTH - CORRIDOR_WIDTH_EXT) / 2;
 	for (const xSign of [-1, 1]) {
-		// Front piece flanking corridor opening
 		const front = new THREE.Mesh(
 			new THREE.BoxGeometry(sideWidth, EXT_ROOM_HEIGHT, 0.3), extWallMat
 		);
@@ -969,13 +1018,14 @@ function buildStorageRoom(scene: THREE.Scene): void {
 			EXT_ROOM_HEIGHT / 2, sz - STORAGE_DEPTH / 2
 		);
 		scene.add(front);
+		occludableMeshes.push(front);
 
-		// Full side wall
 		const side = new THREE.Mesh(
 			new THREE.BoxGeometry(0.3, EXT_ROOM_HEIGHT, STORAGE_DEPTH), extWallMat
 		);
 		side.position.set(xSign * STORAGE_WIDTH / 2, EXT_ROOM_HEIGHT / 2, sz);
 		scene.add(side);
+		occludableMeshes.push(side);
 	}
 
 	// Ceiling
@@ -984,6 +1034,7 @@ function buildStorageRoom(scene: THREE.Scene): void {
 	);
 	ceil.position.set(0, EXT_ROOM_HEIGHT, sz);
 	scene.add(ceil);
+	occludableMeshes.push(ceil);
 }
 
 // ─── Ship State driven room lighting ─────────────────────────────────────────
@@ -1138,6 +1189,11 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		player.object.add(playerLight);
 	}
 
+	// Register gate room walls for camera pull-in collision
+	occludableMeshes.length = 0;
+	for (const w of wallMeshes) occludableMeshes.push(w);
+	currentCameraDistance = -1;
+
 	// ─── Build corridor + storage room extending from gate room ──────────
 	buildCorridor(scene);
 	buildStorageRoom(scene);
@@ -1279,8 +1335,9 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 				if (sub) updateSubsystemVisual(sv, sub);
 			}
 
-			// ─── Player section tracking + interaction ───────────────────
+			// ─── Camera pull-in + Player section tracking ───────────────
 			if (player) {
+				updateCameraPullIn(camera, player.object.position, delta);
 				const pz = player.object.position.z;
 				let newSection = "gate-room";
 				if (pz > CORRIDOR_Z_START + CORRIDOR_LENGTH) newSection = "storage-bay";

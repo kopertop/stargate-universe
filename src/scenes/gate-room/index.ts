@@ -648,24 +648,25 @@ function updateKawoosh(gate: GateRuntime, delta: number): void {
 	}
 }
 
+let activeWormholeFrame = 0;
+
 function updateActiveWormhole(gate: GateRuntime, delta: number): void {
 	gate.dialElapsed += delta;
-	const horizonMat = gate.eventHorizon.material as THREE.MeshStandardMaterial;
+	activeWormholeFrame++;
 
-	// Gentle ripple/pulse effect
-	const pulse = Math.sin(gate.dialElapsed * 2.0) * 0.05;
-	horizonMat.opacity = 0.75 + pulse;
-	horizonMat.emissiveIntensity = 0.8 + pulse * 2;
+	// Only update material every 3rd frame to reduce transparent re-sort cost
+	if (activeWormholeFrame % 3 === 0) {
+		const horizonMat = gate.eventHorizon.material as THREE.MeshStandardMaterial;
+		const pulse = Math.sin(gate.dialElapsed * 2.0) * 0.05;
+		horizonMat.opacity = 0.75 + pulse;
+		horizonMat.emissiveIntensity = 0.8 + pulse * 2;
+	}
 
-	// Subtle rotation on the event horizon for visual interest
+	// Subtle rotation (cheap — just a transform, no material change)
 	gate.eventHorizon.rotation.z += delta * 0.2;
 
-	// Modulate blue lights for wormhole ambient glow
-	for (const light of gate.pointLights) {
-		if (light.color.getHex() === COLOR_ANCIENT_GLOW) {
-			light.intensity = 2 + Math.sin(gate.dialElapsed * 1.5) * 0.5;
-		}
-	}
+	// Skip light modulation entirely — static intensity during active wormhole
+	// (changing light intensity every frame forces full scene re-light)
 }
 
 function updateShutdown(gate: GateRuntime, delta: number): void {

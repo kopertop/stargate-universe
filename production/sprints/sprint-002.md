@@ -38,6 +38,17 @@ mode), and add more explorable sections with discoverable content.
 | S2-07 | **Degradation tick** — Subsystems slowly degrade over time, requiring ongoing maintenance | 0.5 | S1-02 | Subsystem conditions decrease slowly. Player must re-repair periodically. | ship-state-system.md |
 | S2-08 | **Power priority via debug UI** — Temporary UI to reorder ship system priorities and see power redistribution | 1 | S1-02 | Can change priority order. Power redistribution updates visually. | ship-state-system.md |
 
+### Infrastructure (Required — run after every task)
+
+| ID | Task | Est. Hrs | Dependencies | Acceptance Criteria | Design Doc |
+|----|------|----------|-------------|---------------------|------------|
+| S2-09 | **Playwright E2E test harness** — Set up Playwright for automated browser testing. Dev server starts, game loads, tests navigate via keyboard input simulation. Screenshot capture on each test step. | 1.5 | None | `bun run test:e2e` launches game + Playwright. Screenshots saved to `tests/screenshots/`. At least 1 passing test. | — |
+| S2-10 | **E2E test suite: core gameplay** — Tests covering Sprint 1+2 features: player spawns, can move (WASD), wall collision (walk into wall → position doesn't pass through), camera pull-in near walls, gate dial sequence, crate looting, repair interaction, section discovery, Kino Remote overlay. Each test captures before/after screenshots. | 2 | S2-09, all S2 tasks | All tests pass. Screenshots generated for: spawn view, each room, wall collision, gate active, crate looted, repair before/after, Kino Remote overlay. | — |
+
+**Testing protocol**: After completing each Must Have/Should Have task, run
+`bun run test:e2e` and inspect the generated screenshots in `tests/screenshots/`
+before moving to the next task. This catches visual regressions immediately.
+
 ## Carryover from Sprint 1
 
 None — all tasks completed.

@@ -8,21 +8,22 @@
  * @see design/gdd/vrm-model-integration.md
  */
 import type { VRM } from "@pixiv/three-vrm";
-import { VRMFirstPerson } from "@pixiv/three-vrm-core";
 import {
 	CapsuleGeometry,
 	Group,
+	Layers,
 	Mesh,
 	MeshStandardMaterial,
 	PerspectiveCamera,
 	Vector3,
-	type Object3D,
 } from "three";
 
 import { emit } from "../event-bus";
 import { getVrmConfig, type VrmConfig } from "./vrm-config";
 import { VrmExpressionController } from "./vrm-expression-controller";
+import { VrmLookAtController } from "./vrm-lookat-controller";
 import { loadVrm, type VrmLoadResult } from "./vrm-loader";
+import { convertMToonToPBR } from "./vrm-mtoon-converter";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -46,6 +47,7 @@ export type VrmCharacterInstance = {
 	readonly root: Group;
 	vrm: VRM | undefined;
 	expressionController: VrmExpressionController | undefined;
+	lookAtController: VrmLookAtController | undefined;
 	lodTier: LodTier;
 	springBonesActive: boolean;
 	firstPersonSetup: boolean;
@@ -66,6 +68,12 @@ let activeCamera: PerspectiveCamera | undefined;
 
 /** Whether adaptive quality is currently active (low FPS detected). */
 let adaptiveQualityActive = false;
+
+/** Current first-person mode state and transition progress. */
+let firstPersonState = {
+	isFirstPerson: false,
+	transitionProgress: 0, // 0 = third-person, 1 = first-person
+};
 
 /**
  * Set the camera used for LOD distance calculations.
@@ -100,6 +108,7 @@ export function addCharacter(options: VrmCharacterOptions): VrmCharacterInstance
 		root,
 		vrm: undefined,
 		expressionController: undefined,
+		lookAtController: undefined,
 		lodTier: "near",
 		springBonesActive: true,
 		firstPersonSetup: false,
@@ -162,24 +171,31 @@ export function update(delta: number, fps: number): void {
 	// Adaptive quality check
 	adaptiveQualityActive = fps > 0 && fps < config.quality.adaptiveThresholdFps;
 
+	// Smooth first-person head fade transition
+	updateFirstPersonFade(delta);
+
 	for (const [, instance] of characters) {
 		if (!instance.vrm) continue;
 
 		updateLod(instance, config);
 		updateSpringBones(instance, delta, config);
 		updateExpressions(instance, delta);
+		updateLookAt(instance, delta);
 		updateVrm(instance, delta);
 	}
 }
 
 /**
  * Set first-person mode on the player character.
- * Hides head mesh via VRM first-person layers.
+ * Uses VRM first-person layers with a smooth opacity transition on the head
+ * mesh to avoid visual jarring when switching camera modes.
  *
  * @param isFirstPerson Whether the camera is in FPS mode
  * @param camera        The active camera to configure layers on
  */
 export function setFirstPersonMode(isFirstPerson: boolean, camera: PerspectiveCamera): void {
+	firstPersonState.isFirstPerson = isFirstPerson;
+
 	for (const [, instance] of characters) {
 		if (!instance.isPlayer || !instance.vrm) continue;
 
@@ -205,6 +221,91 @@ export function setFirstPersonMode(isFirstPerson: boolean, camera: PerspectiveCa
 }
 
 /**
+ * Update the first-person head fade transition. Called from the main update loop.
+ * Smoothly transitions head mesh opacity over the configured fade duration.
+ */
+function updateFirstPersonFade(delta: number): void {
+	const config = getVrmConfig();
+	const fadeSpeed = 1.0 / Math.max(0.01, config.firstPerson.headFadeTransition);
+	const target = firstPersonState.isFirstPerson ? 1 : 0;
+
+	if (Math.abs(firstPersonState.transitionProgress - target) < 0.001) {
+		firstPersonState.transitionProgress = target;
+		return;
+	}
+
+	// Move toward target
+	if (target > firstPersonState.transitionProgress) {
+		firstPersonState.transitionProgress = Math.min(
+			target,
+			firstPersonState.transitionProgress + delta * fadeSpeed
+		);
+	} else {
+		firstPersonState.transitionProgress = Math.max(
+			target,
+			firstPersonState.transitionProgress - delta * fadeSpeed
+		);
+	}
+
+	// Apply opacity to third-person-only head meshes on the player
+	for (const [, instance] of characters) {
+		if (!instance.isPlayer || !instance.vrm?.firstPerson) continue;
+
+		const tpLayer = instance.vrm.firstPerson.thirdPersonOnlyLayer;
+		const headOpacity = 1 - firstPersonState.transitionProgress;
+		const testLayers = new Layers();
+		testLayers.set(tpLayer);
+
+		instance.vrm.scene.traverse((child) => {
+			const mesh = child as Mesh;
+			if (!mesh.isMesh) return;
+
+			// Only affect meshes on the third-person-only layer (head/hair/face)
+			if (mesh.layers.test(testLayers)) {
+				const mat = mesh.material as MeshStandardMaterial;
+				if (mat.isMeshStandardMaterial) {
+					mat.transparent = headOpacity < 1;
+					mat.opacity = headOpacity;
+				}
+			}
+		});
+	}
+}
+
+/**
+ * Spawn crew NPCs from manifest entries. Convenience wrapper around `addCharacter`.
+ * Returns all spawned instances (skips already-loaded characters).
+ */
+export function spawnCrew(
+	manifests: readonly import("./vrm-crew-manifest").CrewCharacterManifest[]
+): VrmCharacterInstance[] {
+	const spawned: VrmCharacterInstance[] = [];
+
+	for (const manifest of manifests) {
+		if (manifest.isPlayer) continue; // Player is handled separately
+
+		const instance = addCharacter({
+			id: manifest.id,
+			vrmUrl: manifest.vrmAsset,
+			isPlayer: false,
+			priority: 1,
+		});
+
+		// Apply expression profile defaults
+		if (instance.expressionController && manifest.expressionProfile?.defaultExpression) {
+			instance.expressionController.setExpression(
+				manifest.expressionProfile.defaultExpression,
+				manifest.expressionProfile.expressionIntensity ?? 0.7
+			);
+		}
+
+		spawned.push(instance);
+	}
+
+	return spawned;
+}
+
+/**
  * Dispose all characters and reset state.
  */
 export function dispose(): void {
@@ -222,7 +323,24 @@ export function dispose(): void {
 function onVrmLoaded(instance: VrmCharacterInstance, result: VrmLoadResult): void {
 	instance.vrm = result.vrm;
 	instance.loading = false;
+
+	// Convert MToon materials to PBR for WebGPU consistency
+	const mutableMaterials = result.vrm.materials
+		? [...result.vrm.materials]
+		: undefined;
+	convertMToonToPBR(result.vrm.scene, mutableMaterials);
+
+	// Enable shadows on all meshes
+	result.vrm.scene.traverse((child) => {
+		if ((child as Mesh).isMesh) {
+			child.castShadow = true;
+			child.receiveShadow = true;
+		}
+	});
+
+	// Initialize controllers
 	instance.expressionController = new VrmExpressionController(result.vrm);
+	instance.lookAtController = new VrmLookAtController(result.vrm);
 
 	// Add VRM scene to the character root
 	instance.root.add(result.vrm.scene);
@@ -302,6 +420,17 @@ function updateExpressions(instance: VrmCharacterInstance, delta: number): void 
 
 	if (isActive) {
 		instance.expressionController.update(delta);
+	}
+}
+
+function updateLookAt(instance: VrmCharacterInstance, delta: number): void {
+	if (!instance.lookAtController) return;
+
+	const isActive = instance.lodTier === "near";
+	instance.lookAtController.setEnabled(isActive);
+
+	if (isActive) {
+		instance.lookAtController.update(delta, activeCamera);
 	}
 }
 

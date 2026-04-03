@@ -27,12 +27,32 @@ export {
 	type ExpressionTarget,
 } from "./vrm-expression-controller";
 export {
+	VrmLookAtController,
+	type LookAtMode,
+	type LookAtState,
+} from "./vrm-lookat-controller";
+export {
+	convertMToonToPBR,
+} from "./vrm-mtoon-converter";
+export {
+	DEFAULT_CREW_ROSTER,
+	getCrewRoster,
+	getCrewManifest,
+	getPlayerManifest,
+	getNpcManifests,
+	loadCrewRoster,
+	type CrewCharacterManifest,
+	type CrewExpressionProfile,
+	type SpringBoneProfile,
+} from "./vrm-crew-manifest";
+export {
 	addCharacter,
 	removeCharacter,
 	getCharacter,
 	getAllCharacters,
 	setActiveCamera,
 	setFirstPersonMode,
+	spawnCrew,
 	update as updateVrmCharacters,
 	dispose as disposeVrmCharacters,
 	type VrmCharacterOptions,

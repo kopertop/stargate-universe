@@ -144,6 +144,23 @@ function rewriteRuntimeSceneAssetUrls(
     );
   }
 
+  // Rewrite asset URLs in entity properties (e.g., vrmUrl on vrm-character entities)
+  rewritten.entities = rewritten.entities.map((entity) => {
+    const vrmUrl = entity.properties["vrmUrl"];
+
+    if (typeof vrmUrl === "string" && vrmUrl) {
+      return {
+        ...entity,
+        properties: {
+          ...entity.properties,
+          vrmUrl: resolveRuntimeAssetPath(vrmUrl, resolveAssetUrl),
+        },
+      };
+    }
+
+    return entity;
+  });
+
   return rewritten;
 }
 

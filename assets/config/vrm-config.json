@@ -1,0 +1,34 @@
+{
+  "maxVisibleCrew": 4,
+  "springBone": {
+    "enabled": true,
+    "stiffnessMultiplier": 1.0,
+    "dampingMultiplier": 0.4,
+    "budgetMs": 1.0,
+    "maxDeltaSeconds": 0.033
+  },
+  "expression": {
+    "blendSpeed": 0.3,
+    "visemeBlendSpeed": 0.08,
+    "blinkBaseInterval": 4.0,
+    "blinkVariance": 2.0,
+    "blinkDuration": 0.15
+  },
+  "lod": {
+    "nearDistance": 5.0,
+    "midDistance": 15.0,
+    "transitionDuration": 0.5
+  },
+  "loading": {
+    "maxConcurrentLoads": 2,
+    "retryDelayMs": 2000,
+    "maxRetries": 1
+  },
+  "firstPerson": {
+    "headFadeTransition": 0.15
+  },
+  "quality": {
+    "adaptiveThresholdFps": 30.0,
+    "meshTriangleBudget": 15000
+  }
+}

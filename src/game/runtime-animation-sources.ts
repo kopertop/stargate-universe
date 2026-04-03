@@ -3,12 +3,17 @@ import { loadClipsFromArtifact, loadRigFromArtifact, parseAnimationArtifactJson 
 import { parseAnimationBundle, type AnimationArtifact, type AnimationBundle } from "@ggez/anim-schema";
 import { createClipAssetFromThreeClip, createRigFromSkeleton } from "@ggez/anim-three";
 import type { AnimationClip, Object3D, Skeleton } from "three";
+import { VRMLoaderPlugin } from "@pixiv/three-vrm";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 
 const gltfLoader = new GLTFLoader();
 gltfLoader.setMeshoptDecoder(MeshoptDecoder);
+
+const vrmGltfLoader = new GLTFLoader();
+vrmGltfLoader.setMeshoptDecoder(MeshoptDecoder);
+vrmGltfLoader.register((parser) => new VRMLoaderPlugin(parser));
 
 const fbxLoader = new FBXLoader();
 
@@ -384,6 +389,14 @@ async function loadAnimationSource(url: string): Promise<LoadedAnimationSource> 
     return {
       animations: result.animations,
       root: result
+    };
+  }
+
+  if (extension === "vrm") {
+    const result = await vrmGltfLoader.loadAsync(url);
+    return {
+      animations: result.animations,
+      root: result.scene
     };
   }
 

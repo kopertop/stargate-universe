@@ -80,6 +80,13 @@ type PlanetEvents = {
 	"planet:poi:discovered": { poiId: string };
 };
 
+/** Character model events */
+type CharacterEvents = {
+	"character:model:loaded": { characterId: string };
+	"character:model:failed": { characterId: string; error: string };
+	"character:expression:changed": { characterId: string; expression: string; weight: number };
+};
+
 /** Game lifecycle events */
 type GameEvents = {
 	"game:paused": Record<string, never>;
@@ -92,6 +99,7 @@ export type GameEventMap =
 	GateEvents &
 	ResourceEvents &
 	CrewEvents &
+	CharacterEvents &
 	TimerEvents &
 	PlayerEvents &
 	EpisodeEvents &

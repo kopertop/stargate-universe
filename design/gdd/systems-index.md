@@ -47,6 +47,7 @@ The game pillars that constrain system design:
 | 16 | Episode Narrative System | Narrative | Vertical Slice | Not Started | — | Dialogue System, Ship State, Timer, Event Bus |
 | 17 | Audio & Ambience System | Audio/Visual | Vertical Slice | Not Started | — | Ship State, Event Bus, ggez Scene Mgmt |
 | 18 | Tutorial / Onboarding (Icarus Base) | Meta | Alpha | Not Started | — | All MVP + VS gameplay systems |
+| 19 | VRM Character Models | Audio/Visual | Vertical Slice | Designed | design/gdd/vrm-model-integration.md | Player Controller, Camera, Crew Dialogue, ggez Animation Pipeline |
 
 ---
 
@@ -127,6 +128,7 @@ and receive `update(delta)` calls at 60 FPS.
 14. **Kino Remote** — Diegetic menu: map, status, inventory, objectives (depends on: Ship State, Resources, Episode System)
 15. **Ship Atmosphere & Lighting** — Volumetric fog, dynamic lights, Ancient glow (depends on: Ship State)
 16. **Audio & Ambience System** — Ship sounds, environmental audio, music (depends on: Ship State, Event Bus)
+19. **VRM Character Models** — Player and crew VRM loading, spring bones, expressions, LOD (depends on: Player Controller, Camera, Crew Dialogue, ggez Animation Pipeline)
 
 ### Polish Layer
 
@@ -191,8 +193,8 @@ design phase. Implement the full Save/Load system in Vertical Slice tier.
 
 | Metric | Count |
 |--------|-------|
-| Total systems identified | 18 |
-| Design docs started | 11 |
+| Total systems identified | 19 |
+| Design docs started | 12 |
 | Design docs reviewed | 0 |
 | Design docs approved | 0 |
 | MVP systems designed | 11/11 |

@@ -8,28 +8,20 @@
     {
       "id": "idle",
       "name": "Idle",
-      "duration": -1,
+      "duration": 1.9666666984558105,
       "source": "mixamo",
       "asset": "assets/idle.fbx"
     },
     {
-      "id": "breathing-idle",
-      "name": "Breathing Idle",
-      "duration": -1,
-      "source": "mixamo",
-      "asset": "assets/breathing-idle.fbx"
-    },
-    {
       "id": "walking",
       "name": "Walking",
-      "duration": -1,
+      "duration": 1.0333333015441895,
       "source": "mixamo",
       "asset": "assets/walking.fbx"
     }
   ],
   "clipAssets": {
     "Idle": "assets/idle.fbx",
-    "Breathing Idle": "assets/breathing-idle.fbx",
     "Walking": "assets/walking.fbx"
   }
 }

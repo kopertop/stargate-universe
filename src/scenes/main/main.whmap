@@ -1,4 +1,7 @@
 {
+  "format": "whmap",
+  "version": 1,
+  "scene": {
   "assets": [],
   "entities": [
     {
@@ -277,4 +280,5 @@
     }
   },
   "textures": []
+  }
 }

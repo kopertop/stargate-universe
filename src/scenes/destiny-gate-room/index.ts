@@ -230,25 +230,62 @@ function createFlatRingGeometry(radius: number, width: number, depth: number, se
 	return geo;
 }
 
-function buildStargate(scene: THREE.Scene): GateRuntime {
-	// Outer ring — flat band profile like the SGU gate
-	const outerRingMat = new THREE.MeshStandardMaterial({
-		color: COLOR_ANCIENT_METAL,
-		roughness: 0.3,
-		metalness: 0.85
-	});
-	const outerRing = new THREE.Mesh(
-		createFlatRingGeometry(GATE_RADIUS, GATE_TUBE * 2.2, GATE_TUBE * 1.4),
-		outerRingMat
-	);
-	outerRing.position.copy(GATE_CENTER);
-	scene.add(outerRing);
+async function buildStargate(scene: THREE.Scene): Promise<GateRuntime> {
+	const { GLTFLoader } = await import("three/examples/jsm/loaders/GLTFLoader.js");
 
-	// Inner ring — slightly smaller flat band, spins during dialing
+	// Load the stargate GLB model
+	const loader = new GLTFLoader();
+	const gateModelUrl = new URL("./assets/stargate.glb", import.meta.url).href;
+
+	let outerRing: THREE.Object3D = new THREE.Group(); // fallback
+
+	try {
+		const gltf = await loader.loadAsync(gateModelUrl);
+		const gateModel = gltf.scene;
+
+		// The GLB model is unit-sized (~1.0 radius). Scale to match GATE_RADIUS.
+		const modelScale = GATE_RADIUS;
+		gateModel.scale.setScalar(modelScale);
+		gateModel.position.copy(GATE_CENTER);
+
+		// Hide any existing event horizon / portal mesh inside the model
+		// (the downloaded model may show an active portal)
+		gateModel.traverse((child) => {
+			if (child instanceof THREE.Mesh) {
+				child.castShadow = true;
+				child.receiveShadow = true;
+				child.frustumCulled = false;
+
+				// Check if this mesh is the inner portal/event horizon
+				// (typically a flat disc or plane in the center)
+				const mat = child.material as THREE.MeshStandardMaterial;
+				if (mat && mat.transparent) {
+					child.visible = false; // Hide built-in portal — we have our own event horizon
+				}
+			}
+		});
+
+		scene.add(gateModel);
+		outerRing = gateModel;
+		console.info("[GateRoom] Loaded stargate GLB model");
+	} catch (error) {
+		console.warn("[GateRoom] Failed to load stargate GLB, using fallback ring:", error);
+		// Fallback: simple torus
+		const fallbackMat = new THREE.MeshStandardMaterial({
+			color: COLOR_ANCIENT_METAL, roughness: 0.3, metalness: 0.85
+		});
+		const fallback = new THREE.Mesh(
+			new THREE.TorusGeometry(GATE_RADIUS, GATE_TUBE * 2, 32, 64),
+			fallbackMat
+		);
+		fallback.position.copy(GATE_CENTER);
+		scene.add(fallback);
+		outerRing = fallback;
+	}
+
+	// Inner ring — still procedural for spinning animation
 	const innerRingMat = new THREE.MeshStandardMaterial({
-		color: 0x222235,
-		roughness: 0.25,
-		metalness: 0.9
+		color: 0x222235, roughness: 0.25, metalness: 0.9
 	});
 	const innerRing = new THREE.Mesh(
 		createFlatRingGeometry(GATE_RADIUS - 0.05, GATE_TUBE * 1.4, GATE_TUBE * 1.0),
@@ -257,33 +294,7 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 	innerRing.position.copy(GATE_CENTER);
 	scene.add(innerRing);
 
-	// Ring segments — ornate bumps around the outer edge (SGU-style)
-	const segmentMat = new THREE.MeshStandardMaterial({
-		color: 0x333348,
-		roughness: 0.35,
-		metalness: 0.8
-	});
-	const SEGMENT_COUNT = 36;
-	for (let i = 0; i < SEGMENT_COUNT; i++) {
-		const angle = (i / SEGMENT_COUNT) * Math.PI * 2;
-		const segment = new THREE.Mesh(
-			new THREE.BoxGeometry(0.22, 0.12, 0.12),
-			segmentMat
-		);
-		segment.position.set(
-			GATE_CENTER.x + Math.cos(angle) * (GATE_RADIUS + 0.08),
-			GATE_CENTER.y + Math.sin(angle) * (GATE_RADIUS + 0.08),
-			GATE_CENTER.z + 0.08
-		);
-		segment.lookAt(
-			GATE_CENTER.x + Math.cos(angle) * (GATE_RADIUS + 2),
-			GATE_CENTER.y + Math.sin(angle) * (GATE_RADIUS + 2),
-			GATE_CENTER.z + 0.08
-		);
-		scene.add(segment);
-	}
-
-	// Chevrons — 9 markers around the ring
+	// Chevrons — 7 emissive markers + point lights around the ring
 	const chevronMeshes: THREE.Mesh[] = [];
 	for (let i = 0; i < CHEVRON_COUNT; i++) {
 		const angle = (i / CHEVRON_COUNT) * Math.PI * 2 - Math.PI / 2;
@@ -310,7 +321,7 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 		chevronMeshes.push(chevron);
 	}
 
-	// Event horizon — the wormhole surface (hidden until active)
+	// Event horizon — our own wormhole surface (hidden until active)
 	const horizonMat = new THREE.MeshStandardMaterial({
 		color: COLOR_EVENT_HORIZON,
 		emissive: COLOR_EVENT_HORIZON,
@@ -336,7 +347,7 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 		innerRing,
 		kawooshElapsed: 0,
 		lockedChevrons: 0,
-		outerRing,
+		outerRing: outerRing as THREE.Mesh,
 		pointLights: [],
 		state: "idle"
 	};
@@ -1264,7 +1275,7 @@ async function mount(context: GameSceneContext): Promise<GameSceneLifecycle> {
 
 	// Floor is from the runtime JSON — kept dark. Visibility comes from
 	// player light, room lights, and the yellow runway strips.
-	const gate = buildStargate(scene);
+	const gate = await buildStargate(scene);
 	const lights = buildLighting(scene, debugObjects);
 	gate.pointLights = lights;
 

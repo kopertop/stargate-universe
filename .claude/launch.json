@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "stargate-universe-dev",
+      "runtimeExecutable": "/Users/cmoyer/.bun/bin/bun",
+      "runtimeArgs": ["run", "dev"],
+      "port": 5173
+    },
+    {
+      "name": "ggez-orchestrator",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": ["-c", "cd /Users/cmoyer/Projects/personal/trident && /Users/cmoyer/.bun/bin/bun run start"],
+      "port": 4300
+    }
+  ]
+}

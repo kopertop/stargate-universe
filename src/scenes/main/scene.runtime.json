@@ -7,49 +7,58 @@
       "properties": {},
       "transform": {
         "pivot": { "x": 0, "y": 0, "z": 0 },
-        "position": { "x": 0, "y": 0.5, "z": 7 },
-        "rotation": { "x": 0, "y": 3.141592653589793, "z": 0 },
+        "position": { "x": 0, "y": 0.5, "z": 0 },
+        "rotation": { "x": 0, "y": 0, "z": 0 },
         "scale": { "x": 1, "y": 1, "z": 1 }
       },
       "type": "player-spawn"
+    },
+    {
+      "id": "entity:vrm-character:player",
+      "name": "Player Character",
+      "properties": {
+        "animationBundle": "player-locomotion",
+        "characterId": "eli-wallace",
+        "isPlayer": true,
+        "vrmUrl": "assets/characters/eli.vrm"
+      },
+      "transform": {
+        "pivot": { "x": 0, "y": 0, "z": 0 },
+        "position": { "x": 0, "y": 0.5, "z": 0 },
+        "rotation": { "x": 0, "y": 0, "z": 0 },
+        "scale": { "x": 1, "y": 1, "z": 1 }
+      },
+      "type": "vrm-character"
     }
   ],
   "layers": [],
   "materials": [
     {
-      "color": "#d8dde3",
-      "id": "material:starter:floor",
-      "metallicFactor": 0,
-      "name": "Starter Floor",
-      "roughnessFactor": 0.96,
+      "color": "#1a1a2e",
+      "id": "material:test:floor",
+      "metallicFactor": 0.1,
+      "name": "Dark Floor",
+      "roughnessFactor": 0.85,
       "side": "double"
     },
     {
-      "color": "#6a8199",
-      "id": "material:starter:platform",
-      "metallicFactor": 0,
-      "name": "Starter Platform",
+      "color": "#2a2a3a",
+      "id": "material:test:wall",
+      "metallicFactor": 0.05,
+      "name": "Dark Wall",
       "roughnessFactor": 0.9,
-      "side": "double"
-    },
-    {
-      "color": "#d98f5f",
-      "id": "material:starter:block",
-      "metallicFactor": 0,
-      "name": "Starter Block",
-      "roughnessFactor": 0.88,
       "side": "double"
     }
   ],
   "metadata": {
-    "exportedAt": "2026-03-27T12:00:00.000Z",
+    "exportedAt": "2026-04-01T00:00:00.000Z",
     "format": "web-hammer-engine",
     "version": 6
   },
   "nodes": [
     {
       "data": {
-        "materialId": "material:starter:floor",
+        "materialId": "material:test:floor",
         "physics": {
           "angularDamping": 0,
           "bodyType": "fixed",
@@ -68,27 +77,27 @@
         },
         "role": "brush",
         "shape": "cube",
-        "size": { "x": 36, "y": 1, "z": 36 }
+        "size": { "x": 20, "y": 1, "z": 20 }
       },
       "geometry": {
         "primitives": [
           {
-            "indices": [0, 2, 1, 2, 3, 1, 4, 6, 5, 6, 7, 5, 8, 10, 9, 10, 11, 9, 12, 14, 13, 14, 15, 13, 16, 18, 17, 18, 19, 17, 20, 22, 21, 22, 23, 21],
+            "indices": [0,2,1,2,3,1, 4,6,5,6,7,5, 8,10,9,10,11,9, 12,14,13,14,15,13, 16,18,17,18,19,17, 20,22,21,22,23,21],
             "material": {
-              "color": "#d8dde3",
-              "id": "material:starter:floor",
-              "metallicFactor": 0,
-              "name": "Starter Floor",
-              "roughnessFactor": 0.96,
+              "color": "#1a1a2e",
+              "id": "material:test:floor",
+              "metallicFactor": 0.1,
+              "name": "Dark Floor",
+              "roughnessFactor": 0.85,
               "side": "double"
             },
-            "normals": [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1],
-            "positions": [18, 0.5, 18, 18, 0.5, -18, 18, -0.5, 18, 18, -0.5, -18, -18, 0.5, -18, -18, 0.5, 18, -18, -0.5, -18, -18, -0.5, 18, -18, 0.5, -18, 18, 0.5, -18, -18, 0.5, 18, 18, 0.5, 18, -18, -0.5, 18, 18, -0.5, 18, -18, -0.5, -18, 18, -0.5, -18, -18, 0.5, 18, 18, 0.5, 18, -18, -0.5, 18, 18, -0.5, 18, 18, 0.5, -18, -18, 0.5, -18, 18, -0.5, -18, -18, -0.5, -18],
-            "uvs": [0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0]
+            "normals": [1,0,0, 1,0,0, 1,0,0, 1,0,0, -1,0,0, -1,0,0, -1,0,0, -1,0,0, 0,1,0, 0,1,0, 0,1,0, 0,1,0, 0,-1,0, 0,-1,0, 0,-1,0, 0,-1,0, 0,0,1, 0,0,1, 0,0,1, 0,0,1, 0,0,-1, 0,0,-1, 0,0,-1, 0,0,-1],
+            "positions": [10,0.5,10, 10,0.5,-10, 10,-0.5,10, 10,-0.5,-10, -10,0.5,-10, -10,0.5,10, -10,-0.5,-10, -10,-0.5,10, -10,0.5,-10, 10,0.5,-10, -10,0.5,10, 10,0.5,10, -10,-0.5,10, 10,-0.5,10, -10,-0.5,-10, 10,-0.5,-10, -10,0.5,10, 10,0.5,10, -10,-0.5,10, 10,-0.5,10, 10,0.5,-10, -10,0.5,-10, 10,-0.5,-10, -10,-0.5,-10],
+            "uvs": [0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0]
           }
         ]
       },
-      "id": "node:starter:floor",
+      "id": "node:test:floor",
       "kind": "primitive",
       "name": "Floor",
       "transform": {
@@ -100,7 +109,7 @@
     },
     {
       "data": {
-        "materialId": "material:starter:platform",
+        "materialId": "material:test:wall",
         "physics": {
           "angularDamping": 0,
           "bodyType": "fixed",
@@ -109,7 +118,7 @@
           "colliderShape": "trimesh",
           "contactSkin": 0,
           "enabled": true,
-          "friction": 0.9,
+          "friction": 0.8,
           "gravityScale": 1,
           "linearDamping": 0,
           "lockRotations": false,
@@ -119,39 +128,39 @@
         },
         "role": "brush",
         "shape": "cube",
-        "size": { "x": 6, "y": 0.75, "z": 6 }
+        "size": { "x": 20, "y": 4, "z": 0.5 }
       },
       "geometry": {
         "primitives": [
           {
-            "indices": [0, 2, 1, 2, 3, 1, 4, 6, 5, 6, 7, 5, 8, 10, 9, 10, 11, 9, 12, 14, 13, 14, 15, 13, 16, 18, 17, 18, 19, 17, 20, 22, 21, 22, 23, 21],
+            "indices": [0,2,1,2,3,1, 4,6,5,6,7,5, 8,10,9,10,11,9, 12,14,13,14,15,13, 16,18,17,18,19,17, 20,22,21,22,23,21],
             "material": {
-              "color": "#6a8199",
-              "id": "material:starter:platform",
-              "metallicFactor": 0,
-              "name": "Starter Platform",
+              "color": "#2a2a3a",
+              "id": "material:test:wall",
+              "metallicFactor": 0.05,
+              "name": "Dark Wall",
               "roughnessFactor": 0.9,
               "side": "double"
             },
-            "normals": [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1],
-            "positions": [3, 0.375, 3, 3, 0.375, -3, 3, -0.375, 3, 3, -0.375, -3, -3, 0.375, -3, -3, 0.375, 3, -3, -0.375, -3, -3, -0.375, 3, -3, 0.375, -3, 3, 0.375, -3, -3, 0.375, 3, 3, 0.375, 3, -3, -0.375, 3, 3, -0.375, 3, -3, -0.375, -3, 3, -0.375, -3, -3, 0.375, 3, 3, 0.375, 3, -3, -0.375, 3, 3, -0.375, 3, 3, 0.375, -3, -3, 0.375, -3, 3, -0.375, -3, -3, -0.375, -3],
-            "uvs": [0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0]
+            "normals": [1,0,0, 1,0,0, 1,0,0, 1,0,0, -1,0,0, -1,0,0, -1,0,0, -1,0,0, 0,1,0, 0,1,0, 0,1,0, 0,1,0, 0,-1,0, 0,-1,0, 0,-1,0, 0,-1,0, 0,0,1, 0,0,1, 0,0,1, 0,0,1, 0,0,-1, 0,0,-1, 0,0,-1, 0,0,-1],
+            "positions": [10,2,0.25, 10,2,-0.25, 10,-2,0.25, 10,-2,-0.25, -10,2,-0.25, -10,2,0.25, -10,-2,-0.25, -10,-2,0.25, -10,2,-0.25, 10,2,-0.25, -10,2,0.25, 10,2,0.25, -10,-2,0.25, 10,-2,0.25, -10,-2,-0.25, 10,-2,-0.25, -10,2,0.25, 10,2,0.25, -10,-2,0.25, 10,-2,0.25, 10,2,-0.25, -10,2,-0.25, 10,-2,-0.25, -10,-2,-0.25],
+            "uvs": [0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0]
           }
         ]
       },
-      "id": "node:starter:platform",
+      "id": "node:test:wall:north",
       "kind": "primitive",
-      "name": "Platform",
+      "name": "Wall North",
       "transform": {
         "pivot": { "x": 0, "y": 0, "z": 0 },
-        "position": { "x": 0, "y": 0.375, "z": -4 },
+        "position": { "x": 0, "y": 2, "z": -10 },
         "rotation": { "x": 0, "y": 0, "z": 0 },
         "scale": { "x": 1, "y": 1, "z": 1 }
       }
     },
     {
       "data": {
-        "materialId": "material:starter:block",
+        "materialId": "material:test:wall",
         "physics": {
           "angularDamping": 0,
           "bodyType": "fixed",
@@ -160,7 +169,7 @@
           "colliderShape": "trimesh",
           "contactSkin": 0,
           "enabled": true,
-          "friction": 0.85,
+          "friction": 0.8,
           "gravityScale": 1,
           "linearDamping": 0,
           "lockRotations": false,
@@ -170,39 +179,39 @@
         },
         "role": "brush",
         "shape": "cube",
-        "size": { "x": 2, "y": 2, "z": 2 }
+        "size": { "x": 20, "y": 4, "z": 0.5 }
       },
       "geometry": {
         "primitives": [
           {
-            "indices": [0, 2, 1, 2, 3, 1, 4, 6, 5, 6, 7, 5, 8, 10, 9, 10, 11, 9, 12, 14, 13, 14, 15, 13, 16, 18, 17, 18, 19, 17, 20, 22, 21, 22, 23, 21],
+            "indices": [0,2,1,2,3,1, 4,6,5,6,7,5, 8,10,9,10,11,9, 12,14,13,14,15,13, 16,18,17,18,19,17, 20,22,21,22,23,21],
             "material": {
-              "color": "#d98f5f",
-              "id": "material:starter:block",
-              "metallicFactor": 0,
-              "name": "Starter Block",
-              "roughnessFactor": 0.88,
+              "color": "#2a2a3a",
+              "id": "material:test:wall",
+              "metallicFactor": 0.05,
+              "name": "Dark Wall",
+              "roughnessFactor": 0.9,
               "side": "double"
             },
-            "normals": [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1],
-            "positions": [1, 1, 1, 1, 1, -1, 1, -1, 1, 1, -1, -1, -1, 1, -1, -1, 1, 1, -1, -1, -1, -1, -1, 1, -1, 1, -1, 1, 1, -1, -1, 1, 1, 1, 1, 1, -1, -1, 1, 1, -1, 1, -1, -1, -1, 1, -1, -1, -1, 1, 1, 1, 1, 1, -1, -1, 1, 1, -1, 1, 1, 1, -1, -1, 1, -1, 1, -1, -1, -1, -1, -1],
-            "uvs": [0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0]
+            "normals": [1,0,0, 1,0,0, 1,0,0, 1,0,0, -1,0,0, -1,0,0, -1,0,0, -1,0,0, 0,1,0, 0,1,0, 0,1,0, 0,1,0, 0,-1,0, 0,-1,0, 0,-1,0, 0,-1,0, 0,0,1, 0,0,1, 0,0,1, 0,0,1, 0,0,-1, 0,0,-1, 0,0,-1, 0,0,-1],
+            "positions": [10,2,0.25, 10,2,-0.25, 10,-2,0.25, 10,-2,-0.25, -10,2,-0.25, -10,2,0.25, -10,-2,-0.25, -10,-2,0.25, -10,2,-0.25, 10,2,-0.25, -10,2,0.25, 10,2,0.25, -10,-2,0.25, 10,-2,0.25, -10,-2,-0.25, 10,-2,-0.25, -10,2,0.25, 10,2,0.25, -10,-2,0.25, 10,-2,0.25, 10,2,-0.25, -10,2,-0.25, 10,-2,-0.25, -10,-2,-0.25],
+            "uvs": [0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0]
           }
         ]
       },
-      "id": "node:starter:block:left",
+      "id": "node:test:wall:south",
       "kind": "primitive",
-      "name": "Block Left",
+      "name": "Wall South",
       "transform": {
         "pivot": { "x": 0, "y": 0, "z": 0 },
-        "position": { "x": -4, "y": 1, "z": -1 },
+        "position": { "x": 0, "y": 2, "z": 10 },
         "rotation": { "x": 0, "y": 0, "z": 0 },
         "scale": { "x": 1, "y": 1, "z": 1 }
       }
     },
     {
       "data": {
-        "materialId": "material:starter:block",
+        "materialId": "material:test:wall",
         "physics": {
           "angularDamping": 0,
           "bodyType": "fixed",
@@ -211,7 +220,7 @@
           "colliderShape": "trimesh",
           "contactSkin": 0,
           "enabled": true,
-          "friction": 0.85,
+          "friction": 0.8,
           "gravityScale": 1,
           "linearDamping": 0,
           "lockRotations": false,
@@ -221,50 +230,101 @@
         },
         "role": "brush",
         "shape": "cube",
-        "size": { "x": 2, "y": 3, "z": 2 }
+        "size": { "x": 0.5, "y": 4, "z": 20 }
       },
       "geometry": {
         "primitives": [
           {
-            "indices": [0, 2, 1, 2, 3, 1, 4, 6, 5, 6, 7, 5, 8, 10, 9, 10, 11, 9, 12, 14, 13, 14, 15, 13, 16, 18, 17, 18, 19, 17, 20, 22, 21, 22, 23, 21],
+            "indices": [0,2,1,2,3,1, 4,6,5,6,7,5, 8,10,9,10,11,9, 12,14,13,14,15,13, 16,18,17,18,19,17, 20,22,21,22,23,21],
             "material": {
-              "color": "#d98f5f",
-              "id": "material:starter:block",
-              "metallicFactor": 0,
-              "name": "Starter Block",
-              "roughnessFactor": 0.88,
+              "color": "#2a2a3a",
+              "id": "material:test:wall",
+              "metallicFactor": 0.05,
+              "name": "Dark Wall",
+              "roughnessFactor": 0.9,
               "side": "double"
             },
-            "normals": [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1],
-            "positions": [1, 1.5, 1, 1, 1.5, -1, 1, -1.5, 1, 1, -1.5, -1, -1, 1.5, -1, -1, 1.5, 1, -1, -1.5, -1, -1, -1.5, 1, -1, 1.5, -1, 1, 1.5, -1, -1, 1.5, 1, 1, 1.5, 1, -1, -1.5, 1, 1, -1.5, 1, -1, -1.5, -1, 1, -1.5, -1, -1, 1.5, 1, 1, 1.5, 1, -1, -1.5, 1, 1, -1.5, 1, 1, 1.5, -1, -1, 1.5, -1, 1, -1.5, -1, -1, -1.5, -1],
-            "uvs": [0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0]
+            "normals": [1,0,0, 1,0,0, 1,0,0, 1,0,0, -1,0,0, -1,0,0, -1,0,0, -1,0,0, 0,1,0, 0,1,0, 0,1,0, 0,1,0, 0,-1,0, 0,-1,0, 0,-1,0, 0,-1,0, 0,0,1, 0,0,1, 0,0,1, 0,0,1, 0,0,-1, 0,0,-1, 0,0,-1, 0,0,-1],
+            "positions": [0.25,2,10, 0.25,2,-10, 0.25,-2,10, 0.25,-2,-10, -0.25,2,-10, -0.25,2,10, -0.25,-2,-10, -0.25,-2,10, -0.25,2,-10, 0.25,2,-10, -0.25,2,10, 0.25,2,10, -0.25,-2,10, 0.25,-2,10, -0.25,-2,-10, 0.25,-2,-10, -0.25,2,10, 0.25,2,10, -0.25,-2,10, 0.25,-2,10, 0.25,2,-10, -0.25,2,-10, 0.25,-2,-10, -0.25,-2,-10],
+            "uvs": [0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0]
           }
         ]
       },
-      "id": "node:starter:block:right",
+      "id": "node:test:wall:east",
       "kind": "primitive",
-      "name": "Block Right",
+      "name": "Wall East",
       "transform": {
         "pivot": { "x": 0, "y": 0, "z": 0 },
-        "position": { "x": 4, "y": 1.5, "z": 1 },
-        "rotation": { "x": 0, "y": 0.4, "z": 0 },
+        "position": { "x": 10, "y": 2, "z": 0 },
+        "rotation": { "x": 0, "y": 0, "z": 0 },
+        "scale": { "x": 1, "y": 1, "z": 1 }
+      }
+    },
+    {
+      "data": {
+        "materialId": "material:test:wall",
+        "physics": {
+          "angularDamping": 0,
+          "bodyType": "fixed",
+          "canSleep": true,
+          "ccd": false,
+          "colliderShape": "trimesh",
+          "contactSkin": 0,
+          "enabled": true,
+          "friction": 0.8,
+          "gravityScale": 1,
+          "linearDamping": 0,
+          "lockRotations": false,
+          "lockTranslations": false,
+          "restitution": 0,
+          "sensor": false
+        },
+        "role": "brush",
+        "shape": "cube",
+        "size": { "x": 0.5, "y": 4, "z": 20 }
+      },
+      "geometry": {
+        "primitives": [
+          {
+            "indices": [0,2,1,2,3,1, 4,6,5,6,7,5, 8,10,9,10,11,9, 12,14,13,14,15,13, 16,18,17,18,19,17, 20,22,21,22,23,21],
+            "material": {
+              "color": "#2a2a3a",
+              "id": "material:test:wall",
+              "metallicFactor": 0.05,
+              "name": "Dark Wall",
+              "roughnessFactor": 0.9,
+              "side": "double"
+            },
+            "normals": [1,0,0, 1,0,0, 1,0,0, 1,0,0, -1,0,0, -1,0,0, -1,0,0, -1,0,0, 0,1,0, 0,1,0, 0,1,0, 0,1,0, 0,-1,0, 0,-1,0, 0,-1,0, 0,-1,0, 0,0,1, 0,0,1, 0,0,1, 0,0,1, 0,0,-1, 0,0,-1, 0,0,-1, 0,0,-1],
+            "positions": [0.25,2,10, 0.25,2,-10, 0.25,-2,10, 0.25,-2,-10, -0.25,2,-10, -0.25,2,10, -0.25,-2,-10, -0.25,-2,10, -0.25,2,-10, 0.25,2,-10, -0.25,2,10, 0.25,2,10, -0.25,-2,10, 0.25,-2,10, -0.25,-2,-10, 0.25,-2,-10, -0.25,2,10, 0.25,2,10, -0.25,-2,10, 0.25,-2,10, 0.25,2,-10, -0.25,2,-10, 0.25,-2,-10, -0.25,-2,-10],
+            "uvs": [0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0, 0,1, 1,1, 0,0, 1,0]
+          }
+        ]
+      },
+      "id": "node:test:wall:west",
+      "kind": "primitive",
+      "name": "Wall West",
+      "transform": {
+        "pivot": { "x": 0, "y": 0, "z": 0 },
+        "position": { "x": -10, "y": 2, "z": 0 },
+        "rotation": { "x": 0, "y": 0, "z": 0 },
         "scale": { "x": 1, "y": 1, "z": 1 }
       }
     },
     {
       "data": {
         "castShadow": true,
-        "color": "#fff7ea",
+        "color": "#c8d0e0",
         "enabled": true,
-        "intensity": 1.55,
+        "intensity": 1.2,
         "type": "directional"
       },
-      "id": "node:starter:light:directional",
+      "id": "node:test:light:directional",
       "kind": "light",
       "name": "Directional Light",
       "transform": {
         "pivot": { "x": 0, "y": 0, "z": 0 },
-        "position": { "x": 10, "y": 14, "z": 8 },
+        "position": { "x": 5, "y": 10, "z": 5 },
         "rotation": { "x": 0, "y": 0, "z": 0 },
         "scale": { "x": 1, "y": 1, "z": 1 }
       }
@@ -272,13 +332,13 @@
     {
       "data": {
         "castShadow": false,
-        "color": "#dfe9ff",
+        "color": "#4a5580",
         "enabled": true,
-        "groundColor": "#6a7280",
-        "intensity": 0.95,
+        "groundColor": "#1a1a2e",
+        "intensity": 0.6,
         "type": "hemisphere"
       },
-      "id": "node:starter:light:hemisphere",
+      "id": "node:test:light:hemisphere",
       "kind": "light",
       "name": "Hemisphere Light",
       "transform": {
@@ -302,11 +362,11 @@
       "runningSpeed": 7
     },
     "world": {
-      "ambientColor": "#f7fbff",
-      "ambientIntensity": 0.5,
-      "fogColor": "#dde5ee",
-      "fogFar": 140,
-      "fogNear": 55,
+      "ambientColor": "#2a2a4a",
+      "ambientIntensity": 0.3,
+      "fogColor": "#0a0a15",
+      "fogFar": 50,
+      "fogNear": 25,
       "gravity": {
         "x": 0,
         "y": -9.81,

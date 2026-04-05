@@ -1,0 +1,54 @@
+{
+  "assets": [],
+  "entities": [
+    {
+      "id": "entity:player-spawn:destiny-gate-room",
+      "name": "Player Spawn",
+      "properties": {},
+      "transform": {
+        "pivot": { "x": 0, "y": 0, "z": 0 },
+        "position": { "x": 0, "y": 0.5, "z": 12 },
+        "rotation": { "x": 0, "y": 0, "z": 0 },
+        "scale": { "x": 1, "y": 1, "z": 1 }
+      },
+      "type": "player-spawn"
+    }
+  ],
+  "layers": [],
+  "materials": [],
+  "metadata": {
+    "exportedAt": "2026-04-04T00:00:00.000Z",
+    "format": "web-hammer-engine",
+    "version": 6
+  },
+  "nodes": [],
+  "settings": {
+    "player": {
+      "cameraMode": "third-person",
+      "canCrouch": true,
+      "canInteract": true,
+      "canJump": true,
+      "canRun": true,
+      "crouchHeight": 1.2,
+      "height": 1.8,
+      "interactKey": "KeyE",
+      "jumpHeight": 1,
+      "movementSpeed": 4.5,
+      "runningSpeed": 7
+    },
+    "world": {
+      "ambientColor": "#1a1a3a",
+      "ambientIntensity": 0.2,
+      "fogColor": "#050510",
+      "fogFar": 50,
+      "fogNear": 25,
+      "gravity": { "x": 0, "y": -9.81, "z": 0 },
+      "physicsEnabled": true,
+      "skybox": {
+        "enabled": false,
+        "format": "image",
+        "source": ""
+      }
+    }
+  }
+}

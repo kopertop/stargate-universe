@@ -1,0 +1,27 @@
+{
+  "format": "ggez.animation.bundle",
+  "version": 1,
+  "name": "player-locomotion",
+  "artifact": "graph.animation.json",
+  "characterAsset": null,
+  "clips": [
+    {
+      "id": "idle",
+      "name": "Idle",
+      "duration": 1.9666666984558105,
+      "source": "mixamo",
+      "asset": "assets/idle.fbx"
+    },
+    {
+      "id": "walking",
+      "name": "Walking",
+      "duration": 1.0333333015441895,
+      "source": "mixamo",
+      "asset": "assets/walking.fbx"
+    }
+  ],
+  "clipAssets": {
+    "Idle": "assets/idle.fbx",
+    "Walking": "assets/walking.fbx"
+  }
+}

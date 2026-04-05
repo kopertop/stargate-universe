@@ -156,6 +156,24 @@
         "roughness": 0.5,
         "emissiveColor": "#4488ff",
         "emissiveIntensity": 0.3
+      },
+      {
+        "id": "material:gate:ring",
+        "name": "Gate Ring",
+        "category": "scene",
+        "color": "#2a2a3a",
+        "metalness": 0.85,
+        "roughness": 0.3
+      },
+      {
+        "id": "material:gate:chevron",
+        "name": "Gate Chevron",
+        "category": "scene",
+        "color": "#111122",
+        "emissiveColor": "#44aaff",
+        "emissiveIntensity": 0.5,
+        "metalness": 0.7,
+        "roughness": 0.4
       }
     ],
     "nodes": [
@@ -2754,6 +2772,1208 @@
           "intensity": 1.2,
           "distance": 40,
           "decay": 1.5
+        }
+      },
+      {
+        "id": "node:gate-seg-0",
+        "name": "Gate Segment 1",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 2.8,
+            "y": 2.72,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0.0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:ring",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.8063421144213804,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:gate-seg-1",
+        "name": "Gate Segment 2",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 2.7045923136093912,
+            "y": 3.4446933262870583,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0.2617993877991494
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:ring",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.8063421144213804,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:gate-seg-2",
+        "name": "Gate Segment 3",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 2.4248711305964283,
+            "y": 4.12,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0.5235987755982988
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:ring",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.8063421144213804,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:gate-seg-3",
+        "name": "Gate Segment 4",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 1.9798989873223332,
+            "y": 4.699898987322333,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0.7853981633974483
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:ring",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.8063421144213804,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:gate-seg-4",
+        "name": "Gate Segment 5",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 1.4000000000000001,
+            "y": 5.144871130596428,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 1.0471975511965976
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:ring",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.8063421144213804,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:gate-seg-5",
+        "name": "Gate Segment 6",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0.7246933262870581,
+            "y": 5.424592313609391,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 1.3089969389957472
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:ring",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.8063421144213804,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:gate-seg-6",
+        "name": "Gate Segment 7",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 1.7145055188062944e-16,
+            "y": 5.52,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 1.5707963267948966
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:ring",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.8063421144213804,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:gate-seg-7",
+        "name": "Gate Segment 8",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -0.7246933262870583,
+            "y": 5.424592313609391,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 1.8325957145940461
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:ring",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.8063421144213804,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:gate-seg-8",
+        "name": "Gate Segment 9",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -1.3999999999999995,
+            "y": 5.144871130596428,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 2.0943951023931953
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:ring",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.8063421144213804,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:gate-seg-9",
+        "name": "Gate Segment 10",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -1.9798989873223327,
+            "y": 4.699898987322333,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 2.356194490192345
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:ring",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.8063421144213804,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:gate-seg-10",
+        "name": "Gate Segment 11",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -2.4248711305964283,
+            "y": 4.12,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 2.6179938779914944
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:ring",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.8063421144213804,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:gate-seg-11",
+        "name": "Gate Segment 12",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -2.704592313609391,
+            "y": 3.444693326287059,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 2.8797932657906435
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:ring",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.8063421144213804,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:gate-seg-12",
+        "name": "Gate Segment 13",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -2.8,
+            "y": 2.7200000000000006,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 3.141592653589793
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:ring",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.8063421144213804,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:gate-seg-13",
+        "name": "Gate Segment 14",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -2.7045923136093912,
+            "y": 1.9953066737129432,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 3.4033920413889422
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:ring",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.8063421144213804,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:gate-seg-14",
+        "name": "Gate Segment 15",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -2.424871130596428,
+            "y": 1.32,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 3.6651914291880923
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:ring",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.8063421144213804,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:gate-seg-15",
+        "name": "Gate Segment 16",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -1.9798989873223334,
+            "y": 0.7401010126776675,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 3.9269908169872414
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:ring",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.8063421144213804,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:gate-seg-16",
+        "name": "Gate Segment 17",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -1.4000000000000012,
+            "y": 0.29512886940357275,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 4.1887902047863905
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:ring",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.8063421144213804,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:gate-seg-17",
+        "name": "Gate Segment 18",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -0.7246933262870577,
+            "y": 0.015407686390608966,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 4.4505895925855405
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:ring",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.8063421144213804,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:gate-seg-18",
+        "name": "Gate Segment 19",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -5.143516556418883e-16,
+            "y": -0.07999999999999963,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 4.71238898038469
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:ring",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.8063421144213804,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:gate-seg-19",
+        "name": "Gate Segment 20",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0.7246933262870567,
+            "y": 0.015407686390608966,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 4.974188368183839
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:ring",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.8063421144213804,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:gate-seg-20",
+        "name": "Gate Segment 21",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 1.4000000000000001,
+            "y": 0.2951288694035723,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 5.235987755982989
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:ring",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.8063421144213804,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:gate-seg-21",
+        "name": "Gate Segment 22",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 1.9798989873223325,
+            "y": 0.7401010126776668,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 5.497787143782138
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:ring",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.8063421144213804,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:gate-seg-22",
+        "name": "Gate Segment 23",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 2.4248711305964274,
+            "y": 1.319999999999999,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 5.759586531581287
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:ring",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.8063421144213804,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:gate-seg-23",
+        "name": "Gate Segment 24",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 2.7045923136093912,
+            "y": 1.9953066737129423,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 6.021385919380437
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:ring",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.8063421144213804,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:gate-chevron-0",
+        "name": "Chevron 1",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 1.8982025386783972e-16,
+            "y": -0.37999999999999945,
+            "z": -19.3
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:chevron",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.2,
+            "y": 0.35,
+            "z": 0.15
+          }
+        }
+      },
+      {
+        "id": "node:gate-chevron-1",
+        "name": "Chevron 2",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 2.4236775956508922,
+            "y": 0.7871816142379267,
+            "z": -19.3
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:chevron",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.2,
+            "y": 0.35,
+            "z": 0.15
+          }
+        }
+      },
+      {
+        "id": "node:gate-chevron-2",
+        "name": "Chevron 3",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 3.022276527763653,
+            "y": 3.409814895264575,
+            "z": -19.3
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:chevron",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.2,
+            "y": 0.35,
+            "z": 0.15
+          }
+        }
+      },
+      {
+        "id": "node:gate-chevron-3",
+        "name": "Chevron 4",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 1.3450395912644302,
+            "y": 5.5130034904975,
+            "z": -19.3
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:chevron",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.2,
+            "y": 0.35,
+            "z": 0.15
+          }
+        }
+      },
+      {
+        "id": "node:gate-chevron-4",
+        "name": "Chevron 5",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -1.34503959126443,
+            "y": 5.5130034904975,
+            "z": -19.3
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:chevron",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.2,
+            "y": 0.35,
+            "z": 0.15
+          }
+        }
+      },
+      {
+        "id": "node:gate-chevron-5",
+        "name": "Chevron 6",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -3.022276527763653,
+            "y": 3.4098148952645753,
+            "z": -19.3
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:chevron",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.2,
+            "y": 0.35,
+            "z": 0.15
+          }
+        }
+      },
+      {
+        "id": "node:gate-chevron-6",
+        "name": "Chevron 7",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -2.4236775956508922,
+            "y": 0.7871816142379269,
+            "z": -19.3
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:gate:chevron",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.2,
+            "y": 0.35,
+            "z": 0.15
+          }
+        }
+      },
+      {
+        "id": "node:gate-platform",
+        "name": "Gate Platform",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 0.2,
+            "z": -16
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:floor",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 12,
+            "y": 0.4,
+            "z": 6
+          },
+          "physics": {
+            "angularDamping": 0,
+            "bodyType": "fixed",
+            "canSleep": true,
+            "ccd": false,
+            "colliderShape": "cuboid",
+            "contactSkin": 0,
+            "density": 1,
+            "enabled": true,
+            "friction": 0.9,
+            "gravityScale": 1,
+            "linearDamping": 0,
+            "lockRotations": false,
+            "lockTranslations": false,
+            "mass": 1,
+            "restitution": 0,
+            "sensor": false
+          }
         }
       }
     ],

@@ -9,9 +9,21 @@
         "type": "player-spawn",
         "name": "Player Spawn",
         "transform": {
-          "position": { "x": 0, "y": 0.5, "z": 12 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "position": {
+            "x": 0,
+            "y": 0.5,
+            "z": 12
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "properties": {
           "enabled": true,
@@ -23,9 +35,21 @@
         "type": "vrm-character",
         "name": "Player Character",
         "transform": {
-          "position": { "x": 0, "y": 0.5, "z": 12 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "position": {
+            "x": 0,
+            "y": 0.5,
+            "z": 12
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "properties": {
           "isPlayer": true,
@@ -90,10 +114,26 @@
         "name": "Floor",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": 0, "y": -0.5, "z": 0 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": -0.5,
+            "z": 0
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:floor",
@@ -117,7 +157,11 @@
           },
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 26, "y": 1, "z": 40 }
+          "size": {
+            "x": 26,
+            "y": 1,
+            "z": 40
+          }
         }
       },
       {
@@ -125,10 +169,26 @@
         "name": "Ceiling",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": 0, "y": 8.25, "z": 0 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 8.25,
+            "z": 0
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:ceiling",
@@ -152,7 +212,11 @@
           },
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 26, "y": 0.5, "z": 40 }
+          "size": {
+            "x": 26,
+            "y": 0.5,
+            "z": 40
+          }
         }
       },
       {
@@ -160,10 +224,26 @@
         "name": "Back Wall",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": 0, "y": 4, "z": -20 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "z": -20
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:wall",
@@ -187,7 +267,11 @@
           },
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 26, "y": 8, "z": 0.5 }
+          "size": {
+            "x": 26,
+            "y": 8,
+            "z": 0.5
+          }
         }
       },
       {
@@ -195,10 +279,26 @@
         "name": "Front Wall",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": 0, "y": 4, "z": 20 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "z": 20
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:wall",
@@ -222,7 +322,11 @@
           },
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 26, "y": 8, "z": 0.5 }
+          "size": {
+            "x": 26,
+            "y": 8,
+            "z": 0.5
+          }
         }
       },
       {
@@ -230,10 +334,26 @@
         "name": "East Wall North",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": 13, "y": 4, "z": -12 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 13,
+            "y": 4,
+            "z": -12
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:wall",
@@ -257,7 +377,11 @@
           },
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 0.5, "y": 8, "z": 16 }
+          "size": {
+            "x": 0.5,
+            "y": 8,
+            "z": 16
+          }
         }
       },
       {
@@ -265,10 +389,26 @@
         "name": "East Wall South",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": 13, "y": 4, "z": 13 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 13,
+            "y": 4,
+            "z": 13
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:wall",
@@ -292,7 +432,11 @@
           },
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 0.5, "y": 8, "z": 14 }
+          "size": {
+            "x": 0.5,
+            "y": 8,
+            "z": 14
+          }
         }
       },
       {
@@ -300,10 +444,26 @@
         "name": "West Wall North",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": -13, "y": 4, "z": -12 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -13,
+            "y": 4,
+            "z": -12
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:wall",
@@ -327,7 +487,11 @@
           },
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 0.5, "y": 8, "z": 16 }
+          "size": {
+            "x": 0.5,
+            "y": 8,
+            "z": 16
+          }
         }
       },
       {
@@ -335,10 +499,26 @@
         "name": "West Wall South",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": -13, "y": 4, "z": 13 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -13,
+            "y": 4,
+            "z": 13
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:wall",
@@ -362,7 +542,11 @@
           },
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 0.5, "y": 8, "z": 14 }
+          "size": {
+            "x": 0.5,
+            "y": 8,
+            "z": 14
+          }
         }
       },
       {
@@ -370,10 +554,26 @@
         "name": "Gate Platform",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": 0, "y": 0.4, "z": -16 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 0.4,
+            "z": -16
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:floor",
@@ -397,7 +597,11 @@
           },
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 16, "y": 0.8, "z": 8 }
+          "size": {
+            "x": 16,
+            "y": 0.8,
+            "z": 8
+          }
         }
       },
       {
@@ -405,10 +609,26 @@
         "name": "Frame Top Beam",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": 0, "y": 7, "z": -19.5 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 7,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:wall",
@@ -432,7 +652,11 @@
           },
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 12, "y": 1, "z": 0.6 }
+          "size": {
+            "x": 12,
+            "y": 1,
+            "z": 0.6
+          }
         }
       },
       {
@@ -440,10 +664,26 @@
         "name": "Frame Left Column",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": -6, "y": 3.5, "z": -19.5 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -6,
+            "y": 3.5,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:wall",
@@ -467,7 +707,11 @@
           },
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 1, "y": 7, "z": 0.6 }
+          "size": {
+            "x": 1,
+            "y": 7,
+            "z": 0.6
+          }
         }
       },
       {
@@ -475,10 +719,26 @@
         "name": "Frame Right Column",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": 6, "y": 3.5, "z": -19.5 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 6,
+            "y": 3.5,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:wall",
@@ -502,7 +762,11 @@
           },
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 1, "y": 7, "z": 0.6 }
+          "size": {
+            "x": 1,
+            "y": 7,
+            "z": 0.6
+          }
         }
       },
       {
@@ -510,10 +774,26 @@
         "name": "East Arch Support 1",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": 12.5, "y": 4, "z": -12 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 12.5,
+            "y": 4,
+            "z": -12
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:wall",
@@ -537,7 +817,11 @@
           },
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 0.6, "y": 8, "z": 0.6 }
+          "size": {
+            "x": 0.6,
+            "y": 8,
+            "z": 0.6
+          }
         }
       },
       {
@@ -545,10 +829,26 @@
         "name": "West Arch Support 1",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": -12.5, "y": 4, "z": -12 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -12.5,
+            "y": 4,
+            "z": -12
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:wall",
@@ -572,7 +872,11 @@
           },
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 0.6, "y": 8, "z": 0.6 }
+          "size": {
+            "x": 0.6,
+            "y": 8,
+            "z": 0.6
+          }
         }
       },
       {
@@ -580,10 +884,26 @@
         "name": "East Arch Support 2",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": 12.5, "y": 4, "z": -8 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 12.5,
+            "y": 4,
+            "z": -8
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:wall",
@@ -607,7 +927,11 @@
           },
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 0.6, "y": 8, "z": 0.6 }
+          "size": {
+            "x": 0.6,
+            "y": 8,
+            "z": 0.6
+          }
         }
       },
       {
@@ -615,10 +939,26 @@
         "name": "West Arch Support 2",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": -12.5, "y": 4, "z": -8 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -12.5,
+            "y": 4,
+            "z": -8
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:wall",
@@ -642,7 +982,11 @@
           },
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 0.6, "y": 8, "z": 0.6 }
+          "size": {
+            "x": 0.6,
+            "y": 8,
+            "z": 0.6
+          }
         }
       },
       {
@@ -650,10 +994,26 @@
         "name": "East Arch Support 3",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": 12.5, "y": 4, "z": -4 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 12.5,
+            "y": 4,
+            "z": -4
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:wall",
@@ -677,7 +1037,11 @@
           },
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 0.6, "y": 8, "z": 0.6 }
+          "size": {
+            "x": 0.6,
+            "y": 8,
+            "z": 0.6
+          }
         }
       },
       {
@@ -685,10 +1049,26 @@
         "name": "West Arch Support 3",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": -12.5, "y": 4, "z": -4 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -12.5,
+            "y": 4,
+            "z": -4
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:wall",
@@ -712,7 +1092,11 @@
           },
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 0.6, "y": 8, "z": 0.6 }
+          "size": {
+            "x": 0.6,
+            "y": 8,
+            "z": 0.6
+          }
         }
       },
       {
@@ -720,10 +1104,26 @@
         "name": "East Arch Support 4",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": 12.5, "y": 4, "z": 0 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 12.5,
+            "y": 4,
+            "z": 0
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:wall",
@@ -747,7 +1147,11 @@
           },
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 0.6, "y": 8, "z": 0.6 }
+          "size": {
+            "x": 0.6,
+            "y": 8,
+            "z": 0.6
+          }
         }
       },
       {
@@ -755,10 +1159,26 @@
         "name": "West Arch Support 4",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": -12.5, "y": 4, "z": 0 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -12.5,
+            "y": 4,
+            "z": 0
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:wall",
@@ -782,7 +1202,11 @@
           },
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 0.6, "y": 8, "z": 0.6 }
+          "size": {
+            "x": 0.6,
+            "y": 8,
+            "z": 0.6
+          }
         }
       },
       {
@@ -790,10 +1214,26 @@
         "name": "East Arch Support 5",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": 12.5, "y": 4, "z": 4 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 12.5,
+            "y": 4,
+            "z": 4
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:wall",
@@ -817,7 +1257,11 @@
           },
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 0.6, "y": 8, "z": 0.6 }
+          "size": {
+            "x": 0.6,
+            "y": 8,
+            "z": 0.6
+          }
         }
       },
       {
@@ -825,10 +1269,26 @@
         "name": "West Arch Support 5",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": -12.5, "y": 4, "z": 4 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -12.5,
+            "y": 4,
+            "z": 4
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:wall",
@@ -852,7 +1312,11 @@
           },
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 0.6, "y": 8, "z": 0.6 }
+          "size": {
+            "x": 0.6,
+            "y": 8,
+            "z": 0.6
+          }
         }
       },
       {
@@ -860,16 +1324,36 @@
         "name": "Accent Panel Left",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": -9, "y": 5, "z": -19.7 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -9,
+            "y": 5,
+            "z": -19.7
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:accent",
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 3, "y": 0.15, "z": 0.1 }
+          "size": {
+            "x": 3,
+            "y": 0.15,
+            "z": 0.1
+          }
         }
       },
       {
@@ -877,16 +1361,36 @@
         "name": "Accent Panel Right",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": 9, "y": 5, "z": -19.7 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 9,
+            "y": 5,
+            "z": -19.7
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:accent",
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 3, "y": 0.15, "z": 0.1 }
+          "size": {
+            "x": 3,
+            "y": 0.15,
+            "z": 0.1
+          }
         }
       },
       {
@@ -894,16 +1398,36 @@
         "name": "Guide Strip Left",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": -3, "y": 0.01, "z": -5 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -3,
+            "y": 0.01,
+            "z": -5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:guide-strip",
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 0.15, "y": 0.02, "z": 30 }
+          "size": {
+            "x": 0.15,
+            "y": 0.02,
+            "z": 30
+          }
         }
       },
       {
@@ -911,16 +1435,1564 @@
         "name": "Guide Strip Right",
         "kind": "primitive",
         "transform": {
-          "pivot": { "x": 0, "y": 0, "z": 0 },
-          "position": { "x": 3, "y": 0.01, "z": -5 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 }
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 3,
+            "y": 0.01,
+            "z": -5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
         },
         "data": {
           "materialId": "material:ancient:guide-strip",
           "role": "brush",
           "shape": "cube",
-          "size": { "x": 0.15, "y": 0.02, "z": 30 }
+          "size": {
+            "x": 0.15,
+            "y": 0.02,
+            "z": 30
+          }
+        }
+      },
+      {
+        "id": "node:light-hemisphere",
+        "name": "Hemisphere Fill",
+        "kind": "light",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 7,
+            "z": 0
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "type": "hemisphere",
+          "enabled": true,
+          "castShadow": false,
+          "color": "#4466aa",
+          "intensity": 0.45,
+          "groundColor": "#0a0a15"
+        }
+      },
+      {
+        "id": "node:light-overhead-main",
+        "name": "Overhead Main",
+        "kind": "light",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 7.5,
+            "z": 0
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "type": "point",
+          "enabled": true,
+          "castShadow": true,
+          "color": "#ffeedd",
+          "intensity": 18,
+          "distance": 40,
+          "decay": 1.2
+        }
+      },
+      {
+        "id": "node:light-gate-front",
+        "name": "Gate Front Glow",
+        "kind": "light",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "z": -17
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "type": "point",
+          "enabled": true,
+          "castShadow": true,
+          "color": "#4488ff",
+          "intensity": 35,
+          "distance": 18,
+          "decay": 1.4
+        }
+      },
+      {
+        "id": "node:light-gate-back",
+        "name": "Gate Back Glow",
+        "kind": "light",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "z": -19
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "type": "point",
+          "enabled": true,
+          "castShadow": true,
+          "color": "#4488ff",
+          "intensity": 25,
+          "distance": 14,
+          "decay": 1.4
+        }
+      },
+      {
+        "id": "node:light-gate-left",
+        "name": "Gate Left Glow",
+        "kind": "light",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -5,
+            "y": 3.5,
+            "z": -18
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "type": "point",
+          "enabled": true,
+          "castShadow": true,
+          "color": "#4488ff",
+          "intensity": 15,
+          "distance": 12,
+          "decay": 1.5
+        }
+      },
+      {
+        "id": "node:light-gate-right",
+        "name": "Gate Right Glow",
+        "kind": "light",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 5,
+            "y": 3.5,
+            "z": -18
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "type": "point",
+          "enabled": true,
+          "castShadow": true,
+          "color": "#4488ff",
+          "intensity": 15,
+          "distance": 12,
+          "decay": 1.5
+        }
+      },
+      {
+        "id": "node:light-front-warm",
+        "name": "Front Warm Accent",
+        "kind": "light",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 6,
+            "z": 10
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "type": "point",
+          "enabled": true,
+          "castShadow": true,
+          "color": "#ffd089",
+          "intensity": 12,
+          "distance": 24,
+          "decay": 1.3
+        }
+      },
+      {
+        "id": "node:light-mid-warm",
+        "name": "Mid Room Fill",
+        "kind": "light",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 6,
+            "z": 0
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "type": "point",
+          "enabled": true,
+          "castShadow": true,
+          "color": "#ffd089",
+          "intensity": 10,
+          "distance": 20,
+          "decay": 1.3
+        }
+      },
+      {
+        "id": "node:light-back-warm",
+        "name": "Back Room Fill",
+        "kind": "light",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 6,
+            "z": -8
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "type": "point",
+          "enabled": true,
+          "castShadow": true,
+          "color": "#ffd089",
+          "intensity": 10,
+          "distance": 20,
+          "decay": 1.3
+        }
+      },
+      {
+        "id": "node:light-spot-fl",
+        "name": "Spot Front-Left",
+        "kind": "light",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -8,
+            "y": 7,
+            "z": 6
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "type": "spot",
+          "enabled": true,
+          "castShadow": true,
+          "color": "#4488ff",
+          "intensity": 40,
+          "distance": 16,
+          "decay": 1.5,
+          "angle": 0.65,
+          "penumbra": 0.4
+        }
+      },
+      {
+        "id": "node:light-spot-fr",
+        "name": "Spot Front-Right",
+        "kind": "light",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 8,
+            "y": 7,
+            "z": 6
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "type": "spot",
+          "enabled": true,
+          "castShadow": true,
+          "color": "#4488ff",
+          "intensity": 40,
+          "distance": 16,
+          "decay": 1.5,
+          "angle": 0.65,
+          "penumbra": 0.4
+        }
+      },
+      {
+        "id": "node:light-spot-bl",
+        "name": "Spot Back-Left",
+        "kind": "light",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -8,
+            "y": 7,
+            "z": -12
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "type": "spot",
+          "enabled": true,
+          "castShadow": true,
+          "color": "#3366dd",
+          "intensity": 35,
+          "distance": 16,
+          "decay": 1.5,
+          "angle": 0.65,
+          "penumbra": 0.4
+        }
+      },
+      {
+        "id": "node:light-spot-br",
+        "name": "Spot Back-Right",
+        "kind": "light",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 8,
+            "y": 7,
+            "z": -12
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "type": "spot",
+          "enabled": true,
+          "castShadow": true,
+          "color": "#3366dd",
+          "intensity": 35,
+          "distance": 16,
+          "decay": 1.5,
+          "angle": 0.65,
+          "penumbra": 0.4
+        }
+      },
+      {
+        "id": "node:platform-ramp",
+        "name": "Platform Ramp",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 0.2,
+            "z": -11.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:floor",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 10,
+            "y": 0.4,
+            "z": 3
+          },
+          "physics": {
+            "angularDamping": 0,
+            "bodyType": "fixed",
+            "canSleep": true,
+            "ccd": false,
+            "colliderShape": "cuboid",
+            "contactSkin": 0,
+            "density": 1,
+            "enabled": true,
+            "friction": 0.8,
+            "gravityScale": 1,
+            "linearDamping": 0,
+            "lockRotations": false,
+            "lockTranslations": false,
+            "mass": 1,
+            "restitution": 0.05,
+            "sensor": false
+          }
+        }
+      },
+      {
+        "id": "node:console-left",
+        "name": "Console Left",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -4.5,
+            "y": 0.7,
+            "z": -10
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:wall",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 2,
+            "y": 1.0,
+            "z": 1.2
+          },
+          "physics": {
+            "angularDamping": 0,
+            "bodyType": "fixed",
+            "canSleep": true,
+            "ccd": false,
+            "colliderShape": "cuboid",
+            "contactSkin": 0,
+            "density": 1,
+            "enabled": true,
+            "friction": 0.8,
+            "gravityScale": 1,
+            "linearDamping": 0,
+            "lockRotations": false,
+            "lockTranslations": false,
+            "mass": 1,
+            "restitution": 0.05,
+            "sensor": false
+          }
+        }
+      },
+      {
+        "id": "node:console-right",
+        "name": "Console Right",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 4.5,
+            "y": 0.7,
+            "z": -10
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:wall",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 2,
+            "y": 1.0,
+            "z": 1.2
+          },
+          "physics": {
+            "angularDamping": 0,
+            "bodyType": "fixed",
+            "canSleep": true,
+            "ccd": false,
+            "colliderShape": "cuboid",
+            "contactSkin": 0,
+            "density": 1,
+            "enabled": true,
+            "friction": 0.8,
+            "gravityScale": 1,
+            "linearDamping": 0,
+            "lockRotations": false,
+            "lockTranslations": false,
+            "mass": 1,
+            "restitution": 0.05,
+            "sensor": false
+          }
+        }
+      },
+      {
+        "id": "node:console-left-screen",
+        "name": "Console Left Screen",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -4.5,
+            "y": 1.25,
+            "z": -9.8
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:accent",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 1.6,
+            "y": 0.15,
+            "z": 0.1
+          }
+        }
+      },
+      {
+        "id": "node:console-right-screen",
+        "name": "Console Right Screen",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 4.5,
+            "y": 1.25,
+            "z": -9.8
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:accent",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 1.6,
+            "y": 0.15,
+            "z": 0.1
+          }
+        }
+      },
+      {
+        "id": "node:panel-e1",
+        "name": "East Panel 1",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 12.6,
+            "y": 3,
+            "z": -14
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:ceiling",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.15,
+            "y": 4,
+            "z": 2.5
+          }
+        }
+      },
+      {
+        "id": "node:panel-e2",
+        "name": "East Panel 2",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 12.6,
+            "y": 3,
+            "z": -6
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:ceiling",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.15,
+            "y": 4,
+            "z": 2.5
+          }
+        }
+      },
+      {
+        "id": "node:panel-e3",
+        "name": "East Panel 3",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 12.6,
+            "y": 3,
+            "z": 2
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:ceiling",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.15,
+            "y": 4,
+            "z": 2.5
+          }
+        }
+      },
+      {
+        "id": "node:panel-w1",
+        "name": "West Panel 1",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -12.6,
+            "y": 3,
+            "z": -14
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:ceiling",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.15,
+            "y": 4,
+            "z": 2.5
+          }
+        }
+      },
+      {
+        "id": "node:panel-w2",
+        "name": "West Panel 2",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -12.6,
+            "y": 3,
+            "z": -6
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:ceiling",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.15,
+            "y": 4,
+            "z": 2.5
+          }
+        }
+      },
+      {
+        "id": "node:panel-w3",
+        "name": "West Panel 3",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -12.6,
+            "y": 3,
+            "z": 2
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:ceiling",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.15,
+            "y": 4,
+            "z": 2.5
+          }
+        }
+      },
+      {
+        "id": "node:ceiling-fixture-1",
+        "name": "Ceiling Fixture 1",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 7.95,
+            "z": -6
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:accent",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 4,
+            "y": 0.06,
+            "z": 1.5
+          }
+        }
+      },
+      {
+        "id": "node:ceiling-fixture-2",
+        "name": "Ceiling Fixture 2",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 7.95,
+            "z": 4
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:accent",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 4,
+            "y": 0.06,
+            "z": 1.5
+          }
+        }
+      },
+      {
+        "id": "node:ceiling-fixture-3",
+        "name": "Ceiling Fixture 3",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 7.95,
+            "z": -16
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:accent",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 4,
+            "y": 0.06,
+            "z": 1.5
+          }
+        }
+      },
+      {
+        "id": "node:crossbeam-1",
+        "name": "Crossbeam 1",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 7,
+            "z": -12
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:wall",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 25.4,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:crossbeam-2",
+        "name": "Crossbeam 2",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 7,
+            "z": -8
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:wall",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 25.4,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:crossbeam-3",
+        "name": "Crossbeam 3",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 7,
+            "z": -4
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:wall",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 25.4,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:crossbeam-4",
+        "name": "Crossbeam 4",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 7,
+            "z": 0
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:wall",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 25.4,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:crossbeam-5",
+        "name": "Crossbeam 5",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 7,
+            "z": 4
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:wall",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 25.4,
+            "y": 0.4,
+            "z": 0.3
+          }
+        }
+      },
+      {
+        "id": "node:floor-trim-north",
+        "name": "Floor Trim North",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 0.01,
+            "z": -19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:wall",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 25,
+            "y": 0.02,
+            "z": 0.5
+          }
+        }
+      },
+      {
+        "id": "node:floor-trim-south",
+        "name": "Floor Trim South",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 0.01,
+            "z": 19.5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:wall",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 25,
+            "y": 0.02,
+            "z": 0.5
+          }
+        }
+      },
+      {
+        "id": "node:floor-trim-east",
+        "name": "Floor Trim East",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 12.5,
+            "y": 0.01,
+            "z": 0
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:wall",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.5,
+            "y": 0.02,
+            "z": 39
+          }
+        }
+      },
+      {
+        "id": "node:floor-trim-west",
+        "name": "Floor Trim West",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -12.5,
+            "y": 0.01,
+            "z": 0
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:wall",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.5,
+            "y": 0.02,
+            "z": 39
+          }
+        }
+      },
+      {
+        "id": "node:glow-strip-left",
+        "name": "Glow Strip Left",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -8,
+            "y": 4,
+            "z": -19.8
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:accent",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.08,
+            "y": 6,
+            "z": 0.05
+          }
+        }
+      },
+      {
+        "id": "node:glow-strip-right",
+        "name": "Glow Strip Right",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 8,
+            "y": 4,
+            "z": -19.8
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:accent",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.08,
+            "y": 6,
+            "z": 0.05
+          }
+        }
+      },
+      {
+        "id": "node:guide-strip-inner-left",
+        "name": "Guide Strip Inner Left",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": -1.5,
+            "y": 0.01,
+            "z": -5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:guide-strip",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.1,
+            "y": 0.02,
+            "z": 30
+          }
+        }
+      },
+      {
+        "id": "node:guide-strip-inner-right",
+        "name": "Guide Strip Inner Right",
+        "kind": "primitive",
+        "transform": {
+          "pivot": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "position": {
+            "x": 1.5,
+            "y": 0.01,
+            "z": -5
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        "data": {
+          "materialId": "material:ancient:guide-strip",
+          "role": "brush",
+          "shape": "cube",
+          "size": {
+            "x": 0.1,
+            "y": 0.02,
+            "z": 30
+          }
         }
       }
     ],
@@ -939,12 +3011,16 @@
         "runningSpeed": 7
       },
       "world": {
-        "ambientColor": "#1a1a3a",
-        "ambientIntensity": 0.2,
+        "ambientColor": "#2a2a4a",
+        "ambientIntensity": 0.35,
         "fogColor": "#050510",
         "fogFar": 50,
         "fogNear": 25,
-        "gravity": { "x": 0, "y": -9.81, "z": 0 },
+        "gravity": {
+          "x": 0,
+          "y": -9.81,
+          "z": 0
+        },
         "physicsEnabled": true,
         "skybox": {
           "enabled": false

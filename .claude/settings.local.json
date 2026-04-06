@@ -21,7 +21,18 @@
       "Read(//private/tmp/**)",
       "Bash(curl -s http://127.0.0.1:8080/api/scenes)",
       "Bash(find /tmp/sg-sprint1/src/scenes -name destiny-corridor -o -name *corridor*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "WebSearch",
+      "WebFetch(domain:sketchfab.com)",
+      "Bash(kill -9 62377 62378 68860 68889 65153 65154)",
+      "Bash(grep -o 'api/scenes[^\"\"]*' /Users/cmoyer/Projects/personal/trident/apps/editor/dist/assets/index-*.js)",
+      "Bash(for p:*)",
+      "Bash(do lsof:*)",
+      "Bash(echo \"$p ✓\")",
+      "Bash(echo \"$p ✗\")",
+      "Bash(done)",
+      "Bash(git checkout:*)",
+      "Bash(md5 /Users/cmoyer/Projects/personal/stargate-universe/src/scenes/destiny-gate-room/destiny-gate-room.whmap)"
     ]
   }
 }

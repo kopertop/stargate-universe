@@ -1,14 +1,14 @@
 /**
- * VRM Animation Retargeting — loads Mixamo FBX animations and retargets them
- * to VRM humanoid skeletons.
+ * VRM Animation Loading — supports both native VRMA format and Mixamo FBX retargeting.
+ *
+ * - `.vrma` files: Loaded via @pixiv/three-vrm-animation (native VRM animation format)
+ * - `.fbx` / `.glb` files: Loaded and retargeted from Mixamo using rest-pose correction
  *
  * Based on the official three-vrm humanoidAnimation example:
  * https://github.com/pixiv/three-vrm/tree/dev/packages/three-vrm/examples/humanoidAnimation
- *
- * Handles rest-pose correction (Mixamo A-pose → VRM normalized pose) and
- * hip height scaling automatically.
  */
 import type { VRM, VRMHumanBoneName } from "@pixiv/three-vrm";
+import { createVRMAnimationClip, VRMAnimationLoaderPlugin } from "@pixiv/three-vrm-animation";
 import {
 	AnimationClip,
 	Quaternion,
@@ -83,11 +83,12 @@ const _restRotationInverse = new Quaternion();
 const _parentRestWorldRotation = new Quaternion();
 const _quatA = new Quaternion();
 
-/** Shared FBX loader for animation loading. */
+/** Shared FBX loader for Mixamo animation loading. */
 const fbxLoader = new FBXLoader();
 
-/** Shared GLTF loader for GLB animation loading. */
+/** Shared GLTF loader for GLB/VRMA animation loading (with VRMAnimation plugin). */
 const gltfLoader = new GLTFLoader();
+gltfLoader.register((parser) => new VRMAnimationLoaderPlugin(parser));
 
 /**
  * Load a Mixamo animation from an FBX or GLB URL and retarget it for a VRM model.
@@ -192,4 +193,58 @@ export async function loadMixamoAnimation(
 	}
 
 	return new AnimationClip(clipName, clip.duration, tracks);
+}
+
+/**
+ * Load a native VRM Animation (.vrma) file and create an AnimationClip for the given VRM.
+ *
+ * Uses @pixiv/three-vrm-animation's `createVRMAnimationClip` which handles
+ * humanoid bone mapping natively — no manual retargeting needed.
+ *
+ * @param url Path to a `.vrma` file
+ * @param vrm The target VRM model
+ * @param clipName Name for the resulting AnimationClip
+ * @returns AnimationClip ready for use with AnimationMixer on vrm.scene
+ */
+export async function loadVrmaAnimation(
+	url: string,
+	vrm: VRM,
+	clipName: string,
+): Promise<AnimationClip> {
+	const gltf = await gltfLoader.loadAsync(url);
+	const vrmAnimations = gltf.userData.vrmAnimations as Array<{ createAnimationClip?: (vrm: VRM) => AnimationClip }> | undefined;
+
+	if (!vrmAnimations?.length) {
+		throw new Error(`[VrmAnimRetarget] No VRM animations found in ${url}`);
+	}
+
+	const clip = createVRMAnimationClip(vrmAnimations[0] as any, vrm);
+	clip.name = clipName;
+	return clip;
+}
+
+/**
+ * Load an animation clip from any supported format and apply it to a VRM.
+ *
+ * Auto-detects format by file extension:
+ * - `.vrma` → native VRM Animation (best quality, no retargeting needed)
+ * - `.fbx` → Mixamo FBX with retargeting
+ * - `.glb` / `.gltf` → Mixamo GLB with retargeting
+ *
+ * @param url Path to the animation file
+ * @param vrm The target VRM model
+ * @param clipName Name for the resulting AnimationClip
+ */
+export async function loadAnimation(
+	url: string,
+	vrm: VRM,
+	clipName: string,
+): Promise<AnimationClip> {
+	const ext = url.split(".").pop()?.toLowerCase() ?? "";
+
+	if (ext === "vrma") {
+		return loadVrmaAnimation(url, vrm, clipName);
+	}
+
+	return loadMixamoAnimation(url, vrm, clipName);
 }

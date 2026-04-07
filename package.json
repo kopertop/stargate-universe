@@ -26,6 +26,7 @@
     "@ggez/shared": "^0.1.8",
     "@ggez/three-runtime": "^0.1.8",
     "@pixiv/three-vrm": "^3.5.1",
+    "@pixiv/three-vrm-animation": "^3.5.1",
     "mitt": "^3.0.1",
     "three": "^0.181.1"
   },

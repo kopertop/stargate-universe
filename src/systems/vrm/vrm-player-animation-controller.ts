@@ -19,7 +19,7 @@ import {
 } from "three";
 
 import { resolveAssetUrl } from "../asset-resolver";
-import { loadMixamoAnimation } from "./vrm-animation-retarget";
+import { loadAnimation } from "./vrm-animation-retarget";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -79,28 +79,36 @@ export class VrmPlayerAnimationController {
 	}
 
 	/**
-	 * Load animation clips from FBX files at the given base path.
-	 * Expects: `{basePath}/idle.fbx`, `walk.fbx`, `run.fbx`, `jump.fbx`
+	 * Load animation clips from the given base path.
 	 *
-	 * Also supports .glb extensions. Files that fail to load are skipped
-	 * gracefully — the character will hold T-pose for missing clips.
+	 * Tries multiple formats per clip in order of preference:
+	 * 1. `.vrma` — native VRM Animation (best compatibility)
+	 * 2. `.fbx` — Mixamo FBX (retargeted automatically)
+	 * 3. `.glb` — Mixamo GLB (retargeted automatically)
+	 *
+	 * Files that fail to load are skipped gracefully — the character will
+	 * hold T-pose for missing clips.
 	 */
 	async loadClips(basePath: string): Promise<void> {
 		if (this.loading || this.loaded) return;
 		this.loading = true;
 
-		const clipDefs = [
-			{ name: "idle", file: "idle.fbx" },
-			{ name: "walk", file: "walk.fbx" },
-			{ name: "run", file: "run.fbx" },
-			{ name: "jump", file: "jump.fbx" },
-		] as const;
+		const clipNames = ["idle", "walk", "run", "jump"] as const;
+		const extensions = ["vrma", "fbx", "glb"];
 
 		const results = await Promise.allSettled(
-			clipDefs.map(async (def) => {
-				const url = resolveAssetUrl(`${basePath}/${def.file}`);
-				const clip = await loadMixamoAnimation(url, this.vrm, def.name);
-				return { name: def.name, clip };
+			clipNames.map(async (name) => {
+				// Try each extension until one succeeds
+				for (const ext of extensions) {
+					try {
+						const url = resolveAssetUrl(`${basePath}/${name}.${ext}`);
+						const clip = await loadAnimation(url, this.vrm, name);
+						return { name, clip };
+					} catch {
+						// Try next extension
+					}
+				}
+				throw new Error(`No animation file found for "${name}" at ${basePath}`);
 			})
 		);
 
@@ -155,7 +163,7 @@ export class VrmPlayerAnimationController {
 		this.loading = false;
 
 		const loadedCount = results.filter((r) => r.status === "fulfilled").length;
-		console.info(`[VrmPlayerAnimController] Loaded ${loadedCount}/${clipDefs.length} animation clips`);
+		console.info(`[VrmPlayerAnimController] Loaded ${loadedCount}/${clipNames.length} animation clips`);
 	}
 
 	/**

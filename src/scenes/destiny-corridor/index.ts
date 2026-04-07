@@ -548,7 +548,7 @@ export const destinyCorridorScene = defineGameScene({
 	}),
 	title: "Destiny Corridor",
 	player: {
-		vrmUrl: "/characters/avatar-sample-a.vrm",
+		vrmUrl: "/characters/eli.vrm",
 	},
 	mount
 });

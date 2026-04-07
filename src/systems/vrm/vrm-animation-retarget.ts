@@ -132,9 +132,12 @@ export async function loadMixamoAnimation(
 		throw new Error(`[VrmAnimRetarget] No animation clip found in ${url}`);
 	}
 
+	// Detect VRM version for coordinate system handling
+	const isVrm0 = (vrm.meta as any)?.metaVersion === "0";
+
 	// Debug: log track names from the FBX to check bone naming
 	const trackBoneNames = new Set(clip.tracks.map((t) => t.name.split(".")[0]));
-	console.info(`[VrmAnimRetarget] "${clipName}" from ${url}`);
+	console.info(`[VrmAnimRetarget] "${clipName}" from ${url} (VRM ${isVrm0 ? "0.x" : "1.x"})`);
 	console.info(`  Clip tracks: ${clip.tracks.length}, bones: [${[...trackBoneNames].slice(0, 8).join(", ")}...]`);
 
 	// Calculate hip height ratio for position scaling
@@ -189,6 +192,16 @@ export async function loadMixamoAnimation(
 				_quatA.toArray(values, i);
 			}
 
+			// VRM 0.x uses a different coordinate system — flip X and Z
+			if (isVrm0) {
+				for (let i = 0; i < values.length; i += 4) {
+					values[i] = -values[i];     // x
+					// values[i+1] unchanged     // y
+					values[i + 2] = -values[i + 2]; // z
+					// values[i+3] unchanged     // w
+				}
+			}
+
 			tracks.push(
 				new QuaternionKeyframeTrack(
 					`${vrmNodeName}.${propertyName}`,
@@ -201,6 +214,15 @@ export async function loadMixamoAnimation(
 			const values = new Float32Array(track.values.length);
 			for (let i = 0; i < track.values.length; i++) {
 				values[i] = track.values[i] * hipsPositionScale;
+			}
+
+			// VRM 0.x coordinate flip — negate X and Z
+			if (isVrm0) {
+				for (let i = 0; i < values.length; i += 3) {
+					values[i] = -values[i];         // x
+					// values[i+1] unchanged         // y
+					values[i + 2] = -values[i + 2]; // z
+				}
 			}
 
 			tracks.push(

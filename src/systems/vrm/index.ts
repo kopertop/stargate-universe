@@ -92,3 +92,4 @@ export {
 	VrmPlayerAnimationController,
 	type PlayerAnimationParams,
 } from "./vrm-player-animation-controller";
+export { RepairVfx } from "./vrm-repair-vfx";

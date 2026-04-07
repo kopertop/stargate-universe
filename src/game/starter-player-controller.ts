@@ -29,6 +29,7 @@ import {
   addCharacter,
   getCharacter,
   removeCharacter,
+  RepairVfx,
   setActiveCamera,
   setFirstPersonMode,
   updateVrmCharacters,
@@ -84,6 +85,8 @@ export class StarterPlayerController {
   private readonly visual: Mesh;
   private animController: VrmPlayerAnimationController | undefined;
   private forwardInput = 0;
+  private isRepairing = false;
+  private repairVfx: RepairVfx | undefined;
   private strafeInput = 0;
   private vrmCharacter: VrmCharacterInstance | undefined;
   private readonly world: CrashcatPhysicsWorld;
@@ -166,6 +169,11 @@ export class StarterPlayerController {
     this.gameplayRuntime.removeActor("player");
     rigidBody.remove(this.world, this.body);
 
+    if (this.repairVfx) {
+      this.repairVfx.dispose();
+      this.repairVfx = undefined;
+    }
+
     if (this.animController) {
       this.animController.dispose();
       this.animController = undefined;
@@ -188,6 +196,18 @@ export class StarterPlayerController {
   /** Get the VRM character instance (if VRM loading was initiated). */
   getVrmCharacter(): VrmCharacterInstance | undefined {
     return this.vrmCharacter;
+  }
+
+  /** Set whether the player is currently performing a repair action. */
+  setRepairing(repairing: boolean): void {
+    if (this.isRepairing === repairing) return;
+    this.isRepairing = repairing;
+
+    if (repairing) {
+      this.repairVfx?.start();
+    } else {
+      this.repairVfx?.stop();
+    }
   }
 
   setCameraMode(cameraMode: SceneSettings["player"]["cameraMode"]) {
@@ -213,10 +233,11 @@ export class StarterPlayerController {
       // Handle first-person head hiding
       setFirstPersonMode(this.cameraMode === "fps", this.camera);
 
-      // Lazy-init animation controller once VRM is loaded
+      // Lazy-init animation controller and repair VFX once VRM is loaded
       if (!this.animController) {
         this.animController = new VrmPlayerAnimationController(this.vrmCharacter.vrm);
         this.animController.loadClips("/animations/player");
+        this.repairVfx = new RepairVfx(this.vrmCharacter.vrm);
       }
 
       // Update animations BEFORE vrm.update() so spring bones run on animated pose
@@ -231,8 +252,12 @@ export class StarterPlayerController {
           jumpTriggered: this.jumpGroundLockRemaining > 0,
           strafeInput: this.strafeInput,
           forwardInput: this.forwardInput,
+          isRepairing: this.isRepairing,
         });
       }
+
+      // Update repair VFX (spark particles)
+      this.repairVfx?.update(deltaSeconds);
 
       // Update VRM systems (spring bones, expressions, LOD)
       updateVrmCharacters(deltaSeconds, 60);

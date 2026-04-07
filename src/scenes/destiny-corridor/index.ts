@@ -312,9 +312,18 @@ function createShipStateDebugOverlay(shipState: ShipState): { element: HTMLDivEl
 
 // ─── Interaction system (S1-05) ──────────────────────────────────────────────
 
+/** Duration in seconds per repair segment (one segment = one part consumed). */
+const SECONDS_PER_REPAIR_PART = 1.0;
+
 interface InteractionState {
 	nearestSubsystem: SubsystemVisual | null;
 	promptElement: HTMLDivElement;
+	/** Subsystem currently being repaired (null if not repairing). */
+	repairingSubsystemId: string | null;
+	/** Total repair duration for the current subsystem (seconds). */
+	repairDuration: number;
+	/** Elapsed time holding E on the current repair (seconds). */
+	repairElapsed: number;
 }
 
 function createInteractionPrompt(): HTMLDivElement {
@@ -358,11 +367,33 @@ function updateInteraction(
 
 	state.nearestSubsystem = nearest;
 
-	if (nearest) {
+	if (state.repairingSubsystemId) {
+		// Segmented progress bar — one segment per repair part
+		const sub = shipState.getSubsystem(state.repairingSubsystemId);
+		const parts = sub?.repairCost ?? SHIP_STATE_CONFIG.REPAIR_COST_SHIP_PARTS;
+		const pct = Math.min(1, state.repairElapsed / state.repairDuration);
+		const filledParts = Math.floor(pct * parts);
+		const partialFill = (pct * parts) - filledParts;
+
+		let bar = "";
+		for (let i = 0; i < parts; i++) {
+			if (i < filledParts) {
+				bar += "◆";
+			} else if (i === filledParts && pct < 1) {
+				bar += partialFill > 0.5 ? "◇" : "·";
+			} else {
+				bar += "·";
+			}
+			if (i < parts - 1) bar += " ";
+		}
+
+		state.promptElement.style.display = "block";
+		state.promptElement.textContent = `Repairing... [ ${bar} ] ${filledParts}/${parts} parts`;
+	} else if (nearest) {
 		const sub = shipState.getSubsystem(nearest.subsystemId);
 		if (sub && sub.condition < 1.0) {
 			state.promptElement.style.display = "block";
-			state.promptElement.textContent = `[E] Repair ${sub.type} (${(sub.condition * 100).toFixed(0)}% → ${(Math.min(1, sub.condition + SHIP_STATE_CONFIG.BASE_REPAIR_AMOUNT * SHIP_STATE_CONFIG.REPAIR_SKILL_MODIFIER) * 100).toFixed(0)}%)`;
+			state.promptElement.textContent = `[Hold E] Repair ${sub.type} — ${sub.repairCost} parts (${(sub.condition * 100).toFixed(0)}%)`;
 		} else if (sub) {
 			state.promptElement.style.display = "block";
 			state.promptElement.textContent = `${sub.type} — Optimal condition`;
@@ -458,6 +489,9 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	const interaction: InteractionState = {
 		nearestSubsystem: null,
 		promptElement: createInteractionPrompt(),
+		repairingSubsystemId: null,
+		repairDuration: 0,
+		repairElapsed: 0,
 	};
 
 	// Disable shadows for performance
@@ -477,17 +511,31 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			return;
 		}
 
-		if (e.code === "KeyE" && interaction.nearestSubsystem) {
+		if (e.code === "KeyE" && !e.repeat && interaction.nearestSubsystem && !interaction.repairingSubsystemId) {
 			const sub = shipState.getSubsystem(interaction.nearestSubsystem.subsystemId);
 			if (sub && sub.condition < 1.0) {
-				const result = shipState.repairSubsystem(sub.id);
-				if (result.success) {
-					console.log(`Repaired ${sub.id}: +${(result.conditionRestored * 100).toFixed(0)}% → ${(sub.condition * 100).toFixed(0)}%`);
-				}
+				interaction.repairingSubsystemId = sub.id;
+				interaction.repairDuration = sub.repairCost * SECONDS_PER_REPAIR_PART;
+				interaction.repairElapsed = 0;
+				player?.setRepairing(true);
 			}
 		}
 	};
+	const handleKeyUp = (e: KeyboardEvent) => {
+		if (e.code === "KeyE") {
+			cancelRepair();
+		}
+	};
+	const cancelRepair = () => {
+		if (interaction.repairingSubsystemId) {
+			interaction.repairingSubsystemId = null;
+			interaction.repairDuration = 0;
+			interaction.repairElapsed = 0;
+			player?.setRepairing(false);
+		}
+	};
 	window.addEventListener("keydown", handleKeyDown);
+	window.addEventListener("keyup", handleKeyUp);
 
 	// Track which section the player is in
 	let currentSection = "gate-room";
@@ -523,6 +571,24 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 
 				// Update interaction prompt
 				updateInteraction(interaction, subsystemVisuals, player.object.position, shipState);
+
+				// Cancel repair if player moved away from the target subsystem
+				if (interaction.repairingSubsystemId && !interaction.nearestSubsystem) {
+					cancelRepair();
+				}
+
+				// Tick repair progress
+				if (interaction.repairingSubsystemId) {
+					interaction.repairElapsed += delta;
+					if (interaction.repairElapsed >= interaction.repairDuration) {
+						const result = shipState.repairSubsystem(interaction.repairingSubsystemId);
+						if (result.success) {
+							const sub = shipState.getSubsystem(interaction.repairingSubsystemId);
+							console.log(`Repaired ${interaction.repairingSubsystemId}: +${(result.conditionRestored * 100).toFixed(0)}% → ${((sub?.condition ?? 0) * 100).toFixed(0)}%`);
+						}
+						cancelRepair();
+					}
+				}
 			}
 
 			// Debug overlay
@@ -530,6 +596,8 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		},
 		dispose() {
 			window.removeEventListener("keydown", handleKeyDown);
+			window.removeEventListener("keyup", handleKeyUp);
+			cancelRepair();
 			debug.element.remove();
 			interaction.promptElement.remove();
 			shipState.dispose();

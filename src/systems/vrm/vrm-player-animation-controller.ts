@@ -43,9 +43,11 @@ export type PlayerAnimationParams = {
 	readonly strafeInput: number;
 	/** Forward movement input: -1 = backward, 0 = none, 1 = forward. */
 	readonly forwardInput: number;
+	/** Whether the player is currently performing a repair action. */
+	readonly isRepairing: boolean;
 };
 
-type AnimState = "locomotion" | "jump";
+type AnimState = "locomotion" | "jump" | "repair";
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
@@ -60,6 +62,12 @@ const JUMP_FADE_OUT = 0.25;
 
 /** How much locomotion blends through during a jump (0 = none, 1 = full). */
 const JUMP_LOCOMOTION_BLEND = 0.5;
+
+/** Crossfade duration into repair (seconds). */
+const REPAIR_FADE_IN = 0.4;
+
+/** Crossfade duration from repair back to locomotion (seconds). */
+const REPAIR_FADE_OUT = 0.35;
 
 /** Weight smoothing factor — higher = snappier, lower = smoother. */
 const WEIGHT_SMOOTHING = 8.0;
@@ -99,6 +107,7 @@ export class VrmPlayerAnimationController {
 	private walkAction: AnimationAction | undefined;
 	private runAction: AnimationAction | undefined;
 	private jumpAction: AnimationAction | undefined;
+	private repairAction: AnimationAction | undefined;
 	private strafeLeftAction: AnimationAction | undefined;
 	private strafeRightAction: AnimationAction | undefined;
 
@@ -142,7 +151,7 @@ export class VrmPlayerAnimationController {
 		if (this.loading || this.loaded) return;
 		this.loading = true;
 
-		const clipNames = ["idle", "walk", "run", "jump", "strafe-left", "strafe-right"] as const;
+		const clipNames = ["idle", "walk", "run", "jump", "strafe-left", "strafe-right", "repair"] as const;
 		const extensions = ["fbx", "glb", "vrma"];
 
 		const results = await Promise.allSettled(
@@ -196,6 +205,12 @@ export class VrmPlayerAnimationController {
 					this.jumpAction = action;
 					action.setLoop(LoopOnce, 1);
 					action.clampWhenFinished = true;
+					// Don't play until triggered
+					break;
+
+				case "repair":
+					this.repairAction = action;
+					action.setLoop(LoopRepeat, Infinity);
 					// Don't play until triggered
 					break;
 
@@ -266,7 +281,7 @@ export class VrmPlayerAnimationController {
 		if (!this.loaded) return;
 
 		// Always update locomotion weights — during jump they blend at reduced strength
-		const locoScale = this.state === "jump" ? JUMP_LOCOMOTION_BLEND : 1;
+		const locoScale = this.state === "jump" ? JUMP_LOCOMOTION_BLEND : this.state === "repair" ? 0 : 1;
 		this.updateLocomotionWeights(delta, params, locoScale);
 
 		if (this.state === "locomotion") {
@@ -289,10 +304,20 @@ export class VrmPlayerAnimationController {
 			if (params.jumpTriggered && this.jumpAction) {
 				this.triggerJump();
 			}
+
+			// Check for repair start
+			if (params.isRepairing && this.repairAction) {
+				this.triggerRepair();
+			}
 		} else if (this.state === "jump") {
 			// Auto-return to locomotion when grounded and jump animation done
 			if (params.isGrounded && this.jumpAction && !this.jumpAction.isRunning()) {
 				this.returnToLocomotion();
+			}
+		} else if (this.state === "repair") {
+			// Return to locomotion when repair ends
+			if (!params.isRepairing) {
+				this.endRepair();
 			}
 		}
 
@@ -392,6 +417,39 @@ export class VrmPlayerAnimationController {
 		// Fade jump out — locomotion weights will ramp back to full (scale=1)
 		// naturally on the next updateLocomotionWeights call
 		this.jumpAction?.fadeOut(JUMP_FADE_OUT);
+	}
+
+	private triggerRepair(): void {
+		if (!this.repairAction) return;
+
+		this.state = "repair";
+
+		// Fade out locomotion and idle variants
+		this.idleAction?.fadeOut(REPAIR_FADE_IN);
+		this.walkAction?.fadeOut(REPAIR_FADE_IN);
+		this.runAction?.fadeOut(REPAIR_FADE_IN);
+		this.strafeLeftAction?.fadeOut(REPAIR_FADE_IN);
+		this.strafeRightAction?.fadeOut(REPAIR_FADE_IN);
+		this.returnToDefaultIdle();
+
+		// Play repair loop
+		this.repairAction.reset();
+		this.repairAction.setEffectiveWeight(1);
+		this.repairAction.fadeIn(REPAIR_FADE_IN);
+		this.repairAction.play();
+	}
+
+	private endRepair(): void {
+		this.state = "locomotion";
+
+		// Fade repair out, restore locomotion
+		this.repairAction?.fadeOut(REPAIR_FADE_OUT);
+
+		this.idleAction?.reset().fadeIn(REPAIR_FADE_OUT).play();
+		this.walkAction?.reset().fadeIn(REPAIR_FADE_OUT).play();
+		this.runAction?.reset().fadeIn(REPAIR_FADE_OUT).play();
+		this.strafeLeftAction?.reset().fadeIn(REPAIR_FADE_OUT).play();
+		this.strafeRightAction?.reset().fadeIn(REPAIR_FADE_OUT).play();
 	}
 
 	// ─── Idle Variant Cycling ──────────────────────────────────────────────────

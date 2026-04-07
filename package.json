@@ -5,6 +5,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "start": "run-p dev dev:api",
     "dev": "vite",
     "dev:api": "wrangler pages dev dist --r2 GAME_ASSETS=sgu-assets --r2 GAME_DATA=sgu-game-data",
     "build": "tsc --noEmit && vite build",
@@ -34,6 +35,7 @@
     "@cloudflare/workers-types": "^4.20260405.1",
     "@types/three": "^0.181.0",
     "esbuild": "^0.28.0",
+    "npm-run-all2": "^8.0.4",
     "typescript": "^5.9.3",
     "vite": "^7.1.12",
     "vitest": "^4.1.2",

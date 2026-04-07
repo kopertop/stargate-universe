@@ -1234,7 +1234,114 @@ function markCrateLooted(crate: SupplyCrate): void {
 	}
 }
 
-// ─── Interaction prompt ──────────────────────────────────────────────────────
+// ─── 3D Repair Progress Bar ─────────────────────────────────────────────────
+
+interface RepairProgressBar3D {
+	group: THREE.Group;
+	/** Set up for a repair with N segments, positioned above a world point. */
+	init(partCount: number, worldPos: THREE.Vector3): void;
+	/** Update fill (0-1) and billboard toward camera. */
+	update(pct: number, camera: THREE.Camera): void;
+	/** Hide and reset. */
+	hide(): void;
+	/** Clean up GPU resources. */
+	dispose(): void;
+}
+
+function createRepairProgressBar3D(): RepairProgressBar3D {
+	const BAR_WIDTH = 0.8;
+	const BAR_HEIGHT = 0.06;
+	const BAR_Y_OFFSET = 1.2;
+
+	const group = new THREE.Group();
+	group.visible = false;
+
+	// Background track
+	const trackGeo = new THREE.PlaneGeometry(BAR_WIDTH, BAR_HEIGHT);
+	const trackMat = new THREE.MeshBasicMaterial({ color: 0x111118, transparent: true, opacity: 0.85, depthTest: false });
+	const track = new THREE.Mesh(trackGeo, trackMat);
+	track.renderOrder = 998;
+	group.add(track);
+
+	// Border (slightly larger plane behind)
+	const borderGeo = new THREE.PlaneGeometry(BAR_WIDTH + 0.02, BAR_HEIGHT + 0.02);
+	const borderMat = new THREE.MeshBasicMaterial({ color: 0x44ddcc, transparent: true, opacity: 0.4, depthTest: false });
+	const border = new THREE.Mesh(borderGeo, borderMat);
+	border.position.z = -0.001;
+	border.renderOrder = 997;
+	group.add(border);
+
+	// Fill bar — scaled on X axis to show progress
+	const fillGeo = new THREE.PlaneGeometry(BAR_WIDTH - 0.02, BAR_HEIGHT - 0.02);
+	// Shift geometry origin to left edge so scale works from left-to-right
+	fillGeo.translate((BAR_WIDTH - 0.02) / 2, 0, 0);
+	const fillMat = new THREE.MeshBasicMaterial({ color: 0x44ddcc, transparent: true, opacity: 0.9, depthTest: false });
+	const fill = new THREE.Mesh(fillGeo, fillMat);
+	fill.position.x = -(BAR_WIDTH - 0.02) / 2;
+	fill.position.z = 0.001;
+	fill.scale.x = 0;
+	fill.renderOrder = 999;
+	group.add(fill);
+
+	// Glow behind fill
+	const glowMat = new THREE.MeshBasicMaterial({ color: 0x44ddcc, transparent: true, opacity: 0.3, depthTest: false });
+	const glow = new THREE.Mesh(new THREE.PlaneGeometry(BAR_WIDTH + 0.06, BAR_HEIGHT + 0.06), glowMat);
+	glow.position.z = -0.002;
+	glow.renderOrder = 996;
+	group.add(glow);
+
+	// Segment dividers (rebuilt per init)
+	const dividers: THREE.Mesh[] = [];
+	const dividerMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.9, depthTest: false });
+
+	return {
+		group,
+		init(partCount, worldPos) {
+			// Remove old dividers
+			for (const d of dividers) { group.remove(d); d.geometry.dispose(); }
+			dividers.length = 0;
+
+			// Create segment dividers
+			for (let i = 1; i < partCount; i++) {
+				const x = -BAR_WIDTH / 2 + (i / partCount) * BAR_WIDTH;
+				const dGeo = new THREE.PlaneGeometry(0.012, BAR_HEIGHT + 0.005);
+				const divider = new THREE.Mesh(dGeo, dividerMat);
+				divider.position.set(x, 0, 0.002);
+				divider.renderOrder = 1000;
+				group.add(divider);
+				dividers.push(divider);
+			}
+
+			fill.scale.x = 0;
+			group.position.copy(worldPos);
+			group.position.y += BAR_Y_OFFSET;
+			group.visible = true;
+		},
+		update(pct, camera) {
+			fill.scale.x = Math.min(1, pct);
+
+			// Pulse glow opacity
+			glow.material.opacity = 0.2 + Math.sin(performance.now() * 0.005) * 0.1;
+
+			// Billboard — face camera
+			group.quaternion.copy(camera.quaternion);
+		},
+		hide() {
+			group.visible = false;
+			fill.scale.x = 0;
+		},
+		dispose() {
+			for (const d of dividers) { d.geometry.dispose(); }
+			trackGeo.dispose(); trackMat.dispose();
+			borderGeo.dispose(); borderMat.dispose();
+			fillGeo.dispose(); fillMat.dispose();
+			glow.geometry.dispose(); glowMat.dispose();
+			dividerMat.dispose();
+		},
+	};
+}
+
+// ─── Interaction prompt ─────────────────────────────────────────────────────
 
 function createInteractionPrompt(): HTMLDivElement {
 	const el = document.createElement("div");
@@ -1375,6 +1482,8 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	const menu = createEscapeMenu(renderer.domElement);
 	const cleanupFullscreen = setupFullscreen(renderer.domElement, menu);
 	const interactPrompt = createInteractionPrompt();
+	const repairBar = createRepairProgressBar3D();
+	scene.add(repairBar.group);
 
 	renderer.shadowMap.enabled = false;
 
@@ -1401,10 +1510,29 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	let currentSection = "gate-room";
 
 	// ─── Interaction state ───────────────────────────────────────────────
+	const SECONDS_PER_REPAIR_PART = 1.0;
 	let nearestSub: SubsystemVisual | null = null;
 	let nearestCrate: SupplyCrate | null = null;
 	type InteractTarget = "subsystem" | "crate" | null;
 	let interactTarget: InteractTarget = null;
+	let repairingSubsystemId: string | null = null;
+	/** Total segments needed to fully repair this subsystem. */
+	let repairTotalSegments = 0;
+	/** Segments already completed in this hold. */
+	let repairCompletedSegments = 0;
+	/** Time elapsed within the current segment (resets each segment). */
+	let repairSegmentElapsed = 0;
+
+	const cancelRepair = () => {
+		if (repairingSubsystemId) {
+			repairingSubsystemId = null;
+			repairTotalSegments = 0;
+			repairCompletedSegments = 0;
+			repairSegmentElapsed = 0;
+			player?.setRepairing(false);
+			repairBar.hide();
+		}
+	};
 
 	const handleKeyDown = (e: KeyboardEvent) => {
 		if (e.code === "Backquote") {
@@ -1417,25 +1545,39 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			if (gate.state === "idle") startDial(gate);
 			else if (gate.state === "active") shutdownGate(gate);
 		}
-		if (e.code === "KeyE" && !menu.visible) {
+		if (e.code === "KeyE" && !e.repeat && !menu.visible) {
 			if (interactTarget === "crate" && nearestCrate && !nearestCrate.looted) {
-				// Loot the crate
+				// Loot the crate (instant)
 				addResource("ship-parts", nearestCrate.contents);
 				markCrateLooted(nearestCrate);
-			} else if (interactTarget === "subsystem" && nearestSub) {
+			} else if (interactTarget === "subsystem" && nearestSub && !repairingSubsystemId) {
 				const sub = shipState.getSubsystem(nearestSub.id);
 				if (sub && sub.condition < 1.0) {
 					const cost = sub.repairCost;
 					if (hasResource("ship-parts", cost)) {
-						consumeResource("ship-parts", cost);
-						shipState.repairSubsystem(sub.id);
-						shipState.distributePower();
+						// Calculate how many segments needed to reach 100%
+						const repairPerSegment = SHIP_STATE_CONFIG.BASE_REPAIR_AMOUNT * SHIP_STATE_CONFIG.REPAIR_SKILL_MODIFIER;
+						const remaining = 1.0 - sub.condition;
+						const segmentsToFull = Math.ceil(remaining / repairPerSegment);
+
+						repairingSubsystemId = sub.id;
+						repairTotalSegments = segmentsToFull;
+						repairCompletedSegments = 0;
+						repairSegmentElapsed = 0;
+						player?.setRepairing(true);
+						repairBar.init(segmentsToFull, nearestSub.mesh.position);
 					}
 				}
 			}
 		}
 	};
+	const handleKeyUp = (e: KeyboardEvent) => {
+		if (e.code === "KeyE") {
+			cancelRepair();
+		}
+	};
 	window.addEventListener("keydown", handleKeyDown);
+	window.addEventListener("keyup", handleKeyUp);
 
 	let debugFrame = 0;
 
@@ -1512,18 +1654,57 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 					}
 				}
 
+				// Cancel repair if player moved away from target
+				if (repairingSubsystemId && !nearestSub) {
+					cancelRepair();
+				}
+
+				// Tick repair progress — each segment = 1 second + 1 repairSubsystem call
+				if (repairingSubsystemId) {
+					repairSegmentElapsed += delta;
+
+					// Check if current segment completed
+					if (repairSegmentElapsed >= SECONDS_PER_REPAIR_PART) {
+						repairSegmentElapsed -= SECONDS_PER_REPAIR_PART;
+						repairCompletedSegments++;
+
+						const sub = shipState.getSubsystem(repairingSubsystemId);
+						if (sub) {
+							consumeResource("ship-parts", sub.repairCost);
+							shipState.repairSubsystem(sub.id);
+							shipState.distributePower();
+							console.log(`Repaired ${sub.id} segment ${repairCompletedSegments}/${repairTotalSegments}: ${(sub.condition * 100).toFixed(0)}%`);
+
+							// Check if fully repaired or out of parts
+							if (sub.condition >= 1.0 || repairCompletedSegments >= repairTotalSegments || !hasResource("ship-parts", sub.repairCost)) {
+								cancelRepair();
+							}
+						} else {
+							cancelRepair();
+						}
+					}
+
+					// Update 3D progress bar (smooth fill within segment)
+					if (repairingSubsystemId) {
+						const segmentPct = repairSegmentElapsed / SECONDS_PER_REPAIR_PART;
+						const totalPct = (repairCompletedSegments + segmentPct) / repairTotalSegments;
+						repairBar.update(totalPct, camera);
+					}
+				}
+
 				// Update prompt
 				const parts = getResource("ship-parts");
-				if (interactTarget === "crate" && nearestCrate) {
+				if (repairingSubsystemId) {
+					interactPrompt.style.display = "none";
+				} else if (interactTarget === "crate" && nearestCrate) {
 					interactPrompt.style.display = "block";
 					interactPrompt.textContent = `[E] Open crate (+${nearestCrate.contents} Ship Parts)`;
 				} else if (interactTarget === "subsystem" && nearestSub) {
 					const sub = shipState.getSubsystem(nearestSub.id);
 					if (sub && sub.condition < 1.0) {
 						interactPrompt.style.display = "block";
-						const newCond = Math.min(1, sub.condition + SHIP_STATE_CONFIG.BASE_REPAIR_AMOUNT * SHIP_STATE_CONFIG.REPAIR_SKILL_MODIFIER);
 						if (parts >= sub.repairCost) {
-							interactPrompt.textContent = `[E] Repair ${sub.type} (${(sub.condition * 100).toFixed(0)}% \u2192 ${(newCond * 100).toFixed(0)}%) \u2014 Cost: ${sub.repairCost} Ship Parts (have ${parts})`;
+							interactPrompt.textContent = `[Hold E] Repair ${sub.type} (${(sub.condition * 100).toFixed(0)}%) \u2014 ${sub.repairCost} parts`;
 						} else {
 							interactPrompt.textContent = `Repair ${sub.type} \u2014 Need ${sub.repairCost} Ship Parts (have ${parts})`;
 						}
@@ -1568,6 +1749,9 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		},
 		dispose() {
 			window.removeEventListener("keydown", handleKeyDown);
+			window.removeEventListener("keyup", handleKeyUp);
+			cancelRepair();
+			repairBar.dispose();
 			cleanupFullscreen();
 			hud.remove();
 			debug.element.remove();

@@ -1,0 +1,195 @@
+/**
+ * VRM Animation Retargeting — loads Mixamo FBX animations and retargets them
+ * to VRM humanoid skeletons.
+ *
+ * Based on the official three-vrm humanoidAnimation example:
+ * https://github.com/pixiv/three-vrm/tree/dev/packages/three-vrm/examples/humanoidAnimation
+ *
+ * Handles rest-pose correction (Mixamo A-pose → VRM normalized pose) and
+ * hip height scaling automatically.
+ */
+import type { VRM, VRMHumanBoneName } from "@pixiv/three-vrm";
+import {
+	AnimationClip,
+	Quaternion,
+	QuaternionKeyframeTrack,
+	Vector3,
+	VectorKeyframeTrack,
+} from "three";
+import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+
+/**
+ * Mixamo rig name → VRM humanoid bone name mapping.
+ * Sourced from pixiv/three-vrm official example.
+ */
+const MIXAMO_TO_VRM: Record<string, VRMHumanBoneName> = {
+	mixamorigHips: "hips",
+	mixamorigSpine: "spine",
+	mixamorigSpine1: "chest",
+	mixamorigSpine2: "upperChest",
+	mixamorigNeck: "neck",
+	mixamorigHead: "head",
+	mixamorigLeftShoulder: "leftShoulder",
+	mixamorigLeftArm: "leftUpperArm",
+	mixamorigLeftForeArm: "leftLowerArm",
+	mixamorigLeftHand: "leftHand",
+	mixamorigLeftHandThumb1: "leftThumbMetacarpal",
+	mixamorigLeftHandThumb2: "leftThumbProximal",
+	mixamorigLeftHandThumb3: "leftThumbDistal",
+	mixamorigLeftHandIndex1: "leftIndexProximal",
+	mixamorigLeftHandIndex2: "leftIndexIntermediate",
+	mixamorigLeftHandIndex3: "leftIndexDistal",
+	mixamorigLeftHandMiddle1: "leftMiddleProximal",
+	mixamorigLeftHandMiddle2: "leftMiddleIntermediate",
+	mixamorigLeftHandMiddle3: "leftMiddleDistal",
+	mixamorigLeftHandRing1: "leftRingProximal",
+	mixamorigLeftHandRing2: "leftRingIntermediate",
+	mixamorigLeftHandRing3: "leftRingDistal",
+	mixamorigLeftHandPinky1: "leftLittleProximal",
+	mixamorigLeftHandPinky2: "leftLittleIntermediate",
+	mixamorigLeftHandPinky3: "leftLittleDistal",
+	mixamorigRightShoulder: "rightShoulder",
+	mixamorigRightArm: "rightUpperArm",
+	mixamorigRightForeArm: "rightLowerArm",
+	mixamorigRightHand: "rightHand",
+	mixamorigRightHandThumb1: "rightThumbMetacarpal",
+	mixamorigRightHandThumb2: "rightThumbProximal",
+	mixamorigRightHandThumb3: "rightThumbDistal",
+	mixamorigRightHandIndex1: "rightIndexProximal",
+	mixamorigRightHandIndex2: "rightIndexIntermediate",
+	mixamorigRightHandIndex3: "rightIndexDistal",
+	mixamorigRightHandMiddle1: "rightMiddleProximal",
+	mixamorigRightHandMiddle2: "rightMiddleIntermediate",
+	mixamorigRightHandMiddle3: "rightMiddleDistal",
+	mixamorigRightHandRing1: "rightRingProximal",
+	mixamorigRightHandRing2: "rightRingIntermediate",
+	mixamorigRightHandRing3: "rightRingDistal",
+	mixamorigRightHandPinky1: "rightLittleProximal",
+	mixamorigRightHandPinky2: "rightLittleIntermediate",
+	mixamorigRightHandPinky3: "rightLittleDistal",
+	mixamorigLeftUpLeg: "leftUpperLeg",
+	mixamorigLeftLeg: "leftLowerLeg",
+	mixamorigLeftFoot: "leftFoot",
+	mixamorigLeftToeBase: "leftToes",
+	mixamorigRightUpLeg: "rightUpperLeg",
+	mixamorigRightLeg: "rightLowerLeg",
+	mixamorigRightFoot: "rightFoot",
+	mixamorigRightToeBase: "rightToes",
+} as Record<string, VRMHumanBoneName>;
+
+// Scratch quaternions (reused per frame to avoid GC)
+const _restRotationInverse = new Quaternion();
+const _parentRestWorldRotation = new Quaternion();
+const _quatA = new Quaternion();
+
+/** Shared FBX loader for animation loading. */
+const fbxLoader = new FBXLoader();
+
+/** Shared GLTF loader for GLB animation loading. */
+const gltfLoader = new GLTFLoader();
+
+/**
+ * Load a Mixamo animation from an FBX or GLB URL and retarget it for a VRM model.
+ *
+ * Performs rest-pose correction and hip height scaling so the animation plays
+ * correctly on VRM's normalized skeleton.
+ *
+ * @param url Path to an FBX or GLB file containing a Mixamo animation
+ * @param vrm The target VRM model
+ * @param clipName Name for the resulting AnimationClip
+ * @returns Retargeted AnimationClip ready for use with AnimationMixer on vrm.scene
+ */
+export async function loadMixamoAnimation(
+	url: string,
+	vrm: VRM,
+	clipName: string,
+): Promise<AnimationClip> {
+	const ext = url.split(".").pop()?.toLowerCase() ?? "";
+	let asset: { animations: AnimationClip[]; getObjectByName: (name: string) => any };
+
+	if (ext === "glb" || ext === "gltf") {
+		const gltf = await gltfLoader.loadAsync(url);
+		asset = {
+			animations: gltf.animations,
+			getObjectByName: (name: string) => gltf.scene.getObjectByName(name),
+		};
+	} else {
+		// Default to FBX
+		const fbx = await fbxLoader.loadAsync(url);
+		asset = {
+			animations: fbx.animations,
+			getObjectByName: (name: string) => fbx.getObjectByName(name),
+		};
+	}
+
+	// Find the animation clip — Mixamo FBX typically names it "mixamo.com"
+	const clip = asset.animations[0]
+		?? AnimationClip.findByName(asset.animations, "mixamo.com");
+
+	if (!clip) {
+		throw new Error(`[VrmAnimRetarget] No animation clip found in ${url}`);
+	}
+
+	// Calculate hip height ratio for position scaling
+	const mixamoHips = asset.getObjectByName("mixamorigHips");
+	const vrmHipsHeight = vrm.humanoid.normalizedRestPose.hips?.position?.[1] ?? 1.0;
+	const motionHipsHeight = mixamoHips?.position?.y ?? 1.0;
+	const hipsPositionScale = vrmHipsHeight / motionHipsHeight;
+
+	const tracks: (QuaternionKeyframeTrack | VectorKeyframeTrack)[] = [];
+
+	for (const track of clip.tracks) {
+		const [mixamoRigName, propertyName] = track.name.split(".");
+		const vrmBoneName = MIXAMO_TO_VRM[mixamoRigName];
+
+		if (!vrmBoneName) continue;
+
+		const vrmNode = vrm.humanoid.getNormalizedBoneNode(vrmBoneName);
+		if (!vrmNode) continue;
+
+		const vrmNodeName = vrmNode.name;
+		const mixamoRigNode = asset.getObjectByName(mixamoRigName);
+		if (!mixamoRigNode) continue;
+
+		if (track instanceof QuaternionKeyframeTrack) {
+			// Retarget rotation: apply rest-pose correction
+			mixamoRigNode.getWorldQuaternion(_restRotationInverse).invert();
+			mixamoRigNode.parent?.getWorldQuaternion(_parentRestWorldRotation);
+
+			const values = new Float32Array(track.values.length);
+			for (let i = 0; i < track.values.length; i += 4) {
+				_quatA.fromArray(track.values, i);
+
+				// parent rest world rotation × track rotation × rest rotation inverse
+				_quatA.premultiply(_parentRestWorldRotation).multiply(_restRotationInverse);
+
+				_quatA.toArray(values, i);
+			}
+
+			tracks.push(
+				new QuaternionKeyframeTrack(
+					`${vrmNodeName}.${propertyName}`,
+					track.times as unknown as Float32Array,
+					values,
+				)
+			);
+		} else if (track instanceof VectorKeyframeTrack) {
+			// Retarget position: scale by hip height ratio
+			const values = new Float32Array(track.values.length);
+			for (let i = 0; i < track.values.length; i++) {
+				values[i] = track.values[i] * hipsPositionScale;
+			}
+
+			tracks.push(
+				new VectorKeyframeTrack(
+					`${vrmNodeName}.${propertyName}`,
+					track.times as unknown as Float32Array,
+					values,
+				)
+			);
+		}
+	}
+
+	return new AnimationClip(clipName, clip.duration, tracks);
+}

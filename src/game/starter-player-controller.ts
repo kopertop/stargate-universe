@@ -32,6 +32,7 @@ import {
   setActiveCamera,
   setFirstPersonMode,
   updateVrmCharacters,
+  VrmPlayerAnimationController,
   type VrmCharacterInstance,
 } from "../systems/vrm";
 
@@ -81,6 +82,7 @@ export class StarterPlayerController {
   private readonly standingHeight: number;
   private readonly supportVelocity = new Vector3();
   private readonly visual: Mesh;
+  private animController: VrmPlayerAnimationController | undefined;
   private vrmCharacter: VrmCharacterInstance | undefined;
   private readonly world: CrashcatPhysicsWorld;
   private yaw = 0;
@@ -162,6 +164,11 @@ export class StarterPlayerController {
     this.gameplayRuntime.removeActor("player");
     rigidBody.remove(this.world, this.body);
 
+    if (this.animController) {
+      this.animController.dispose();
+      this.animController = undefined;
+    }
+
     if (this.vrmCharacter) {
       removeCharacter("player");
       this.vrmCharacter = undefined;
@@ -202,6 +209,26 @@ export class StarterPlayerController {
       this.visual.visible = false;
       // Handle first-person head hiding
       setFirstPersonMode(this.cameraMode === "fps", this.camera);
+
+      // Lazy-init animation controller once VRM is loaded
+      if (!this.animController) {
+        this.animController = new VrmPlayerAnimationController(this.vrmCharacter.vrm);
+        this.animController.loadClips("/animations/player");
+      }
+
+      // Update animations BEFORE vrm.update() so spring bones run on animated pose
+      if (this.animController) {
+        const velocity = this.body.motionProperties.linearVelocity;
+        const horizontalSpeed = Math.sqrt(velocity[0] ** 2 + velocity[2] ** 2);
+        this.animController.update(deltaSeconds, {
+          speed: horizontalSpeed,
+          walkSpeed: this.sceneSettings.player.movementSpeed,
+          runSpeed: this.sceneSettings.player.runningSpeed,
+          isGrounded: this.lastGrounded,
+          jumpTriggered: this.jumpGroundLockRemaining > 0,
+        });
+      }
+
       // Update VRM systems (spring bones, expressions, LOD)
       updateVrmCharacters(deltaSeconds, 60);
     } else {

@@ -87,3 +87,8 @@ export {
 	saveCustomization,
 	deleteCustomization,
 } from "./vrm-customization-persistence";
+export { loadMixamoAnimation } from "./vrm-animation-retarget";
+export {
+	VrmPlayerAnimationController,
+	type PlayerAnimationParams,
+} from "./vrm-player-animation-controller";

@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:api": "wrangler pages dev dist --r2 ASSETS=sgu-assets --r2 GAME_DATA=sgu-game-data",
+    "dev:api": "wrangler pages dev dist --r2 GAME_ASSETS=sgu-assets --r2 GAME_DATA=sgu-game-data",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "deploy": "bun run build && wrangler pages deploy dist",

@@ -3,7 +3,7 @@ compatibility_date = "2025-04-01"
 pages_build_output_dir = "dist"
 
 [[r2_buckets]]
-binding = "ASSETS"
+binding = "GAME_ASSETS"
 bucket_name = "sgu-assets"
 
 [[r2_buckets]]

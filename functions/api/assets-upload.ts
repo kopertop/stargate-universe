@@ -35,13 +35,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 			return errorResponse("Invalid key");
 		}
 
-		await env.ASSETS.put(sanitizedKey, file.stream(), {
+		await env.GAME_ASSETS.put(sanitizedKey, file.stream(), {
 			httpMetadata: {
 				contentType: file.type || "application/octet-stream",
 			},
 		});
 
-		const obj = await env.ASSETS.head(sanitizedKey);
+		const obj = await env.GAME_ASSETS.head(sanitizedKey);
 		if (!obj) {
 			return errorResponse("Upload succeeded but object not found", 500);
 		}

@@ -1,7 +1,7 @@
 /** Shared types for Cloudflare Pages Functions API. */
 
 export type Env = {
-	ASSETS: R2Bucket;
+	GAME_ASSETS: R2Bucket;
 	GAME_DATA: R2Bucket;
 	/** Shared secret for upload authentication. Set via `wrangler secret put UPLOAD_SECRET`. */
 	UPLOAD_SECRET?: string;

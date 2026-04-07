@@ -12,7 +12,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
 	const limit = Math.min(Number(url.searchParams.get("limit") ?? 100), 1000);
 
 	try {
-		const listed = await env.ASSETS.list({ prefix, cursor, limit });
+		const listed = await env.GAME_ASSETS.list({ prefix, cursor, limit });
 
 		return jsonResponse({
 			assets: listed.objects.map(toAssetMetadata),

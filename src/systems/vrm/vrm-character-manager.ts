@@ -26,7 +26,7 @@ import { VrmLookAtController } from "./vrm-lookat-controller";
 import { applyCustomization } from "./vrm-customizer";
 import { loadCustomization } from "./vrm-customization-persistence";
 import { loadVrm, type VrmLoadResult } from "./vrm-loader";
-import { convertMToonToPBR } from "./vrm-mtoon-converter";
+import { convertMToonToPBR, flattenVrmMaterials } from "./vrm-mtoon-converter";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -332,6 +332,9 @@ function onVrmLoaded(instance: VrmCharacterInstance, result: VrmLoadResult): voi
 		? [...result.vrm.materials]
 		: undefined;
 	convertMToonToPBR(result.vrm.scene, mutableMaterials);
+
+	// Ensure all materials are matte/non-metallic for the game's aesthetic
+	flattenVrmMaterials(result.vrm.scene);
 
 	// Enable shadows on all meshes
 	result.vrm.scene.traverse((child) => {

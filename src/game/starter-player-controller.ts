@@ -316,6 +316,9 @@ export class StarterPlayerController {
       isPlayer: true,
       priority: 0,
     });
+    // Offset VRM root down so feet align with the bottom of the physics capsule.
+    // The controller's object.position is at capsule center; VRM feet are at Y=0.
+    this.vrmCharacter.root.position.y = -this.footOffset;
     // Attach VRM root to the controller's scene group
     this.object.add(this.vrmCharacter.root);
   }

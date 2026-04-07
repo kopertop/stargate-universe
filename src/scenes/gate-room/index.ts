@@ -1590,5 +1590,8 @@ export const gateRoomScene = defineGameScene({
 		manifestLoader: () => import("./scene.runtime.json?raw").then((module) => module.default)
 	}),
 	title: "Gate Room",
+	player: {
+		vrmUrl: "https://cdn.jsdelivr.net/gh/madjin/vrm-samples@master/vroid/stable/AvatarSample_A.vrm",
+	},
 	mount
 });

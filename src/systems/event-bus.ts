@@ -85,6 +85,10 @@ type CharacterEvents = {
 	"character:model:loaded": { characterId: string };
 	"character:model:failed": { characterId: string; error: string };
 	"character:expression:changed": { characterId: string; expression: string; weight: number };
+	"character:customization:applied": { characterId: string };
+	"character:customization:saved": { characterId: string };
+	"character:gear:equipped": { characterId: string; slotId: string };
+	"character:gear:unequipped": { characterId: string; slotId: string };
 };
 
 /** Game lifecycle events */

@@ -59,3 +59,31 @@ export {
 	type VrmCharacterInstance,
 	type LodTier,
 } from "./vrm-character-manager";
+export {
+	applyCustomization,
+	removeCustomization,
+	removeGear,
+	discoverMeshes,
+	discoverMaterials,
+	disposeCustomizer,
+	type DiscoveredMesh,
+	type DiscoveredMaterial,
+} from "./vrm-customizer";
+export type {
+	VrmCustomization,
+	MaterialOverride,
+	GearAttachment,
+	GearSlot,
+	GearCatalogItem,
+	MeshVisibilityOverride,
+} from "./vrm-customization-types";
+export {
+	GEAR_SLOTS,
+	GEAR_SLOT_BONES,
+	createEmptyCustomization,
+} from "./vrm-customization-types";
+export {
+	loadCustomization,
+	saveCustomization,
+	deleteCustomization,
+} from "./vrm-customization-persistence";

@@ -415,6 +415,7 @@ function createStarterPlayerController(options: {
       position: playerSpawn.transform.position,
       rotationY: playerSpawn.transform.rotation.y
     },
+    vrmUrl: playerConfig.vrmUrl,
     world: options.physicsWorld
   });
 }

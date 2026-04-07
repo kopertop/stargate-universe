@@ -36,6 +36,8 @@ export type GameScenePlayerConfig = {
   cameraMode?: SceneSettings["player"]["cameraMode"];
   enabled?: boolean;
   spawnEntityId?: string;
+  /** Path or URL to a VRM model file for the player character. */
+  vrmUrl?: string;
 };
 
 export type GameSceneModuleContext = GameSceneBootstrapContext & {

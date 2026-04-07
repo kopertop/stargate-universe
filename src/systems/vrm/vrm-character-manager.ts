@@ -18,10 +18,13 @@ import {
 	Vector3,
 } from "three";
 
+import { resolveAssetUrl } from "../asset-resolver";
 import { emit } from "../event-bus";
 import { getVrmConfig, type VrmConfig } from "./vrm-config";
 import { VrmExpressionController } from "./vrm-expression-controller";
 import { VrmLookAtController } from "./vrm-lookat-controller";
+import { applyCustomization } from "./vrm-customizer";
+import { loadCustomization } from "./vrm-customization-persistence";
 import { loadVrm, type VrmLoadResult } from "./vrm-loader";
 import { convertMToonToPBR } from "./vrm-mtoon-converter";
 
@@ -119,8 +122,8 @@ export function addCharacter(options: VrmCharacterOptions): VrmCharacterInstance
 
 	characters.set(options.id, instance);
 
-	// Begin async load
-	loadVrm(options.vrmUrl, options.priority ?? (options.isPlayer ? 0 : 1))
+	// Begin async load — resolve asset URL through R2 in production
+	loadVrm(resolveAssetUrl(options.vrmUrl), options.priority ?? (options.isPlayer ? 0 : 1))
 		.then((result) => onVrmLoaded(instance, result))
 		.catch((error) => onVrmFailed(instance, error));
 
@@ -352,6 +355,17 @@ function onVrmLoaded(instance: VrmCharacterInstance, result: VrmLoadResult): voi
 	emit("character:model:loaded", { characterId: instance.id });
 
 	console.info(`[VrmCharacterManager] Loaded VRM for "${instance.id}" from ${result.url}`);
+
+	// Auto-apply saved customization (async, non-blocking)
+	loadCustomization(instance.id).then((customization) => {
+		if (customization && instance.vrm) {
+			applyCustomization(instance.id, instance.vrm, customization).catch((err) => {
+				console.warn(`[VrmCharacterManager] Failed to apply customization for "${instance.id}"`, err);
+			});
+		}
+	}).catch(() => {
+		// Customization load failed — not critical, character still renders
+	});
 }
 
 function onVrmFailed(instance: VrmCharacterInstance, error: unknown): void {

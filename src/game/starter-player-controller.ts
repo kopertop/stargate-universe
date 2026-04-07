@@ -83,6 +83,8 @@ export class StarterPlayerController {
   private readonly supportVelocity = new Vector3();
   private readonly visual: Mesh;
   private animController: VrmPlayerAnimationController | undefined;
+  private forwardInput = 0;
+  private strafeInput = 0;
   private vrmCharacter: VrmCharacterInstance | undefined;
   private readonly world: CrashcatPhysicsWorld;
   private yaw = 0;
@@ -227,6 +229,8 @@ export class StarterPlayerController {
           runSpeed: this.sceneSettings.player.runningSpeed,
           isGrounded: this.lastGrounded,
           jumpTriggered: this.jumpGroundLockRemaining > 0,
+          strafeInput: this.strafeInput,
+          forwardInput: this.forwardInput,
         });
       }
 
@@ -289,10 +293,15 @@ export class StarterPlayerController {
     }
 
     const right = scratchRight.set(-forward.z, 0, forward.x).normalize();
+
+    // Store raw input axes for the animation system
+    this.strafeInput = this.axis("KeyD", "ArrowRight") - this.axis("KeyA", "ArrowLeft");
+    this.forwardInput = this.axis("KeyW", "ArrowUp") - this.axis("KeyS", "ArrowDown");
+
     const moveDirection = scratchMoveDirection
       .set(0, 0, 0)
-      .addScaledVector(right, this.axis("KeyD", "ArrowRight") - this.axis("KeyA", "ArrowLeft"))
-      .addScaledVector(forward, this.axis("KeyW", "ArrowUp") - this.axis("KeyS", "ArrowDown"));
+      .addScaledVector(right, this.strafeInput)
+      .addScaledVector(forward, this.forwardInput);
 
     if (moveDirection.lengthSq() > 0) {
       moveDirection.normalize().multiplyScalar(speed);

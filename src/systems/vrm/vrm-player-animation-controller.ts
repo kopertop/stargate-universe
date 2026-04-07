@@ -35,6 +35,10 @@ export type PlayerAnimationParams = {
 	readonly isGrounded: boolean;
 	/** Whether a jump was just triggered (ground lock active). */
 	readonly jumpTriggered: boolean;
+	/** Lateral movement input: -1 = left, 0 = none, 1 = right. */
+	readonly strafeInput: number;
+	/** Forward movement input: -1 = backward, 0 = none, 1 = forward. */
+	readonly forwardInput: number;
 };
 
 type AnimState = "locomotion" | "jump";
@@ -63,6 +67,8 @@ export class VrmPlayerAnimationController {
 	private walkAction: AnimationAction | undefined;
 	private runAction: AnimationAction | undefined;
 	private jumpAction: AnimationAction | undefined;
+	private strafeLeftAction: AnimationAction | undefined;
+	private strafeRightAction: AnimationAction | undefined;
 
 	private state: AnimState = "locomotion";
 	private loaded = false;
@@ -72,6 +78,8 @@ export class VrmPlayerAnimationController {
 	private idleWeight = 1;
 	private walkWeight = 0;
 	private runWeight = 0;
+	private strafeLeftWeight = 0;
+	private strafeRightWeight = 0;
 
 	constructor(vrm: VRM) {
 		this.vrm = vrm;
@@ -93,7 +101,7 @@ export class VrmPlayerAnimationController {
 		if (this.loading || this.loaded) return;
 		this.loading = true;
 
-		const clipNames = ["idle", "walk", "run", "jump"] as const;
+		const clipNames = ["idle", "walk", "run", "jump", "strafe-left", "strafe-right"] as const;
 		const extensions = ["vrma", "fbx", "glb"];
 
 		const results = await Promise.allSettled(
@@ -149,6 +157,20 @@ export class VrmPlayerAnimationController {
 					action.clampWhenFinished = true;
 					// Don't play until triggered
 					break;
+
+				case "strafe-left":
+					this.strafeLeftAction = action;
+					action.setLoop(LoopRepeat, Infinity);
+					action.play();
+					action.setEffectiveWeight(0);
+					break;
+
+				case "strafe-right":
+					this.strafeRightAction = action;
+					action.setLoop(LoopRepeat, Infinity);
+					action.play();
+					action.setEffectiveWeight(0);
+					break;
 			}
 		}
 
@@ -199,21 +221,38 @@ export class VrmPlayerAnimationController {
 	// ─── Internal ──────────────────────────────────────────────────────────────
 
 	private updateLocomotionWeights(delta: number, params: PlayerAnimationParams): void {
-		const { speed, walkSpeed, runSpeed } = params;
+		const { speed, walkSpeed, runSpeed, strafeInput, forwardInput } = params;
 		const smoothing = 1 - Math.exp(-WEIGHT_SMOOTHING * delta);
 
-		// Compute target weights based on speed
+		// Determine if purely strafing (lateral movement without forward/back)
+		const isStrafing = Math.abs(strafeInput) > 0.1 && Math.abs(forwardInput) < 0.1;
+		const strafeAmount = Math.abs(strafeInput);
+
+		// Compute target weights based on speed and direction
 		let targetIdle = 0;
 		let targetWalk = 0;
 		let targetRun = 0;
+		let targetStrafeLeft = 0;
+		let targetStrafeRight = 0;
 
 		if (speed < IDLE_THRESHOLD) {
 			targetIdle = 1;
+		} else if (isStrafing) {
+			// Pure strafe — use strafe animations
+			if (strafeInput < 0) {
+				targetStrafeLeft = strafeAmount;
+				targetIdle = 1 - strafeAmount;
+			} else {
+				targetStrafeRight = strafeAmount;
+				targetIdle = 1 - strafeAmount;
+			}
 		} else if (speed <= walkSpeed) {
-			// Blend idle → walk
+			// Blend idle → walk (with partial strafe blending for diagonal movement)
 			const t = speed / Math.max(walkSpeed, 0.01);
 			targetIdle = 1 - t;
-			targetWalk = t;
+			targetWalk = t * (1 - strafeAmount * 0.5);
+			if (strafeInput < -0.1) targetStrafeLeft = t * strafeAmount * 0.5;
+			if (strafeInput > 0.1) targetStrafeRight = t * strafeAmount * 0.5;
 		} else if (speed <= runSpeed) {
 			// Blend walk → run
 			const t = (speed - walkSpeed) / Math.max(runSpeed - walkSpeed, 0.01);
@@ -227,11 +266,15 @@ export class VrmPlayerAnimationController {
 		this.idleWeight += (targetIdle - this.idleWeight) * smoothing;
 		this.walkWeight += (targetWalk - this.walkWeight) * smoothing;
 		this.runWeight += (targetRun - this.runWeight) * smoothing;
+		this.strafeLeftWeight += (targetStrafeLeft - this.strafeLeftWeight) * smoothing;
+		this.strafeRightWeight += (targetStrafeRight - this.strafeRightWeight) * smoothing;
 
 		// Apply weights
 		this.idleAction?.setEffectiveWeight(this.idleWeight);
 		this.walkAction?.setEffectiveWeight(this.walkWeight);
 		this.runAction?.setEffectiveWeight(this.runWeight);
+		this.strafeLeftAction?.setEffectiveWeight(this.strafeLeftWeight);
+		this.strafeRightAction?.setEffectiveWeight(this.strafeRightWeight);
 	}
 
 	private triggerJump(): void {
@@ -243,6 +286,8 @@ export class VrmPlayerAnimationController {
 		this.idleAction?.fadeOut(JUMP_FADE_IN);
 		this.walkAction?.fadeOut(JUMP_FADE_IN);
 		this.runAction?.fadeOut(JUMP_FADE_IN);
+		this.strafeLeftAction?.fadeOut(JUMP_FADE_IN);
+		this.strafeRightAction?.fadeOut(JUMP_FADE_IN);
 
 		// Play jump from start
 		this.jumpAction.reset();
@@ -261,10 +306,14 @@ export class VrmPlayerAnimationController {
 		this.idleAction?.reset().fadeIn(JUMP_FADE_OUT).play();
 		this.walkAction?.reset().fadeIn(JUMP_FADE_OUT).play();
 		this.runAction?.reset().fadeIn(JUMP_FADE_OUT).play();
+		this.strafeLeftAction?.reset().fadeIn(JUMP_FADE_OUT).play();
+		this.strafeRightAction?.reset().fadeIn(JUMP_FADE_OUT).play();
 
 		// Reset weights to current targets (will be smoothed next frame)
 		this.idleAction?.setEffectiveWeight(this.idleWeight);
 		this.walkAction?.setEffectiveWeight(this.walkWeight);
 		this.runAction?.setEffectiveWeight(this.runWeight);
+		this.strafeLeftAction?.setEffectiveWeight(this.strafeLeftWeight);
+		this.strafeRightAction?.setEffectiveWeight(this.strafeRightWeight);
 	}
 }

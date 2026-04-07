@@ -1591,7 +1591,7 @@ export const gateRoomScene = defineGameScene({
 	}),
 	title: "Gate Room",
 	player: {
-		vrmUrl: "https://cdn.jsdelivr.net/gh/madjin/vrm-samples@master/vroid/stable/AvatarSample_A.vrm",
+		vrmUrl: "/characters/avatar-sample-a.vrm",
 	},
 	mount
 });

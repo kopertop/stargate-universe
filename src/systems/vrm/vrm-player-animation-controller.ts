@@ -72,6 +72,14 @@ const IDLE_VARIANT_FADE = 0.5;
 
 /** Idle variant filenames (loaded from R2 alongside core clips). */
 const IDLE_VARIANTS = [
+	"breathing-idle",
+	"happy-idle",
+	"sad-idle",
+	"warrior-idle",
+	"idle-variant-1",
+	"idle-variant-2",
+	"idle-variant-3",
+	"neutral-idle",
 	"idle-looking-behind",
 	"idle-standing",
 	"idle-happy",

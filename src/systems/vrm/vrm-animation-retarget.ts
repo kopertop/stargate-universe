@@ -132,19 +132,32 @@ export async function loadMixamoAnimation(
 		throw new Error(`[VrmAnimRetarget] No animation clip found in ${url}`);
 	}
 
+	// Debug: log track names from the FBX to check bone naming
+	const trackBoneNames = new Set(clip.tracks.map((t) => t.name.split(".")[0]));
+	console.info(`[VrmAnimRetarget] "${clipName}" from ${url}`);
+	console.info(`  Clip tracks: ${clip.tracks.length}, bones: [${[...trackBoneNames].slice(0, 8).join(", ")}...]`);
+
 	// Calculate hip height ratio for position scaling
 	const mixamoHips = asset.getObjectByName("mixamorigHips");
-	const vrmHipsHeight = vrm.humanoid.normalizedRestPose.hips?.position?.[1] ?? 1.0;
-	const motionHipsHeight = mixamoHips?.position?.y ?? 1.0;
-	const hipsPositionScale = vrmHipsHeight / motionHipsHeight;
+	console.info(`  mixamorigHips found: ${!!mixamoHips}, pos.y: ${mixamoHips?.position?.y ?? "N/A"}`);
+
+	const vrmHipsY = vrm.humanoid.normalizedRestPose.hips?.position?.[1] ?? 1.0;
+	const motionHipsY = mixamoHips?.position?.y ?? 1.0;
+	const hipsPositionScale = vrmHipsY / motionHipsY;
+	console.info(`  Hip scale: vrm=${vrmHipsY.toFixed(3)} / motion=${motionHipsY.toFixed(3)} = ${hipsPositionScale.toFixed(3)}`);
 
 	const tracks: (QuaternionKeyframeTrack | VectorKeyframeTrack)[] = [];
+	let matchedTracks = 0;
+	let unmatchedBones = 0;
 
 	for (const track of clip.tracks) {
 		const [mixamoRigName, propertyName] = track.name.split(".");
 		const vrmBoneName = MIXAMO_TO_VRM[mixamoRigName];
 
-		if (!vrmBoneName) continue;
+		if (!vrmBoneName) {
+			unmatchedBones++;
+			continue;
+		}
 
 		const vrmNode = vrm.humanoid.getNormalizedBoneNode(vrmBoneName);
 		if (!vrmNode) continue;
@@ -153,17 +166,25 @@ export async function loadMixamoAnimation(
 		const mixamoRigNode = asset.getObjectByName(mixamoRigName);
 		if (!mixamoRigNode) continue;
 
+		matchedTracks++;
+
 		if (track instanceof QuaternionKeyframeTrack) {
 			// Retarget rotation: apply rest-pose correction
-			mixamoRigNode.getWorldQuaternion(_restRotationInverse).invert();
-			mixamoRigNode.parent?.getWorldQuaternion(_parentRestWorldRotation);
+			// Use fresh quaternions per track to avoid mutation issues
+			const restRotInv = new Quaternion();
+			const parentRestWorld = new Quaternion();
+
+			mixamoRigNode.getWorldQuaternion(restRotInv).invert();
+			if (mixamoRigNode.parent) {
+				mixamoRigNode.parent.getWorldQuaternion(parentRestWorld);
+			}
 
 			const values = new Float32Array(track.values.length);
 			for (let i = 0; i < track.values.length; i += 4) {
 				_quatA.fromArray(track.values, i);
 
 				// parent rest world rotation × track rotation × rest rotation inverse
-				_quatA.premultiply(_parentRestWorldRotation).multiply(_restRotationInverse);
+				_quatA.premultiply(parentRestWorld).multiply(restRotInv);
 
 				_quatA.toArray(values, i);
 			}
@@ -191,6 +212,8 @@ export async function loadMixamoAnimation(
 			);
 		}
 	}
+
+	console.info(`  Retargeted: ${matchedTracks} matched, ${unmatchedBones} unmatched, ${tracks.length} output tracks`);
 
 	return new AnimationClip(clipName, clip.duration, tracks);
 }

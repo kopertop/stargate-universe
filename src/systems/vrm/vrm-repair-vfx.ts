@@ -30,7 +30,7 @@ const SPARK_LIFE_MAX = 0.8;
 const SPARK_SPEED_MIN = 3.0;
 const SPARK_SPEED_MAX = 7.0;
 const SPARK_GRAVITY = 6.0;
-const SPARK_RADIUS = 0.02;
+const SPARK_RADIUS = 0.008;
 
 // ─── Spark particle ───────────────────────────────────────────────────────────
 
@@ -225,9 +225,15 @@ export class RepairVfx {
 		const spark = this.sparks.find((s) => !s.alive);
 		if (!spark) return;
 
-		// Get wall contact point — past the wrench tip
-		const tipWorld = new Vector3(0, 0.22, 0);
-		this.toolGroup.localToWorld(tipWorld);
+		// Get wrench tip in world space — use the tipGlow child's world position
+		const tipWorld = new Vector3();
+		// The tip glow is the last child of the wrench group
+		const tipChild = this.toolGroup.children[this.toolGroup.children.length - 1];
+		if (tipChild) {
+			tipChild.getWorldPosition(tipWorld);
+		} else {
+			this.toolGroup.getWorldPosition(tipWorld);
+		}
 
 		spark.alive = true;
 		spark.age = 0;

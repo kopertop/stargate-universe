@@ -47,7 +47,7 @@ export function createVrmEntitySystem(options: VrmEntitySystemOptions): VrmEntit
 	const npcRoots: Group[] = [];
 
 	for (const entity of runtimeScene.entities) {
-		if (entity.type !== "vrm-character") continue;
+		if ((entity.type as string) !== "vrm-character") continue;
 
 		const isPlayer = entity.properties["isPlayer"] === true;
 
@@ -114,7 +114,7 @@ export function findPlayerVrmEntity(
 	runtimeScene: ThreeRuntimeSceneInstance,
 ): { vrmUrl: string; animationBundle: string; characterId: string } | undefined {
 	for (const entity of runtimeScene.entities) {
-		if (entity.type !== "vrm-character") continue;
+		if ((entity.type as string) !== "vrm-character") continue;
 		if (entity.properties["isPlayer"] !== true) continue;
 
 		const vrmUrl = entity.properties["vrmUrl"] as string | undefined;

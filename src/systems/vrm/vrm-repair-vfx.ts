@@ -242,7 +242,7 @@ export class RepairVfx {
 		group.add(tipGlow);
 
 		// Orient wrench to sit naturally in hand — offset forward from wrist to palm
-		group.position.set(0, 0, -0.08);
+		group.position.set(0, 0, 0.10);
 		group.rotation.set(0, 0, -Math.PI * 0.15);
 		group.scale.setScalar(1.2);
 

@@ -1251,7 +1251,7 @@ interface RepairProgressBar3D {
 function createRepairProgressBar3D(): RepairProgressBar3D {
 	const BAR_WIDTH = 0.8;
 	const BAR_HEIGHT = 0.06;
-	const BAR_Y_OFFSET = 1.2;
+	const BAR_Y_OFFSET = 0.0;
 
 	const group = new THREE.Group();
 	group.visible = false;
@@ -1435,19 +1435,19 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		{
 			sub: { id: "corridor-conduit-1", type: "conduit", sectionId: "corridor-a1",
 				condition: 0.25, repairCost: 1, functionalThreshold: 0.2 },
-			pos: new THREE.Vector3(CORRIDOR_WIDTH_EXT / 2, 1.5, corridorCZ),
+			pos: new THREE.Vector3(CORRIDOR_WIDTH_EXT / 2, 1.0, corridorCZ),
 			wall: "right"
 		},
 		{
 			sub: { id: "storage-lights", type: "lighting-panel", sectionId: "storage-bay",
 				condition: 0.1, repairCost: 1, functionalThreshold: 0.2 },
-			pos: new THREE.Vector3(STORAGE_WIDTH / 2, 1.5, storageCZ + 1),
+			pos: new THREE.Vector3(STORAGE_WIDTH / 2, 1.0, storageCZ + 1),
 			wall: "right"
 		},
 		{
 			sub: { id: "storage-console", type: "console", sectionId: "storage-bay",
 				condition: 0.35, repairCost: 1, functionalThreshold: 0.2 },
-			pos: new THREE.Vector3(-STORAGE_WIDTH / 2, 1.2, storageCZ + 2),
+			pos: new THREE.Vector3(-STORAGE_WIDTH / 2, 0.8, storageCZ + 2),
 			wall: "left"
 		},
 	];

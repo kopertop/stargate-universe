@@ -25,6 +25,7 @@ import {
   Vector3
 } from "three";
 
+import { AudioManager } from "../systems/audio";
 import {
   addCharacter,
   getCharacter,
@@ -147,6 +148,9 @@ export class StarterPlayerController {
     this.object.add(this.visual);
     this.object.position.set(spawnPosition.x, spawnPosition.y, spawnPosition.z);
 
+    // Attach audio listener to camera
+    AudioManager.getInstance().attachListener(this.camera);
+
     // VRM character model (replaces capsule visual when loaded)
     if (options.vrmUrl) {
       this.initVrmCharacter(options.vrmUrl);
@@ -203,10 +207,13 @@ export class StarterPlayerController {
     if (this.isRepairing === repairing) return;
     this.isRepairing = repairing;
 
+    const audio = AudioManager.getInstance();
     if (repairing) {
       this.repairVfx?.start();
+      audio.play("repair-sparks", this.object);
     } else {
       this.repairVfx?.stop();
+      audio.stop("repair-sparks", this.object);
     }
   }
 

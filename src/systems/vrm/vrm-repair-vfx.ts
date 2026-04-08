@@ -25,6 +25,7 @@ import {
 	Object3D,
 	Points,
 	PointsMaterial,
+	Scene,
 	SphereGeometry,
 	Vector3,
 } from "three";
@@ -38,18 +39,18 @@ const MAX_SPARKS = 40;
 const SPARK_RATE = 30;
 
 /** Spark lifetime range in seconds. */
-const SPARK_LIFE_MIN = 0.15;
-const SPARK_LIFE_MAX = 0.45;
+const SPARK_LIFE_MIN = 0.3;
+const SPARK_LIFE_MAX = 0.8;
 
 /** Spark initial speed range. */
-const SPARK_SPEED_MIN = 1.5;
-const SPARK_SPEED_MAX = 4.0;
+const SPARK_SPEED_MIN = 3.0;
+const SPARK_SPEED_MAX = 7.0;
 
 /** Gravity applied to sparks (m/s²). */
 const SPARK_GRAVITY = 6.0;
 
 /** Spark base size. */
-const SPARK_SIZE = 0.025;
+const SPARK_SIZE = 0.12;
 
 // ─── Spark particle state ─────────────────────────────────────────────────────
 
@@ -65,6 +66,7 @@ type SparkParticle = {
 
 export class RepairVfx {
 	private readonly vrm: VRM;
+	private readonly worldScene: Scene;
 	private readonly handBone: Object3D | null;
 	private readonly toolGroup: Group;
 	private readonly sparksGeometry: BufferGeometry;
@@ -77,8 +79,9 @@ export class RepairVfx {
 	private active = false;
 	private sparkAccumulator = 0;
 
-	constructor(vrm: VRM) {
+	constructor(vrm: VRM, worldScene: Scene) {
 		this.vrm = vrm;
+		this.worldScene = worldScene;
 		this.handBone = vrm.humanoid?.getNormalizedBoneNode("rightHand") ?? null;
 
 		// ── Procedural wrench ─────────────────────────────────────────────────
@@ -128,8 +131,9 @@ export class RepairVfx {
 			this.handBone.add(this.toolGroup);
 		}
 
-		// Add sparks to the VRM scene root so they're in world space
-		this.vrm.scene.add(this.sparksPoints);
+		// Add sparks to the world scene (not VRM root) so they're in true world space
+		this.worldScene.add(this.sparksPoints);
+		console.info("[RepairVfx] Started — handBone:", !!this.handBone, "sparks added to world scene");
 	}
 
 	/** Detach tool and stop emitting (existing sparks fade out). */
@@ -147,12 +151,22 @@ export class RepairVfx {
 		}
 		this.syncGeometry();
 
-		this.vrm.scene.remove(this.sparksPoints);
+		this.worldScene.remove(this.sparksPoints);
+		console.info("[RepairVfx] Stopped");
 	}
+
+	private debugTimer = 0;
 
 	/** Update spark particles. Call each frame while repair is active or sparks remain. */
 	update(delta: number): void {
 		if (!this.active && !this.hasAliveSparks()) return;
+
+		this.debugTimer += delta;
+		if (this.debugTimer > 2) {
+			this.debugTimer = 0;
+			const aliveCount = this.sparks.filter((s) => s.alive).length;
+			console.info(`[RepairVfx] active=${this.active}, alive=${aliveCount}, accumulator=${this.sparkAccumulator.toFixed(3)}`);
+		}
 
 		// Emit new sparks
 		if (this.active) {
@@ -254,8 +268,8 @@ export class RepairVfx {
 		const spark = this.sparks.find((s) => !s.alive);
 		if (!spark) return;
 
-		// Get tool tip world position
-		const tipWorld = new Vector3(0, 0.185, 0);
+		// Get wall contact point — past the wrench tip where it meets the surface
+		const tipWorld = new Vector3(0, 0.22, 0);
 		this.toolGroup.localToWorld(tipWorld);
 
 		spark.alive = true;
@@ -263,12 +277,12 @@ export class RepairVfx {
 		spark.lifetime = SPARK_LIFE_MIN + Math.random() * (SPARK_LIFE_MAX - SPARK_LIFE_MIN);
 		spark.position.copy(tipWorld);
 
-		// Random outward direction with upward bias
+		// Spray outward from wall with strong lateral spread
 		const speed = SPARK_SPEED_MIN + Math.random() * (SPARK_SPEED_MAX - SPARK_SPEED_MIN);
 		spark.velocity.set(
-			(Math.random() - 0.5) * 2,
-			Math.random() * 0.8 + 0.2,
-			(Math.random() - 0.5) * 2,
+			(Math.random() - 0.5) * 3,
+			Math.random() * 1.5 - 0.3,
+			(Math.random() - 0.5) * 3,
 		).normalize().multiplyScalar(speed);
 	}
 

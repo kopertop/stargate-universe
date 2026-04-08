@@ -14,11 +14,36 @@ Search CC0 sound sources for game audio, download, upload to R2, and wire into t
 
 **soundcn** is a CC0 sound library with an npx CLI (similar to shadcn for UI components).
 
-### Direct Install (preferred when you know the package name)
+- **Website**: https://www.soundcn.xyz/
+- **GitHub repo**: https://github.com/kapishdima/soundcn
+- **Sound registry**: https://github.com/kapishdima/soundcn/tree/main/registry/soundcn/sounds
+
+### Local Sound Registry (preferred — fastest)
+
+The soundcn GitHub repo contains all sound files in `registry/soundcn/sounds/`.
+A local clone lives at `assets/soundcn-registry/` for instant access:
+
+```bash
+# One-time setup (if not already cloned):
+git clone --depth 1 https://github.com/kapishdima/soundcn.git /tmp/soundcn-repo
+cp -r /tmp/soundcn-repo/registry/soundcn/sounds/ assets/soundcn-registry/
+rm -rf /tmp/soundcn-repo
+```
+
+To find sounds locally:
+```bash
+ls assets/soundcn-registry/          # List all sound categories
+ls assets/soundcn-registry/impact/   # List impact sounds
+find assets/soundcn-registry/ -name "*metal*" -o -name "*spark*"  # Search by keyword
+```
+
+### CLI Install (alternative)
 
 ```bash
 npx shadcn@latest add @soundcn/<package-name>
 ```
+
+Note: Requires `components.json` — if not configured, use the local registry instead.
 
 Examples:
 ```bash
@@ -34,15 +59,15 @@ Use browser automation (claude-in-chrome) to:
 2. Browse categories or search for the described sound
 3. Identify the package name (e.g. `@soundcn/impact-metal-000`)
 4. Present candidates to the user via `AskUserQuestion`
-5. Install the selected sound via `npx shadcn@latest add @soundcn/<name>`
+5. Download from local registry or via CLI
 
 ### After soundcn download
 
-The CLI downloads sound files locally. After download:
-1. Locate the downloaded file(s)
-2. Convert to mp3 if needed (see Format Guidelines)
-3. Upload to R2 (see Step 5)
-4. Remove the local file from the repo (sounds live on R2, not in git)
+Sound files from any source must be:
+1. Converted to mp3 if needed (see Format Guidelines)
+2. Uploaded to R2 (see Step 6)
+3. Removed from the local repo (sounds live on R2, not in git)
+4. **Never commit sound files to the git repo**
 
 ## Other CC0 Sources
 

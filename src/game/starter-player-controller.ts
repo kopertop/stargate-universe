@@ -22,6 +22,7 @@ import {
   Mesh,
   MeshStandardMaterial,
   PerspectiveCamera,
+  Scene,
   Vector3
 } from "three";
 
@@ -48,6 +49,7 @@ type StarterPlayerControllerOptions = {
   cameraMode: SceneSettings["player"]["cameraMode"];
   domElement: HTMLCanvasElement;
   gameplayRuntime: GameplayRuntime;
+  scene: Scene;
   sceneSettings: Pick<SceneSettings, "player" | "world">;
   spawn: StarterPlayerSpawn;
   /** Optional path to a VRM model file for the player character. */
@@ -80,6 +82,7 @@ export class StarterPlayerController {
   private pitch = 0;
   private pointerLocked = false;
   private readonly radius: number;
+  private readonly scene: Scene;
   private readonly sceneSettings: Pick<SceneSettings, "player" | "world">;
   private readonly standingHeight: number;
   private readonly supportVelocity = new Vector3();
@@ -98,6 +101,7 @@ export class StarterPlayerController {
     this.cameraMode = options.cameraMode;
     this.domElement = options.domElement;
     this.gameplayRuntime = options.gameplayRuntime;
+    this.scene = options.scene;
     this.sceneSettings = options.sceneSettings;
     this.world = options.world;
     this.standingHeight = Math.max(1.2, options.sceneSettings.player.height);
@@ -244,7 +248,7 @@ export class StarterPlayerController {
       if (!this.animController) {
         this.animController = new VrmPlayerAnimationController(this.vrmCharacter.vrm);
         this.animController.loadClips("/animations/player");
-        this.repairVfx = new RepairVfx(this.vrmCharacter.vrm);
+        this.repairVfx = new RepairVfx(this.vrmCharacter.vrm, this.scene);
       }
 
       // Update animations BEFORE vrm.update() so spring bones run on animated pose

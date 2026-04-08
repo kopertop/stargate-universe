@@ -253,7 +253,8 @@ export async function createGameApp(options: GameAppOptions) {
         domElement: renderer.domElement,
         gameplayRuntime,
         physicsWorld,
-        runtimeScene
+        runtimeScene,
+        scene
       });
 
       gameplayRuntime.start();
@@ -387,6 +388,7 @@ function createStarterPlayerController(options: {
   gameplayRuntime: GameplayRuntime;
   physicsWorld: CrashcatPhysicsWorld;
   runtimeScene: ThreeRuntimeSceneInstance;
+  scene: THREE.Scene;
 }) {
   if (options.definition.player === false) {
     return null;
@@ -410,6 +412,7 @@ function createStarterPlayerController(options: {
     cameraMode: playerConfig.cameraMode ?? options.runtimeScene.scene.settings.player.cameraMode,
     domElement: options.domElement,
     gameplayRuntime: options.gameplayRuntime,
+    scene: options.scene,
     sceneSettings: options.runtimeScene.scene.settings,
     spawn: {
       position: playerSpawn.transform.position,

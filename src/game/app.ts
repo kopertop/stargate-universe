@@ -195,6 +195,7 @@ export async function createGameApp(options: GameAppOptions) {
         resolveAssetUrl: ({ path }) => path
       });
 
+
       if (disposed || token !== loadToken) {
         runtimeScene.dispose();
         return;

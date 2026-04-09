@@ -38,7 +38,7 @@ export { retargetClipToVrmSkeleton } from "./vrm-clip-retargeter";
 // VRM-specific features
 export { VrmExpressionController, type VrmExpressionName, type VrmVisemeName, type ExpressionTarget } from "./vrm-expression-controller";
 export { VrmLookAtController, type LookAtMode, type LookAtState } from "./vrm-lookat-controller";
-export { convertMToonToPBR } from "./vrm-mtoon-converter";
+export { convertMToonToPBR, flattenVrmMaterials } from "./vrm-mtoon-converter";
 
 // Crew roster
 export {

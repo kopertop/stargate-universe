@@ -141,6 +141,29 @@ function isMToonMaterial(material: MToonLikeMaterial): boolean {
 	);
 }
 
+/**
+ * Ensure all MeshStandardMaterial on a VRM look non-metallic and matte.
+ * Call after MToon conversion. Fixes VRM models that already use PBR but
+ * have overly shiny/metallic settings that don't suit the game's look.
+ */
+export function flattenVrmMaterials(root: Object3D): void {
+	root.traverse((child) => {
+		const mesh = child as Mesh | SkinnedMesh;
+		if (!mesh.isMesh) return;
+
+		const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+		for (const mat of mats) {
+			const std = mat as MeshStandardMaterial & { isMeshStandardMaterial?: boolean };
+			if (!std.isMeshStandardMaterial) continue;
+
+			// Force non-metallic, high roughness for character materials
+			std.metalness = Math.min(std.metalness, 0.05);
+			std.roughness = Math.max(std.roughness, 0.7);
+			std.needsUpdate = true;
+		}
+	});
+}
+
 function createPBRFromMToon(mtoon: MToonLikeMaterial): MeshStandardMaterial {
 	const pbr = new MeshStandardMaterial();
 

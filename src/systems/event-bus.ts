@@ -36,9 +36,18 @@ type ResourceEvents = {
 	"inventory:story-item:acquired": { itemId: string; itemName: string };
 };
 
+/** Quest events */
+type QuestEvents = {
+	"quest:started": { questId: string };
+	"quest:objective-complete": { questId: string; objectiveId: string };
+	"quest:completed": { questId: string };
+	"quest:failed": { questId: string };
+};
+
 /** Crew & Dialogue events */
 type CrewEvents = {
 	"crew:dialogue:started": { speakerId: string; dialogueId: string };
+	"crew:dialogue:node": { speakerId: string; dialogueId: string; nodeId: string };
 	"crew:dialogue:ended": { speakerId: string; dialogueId: string };
 	"crew:choice:made": { dialogueId: string; nodeId: string; responseId: string };
 	"crew:morale:changed": { morale: number };
@@ -103,6 +112,7 @@ export type GameEventMap =
 	GateEvents &
 	ResourceEvents &
 	CrewEvents &
+	QuestEvents &
 	CharacterEvents &
 	TimerEvents &
 	PlayerEvents &

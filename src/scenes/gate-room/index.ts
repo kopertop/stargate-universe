@@ -7,6 +7,15 @@ import type { GameSceneModuleContext, GameSceneLifecycle } from "../../game/scen
 import { perfMetrics } from "../../game/app";
 import { ShipState, SHIP_STATE_CONFIG, type Section, type Subsystem } from "../../systems/ship-state";
 import { emit, scopedBus } from "../../systems/event-bus";
+import { createDialogueManager } from "../../systems/dialogue-manager";
+import { createNpcManager } from "../../systems/npc-manager";
+import { createQuestManager } from "../../systems/quest-manager";
+import { createSaveManager } from "../../systems/save-manager";
+import { drRushNpc } from "../../npcs/dr-rush";
+import { drRushDialogue } from "../../dialogues/dr-rush";
+import { registerDestinyPowerCrisis } from "../../quests/destiny-power-crisis";
+import type { NpcInstance } from "../../types/npc";
+import { setSceneManagers } from "./context";
 import { initResources, getResource, addResource, consumeResource, hasResource, getAllResources } from "../../systems/resources";
 
 const assetUrlLoaders = import.meta.glob("./assets/**/*", {
@@ -1460,6 +1469,59 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 
 	shipState.distributePower();
 
+	// ─── NPC / Dialogue / Quest / Save Managers ───────────────────────────
+	const dialogueManager = createDialogueManager();
+	const npcManager = createNpcManager(dialogueManager);
+	const questManager = createQuestManager();
+
+	npcManager.registerNpc(drRushNpc);
+	dialogueManager.registerTree(drRushDialogue);
+	registerDestinyPowerCrisis(questManager);
+
+	// When Rush ends a dialogue session that accepted the quest, start it.
+	// startQuest() is idempotent so it's safe to call on every conversation end.
+	bus.on("crew:dialogue:ended", ({ speakerId }) => {
+		if (speakerId === "dr-rush") {
+			const saved = dialogueManager.serialize();
+			if (saved.acceptedQuests.includes("destiny-power-crisis")) {
+				questManager.startQuest("destiny-power-crisis");
+			}
+		}
+	});
+
+	// HUD TODO — wire these to on-screen indicators once HUD layer exists
+	bus.on("quest:started", ({ questId }) => {
+		console.log(`[HUD TODO] Quest started: ${questId}`);
+	});
+	bus.on("quest:objective-complete", ({ questId, objectiveId }) => {
+		console.log(`[HUD TODO] Objective complete: ${questId} / ${objectiveId}`);
+	});
+	bus.on("quest:completed", ({ questId }) => {
+		console.log(`[HUD TODO] Quest completed: ${questId}`);
+	});
+	bus.on("save:completed", ({ slotId }) => {
+		console.log(`[HUD TODO] Saved to slot: ${slotId}`);
+	});
+
+	let playtimeMs = 0;
+
+	const saveManager = createSaveManager({
+		shipState,
+		questManager,
+		dialogueManager,
+		getContext: () => ({
+			currentSceneId: "gate-room",
+			playerPosition: player
+				? { x: player.object.position.x, y: player.object.position.y, z: player.object.position.z }
+				: { x: 0, y: 0, z: 0 },
+			playtime: playtimeMs,
+			unlockedScenes: ["gate-room"],
+		}),
+		gotoScene: context.gotoScene,
+	});
+
+	setSceneManagers({ dialogue: dialogueManager, npc: npcManager, quest: questManager, save: saveManager });
+
 	// ─── Resources + Supply Crates ───────────────────────────────────────
 	initResources();
 
@@ -1513,7 +1575,8 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	const SECONDS_PER_REPAIR_PART = 1.0;
 	let nearestSub: SubsystemVisual | null = null;
 	let nearestCrate: SupplyCrate | null = null;
-	type InteractTarget = "subsystem" | "crate" | null;
+	let nearestNpc: NpcInstance | null = null;
+	type InteractTarget = "subsystem" | "crate" | "npc" | null;
 	let interactTarget: InteractTarget = null;
 	let repairingSubsystemId: string | null = null;
 	/** Total segments needed to fully repair this subsystem. */
@@ -1568,6 +1631,8 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 						repairBar.init(segmentsToFull, nearestSub.mesh.position);
 					}
 				}
+			} else if (interactTarget === "npc" && nearestNpc && !nearestNpc.inDialogue) {
+				emit("player:interact", { targetId: nearestNpc.definition.id, action: "talk" });
 			}
 		}
 	};
@@ -1583,6 +1648,8 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 
 	return {
 		update(delta: number) {
+			playtimeMs += delta * 1000;
+			npcManager.update(delta);
 			updateGate(gate, delta);
 
 			// ─── Ship State driven lighting ──────────────────────────────
@@ -1625,9 +1692,10 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 					emit("player:entered:section", { sectionId: newSection });
 				}
 
-				// Find nearest interactable (crates or subsystems)
+				// Find nearest interactable (crates, subsystems, or NPCs)
 				nearestSub = null;
 				nearestCrate = null;
+				nearestNpc = null;
 				interactTarget = null;
 				let nearestDist = 2.5;
 				const pp = player.object.position;
@@ -1651,6 +1719,20 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 						nearestCrate = null;
 						nearestDist = dist;
 						interactTarget = "subsystem";
+					}
+				}
+
+				// Check NPCs
+				for (const npc of npcManager.getAllNpcs()) {
+					const { position, behavior } = npc.definition;
+					const npcVec = new THREE.Vector3(position.x, position.y, position.z);
+					const dist = npcVec.distanceTo(pp);
+					if (dist < behavior.interactionRadius && dist < nearestDist) {
+						nearestNpc = npc;
+						nearestSub = null;
+						nearestCrate = null;
+						nearestDist = dist;
+						interactTarget = "npc";
 					}
 				}
 
@@ -1712,6 +1794,9 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 						interactPrompt.style.display = "block";
 						interactPrompt.textContent = `${sub.type} \u2014 Optimal`;
 					}
+				} else if (interactTarget === "npc" && nearestNpc) {
+					interactPrompt.style.display = "block";
+					interactPrompt.textContent = `[E] Talk to ${nearestNpc.definition.name}`;
 				} else {
 					interactPrompt.style.display = "none";
 				}
@@ -1758,6 +1843,11 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			shipDebugEl.remove();
 			interactPrompt.remove();
 			menu.dispose();
+			dialogueManager.dispose();
+			npcManager.dispose();
+			questManager.dispose();
+			saveManager.dispose();
+			setSceneManagers(null);
 			shipState.dispose();
 			bus.cleanup();
 			wallMeshes.length = 0;

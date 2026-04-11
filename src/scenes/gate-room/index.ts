@@ -1478,6 +1478,27 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	dialogueManager.registerTree(drRushDialogue);
 	registerDestinyPowerCrisis(questManager);
 
+	// ─── Dr. Rush placeholder visual ─────────────────────────────────────
+	// TODO: replace with Rush's VRM model once NPC VRM loading is wired up.
+	// Position matches drRushNpc.position — near Destiny's main console (z=-8).
+	const rushPos = drRushNpc.position;
+	const rushBodyGeo = new THREE.CapsuleGeometry(0.25, 1.1, 4, 8);
+	const rushBodyMat = new THREE.MeshStandardMaterial({
+		color: 0x2c3e50, roughness: 0.7, metalness: 0.05,
+	});
+	const rushMesh = new THREE.Mesh(rushBodyGeo, rushBodyMat);
+	rushMesh.position.set(rushPos.x, rushPos.y + 0.8, rushPos.z);
+	scene.add(rushMesh);
+
+	// Glowing blue indicator dot above Rush so the player can find him
+	const rushDotGeo = new THREE.SphereGeometry(0.08, 8, 6);
+	const rushDotMat = new THREE.MeshStandardMaterial({
+		color: 0x4488ff, emissive: 0x4488ff, emissiveIntensity: 1.2,
+	});
+	const rushDot = new THREE.Mesh(rushDotGeo, rushDotMat);
+	rushDot.position.set(rushPos.x, rushPos.y + 2.0, rushPos.z);
+	scene.add(rushDot);
+
 	// When Rush ends a dialogue session that accepted the quest, start it.
 	// startQuest() is idempotent so it's safe to call on every conversation end.
 	bus.on("crew:dialogue:ended", ({ speakerId }) => {
@@ -1843,6 +1864,14 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			shipDebugEl.remove();
 			interactPrompt.remove();
 			menu.dispose();
+			// Rush placeholder cleanup
+			scene.remove(rushMesh);
+			scene.remove(rushDot);
+			rushBodyGeo.dispose();
+			rushBodyMat.dispose();
+			rushDotGeo.dispose();
+			rushDotMat.dispose();
+
 			dialogueManager.dispose();
 			npcManager.dispose();
 			questManager.dispose();

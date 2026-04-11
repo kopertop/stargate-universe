@@ -8,3 +8,4 @@ production/session-logs/
 
 # OS
 .DS_Store
+package-lock.json

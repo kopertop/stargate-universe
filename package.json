@@ -26,6 +26,7 @@
     "@ggez/runtime-physics-crashcat": "^0.1.8",
     "@ggez/shared": "^0.1.8",
     "@ggez/three-runtime": "^0.1.8",
+    "@kopertop/vibe-game-engine": "file:../vibe-game-engine",
     "@pixiv/three-vrm": "^3.5.1",
     "@pixiv/three-vrm-animation": "^3.5.1",
     "mitt": "^3.0.1",

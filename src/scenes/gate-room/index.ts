@@ -17,6 +17,7 @@ import { registerDestinyPowerCrisis } from "../../quests/destiny-power-crisis";
 import type { NpcInstance } from "../../types/npc";
 import { setSceneManagers } from "./context";
 import { initResources, getResource, addResource, consumeResource, hasResource, getAllResources } from "../../systems/resources";
+import { createHud, createCompass } from "@kopertop/vibe-game-engine";
 
 const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 	import: "default",
@@ -1369,6 +1370,7 @@ function createInteractionPrompt(): HTMLDivElement {
 
 async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycle> {
 	const { scene, camera, player, renderer } = context;
+	camera.rotation.order = 'YXZ';
 	const bus = scopedBus();
 
 	wallMeshes.length = 0;
@@ -1560,6 +1562,9 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 
 	// ─── UI elements ─────────────────────────────────────────────────────
 	const hud = createHUD();
+	const compassHud = createHud(renderer.domElement.parentElement ?? document.body);
+	const compass = createCompass({ position: 'top-right', style: 'sci-fi' });
+	compassHud.mount(compass);
 	const debug = createDebugOverlay();
 	debug.element.style.display = "none";
 	const menu = createEscapeMenu(renderer.domElement);
@@ -1672,6 +1677,8 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			playtimeMs += delta * 1000;
 			npcManager.update(delta);
 			updateGate(gate, delta);
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			compassHud.update(camera as any, delta);
 
 			// ─── Ship State driven lighting ──────────────────────────────
 			// Recalculate power distribution so section power reflects repairs
@@ -1860,6 +1867,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			repairBar.dispose();
 			cleanupFullscreen();
 			hud.remove();
+			compassHud.dispose();
 			debug.element.remove();
 			shipDebugEl.remove();
 			interactPrompt.remove();

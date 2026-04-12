@@ -22,7 +22,8 @@ import { emit, scopedBus } from "../../systems/event-bus";
 import { createQuestManager } from "../../systems/quest-manager";
 import { registerAirCrisis, QUEST_ID as AIR_CRISIS_QUEST_ID } from "../../quests/air-crisis";
 import { isLimeCollected, setLimeCollected } from "../../systems/scene-transition-state";
-import { createHud, createCompass } from "@kopertop/vibe-game-engine";
+import { createHud } from "@kopertop/vibe-game-engine";
+import { createHorizontalCompass } from "../../ui/horizontal-compass";
 
 const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 	import: "default",
@@ -386,7 +387,8 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	const returnPrompt = createReturnPrompt();
 
 	const compassHud = createHud(renderer.domElement.parentElement ?? document.body);
-	const compass = createCompass({ position: "top-right", style: "sci-fi" });
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const compass = createHorizontalCompass() as any;
 	compassHud.mount(compass);
 
 	// ─── State ────────────────────────────────────────────────────────

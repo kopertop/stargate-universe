@@ -111,8 +111,8 @@
       "crouchHeight": 1.2,
       "height": 1.8,
       "jumpHeight": 1.6,
-      "movementSpeed": 3.5,
-      "runningSpeed": 5.5
+      "movementSpeed": 7.0,
+      "runningSpeed": 11.0
     },
     "world": {
       "ambientColor": "#d4922a",

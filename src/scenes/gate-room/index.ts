@@ -19,7 +19,15 @@ import type { NpcInstance } from "../../types/npc";
 import { setSceneManagers } from "./context";
 import { initResources, getResource, addResource, consumeResource, hasResource, getAllResources } from "../../systems/resources";
 import { isLimeCollected, setLimeCollected } from "../../systems/scene-transition-state";
-import { createHud, createCompass, createDialoguePanel } from "@kopertop/vibe-game-engine";
+import { createHud, createDialoguePanel } from "@kopertop/vibe-game-engine";
+import { createHorizontalCompass } from "../../ui/horizontal-compass";
+import { box } from "crashcat";
+import {
+	CRASHCAT_OBJECT_LAYER_STATIC,
+	MotionType,
+	rigidBody,
+	type CrashcatRigidBody,
+} from "@ggez/runtime-physics-crashcat";
 import type { DialoguePanelEventBus } from "@kopertop/vibe-game-engine";
 
 const assetUrlLoaders = import.meta.glob("./assets/**/*", {
@@ -1567,6 +1575,10 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		}
 	});
 
+	// Gate blocker — declared here so the quest:completed handler can close over it.
+	// Assigned after HUD setup below; removed when the air crisis quest completes.
+	let gateBlocker: CrashcatRigidBody | null = null;
+
 	// HUD TODO — wire these to on-screen indicators once HUD layer exists
 	bus.on("quest:started", ({ questId }) => {
 		console.log(`[HUD TODO] Quest started: ${questId}`);
@@ -1576,6 +1588,11 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	});
 	bus.on("quest:completed", ({ questId }) => {
 		console.log(`[HUD TODO] Quest completed: ${questId}`);
+		// Air crisis done → scrubbers fixed → gate is now passable
+		if (questId === AIR_CRISIS_QUEST_ID && gateBlocker !== null) {
+			rigidBody.remove(context.physicsWorld, gateBlocker);
+			gateBlocker = null;
+		}
 	});
 	bus.on("save:completed", ({ slotId }) => {
 		console.log(`[HUD TODO] Saved to slot: ${slotId}`);
@@ -1618,8 +1635,24 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	// ─── UI elements ─────────────────────────────────────────────────────
 	const hud = createHUD();
 	const compassHud = createHud(renderer.domElement.parentElement ?? document.body);
-	const compass = createCompass({ position: 'top-right', style: 'sci-fi' });
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const compass = createHorizontalCompass() as any;
 	compassHud.mount(compass);
+
+	// ── Gate blocker ───────────────────────────────────────────────────────────
+	// Invisible static box covering the Stargate opening. Physically prevents the
+	// player walking through before the air crisis is resolved. The blocker is
+	// removed in the quest:completed handler above when AIR_CRISIS_QUEST_ID fires.
+	// halfExtents slightly larger than GATE_RADIUS so a box covers the circular gap.
+	gateBlocker = rigidBody.create(context.physicsWorld, {
+		motionType: MotionType.STATIC,
+		objectLayer: CRASHCAT_OBJECT_LAYER_STATIC,
+		shape: box.create({
+			// Vec3 in mathcat is a labeled tuple [x, y, z], not { x, y, z }
+			halfExtents: [GATE_RADIUS + 0.3, GATE_RADIUS + 0.3, 0.2],
+		}),
+		position: [GATE_CENTER.x, GATE_CENTER.y, GATE_CENTER.z],
+	});
 
 	// Dev / test support: ?lime=1 URL param pre-sets the lime carry state so that
 	// tests can load gate-room with the banner visible without going through the

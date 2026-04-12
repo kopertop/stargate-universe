@@ -17,7 +17,8 @@ import { registerDestinyPowerCrisis } from "../../quests/destiny-power-crisis";
 import type { NpcInstance } from "../../types/npc";
 import { setSceneManagers } from "./context";
 import { initResources, getResource, addResource, consumeResource, hasResource, getAllResources } from "../../systems/resources";
-import { createHud, createCompass } from "@kopertop/vibe-game-engine";
+import { createHud, createCompass, createDialoguePanel } from "@kopertop/vibe-game-engine";
+import type { DialoguePanelEventBus } from "@kopertop/vibe-game-engine";
 
 const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 	import: "default",
@@ -1565,6 +1566,17 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	const compassHud = createHud(renderer.domElement.parentElement ?? document.body);
 	const compass = createCompass({ position: 'top-right', style: 'sci-fi' });
 	compassHud.mount(compass);
+
+	// Wire the dialogue panel — adapter bridges SGU's typed bus to the engine's
+	// generic DialoguePanelEventBus interface via safe any-casts at the boundary.
+	const dialogueBus: DialoguePanelEventBus = {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		on:   (event, handler) => bus.on(event as any, handler as any),
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		emit: (event, data?)  => emit(event as any, data as any),
+	};
+	const dialoguePanel = createDialoguePanel(dialogueBus, { style: 'sci-fi' });
+	compassHud.mount(dialoguePanel);
 	const debug = createDebugOverlay();
 	debug.element.style.display = "none";
 	const menu = createEscapeMenu(renderer.domElement);
@@ -1867,6 +1879,8 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			repairBar.dispose();
 			cleanupFullscreen();
 			hud.remove();
+			compassHud.unmount(dialoguePanel);
+			dialoguePanel.dispose();
 			compassHud.dispose();
 			debug.element.remove();
 			shipDebugEl.remove();

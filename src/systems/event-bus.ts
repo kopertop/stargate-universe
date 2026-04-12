@@ -47,7 +47,17 @@ type QuestEvents = {
 /** Crew & Dialogue events */
 type CrewEvents = {
 	"crew:dialogue:started": { speakerId: string; dialogueId: string };
-	"crew:dialogue:node": { speakerId: string; dialogueId: string; nodeId: string };
+	"crew:dialogue:node": {
+		speakerId: string;
+		dialogueId: string;
+		nodeId: string;
+		/** Displayed speaker name (e.g. "Dr. Nicholas Rush") */
+		speaker: string;
+		/** The line of dialogue spoken by the NPC */
+		text: string;
+		/** Player-selectable response options for this node */
+		options: ReadonlyArray<{ id: string; label: string }>;
+	};
 	"crew:dialogue:ended": { speakerId: string; dialogueId: string };
 	"crew:choice:made": { dialogueId: string; nodeId: string; responseId: string };
 	"crew:morale:changed": { morale: number };
@@ -72,6 +82,8 @@ type PlayerEvents = {
 	"player:interact": { targetId: string; action: string };
 	"player:entered:section": { sectionId: string };
 	"player:kino:deployed": Record<string, never>;
+	/** Fired by the UI when the player picks a dialogue response option. */
+	"player:dialogue:choice": { responseId: string };
 };
 
 /** Episode events */
@@ -225,8 +237,10 @@ export function scopedBus() {
 	const unsubscribers: Array<() => void> = [];
 
 	return {
-		on<K extends GameEventName>(event: K, handler: Handler<GameEventMap[K]>): void {
-			unsubscribers.push(on(event, handler));
+		on<K extends GameEventName>(event: K, handler: Handler<GameEventMap[K]>): () => void {
+			const unsub = on(event, handler);
+			unsubscribers.push(unsub);
+			return unsub;
 		},
 
 		onAny(handler: (event: GameEventName, payload: unknown) => void): void {

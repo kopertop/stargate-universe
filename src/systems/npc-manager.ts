@@ -73,6 +73,11 @@ export const createNpcManager = (dialogueManager: DialogueManager): NpcManager =
 		dialogueManager.startDialogue(npc.definition.dialogueTreeId ?? npc.definition.id);
 	}));
 
+	// Player selected a dialogue response option — advance the dialogue tree
+	unsubscribers.push(on('player:dialogue:choice', ({ responseId }) => {
+		dialogueManager.advance(responseId);
+	}));
+
 	// Dialogue ended — return NPC to its starting state
 	unsubscribers.push(on('crew:dialogue:ended', ({ speakerId }) => {
 		const npc = npcs.get(speakerId);

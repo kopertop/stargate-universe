@@ -74,7 +74,14 @@ export const createDialogueManager = (): DialogueManager => {
 		const startNode = getNode(tree, tree.startNodeId);
 		startNode.onEnter?.(state);
 		emit('crew:dialogue:started', { speakerId: npcId, dialogueId: tree.id });
-		emit('crew:dialogue:node', { speakerId: npcId, dialogueId: tree.id, nodeId: startNode.id });
+		emit('crew:dialogue:node', {
+			speakerId: npcId,
+			dialogueId: tree.id,
+			nodeId: startNode.id,
+			speaker: startNode.speaker,
+			text: startNode.text,
+			options: getVisibleOptions(startNode, state).map(o => ({ id: o.id, label: o.label })),
+		});
 		return startNode;
 	};
 
@@ -101,6 +108,9 @@ export const createDialogueManager = (): DialogueManager => {
 			speakerId: session.tree.id,
 			dialogueId: session.tree.id,
 			nodeId: nextNode.id,
+			speaker: nextNode.speaker,
+			text: nextNode.text,
+			options: getVisibleOptions(nextNode, session.state).map(o => ({ id: o.id, label: o.label })),
 		});
 		// Auto-end on terminal nodes (no options)
 		if (nextNode.options.length === 0) { endDialogue(); return null; }

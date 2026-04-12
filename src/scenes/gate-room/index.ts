@@ -37,6 +37,7 @@ import {
 	type CrashcatRigidBody,
 } from "@ggez/runtime-physics-crashcat";
 import type { DialoguePanelEventBus } from "@kopertop/vibe-game-engine";
+import { loadVRMCharacter, type CharacterLoadResult } from "../../characters/character-loader";
 
 const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 	import: "default",
@@ -1561,19 +1562,12 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	registerAirCrisis(questManager);
 	questManager.startQuest(AIR_CRISIS_QUEST_ID);
 
-	// ─── Dr. Rush placeholder visual ─────────────────────────────────────
-	// TODO: replace with Rush's VRM model once NPC VRM loading is wired up.
-	// Position matches drRushNpc.position — near Destiny's main console (z=-8).
+	// ─── Dr. Rush real character model ──────────────────────────────────
+	// Loads VRM (with GLB fallback) via the unified character loader.
 	const rushPos = drRushNpc.position;
-	const rushBodyGeo = new THREE.CapsuleGeometry(0.25, 1.1, 4, 8);
-	const rushBodyMat = new THREE.MeshStandardMaterial({
-		color: 0x2c3e50, roughness: 0.7, metalness: 0.05,
-	});
-	const rushMesh = new THREE.Mesh(rushBodyGeo, rushBodyMat);
-	rushMesh.position.set(rushPos.x, rushPos.y + 0.8, rushPos.z);
-	scene.add(rushMesh);
+	let rushCharacter: CharacterLoadResult | undefined;
 
-	// Glowing blue indicator dot above Rush so the player can find him
+	// Glowing indicator dot above Rush — shown while loading, kept as nav aid
 	const rushDotGeo = new THREE.SphereGeometry(0.08, 8, 6);
 	const rushDotMat = new THREE.MeshStandardMaterial({
 		color: 0x4488ff, emissive: 0x4488ff, emissiveIntensity: 1.2,
@@ -1581,6 +1575,43 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	const rushDot = new THREE.Mesh(rushDotGeo, rushDotMat);
 	rushDot.position.set(rushPos.x, rushPos.y + 2.0, rushPos.z);
 	scene.add(rushDot);
+
+	// Load Dr. Rush's character model; fall back to capsule on error
+	void loadVRMCharacter("/assets/characters/dr-rush.vrm")
+		.then((char) => {
+			rushCharacter = char;
+			// Position and face player spawn (+Z)
+			char.root.position.set(rushPos.x, rushPos.y, rushPos.z);
+			char.root.rotation.y = 0; // faces +Z after VRM's built-in π rotation
+			scene.add(char.root);
+			console.log("[GateRoom] Dr. Rush character loaded (", char.format, ")");
+		})
+		.catch((err: unknown) => {
+			console.warn("[GateRoom] Dr. Rush VRM load failed — capsule fallback", err);
+			const geo = new THREE.CapsuleGeometry(0.25, 1.1, 4, 8);
+			const mat = new THREE.MeshStandardMaterial({ color: 0x2c3e50, roughness: 0.7, metalness: 0.05 });
+			const mesh = new THREE.Mesh(geo, mat);
+			mesh.position.set(rushPos.x, rushPos.y + 0.8, rushPos.z);
+			scene.add(mesh);
+		});
+
+	// ─── Player character visual ──────────────────────────────────────────
+	// VRM/GLB model attached to the physics body so it follows player movement.
+	let playerCharacter: CharacterLoadResult | undefined;
+	if (player) {
+		void loadVRMCharacter("/assets/characters/player.vrm")
+			.then((char) => {
+				playerCharacter = char;
+				// Re-parent under player.object so it moves with the physics body.
+				// Offset Y so the model stands at the capsule's floor level.
+				char.root.position.set(0, -0.9, 0);
+				player.object.add(char.root);
+				console.log("[GateRoom] Player character loaded (", char.format, ")");
+			})
+			.catch((err: unknown) => {
+				console.warn("[GateRoom] Player VRM load failed — no visual overlay", err);
+			});
+	}
 
 	// When Rush ends a dialogue session that accepted the power quest, start it.
 	// startQuest() is idempotent so it's safe to call on every conversation end.
@@ -1996,6 +2027,9 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			}
 
 			npcManager.update(delta);
+			// ─── VRM/GLB character physics + animation ──────────────────────
+			if (rushCharacter) rushCharacter.update(delta);
+			if (playerCharacter) playerCharacter.update(delta);
 			updateGate(gate, delta);
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			compassHud.update(camera as any, delta);
@@ -2232,11 +2266,10 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			interactPrompt.remove();
 			co2Display.remove();
 			menu.dispose();
-			// Rush placeholder cleanup
-			scene.remove(rushMesh);
+			// Rush and player character cleanup
+			rushCharacter?.dispose();
+			playerCharacter?.dispose();
 			scene.remove(rushDot);
-			rushBodyGeo.dispose();
-			rushBodyMat.dispose();
 			rushDotGeo.dispose();
 			rushDotMat.dispose();
 

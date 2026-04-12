@@ -16,6 +16,7 @@ import {
   type CrashcatRigidBody
 } from "@ggez/runtime-physics-crashcat";
 import {
+  BoxGeometry,
   CapsuleGeometry,
   Group,
   MathUtils,
@@ -23,6 +24,7 @@ import {
   MeshStandardMaterial,
   PerspectiveCamera,
   Scene,
+  SphereGeometry,
   Vector3
 } from "three";
 
@@ -86,7 +88,7 @@ export class StarterPlayerController {
   private readonly sceneSettings: Pick<SceneSettings, "player" | "world">;
   private readonly standingHeight: number;
   private readonly supportVelocity = new Vector3();
-  private readonly visual: Mesh;
+  private readonly visual: Group;
   private animController: VrmPlayerAnimationController | undefined;
   private forwardInput = 0;
   private isRepairing = false;
@@ -95,6 +97,8 @@ export class StarterPlayerController {
   private vrmCharacter: VrmCharacterInstance | undefined;
   private readonly world: CrashcatPhysicsWorld;
   private yaw = 0;
+  /** Separate yaw for the character mesh — lerps toward movement direction independently of camera. */
+  private meshYaw = 0;
 
   // ── External (gamepad) input override ──────────────────────────────────────
   /** External forward/strafe axes [-1, 1]. Blended with keyboard via max-magnitude. */
@@ -122,16 +126,44 @@ export class StarterPlayerController {
     this.groundProbeSettings.collideWithBackfaces = true;
     this.groundProbeSettings.treatConvexAsSolid = false;
 
-    const visualHeight = Math.max(0.2, this.halfHeight * 2);
-    this.visual = new Mesh(
-      new CapsuleGeometry(this.radius, visualHeight, 4, 12),
-      new MeshStandardMaterial({
-        color: "#7dd3fc",
-        emissive: "#0f4c81",
-        emissiveIntensity: 0.12,
-        roughness: 0.62
-      })
-    );
+    // ── Soldier character mesh (primitives: body + head + shoulders) ──────────
+    // Entire group is positioned so feet align with the base of the physics capsule.
+    const h = this.standingHeight;
+    const r = this.radius;
+
+    const torsoMat = new MeshStandardMaterial({ color: 0x1e2033, roughness: 0.75, metalness: 0.15 });
+    const legMat   = new MeshStandardMaterial({ color: 0x14141e, roughness: 0.85 });
+    const headMat  = new MeshStandardMaterial({ color: 0x2a2a3c, roughness: 0.65 });
+    const padMat   = new MeshStandardMaterial({ color: 0x111122, roughness: 0.6, metalness: 0.3 });
+
+    // Legs (lower capsule)
+    const legMesh  = new Mesh(new CapsuleGeometry(r * 0.88, h * 0.3, 4, 8), legMat);
+    legMesh.position.y = h * 0.22;
+    legMesh.castShadow = true; legMesh.receiveShadow = true;
+
+    // Torso (upper capsule)
+    const torsoMesh = new Mesh(new CapsuleGeometry(r * 1.05, h * 0.22, 4, 8), torsoMat);
+    torsoMesh.position.y = h * 0.6;
+    torsoMesh.castShadow = true; torsoMesh.receiveShadow = true;
+
+    // Head (sphere, slight forward offset for over-the-shoulder readability)
+    const headMesh = new Mesh(new SphereGeometry(r * 0.82, 10, 8), headMat);
+    headMesh.position.set(0, h * 0.88, r * 0.08);
+    headMesh.castShadow = true; headMesh.receiveShadow = true;
+
+    // Shoulder pads
+    const padGeo = new BoxGeometry(r * 0.72, r * 0.44, r * 0.88);
+    const leftPad  = new Mesh(padGeo, padMat);
+    const rightPad = new Mesh(padGeo, padMat);
+    leftPad.position.set(-r * 1.35, h * 0.69, 0);
+    rightPad.position.set( r * 1.35, h * 0.69, 0);
+    leftPad.castShadow = true;  leftPad.receiveShadow = true;
+    rightPad.castShadow = true; rightPad.receiveShadow = true;
+
+    this.visual = new Group();
+    // Offset so feet sit at the bottom of the physics capsule
+    this.visual.position.y = -this.footOffset;
+    this.visual.add(legMesh, torsoMesh, headMesh, leftPad, rightPad);
 
     const spawnPosition = {
       x: options.spawn.position.x,
@@ -154,10 +186,9 @@ export class StarterPlayerController {
     });
     this.groundProbeFilter.bodyFilter = (candidate) => candidate.id !== this.body.id;
 
-    this.visual.castShadow = true;
-    this.visual.receiveShadow = true;
     this.object.add(this.visual);
     this.object.position.set(spawnPosition.x, spawnPosition.y, spawnPosition.z);
+    this.meshYaw = this.yaw; // sync initial mesh facing to spawn rotation
 
     // Attach audio listener to camera
     AudioManager.getInstance().attachListener(this.camera);
@@ -265,12 +296,13 @@ export class StarterPlayerController {
   updateAfterStep(deltaSeconds: number) {
     const translation = this.body.position;
     this.object.position.set(translation[0], translation[1], translation[2]);
-    this.visual.rotation.set(0, this.yaw, 0);
+    // Use meshYaw so the character faces movement direction, not camera direction
+    this.visual.rotation.set(0, this.meshYaw, 0);
 
     // VRM character: rotate the VRM root to face movement direction
     if (this.vrmCharacter?.vrm) {
       // VRM models face +Z; the controller's forward is -Z. Add π to align.
-      this.vrmCharacter.root.rotation.set(0, this.yaw + Math.PI, 0);
+      this.vrmCharacter.root.rotation.set(0, this.meshYaw + Math.PI, 0);
       // Hide capsule when VRM is loaded
       this.visual.visible = false;
       // Handle first-person head hiding
@@ -319,11 +351,23 @@ export class StarterPlayerController {
       this.camera.position.copy(eyePosition);
       this.camera.lookAt(eyePosition.clone().add(viewDirection));
     } else if (this.cameraMode === "third-person") {
-      const followDistance = Math.max(3.2, this.standingHeight * 2.7);
-      const targetCameraPosition = eyePosition.clone().addScaledVector(viewDirection, -followDistance);
-      targetCameraPosition.y += this.standingHeight * 0.24;
-      this.camera.position.lerp(targetCameraPosition, 1 - Math.exp(-deltaSeconds * 10));
-      this.camera.lookAt(eyePosition);
+      // Over-the-shoulder orbit: pivot at chest/shoulder height, 3.5 units back.
+      // Camera orbits freely via yaw/pitch; character mesh faces movement direction.
+      const ORBIT_DISTANCE = 3.5;
+      const lookTarget = scratchLookTarget.set(
+        translation[0],
+        translation[1] + this.standingHeight * 0.72, // chest/shoulder pivot
+        translation[2]
+      );
+      const targetCameraPosition = scratchTargetCamPos
+        .copy(lookTarget)
+        .addScaledVector(viewDirection, -ORBIT_DISTANCE);
+      // Guarantee at least 1.5 units above player center (prevents floor-clipping on steep downward pitch)
+      const minCamY = translation[1] + 1.5;
+      if (targetCameraPosition.y < minCamY) targetCameraPosition.y = minCamY;
+      // Spring-lerp for smooth follow — exp(-8t) gives ~33% remaining lag at 60fps
+      this.camera.position.lerp(targetCameraPosition, 1 - Math.exp(-deltaSeconds * 8));
+      this.camera.lookAt(lookTarget);
     } else {
       const followDistance = Math.max(8, this.standingHeight * 5.2);
       const targetCameraPosition = eyePosition.clone().addScaledVector(viewDirection, -followDistance);
@@ -373,6 +417,18 @@ export class StarterPlayerController {
       .set(0, 0, 0)
       .addScaledVector(right, this.strafeInput)
       .addScaledVector(forward, this.forwardInput);
+
+    // ── Decouple mesh yaw from camera yaw ───────────────────────────────────
+    // Rotate the character mesh toward movement direction so camera can orbit
+    // freely while the player mesh faces where they're going (Skyrim-style).
+    if (moveDirection.lengthSq() > 1e-4) {
+      const targetMeshYaw = Math.atan2(-moveDirection.x, -moveDirection.z);
+      let yawDelta = targetMeshYaw - this.meshYaw;
+      // Shortest-path wrap to [-π, π]
+      while (yawDelta >  Math.PI) yawDelta -= 2 * Math.PI;
+      while (yawDelta < -Math.PI) yawDelta += 2 * Math.PI;
+      this.meshYaw += yawDelta * Math.min(1, deltaSeconds * 12);
+    }
 
     if (moveDirection.lengthSq() > 0) {
       moveDirection.normalize().multiplyScalar(speed);
@@ -602,7 +658,9 @@ function resolveViewDirection(yaw: number, pitch: number, target: Vector3) {
 }
 
 const scratchForward = new Vector3();
+const scratchLookTarget = new Vector3();
 const scratchMoveDirection = new Vector3();
 const scratchRight = new Vector3();
+const scratchTargetCamPos = new Vector3();
 const scratchViewDirection = new Vector3();
 const DOWN_DIRECTION: [number, number, number] = [0, -1, 0];

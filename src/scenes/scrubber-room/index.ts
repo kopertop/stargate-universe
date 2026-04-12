@@ -171,7 +171,7 @@ function buildScrubberUnit(scene: THREE.Scene, pos: THREE.Vector3): ScrubberUnit
 	group.add(statusLight);
 
 	// Coloured point light cast from status indicator
-	const pointLight = new THREE.PointLight(COLOR_STATUS_RED, 1.5, 3.5, 2.0);
+	const pointLight = new THREE.PointLight(COLOR_STATUS_RED, 60, 3.5, 2.0);
 	pointLight.position.copy(statusLight.position);
 	group.add(pointLight);
 
@@ -233,10 +233,9 @@ function buildRepairPanel(scene: THREE.Scene, pos: THREE.Vector3): RepairPanel {
 // ─── Lighting ─────────────────────────────────────────────────────────────────
 
 function buildLighting(scene: THREE.Scene): THREE.PointLight[] {
-	// Very dim red/orange ambient — emergency power only.
-	// Two layers: a base fill so surfaces are readable, plus a coloured emergency tint.
-	scene.add(new THREE.AmbientLight(0x110000, 0.4));
-	scene.add(new THREE.AmbientLight(0x200000, 0.2));
+	// Hemisphere fill with emergency red tint — physical units, sky from above, dark ground bounce.
+	// Replaces dual AmbientLight(0.4/0.2) which were near-zero in WebGPU physical mode.
+	scene.add(new THREE.HemisphereLight(0x330000, 0x110000, 1.5));
 
 	// Sporadic overhead emergency strip lights
 	const positions: [number, number, number][] = [
@@ -248,9 +247,9 @@ function buildLighting(scene: THREE.Scene): THREE.PointLight[] {
 	const lights: THREE.PointLight[] = [];
 	const housingMat = new THREE.MeshStandardMaterial({ color: 0x220000, roughness: 0.5 });
 	for (const [x, y, z] of positions) {
-		// Intensity 6.0 base — the update loop scales this per-frame with a flicker factor.
-		// Previous value of 1.2 made the room too dark to see the scrubbers clearly.
-		const light = new THREE.PointLight(COLOR_EMERGENCY_RED, 6.0, 9, 1.8);
+		// Intensity 200 cd base — physical units; update loop scales with flicker factor.
+		// Previous value of 6.0 was near-zero energy in WebGPU physical mode.
+		const light = new THREE.PointLight(COLOR_EMERGENCY_RED, 200, 9, 1.8);
 		light.position.set(x, y, z);
 		scene.add(light);
 		lights.push(light);
@@ -466,7 +465,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 				const flicker =
 					0.8 + Math.sin(elapsed * 8.3 + light.position.x) * 0.2
 					+ Math.sin(elapsed * 13.7 + light.position.z) * 0.1;
-				light.intensity = repaired ? flicker * 0.25 : flicker * 6.0;
+				light.intensity = repaired ? flicker * 8 : flicker * 200;
 			}
 
 			// Scrubber status light pulse
@@ -475,7 +474,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 					? 0.8 + Math.sin(elapsed * 2.5) * 0.2
 					: 0.7 + Math.sin(elapsed * 4.0 + unit.group.position.x) * 0.3;
 				unit.statusLightMat.emissiveIntensity = pulse * (repaired ? 1.0 : 1.5);
-				unit.pointLight.intensity = pulse * (repaired ? 0.8 : 1.5);
+				unit.pointLight.intensity = pulse * (repaired ? 30 : 60);
 			}
 
 			if (!player) return;

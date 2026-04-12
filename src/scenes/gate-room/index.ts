@@ -364,43 +364,44 @@ function buildLighting(scene: THREE.Scene, debugObjects: THREE.Object3D[]): THRE
 	const lights: THREE.PointLight[] = [];
 	const gateZ = GATE_CENTER.z;
 
-	// Low-level ambient fill — prevents pitch-black corners without burning point light budget.
-	// Intensity 0.3 is enough to reveal surface normals without washing out the moody SGU look.
-	const ambientLight = new THREE.AmbientLight(0x0a0a20, 0.3);
-	scene.add(ambientLight);
+	// Hemisphere fill — sky colour from above, ground bounce from below. Physical units: ~2 lux.
+	// Replaces AmbientLight(0.3) which was near-zero in WebGPU physical mode.
+	const hemisphereLight = new THREE.HemisphereLight(0x4466aa, 0x111122, 2.0);
+	scene.add(hemisphereLight);
 
 	// 1. Single overhead directional-style light for general visibility
-	const overheadLight = new THREE.PointLight(0xffeedd, 1.2, 40, 1.5);
+	// Physical units: ~80 candela ≈ dim corridor bulb
+	const overheadLight = new THREE.PointLight(0xffeedd, 80, 40, 1.5);
 	overheadLight.position.set(0, 7.5, 2);
 	scene.add(overheadLight);
 	lights.push(overheadLight);
 
-	// 2. Gate front — blue Ancient glow
-	const gateFrontLight = new THREE.PointLight(COLOR_ANCIENT_GLOW, 3, 15, 1.5);
+	// 2. Gate front — blue Ancient glow (~200 cd: vivid accent, short range)
+	const gateFrontLight = new THREE.PointLight(COLOR_ANCIENT_GLOW, 200, 15, 1.5);
 	gateFrontLight.position.set(0, 2, gateZ + 2);
 	scene.add(gateFrontLight);
 	lights.push(gateFrontLight);
 
-	// 3. Gate back — backlight the ring
-	const gateBackLight = new THREE.PointLight(COLOR_ANCIENT_GLOW, 2.5, 12, 1.5);
+	// 3. Gate back — backlight the ring (~150 cd)
+	const gateBackLight = new THREE.PointLight(COLOR_ANCIENT_GLOW, 150, 12, 1.5);
 	gateBackLight.position.set(0, 3.5, gateZ - 3);
 	scene.add(gateBackLight);
 	lights.push(gateBackLight);
 
-	// 4. Gate top — highlights the upper ring
-	const gateTopLight = new THREE.PointLight(COLOR_ANCIENT_GLOW, 1.5, 10, 2);
+	// 4. Gate top — highlights the upper ring (~100 cd, tighter range)
+	const gateTopLight = new THREE.PointLight(COLOR_ANCIENT_GLOW, 100, 10, 2);
 	gateTopLight.position.set(0, 7, gateZ);
 	scene.add(gateTopLight);
 	lights.push(gateTopLight);
 
 	// 5-6. Warm amber side lights (just 2, not 10)
 	const COLOR_WARM_ACCENT = 0xffaa44;
-	const leftSide = new THREE.PointLight(COLOR_WARM_ACCENT, 1.0, 18, 1.5);
+	const leftSide = new THREE.PointLight(COLOR_WARM_ACCENT, 60, 18, 1.5);
 	leftSide.position.set(-ROOM_WIDTH / 2 + 2, 3, 0);
 	scene.add(leftSide);
 	lights.push(leftSide);
 
-	const rightSide = new THREE.PointLight(COLOR_WARM_ACCENT, 1.0, 18, 1.5);
+	const rightSide = new THREE.PointLight(COLOR_WARM_ACCENT, 60, 18, 1.5);
 	rightSide.position.set(ROOM_WIDTH / 2 - 2, 3, 0);
 	scene.add(rightSide);
 	lights.push(rightSide);

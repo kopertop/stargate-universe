@@ -12,6 +12,10 @@
  *   result.update(delta);
  *   // On cleanup:
  *   result.dispose();
+ *
+ * Crew manifest shorthand:
+ *   const result = await loadCrewMember('rush');
+ *   // Reads /assets/characters/manifest.json, resolves path, and loads.
  */
 
 import type { VRM } from "@pixiv/three-vrm";
@@ -171,4 +175,88 @@ export const loadAnimationClip = async (
 	action.setLoop(loop, Infinity);
 	action.play();
 	return action;
+};
+
+// ─── Crew Manifest ────────────────────────────────────────────────────────────
+
+/**
+ * A single entry from `/assets/characters/manifest.json`.
+ * Short `id` fields (e.g. "rush", "eli") are the public API surface;
+ * `path` is the asset-server-relative URL for the VRM file.
+ */
+export type CrewManifestEntry = {
+	readonly id: string;
+	readonly name: string;
+	readonly path: string;
+	readonly role: string;
+	readonly gender: "male" | "female";
+	readonly isPlayer?: boolean;
+	readonly expressionIntensity?: number;
+	readonly notes?: string;
+};
+
+type CrewManifestJSON = {
+	readonly version: string;
+	readonly crew: readonly CrewManifestEntry[];
+};
+
+/** Cached manifest — fetched once on first call to `loadCrewMember`. */
+let _cachedManifest: CrewManifestJSON | undefined;
+const MANIFEST_URL = "/assets/characters/manifest.json";
+
+/**
+ * Fetch (and cache) the crew manifest JSON.
+ * Subsequent calls return the cached value without re-fetching.
+ */
+export const getCrewManifestJSON = async (): Promise<CrewManifestJSON> => {
+	if (_cachedManifest) return _cachedManifest;
+
+	const response = await fetch(MANIFEST_URL);
+	if (!response.ok) {
+		throw new Error(
+			`[CharacterLoader] Failed to fetch crew manifest: ${response.status} ${response.statusText}`,
+		);
+	}
+
+	_cachedManifest = (await response.json()) as CrewManifestJSON;
+	return _cachedManifest;
+};
+
+/**
+ * Look up a crew member's manifest entry by short ID (e.g. "rush", "eli").
+ * Returns `undefined` if the ID is not found.
+ */
+export const getCrewEntry = async (
+	id: string,
+): Promise<CrewManifestEntry | undefined> => {
+	const manifest = await getCrewManifestJSON();
+	return manifest.crew.find((entry) => entry.id === id);
+};
+
+/**
+ * Load a crew member by their short manifest ID (e.g. `"rush"`, `"young"`).
+ *
+ * Reads `/assets/characters/manifest.json`, resolves the character's VRM path,
+ * and returns a `CharacterLoadResult` identical to `loadVRMCharacter`.
+ *
+ * @throws If the ID is not found in the manifest or the VRM fails to load.
+ *
+ * @example
+ *   const rush = await loadCrewMember('rush');
+ *   scene.add(rush.root);
+ *   // game loop:
+ *   rush.update(delta);
+ */
+export const loadCrewMember = async (id: string): Promise<CharacterLoadResult> => {
+	const entry = await getCrewEntry(id);
+
+	if (!entry) {
+		const manifest = await getCrewManifestJSON();
+		const knownIds = manifest.crew.map((e) => e.id).join(", ");
+		throw new Error(
+			`[CharacterLoader] Unknown crew member: "${id}". Known IDs: ${knownIds}`,
+		);
+	}
+
+	return loadVRMCharacter(entry.path);
 };

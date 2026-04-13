@@ -8,12 +8,14 @@
  * Registered as the initial scene via vite.config.ts initialSceneId.
  */
 import * as THREE from "three";
+import { Action } from "@kopertop/vibe-game-engine";
 import {
 	createColocatedRuntimeSceneSource,
 	defineGameScene,
 } from "../../game/runtime-scene-sources";
 import type { GameSceneModuleContext, GameSceneLifecycle } from "../../game/scene-types";
 import { AudioManager } from "../../systems/audio";
+import { getInput } from "../../systems/input";
 
 const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 	import: "default",
@@ -65,6 +67,10 @@ const buildStarField = (scene: THREE.Scene): THREE.Points => {
 
 interface StartUI {
 	root: HTMLDivElement;
+	/** Move focus indicator by ±1 (wraps). Plays hover SFX. */
+	moveFocus: (delta: number) => void;
+	/** Activate the currently focused button. Plays select SFX. */
+	confirm: () => void;
 	dispose: () => void;
 }
 
@@ -161,8 +167,49 @@ const createStartUI = (
 		return btn;
 	};
 
-	root.appendChild(makeButton("NEW GAME",  onNewGame));
-	root.appendChild(makeButton("CONTINUE",  onContinue));
+	const newGameBtn = makeButton("NEW GAME", onNewGame);
+	const continueBtn = makeButton("CONTINUE", onContinue);
+	root.appendChild(newGameBtn);
+	root.appendChild(continueBtn);
+
+	// Focus state for controller/keyboard nav — index 0 = NEW GAME, 1 = CONTINUE
+	const buttons: HTMLButtonElement[] = [newGameBtn, continueBtn];
+	const handlers: Array<() => void> = [onNewGame, onContinue];
+	let focusIndex = 0;
+
+	const paintFocus = (): void => {
+		for (let i = 0; i < buttons.length; i++) {
+			const focused = i === focusIndex;
+			buttons[i].style.background = focused ? "rgba(68, 136, 255, 0.18)" : "rgba(68, 136, 255, 0.07)";
+			buttons[i].style.color = focused ? "#ffffff" : "#88bbff";
+			buttons[i].style.borderColor = focused ? "rgba(68, 136, 255, 0.7)" : "rgba(68, 136, 255, 0.35)";
+		}
+	};
+	paintFocus();
+
+	const moveFocus = (delta: number): void => {
+		const next = (focusIndex + delta + buttons.length) % buttons.length;
+		if (next === focusIndex) return;
+		focusIndex = next;
+		paintFocus();
+		void AudioManager.getInstance().play("hover");
+	};
+
+	const confirm = (): void => {
+		void AudioManager.getInstance().play("select");
+		handlers[focusIndex]();
+	};
+
+	// Mouse hover also updates the focused index so keyboard/controller focus
+	// matches whatever the player is pointing at.
+	buttons.forEach((btn, i) => {
+		btn.addEventListener("mouseenter", () => {
+			if (focusIndex !== i) {
+				focusIndex = i;
+				paintFocus();
+			}
+		});
+	});
 
 	// ── Version / hint ───────────────────────────────────────────────────
 	const hint = document.createElement("div");
@@ -180,6 +227,8 @@ const createStartUI = (
 
 	return {
 		root,
+		moveFocus,
+		confirm,
 		dispose: () => root.remove(),
 	};
 };
@@ -215,6 +264,15 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	// that the hover/click SFX and the player's decision-making breathe.
 	void AudioManager.getInstance().play("sgu-soundtrack", undefined, { volume: 0.3 });
 
+	// ── Controller + keyboard navigation ───────────────────────────────────
+	// InputManager is polled once per frame in app.ts. We watch for the
+	// just-pressed edges of D-pad / stick-Y and MenuConfirm to move focus
+	// and activate. This is repeated each frame in update() below.
+	const input = getInput();
+	// Analog-stick nav needs a small debounce — snap-up/down on threshold.
+	let stickFired = false;
+	const STICK_THRESHOLD = 0.6;
+
 	let elapsed = 0;
 	let disposed = false;
 
@@ -225,6 +283,26 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			// Slow drift rotation of the star sphere
 			stars.rotation.y += delta * 0.015;
 			stars.rotation.x  = Math.sin(elapsed * 0.08) * 0.04;
+
+			if (transitioning) return;
+
+			// D-pad / arrow-keys — edge-detected single step per press
+			if (input.isActionJustPressed(Action.DPadUp) || input.isActionJustPressed(Action.MoveForward)) {
+				ui.moveFocus(-1);
+			}
+			if (input.isActionJustPressed(Action.DPadDown) || input.isActionJustPressed(Action.MoveBackward)) {
+				ui.moveFocus(1);
+			}
+			// Left stick up/down — debounced past the threshold.
+			const stickY = input.gamepad.getAxis(/* LeftStickY */ 1);
+			if (!stickFired && stickY < -STICK_THRESHOLD) { ui.moveFocus(-1); stickFired = true; }
+			else if (!stickFired && stickY > STICK_THRESHOLD) { ui.moveFocus(1); stickFired = true; }
+			else if (Math.abs(stickY) < STICK_THRESHOLD * 0.5) { stickFired = false; }
+
+			// A/Enter confirm
+			if (input.isActionJustPressed(Action.MenuConfirm)) {
+				ui.confirm();
+			}
 		},
 
 		dispose(): void {

@@ -37,8 +37,25 @@ export class AudioManager {
 	static getInstance(): AudioManager {
 		if (!AudioManager.instance) {
 			AudioManager.instance = new AudioManager();
+			// Expose for Playwright/debug inspection
+			(window as unknown as { __sguAudio?: AudioManager }).__sguAudio = AudioManager.instance;
 		}
 		return AudioManager.instance;
+	}
+
+	/** The AudioContext state — exposed for diagnostics. */
+	getContextState(): AudioContextState {
+		return this.listener.context.state;
+	}
+
+	/**
+	 * Resume the underlying AudioContext if the browser suspended it
+	 * (autoplay policy). Must be called from a user-gesture event handler.
+	 */
+	async resumeContext(): Promise<void> {
+		if (this.listener.context.state === "suspended") {
+			await this.listener.context.resume();
+		}
 	}
 
 	/** Attach the listener to the camera. Call once during scene setup. */

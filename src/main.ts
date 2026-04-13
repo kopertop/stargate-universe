@@ -2,6 +2,18 @@ import "./style.css";
 import { createGameApp } from "./game/app";
 import { initialSceneId, scenes } from "./scenes";
 import { on, emit } from "./systems/event-bus";
+import { AudioManager } from "./systems/audio";
+
+// Chrome autoplay policy: audio contexts created before a user gesture
+// start in "suspended" state. Resume on the first click/key so menu music
+// and hover/select SFX actually play. Listener is added once, then removed.
+const unlockAudio = () => {
+	void AudioManager.getInstance().resumeContext();
+	window.removeEventListener("pointerdown", unlockAudio);
+	window.removeEventListener("keydown", unlockAudio);
+};
+window.addEventListener("pointerdown", unlockAudio, { once: false });
+window.addEventListener("keydown", unlockAudio, { once: false });
 
 // ─── Test hooks ───────────────────────────────────────────────────────────────
 // Expose the global emit function so Playwright tests can inject game events

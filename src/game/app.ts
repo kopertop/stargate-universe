@@ -15,6 +15,7 @@ import * as THREE from "three";
 import { WebGPURenderer } from "three/webgpu";
 import { frameCameraOnObject } from "./camera";
 import { AudioManager } from "../systems/audio";
+import { pollInput } from "../systems/input";
 import { createDefaultGameplaySystems, createStarterGameplayHost, mergeGameplaySystems } from "./gameplay";
 import { createRuntimePhysicsSession, type RuntimePhysicsSession } from "./runtime-physics";
 import type { GameSceneBootstrapContext, GameSceneDefinition, GameSceneLifecycle } from "./scene-types";
@@ -134,6 +135,9 @@ export async function createGameApp(options: GameAppOptions) {
     requestAnimationFrame(renderFrame);
     const frameStart = performance.now();
     const delta = Math.min(clock.getDelta(), 0.1);
+
+    // Controller + keyboard snapshot (edge-detection for just-pressed actions)
+    pollInput();
 
     // Physics step
     const physicsStart = performance.now();

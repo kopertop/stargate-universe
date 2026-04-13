@@ -257,10 +257,11 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	const credits = createCreditOverlay();
 	const skipHint = createSkipHint();
 
-	// One-shot DRAMATIC theme — sgu-theme-song is a one-shot (non-looping)
-	// in the catalog, reserved for cinematics only.
+	// Quiet score bed under the credits so the iconic theme stays owned
+	// by the main menu. sgu-soundtrack is a looping exploration bed —
+	// perfect for under-dialogue ambience and the Destiny reveal.
 	const audio = AudioManager.getInstance();
-	void audio.play("sgu-theme-song");
+	void audio.play("sgu-soundtrack", undefined, { volume: 0.45 });
 
 	let elapsed = 0;
 	let disposed = false;
@@ -330,9 +331,9 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		dispose(): void {
 			disposed = true;
 			window.removeEventListener("keydown", handleKey);
-			// Let the theme finish naturally if it's short; stop it here
-			// otherwise so the gate-room doesn't start with music bleed-over.
-			audio.stop("sgu-theme-song");
+			// Stop the score bed so the gate-room cinematic owns the audio
+			// mix (SFX-driven with no background music).
+			audio.stop("sgu-soundtrack");
 			credits.dispose();
 			skipHint.dispose();
 			scene.remove(keyLight);

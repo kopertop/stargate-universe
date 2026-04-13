@@ -211,10 +211,15 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 
 	const ui = createStartUI(go("opening-cinematic"), go("gate-room"));
 
-	// Looping menu music — quiet behind the UI so it sets tone without
-	// competing with SFX. Most browsers block autoplay until the first user
-	// gesture, so an initial synthetic click suppression is tolerated.
-	void AudioManager.getInstance().play("sgu-soundtrack");
+	// Iconic SGU theme on the main menu. The catalog marks the theme song
+	// as a non-looping one-shot (it's reserved for cinematic stingers),
+	// but the menu is exactly where the full theme belongs — force loop+
+	// softer volume via the play() override so it plays continuously while
+	// the player sits at the NEW GAME / CONTINUE screen.
+	void AudioManager.getInstance().play("sgu-theme-song", undefined, {
+		loop: true,
+		volume: 0.55,
+	});
 
 	let elapsed = 0;
 	let disposed = false;
@@ -230,9 +235,9 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 
 		dispose(): void {
 			disposed = true;
-			// Stop menu music when we leave the start screen — the opening
-			// cinematic takes over with its own theme.
-			AudioManager.getInstance().stop("sgu-soundtrack");
+			// Stop menu theme when we leave the start screen — the opening
+			// cinematic uses a different bed so it doesn't duplicate.
+			AudioManager.getInstance().stop("sgu-theme-song");
 			ui.dispose();
 			scene.remove(stars);
 			stars.geometry.dispose();

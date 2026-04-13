@@ -71,8 +71,15 @@ export class AudioManager {
 	 * @param id Sound ID from the catalog
 	 * @param parent Optional Object3D for positional audio. If the catalog
 	 *   entry is positional and a parent is provided, uses PositionalAudio.
+	 * @param options Per-call overrides for volume/loop. Useful when the same
+	 *   catalog entry is used as both a one-shot cinematic cue and a looping
+	 *   menu bed.
 	 */
-	async play(id: SoundId, parent?: Object3D): Promise<void> {
+	async play(
+		id: SoundId,
+		parent?: Object3D,
+		options?: { volume?: number; loop?: boolean },
+	): Promise<void> {
 		const entry = SOUND_CATALOG[id];
 		const key = parent ? `${id}:${parent.uuid}` : id;
 
@@ -85,15 +92,18 @@ export class AudioManager {
 			? this.createPositionalSound(parent)
 			: this.createGlobalSound();
 
+		const loop = options?.loop ?? entry.loop;
+		const volume = options?.volume ?? entry.volume;
+
 		sound.setBuffer(buffer);
-		sound.setVolume(entry.volume);
-		sound.setLoop(entry.loop);
+		sound.setVolume(volume);
+		sound.setLoop(loop);
 		sound.play();
 
 		this.activeSounds.set(key, sound);
 
 		// Auto-cleanup non-looping sounds when finished
-		if (!entry.loop) {
+		if (!loop) {
 			sound.onEnded = () => {
 				this.activeSounds.delete(key);
 				if (sound instanceof PositionalAudio && parent) {

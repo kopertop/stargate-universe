@@ -10,7 +10,7 @@
     "dev:api": "wrangler pages dev dist --r2 GAME_ASSETS=sgu-assets --r2 GAME_DATA=sgu-game-data",
     "build": "bun run gen:pwa && tsc --noEmit && vite build",
     "gen:pwa": "bun run scripts/gen-manifest.ts && bun run scripts/gen-sw.ts",
-    "preview": "vite preview",
+    "preview": "vite preview --port 5173 --strictPort",
     "deploy": "bun run build && wrangler pages deploy dist",
     "test": "vitest run",
     "test:watch": "vitest",

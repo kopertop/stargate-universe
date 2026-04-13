@@ -1629,6 +1629,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 				if (player) player.inputEnabled = true;
 				cinematicController = undefined;
 			},
+			player?.object ?? undefined,
 		);
 	}
 
@@ -2297,7 +2298,12 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			npcManager.dispose();
 			questManager.dispose();
 			saveManager.dispose();
-			if (cinematicController) { cinematicController.dispose(); cinematicController = undefined; }
+			if (cinematicController) {
+				cinematicController.dispose();
+				cinematicController = undefined;
+				// Restore player input if scene is torn down mid-cinematic
+				if (player) player.inputEnabled = true;
+			}
 		setSceneManagers(null);
 			shipState.dispose();
 			bus.cleanup();

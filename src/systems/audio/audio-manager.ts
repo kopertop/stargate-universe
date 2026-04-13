@@ -50,11 +50,23 @@ export class AudioManager {
 
 	/**
 	 * Resume the underlying AudioContext if the browser suspended it
-	 * (autoplay policy). Must be called from a user-gesture event handler.
+	 * (autoplay policy or tab backgrounded). Must be called from a
+	 * user-gesture event handler in the autoplay-blocked case.
 	 */
 	async resumeContext(): Promise<void> {
 		if (this.listener.context.state === "suspended") {
-			await this.listener.context.resume();
+			await this.listener.context.resume().catch(() => { /* ignore */ });
+		}
+	}
+
+	/**
+	 * Suspend the AudioContext so all sounds go silent without losing
+	 * their buffers. Use when the tab is backgrounded — looping tracks
+	 * resume at the same position on resumeContext().
+	 */
+	async suspendContext(): Promise<void> {
+		if (this.listener.context.state === "running") {
+			await this.listener.context.suspend().catch(() => { /* ignore */ });
 		}
 	}
 

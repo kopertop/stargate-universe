@@ -3,6 +3,7 @@ import { createGameApp } from "./game/app";
 import { initialSceneId, scenes } from "./scenes";
 import { on, emit } from "./systems/event-bus";
 import { AudioManager } from "./systems/audio";
+import { installFullscreenBehavior } from "./systems/fullscreen";
 
 // Chrome autoplay policy: audio contexts created before a user gesture
 // start in "suspended" state. Resume on the first click/key so menu music
@@ -15,10 +16,39 @@ const unlockAudio = () => {
 window.addEventListener("pointerdown", unlockAudio, { once: false });
 window.addEventListener("keydown", unlockAudio, { once: false });
 
+// Pause ALL audio when the player backgrounds the tab / switches apps.
+// We suspend the underlying AudioContext rather than stopping individual
+// sounds so looping tracks resume cleanly at the same position on return.
+// Also mirror visibility state back to a flag other systems can read.
+(window as unknown as { __sguBackgrounded?: boolean }).__sguBackgrounded = false;
+
+const handleVisibility = () => {
+	const audio = AudioManager.getInstance();
+	if (document.hidden) {
+		(window as unknown as { __sguBackgrounded?: boolean }).__sguBackgrounded = true;
+		void audio.suspendContext();
+	} else {
+		(window as unknown as { __sguBackgrounded?: boolean }).__sguBackgrounded = false;
+		// Only resume if the user has actually interacted — otherwise the
+		// browser autoplay policy will reject resume() anyway.
+		void audio.resumeContext();
+	}
+};
+document.addEventListener("visibilitychange", handleVisibility);
+// Some environments fire blur but not visibilitychange (e.g. another
+// window pops in front). Treat blur the same way.
+window.addEventListener("blur",  handleVisibility);
+window.addEventListener("focus", handleVisibility);
+
 // ─── Test hooks ───────────────────────────────────────────────────────────────
 // Expose the global emit function so Playwright tests can inject game events
 // via: await page.evaluate((ev, d) => window.__sguEmit(ev, d), event, data)
 (window as any).__sguEmit = emit;
+
+// Enter fullscreen on the first user gesture and capture Escape so the
+// browser doesn't steal it for "exit fullscreen". Escape is routed to
+// the in-game menu via InputManager's Action.Pause instead.
+installFullscreenBehavior();
 
 const root = document.querySelector<HTMLDivElement>("#app");
 

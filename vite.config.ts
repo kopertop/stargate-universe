@@ -2,7 +2,7 @@ import { defineConfig, searchForWorkspaceRoot } from "vite";
 import { createWebHammerGamePlugin } from "@ggez/game-dev";
 
 export default defineConfig({
-  plugins: [createWebHammerGamePlugin({ initialSceneId: "opening-cinematic", projectName: "stargate-universe" })],
+  plugins: [createWebHammerGamePlugin({ initialSceneId: "start-screen", projectName: "stargate-universe" })],
   server: {
     fs: {
       allow: [searchForWorkspaceRoot(process.cwd())]

@@ -11,7 +11,9 @@ export type ResourceType = typeof RESOURCE_TYPES[number];
 
 const resources = new Map<ResourceType, number>();
 
-/** Initialize with starting amounts */
+/**
+ * Initialize with starting amounts for the crew's shared resource pool.
+ */
 export function initResources(): void {
 	resources.set("ship-parts", 10);
 	resources.set("water", 50);
@@ -19,12 +21,19 @@ export function initResources(): void {
 	resources.set("lime", 20);
 }
 
-/** Get current amount of a resource */
+/**
+ * Get the current amount of a specific resource.
+ * @param type The resource type to query.
+ * @returns The amount currently in the pool.
+ */
 export function getResource(type: ResourceType): number {
 	return resources.get(type) ?? 0;
 }
 
-/** Get all resources as a record */
+/**
+ * Get all current resource balances as a record.
+ * @returns A mapping of resource types to their current amounts.
+ */
 export function getAllResources(): Record<ResourceType, number> {
 	const result = {} as Record<ResourceType, number>;
 	for (const type of RESOURCE_TYPES) {
@@ -33,7 +42,12 @@ export function getAllResources(): Record<ResourceType, number> {
 	return result;
 }
 
-/** Add resources to the pool. Returns new total. */
+/**
+ * Add specified amount of a resource to the shared pool.
+ * @param type   The resource type being added.
+ * @param amount The quantity to add.
+ * @returns The new total amount of the resource.
+ */
 export function addResource(type: ResourceType, amount: number): number {
 	const current = resources.get(type) ?? 0;
 	const newAmount = current + amount;
@@ -43,7 +57,12 @@ export function addResource(type: ResourceType, amount: number): number {
 	return newAmount;
 }
 
-/** Consume resources. Returns true if successful, false if insufficient. */
+/**
+ * Consume a specified amount of a resource from the pool.
+ * @param type   The resource type to consume.
+ * @param amount The quantity required.
+ * @returns True if the operation was successful, false if resources were insufficient.
+ */
 export function consumeResource(type: ResourceType, amount: number): boolean {
 	const current = resources.get(type) ?? 0;
 	if (current < amount) return false;
@@ -60,7 +79,12 @@ export function consumeResource(type: ResourceType, amount: number): boolean {
 	return true;
 }
 
-/** Check if we have enough of a resource */
+/**
+ * Check if the Shared pool contains at least the required amount of a resource.
+ * @param type   The resource type to check.
+ * @param amount The minimum amount required.
+ * @returns True if sufficient resources exist.
+ */
 export function hasResource(type: ResourceType, amount: number): boolean {
 	return (resources.get(type) ?? 0) >= amount;
 }

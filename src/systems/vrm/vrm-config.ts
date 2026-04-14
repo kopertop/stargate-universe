@@ -113,7 +113,7 @@ export async function loadVrmConfig(url = "/assets/config/vrm-config.json"): Pro
 		activeConfig = mergeWithDefaults(raw);
 		return activeConfig;
 	} catch (error) {
-		console.warn("[VrmConfig] Error loading config. Using defaults.", error);
+		console.error("[VrmConfig] Critical error loading config. Falling back to defaults.", error);
 		return activeConfig;
 	}
 }

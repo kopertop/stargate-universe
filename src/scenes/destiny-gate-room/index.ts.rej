@@ -1,0 +1,7 @@
+--- src/scenes/destiny-gate-room/index.ts
++++ src/scenes/destiny-gate-room/index.ts
+@@ -270,2 +270,2 @@
+-            console.info("[GateRoom] Loaded stargate GLB model");
+-            console.warn("[GateRoom] Failed to load stargate GLB, using fallback ring:", error);
++            console.log("[GateRoom] Loaded stargate GLB model");
++            console.error("[GateRoom] Failed to load stargate GLB, using fallback ring:", error);

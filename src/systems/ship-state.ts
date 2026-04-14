@@ -109,6 +109,9 @@ const DEFAULT_SYSTEMS: ShipSystem[] = [
 
 // ─── Ship State Class ────────────────────────────────────────────────────────
 
+/**
+ * Manages the global state of the ship, including systems health, power, and operational status.
+ */
 export class ShipState {
 	private systems: Map<ShipSystemId, ShipSystem> = new Map();
 	private sections: Map<string, Section> = new Map();

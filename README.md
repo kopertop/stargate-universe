@@ -86,3 +86,9 @@ const animator = createAnimatorInstance({
 animator.setFloat("speed", 1);
 animator.setBool("grounded", true);
 ```
+
+
+## Next Steps
+- [ ] Implement more robust error handling in the scene transition logic.
+- [ ] Add JSDoc to all exported classes in `src/`.
+- [ ] Optimize texture loading for the Gate Room scene.

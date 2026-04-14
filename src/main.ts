@@ -1,3 +1,8 @@
+/**
+ * Stargate Universe Entry Point
+ * Initializes the loading screen, handles the initial app boot flow, 
+ * and orchestrates the transition from loading to the main game world.
+ */
 import "./style.css";
 import { createGameApp } from "./game/app";
 import { initialSceneId, scenes } from "./scenes";
@@ -33,6 +38,10 @@ loading.appendChild(barTrack);
 document.body.appendChild(loading);
 
 // Dismiss loading screen when the player character model loads
+/**
+ * Smoothly removes the loading screen from the DOM after a fade-out animation.
+ * Triggered when the player character model is successfully loaded or as a 10s fallback.
+ */
 function dismissLoading() {
 	if (!loading.parentElement) return;
 	loading.classList.add("fade-out");

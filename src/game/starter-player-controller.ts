@@ -62,6 +62,9 @@ const GROUND_PROBE_DISTANCE = 0.2;
 const GROUND_PROBE_HEIGHT = 0.12;
 const JUMP_GROUND_LOCK_SECONDS = 0.12;
 
+/**
+ * Provides a basic player controller for interacting with the starter scene.
+ */
 export class StarterPlayerController {
   readonly object = new Group();
 

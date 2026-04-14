@@ -1,0 +1,40 @@
+--- a/src/scenes/destiny-gate-room/index.ts
++++ b/src/scenes/destiny-gate-room/index.ts
+@@ -270,8 +270,8 @@
+-            console.info("[GateRoom] Loaded stargate GLB model");
++            console.log("[GateRoom] Loaded stargate GLB model");
+
+-            console.warn("[GateRoom] Failed to load stargate GLB, using fallback ring:", error);
++            console.error("[GateRoom] Failed to load stargate GLB, using fallback ring:", error);
+--- a/src/game/app.ts
++++ b/src/game/app.ts
+@@ -434,7 +434,7 @@
+-        console.warn("[buildPlayer] Failed to load animation bundle:", error);
++        console.error("[buildPlayer] Failed to load animation bundle:", error);
+--- a/src/game/physics/session.ts
++++ b/src/game/physics/session.ts
+@@ -48,4 +48,4 @@
+-    console.warn(
++    console.error(
+--- a/src/game/player/glb-player-controller.ts
++++ b/src/game/player/glb-player-controller.ts
+@@ -378,6 +378,6 @@
+-            console.info(
++            console.log(
+@@ -393,7 +393,7 @@
+-            console.log(`[GlbPlayerController] Walk animation loaded: "${walkClip.name}" (${walkClip.duration.toFixed(2)}s)`);
++            console.info(`[GlbPlayerController] Walk animation loaded: "${walkClip.name}" (${walkClip.duration.toFixed(2)}s)`);
+@@ -396,5 +396,5 @@
+-            console.log("[GlbPlayerController] Failed to load walk animation:", error);
++            console.warn("[GlbPlayerController] Failed to load walk animation:", error);
+@@ -404,3 +404,3 @@
+-            console.info("[GlbPlayerController] Model loaded from ${modelUrl}");
++            console.log("[GlbPlayerController] Model loaded from ${modelUrl}");
+@@ -406,2 +406,2 @@
+-            console.error("[GlbPlayerController] Failed to load model:", error);
++            console.error("[GlbPlayerController] Failed to load model:", error);
+--- a/src/systems/event-bus.ts
++++ b/src/systems/event-bus.ts
+@@ -122,2 +122,2 @@
+-            console.error(
++            console.error(

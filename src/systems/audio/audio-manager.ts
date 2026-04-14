@@ -23,6 +23,9 @@ import {
 import { resolveAssetUrl } from "../asset-resolver";
 import { SOUND_CATALOG, type SoundId } from "./sound-catalog";
 
+/**
+ * Handles audio playback and management for the game environment.
+ */
 export class AudioManager {
 	private static instance: AudioManager | undefined;
 

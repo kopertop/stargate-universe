@@ -97,10 +97,10 @@ type GateRuntime = {
 
 function createWallMaterial(): THREE.MeshStandardMaterial {
 	return new THREE.MeshStandardMaterial({
-		color: 0x0c0c16,
-		emissive: 0x040408,
-		emissiveIntensity: 0.3,
-		roughness: 0.7,
+		color: 0x080810,
+		emissive: 0x020204,
+		emissiveIntensity: 0.15,
+		roughness: 0.75,
 		metalness: 0.5,
 		side: THREE.DoubleSide,
 	});
@@ -328,7 +328,7 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 	// Outer ring — fog:false so it punches through the atmospheric fog
 	// and reads as a visible metallic circle even at 25+ meters.
 	const outerRingMat = new THREE.MeshBasicMaterial({
-		color: 0x556677,
+		color: 0x778899,
 		fog: false,
 	});
 	const outerRing = new THREE.Mesh(
@@ -359,11 +359,11 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 		fog: false,
 	});
 	const glowRing = new THREE.Mesh(
-		new THREE.RingGeometry(GATE_RADIUS - 1.2, GATE_RADIUS + 2.5, 64),
+		new THREE.RingGeometry(GATE_RADIUS - 1.5, GATE_RADIUS + 3.5, 64),
 		glowRingMat,
 	);
 	glowRing.position.copy(GATE_CENTER);
-	glowRing.position.z -= 0.15;
+	glowRing.position.z -= 0.2;
 	scene.add(glowRing);
 	innerRing.rotation.x = Math.PI / 2;  // stand upright
 	innerRing.position.copy(GATE_CENTER);

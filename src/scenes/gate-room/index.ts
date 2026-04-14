@@ -335,7 +335,6 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 		new THREE.TorusGeometry(GATE_RADIUS, 0.5, 24, 64),
 		outerRingMat,
 	);
-	outerRing.rotation.x = Math.PI / 2;  // stand upright (XZ plane → XY plane)
 	outerRing.position.copy(GATE_CENTER);
 	scene.add(outerRing);
 
@@ -365,7 +364,6 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 	glowRing.position.copy(GATE_CENTER);
 	glowRing.position.z -= 0.2;
 	scene.add(glowRing);
-	innerRing.rotation.x = Math.PI / 2;  // stand upright
 	innerRing.position.copy(GATE_CENTER);
 	scene.add(innerRing);
 

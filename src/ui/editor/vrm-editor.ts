@@ -92,7 +92,8 @@ export function openVrmEditor(characterId: string, vrm: VRM): void {
 	// Load existing customization
 	loadCustomization(characterId).then((saved) => {
 		if (saved && activeEditor) {
-			// TODO: Populate tab UI state from saved customization
+			// Pending Implementation: UI state population from saved customization
+			// Integration requires mapping VrmCustomization keys to specific tab internals.
 			// For now, the tabs start from current VRM state
 		}
 	}).catch(() => {

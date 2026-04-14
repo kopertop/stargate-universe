@@ -63,9 +63,10 @@ const GATE_BACK   = new THREE.Vector3(0, 2.72, 0.5);  // just in front of the ho
 // Overhead shot — high angle from behind the landing zone, looking back
 // TOWARD the gate. Gate at z=0, crew land at z=8-18, player at z=50.
 const OVERHEAD    = new THREE.Vector3(0, 24, 20);
-// Wide establishing shot — camera far back and elevated so the whole
-// gate + room silhouette is visible in the doubled room (100×160×32).
-const ESTABLISH   = new THREE.Vector3(0, 10, 50);
+// Wide establishing shot — close enough to READ the gate ring clearly
+// (z=20, not z=50). The massive room depth is communicated by the
+// vanishing-point perspective, not by showing the whole 160-unit length.
+const ESTABLISH   = new THREE.Vector3(0, 6, 20);
 
 // ─── 40-second gate-room arrival ────────────────────────────────────────────
 //

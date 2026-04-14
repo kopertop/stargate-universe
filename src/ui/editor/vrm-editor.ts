@@ -303,7 +303,7 @@ function applyCurrentState(): void {
 
 	const customization = collectCustomization();
 	applyCustomization(activeEditor.characterId, activeEditor.vrm, customization).catch((err) => {
-		console.warn("[VrmEditor] Failed to apply preview customization", err);
+		console.info(\"[VrmEditor] Preview customization failed to apply\", err);
 	});
 }
 

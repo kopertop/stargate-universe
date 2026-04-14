@@ -58,7 +58,7 @@ const BEATS: CreditBeat[] = [
 	{ start: 9.5,  end: 13.5, fontSize: "clamp(1rem, 2vw, 1.2rem)",
 		text: "For millions of years it has drifted alone,\nmapping the farthest reaches of space." },
 	{ start: 14,   end: 17,   fontSize: "clamp(1rem, 2vw, 1.2rem)",
-		text: "Today, nine stranded souls dial a nine-chevron address…" },
+		text: "One gate has a nine-symbol address.\nEli figured out how to dial it." },
 	{ start: 17,   end: 20,   fontSize: "clamp(2.2rem, 6vw, 4rem)",
 		text: "STARGATE\u00A0UNIVERSE" },
 ];

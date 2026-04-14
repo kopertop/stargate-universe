@@ -142,7 +142,7 @@ export async function loadCrewRoster(
 		const raw: unknown = await response.json();
 
 		if (!Array.isArray(raw)) {
-			console.error("[CrewManifest] Roster JSON is not an array. Using defaults.");
+\t\t\tconsole.warn(\"[CrewManifest] Roster JSON is not an array. Using defaults.\");
 			return roster;
 		}
 

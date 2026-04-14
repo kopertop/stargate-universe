@@ -172,7 +172,7 @@ export class VrmPlayerAnimationController {
 
 		for (const result of results) {
 			if (result.status !== "fulfilled") {
-				console.warn("[VrmPlayerAnimController] Failed to load clip:", result.reason);
+				console.error(\"[VrmPlayerAnimController] Failed to load clip:\", result.reason);
 				continue;
 			}
 

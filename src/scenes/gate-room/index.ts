@@ -290,55 +290,60 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 	innerRing.position.copy(GATE_CENTER);
 	scene.add(innerRing);
 
-	// Ring segments — ornate bumps around the outer edge (SGU-style)
-	const segmentMat = new THREE.MeshStandardMaterial({
-		color: 0x333348,
-		roughness: 0.35,
-		metalness: 0.8
-	});
-	const SEGMENT_COUNT = 36;
-	for (let i = 0; i < SEGMENT_COUNT; i++) {
-		const angle = (i / SEGMENT_COUNT) * Math.PI * 2;
-		const segment = new THREE.Mesh(
-			new THREE.BoxGeometry(0.22, 0.12, 0.12),
-			segmentMat
-		);
-		segment.position.set(
-			GATE_CENTER.x + Math.cos(angle) * (GATE_RADIUS + 0.08),
-			GATE_CENTER.y + Math.sin(angle) * (GATE_RADIUS + 0.08),
-			GATE_CENTER.z + 0.08
-		);
-		segment.lookAt(
-			GATE_CENTER.x + Math.cos(angle) * (GATE_RADIUS + 2),
-			GATE_CENTER.y + Math.sin(angle) * (GATE_RADIUS + 2),
-			GATE_CENTER.z + 0.08
-		);
-		scene.add(segment);
-	}
+	// (Ring segments / symbol-wheel dots REMOVED — 36 decorative bumps
+	// visually conflicted with the 9 chevrons and made the gate read as
+	// "too busy". The clean silhouette matches the show's look better.)
 
-	// Chevrons — 9 markers around the ring
+	// Chevrons — 9 triangular markers around the ring. Each chevron is an
+	// isoceles triangle whose apex points radially INWARD toward the gate
+	// center (matching the canon Stargate — the pointed end of the V faces
+	// the event horizon). Local coordinate convention for the shape:
+	//   +Y = apex (will be rotated to face the center)
+	//   base sits on the outer ring surface
+	const CHEVRON_HEIGHT = 0.42;   // radial length (apex → base)
+	const CHEVRON_HALF_W = 0.26;   // tangential width at the base
+	const CHEVRON_DEPTH  = 0.14;   // extrusion depth (out of ring plane)
+	const chevronShape = new THREE.Shape();
+	chevronShape.moveTo( 0,               CHEVRON_HEIGHT / 2);  // apex (will point inward)
+	chevronShape.lineTo(-CHEVRON_HALF_W, -CHEVRON_HEIGHT / 2);  // base corner (tangent-left)
+	chevronShape.lineTo( CHEVRON_HALF_W, -CHEVRON_HEIGHT / 2);  // base corner (tangent-right)
+	chevronShape.closePath();
+	const chevronGeo = new THREE.ExtrudeGeometry(chevronShape, {
+		depth: CHEVRON_DEPTH,
+		bevelEnabled: false,
+	});
+	// Center extrusion on z=0 so the chevron sits half in front of / half
+	// behind the ring plane (matches the recessed-setting on the show gate).
+	chevronGeo.translate(0, 0, -CHEVRON_DEPTH / 2);
+
 	const chevronMeshes: THREE.Mesh[] = [];
+	// Ring of 9 chevrons, evenly spaced. First chevron at the TOP of the
+	// gate (12 o'clock) — that's the canonical "primary chevron" position.
 	for (let i = 0; i < CHEVRON_COUNT; i++) {
-		const angle = (i / CHEVRON_COUNT) * Math.PI * 2 - Math.PI / 2;
-		const chevronGeo = new THREE.BoxGeometry(0.18, 0.3, 0.15);
+		const angle = Math.PI / 2 + (i / CHEVRON_COUNT) * Math.PI * 2;
 		const chevronMat = new THREE.MeshStandardMaterial({
 			color: COLOR_CHEVRON_OFF,
 			roughness: 0.4,
 			metalness: 0.7,
 			emissive: COLOR_CHEVRON_OFF,
-			emissiveIntensity: 0.1
+			emissiveIntensity: 0.1,
 		});
 		const chevron = new THREE.Mesh(chevronGeo, chevronMat);
+		// Position the mesh origin on the ring radius and offset slightly
+		// forward (+Z) so the chevron clearly sits on the front face of the
+		// ring rather than embedded / occluded by its geometry.
+		const radialOffset = GATE_RADIUS;
 		chevron.position.set(
-			GATE_CENTER.x + Math.cos(angle) * (GATE_RADIUS + 0.15),
-			GATE_CENTER.y + Math.sin(angle) * (GATE_RADIUS + 0.15),
-			GATE_CENTER.z + 0.15
+			GATE_CENTER.x + Math.cos(angle) * radialOffset,
+			GATE_CENTER.y + Math.sin(angle) * radialOffset,
+			GATE_CENTER.z + 0.18,
 		);
-		chevron.lookAt(
-			GATE_CENTER.x + Math.cos(angle) * (GATE_RADIUS + 2),
-			GATE_CENTER.y + Math.sin(angle) * (GATE_RADIUS + 2),
-			GATE_CENTER.z + 0.15
-		);
+		// Rotate so local +Y (apex) points radially INWARD toward gate
+		// center. The direction "from chevron position to gate center" is
+		// (−cos(angle), −sin(angle)), whose atan2 is (angle + π). Since
+		// local +Y is already a π/2 rotation from local +X, we subtract
+		// π/2 to align local +Y with that inward vector.
+		chevron.rotation.z = angle + Math.PI - Math.PI / 2;
 		scene.add(chevron);
 		chevronMeshes.push(chevron);
 	}
@@ -1631,20 +1636,64 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		dialogueManager.registerTree(scottOpeningDialogue);
 		npcManager.registerNpc(scottOpeningNpc);
 
-		// Spawn a Scott character right in front of the player for the scene.
+		// Spawn a Scott character standing in front of the camera, slightly
+		// off to the right. We derive position from the CAMERA direction (not
+		// the player yaw) because the post-cinematic player is prone on their
+		// back — the camera's forward vector is what "in front of us" means
+		// from the player's POV. A capsule fallback ensures Scott renders
+		// even when the placeholder VRM has minimal geometry.
 		try {
-			const scott = await loadVRMCharacter("/assets/characters/matthew-scott/matthew-scott.vrm");
-			const pp = player?.object.position ?? new THREE.Vector3(0, 0, 0);
-			scott.root.position.set(pp.x + 0.3, 0, pp.z - 1.8);
-			scott.root.rotation.y = Math.PI; // face the player
-			scene.add(scott.root);
-			// Dispose Scott when gate-room disposes
+			const pp = player?.object.position ?? new THREE.Vector3(0, 0, 12);
+			const forward = new THREE.Vector3();
+			camera.getWorldDirection(forward);
+			// Project onto XZ plane so Scott stands upright (no vertical tilt).
+			forward.y = 0;
+			forward.normalize();
+			// Right vector perpendicular to forward, in XZ plane.
+			const right = new THREE.Vector3(-forward.z, 0, forward.x);
+			const scottPos = new THREE.Vector3()
+				.copy(pp)
+				.addScaledVector(forward, 2.2)    // 2.2 m in front
+				.addScaledVector(right, 0.8);     // 0.8 m to the right
+			scottPos.y = 0;  // feet on ground regardless of camera pitch
+
+			let scott: Awaited<ReturnType<typeof loadVRMCharacter>> | undefined;
+			try {
+				scott = await loadVRMCharacter("/assets/characters/matthew-scott/matthew-scott.vrm");
+			} catch (err) {
+				console.warn("[GateRoom] Scott VRM load failed, using capsule fallback:", err);
+			}
+			// If the VRM loaded but produced no visible mesh (placeholder file),
+			// replace with a blue-uniform capsule fallback.
+			const hasMesh = scott && (() => { let n = 0; scott.root.traverse((o) => { if ((o as THREE.Mesh).isMesh) n++; }); return n > 0; })();
+			const scottRoot: THREE.Group = hasMesh && scott
+				? scott.root
+				: (() => {
+					const g = new THREE.Group();
+					const body = new THREE.Mesh(
+						new THREE.CapsuleGeometry(0.28, 1.1, 4, 12),
+						new THREE.MeshStandardMaterial({ color: 0x4466aa, roughness: 0.7 }),
+					);
+					body.position.y = 0.85;
+					g.add(body);
+					const head = new THREE.Mesh(
+						new THREE.SphereGeometry(0.16, 14, 10),
+						new THREE.MeshStandardMaterial({ color: 0xf0d2a5, roughness: 0.7 }),
+					);
+					head.position.y = 1.65;
+					g.add(head);
+					return g;
+				})();
+			scottRoot.position.copy(scottPos);
+			// Face the player — opposite of the camera's forward.
+			scottRoot.lookAt(pp.x, scottRoot.position.y, pp.z);
+			scene.add(scottRoot);
 			gateRoomExtraDisposables.push(() => {
-				scene.remove(scott.root);
-				scott.dispose?.();
+				scene.remove(scottRoot);
+				scott?.dispose?.();
 			});
 		} catch (err) {
-			console.warn("[GateRoom] Scott VRM load failed for opening dialogue:", err);
+			console.warn("[GateRoom] Scott spawn failed for opening dialogue:", err);
 		}
 
 		// Start the dialogue (no prior player-input needed).
@@ -1662,6 +1711,12 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	// the player can't wander off mid-conversation.
 	bus.on("crew:dialogue:started", () => {
 		if (player) player.inputEnabled = false;
+		// Release pointer lock so the player can actually click dialogue
+		// options with the mouse. Controller / keyboard shortcuts still
+		// work, but the cursor was trapped before this.
+		if (document.pointerLockElement) {
+			document.exitPointerLock();
+		}
 	});
 	bus.on("crew:dialogue:ended", () => {
 		if (player && !cinematicController) player.inputEnabled = true;
@@ -1811,11 +1866,18 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		emit: (event, data?)  => emit(event as any, data as any),
 	};
+	// Pick hint labels that match the player's actual input device: controller
+	// buttons (A/B/X/Y) when a gamepad is connected, number keys (1/2/3/4)
+	// otherwise. Detected once at mount — a later plug-in is uncommon and the
+	// dialogue still accepts both inputs regardless of the hint shown.
+	const hasGamepadConnected = typeof navigator.getGamepads === "function"
+		&& Array.from(navigator.getGamepads() ?? []).some((gp) => gp && gp.connected);
 	const dialoguePanel = createDialoguePanel(dialogueBus, {
 		style: 'sci-fi',
-		// Map the first four options to A/B/X/Y gamepad buttons +
-		// keys 1-4 on the keyboard. Extra options render without a chip.
-		optionHints: ['A', 'B', 'X', 'Y'],
+		// Gamepad: A/B/X/Y; keyboard: digit keys 1-4. Both input paths are
+		// always live — the hint just indicates the primary binding for the
+		// current device. Extra options render without a chip.
+		optionHints: hasGamepadConnected ? ['A', 'B', 'X', 'Y'] : ['1', '2', '3', '4'],
 	});
 	compassHud.mount(dialoguePanel);
 	const debug = createDebugOverlay();
@@ -1825,8 +1887,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	const interactPrompt = createInteractionPrompt();
 	cinematicHide.push(interactPrompt);
 	const co2Display = createCO2Display();
-	const co2El = (co2Display as unknown as { element?: HTMLElement }).element;
-	if (co2El) cinematicHide.push(co2El);
+	cinematicHide.push(co2Display);
 	const repairBar = createRepairProgressBar3D();
 	scene.add(repairBar.group);
 
@@ -1980,6 +2041,11 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	// DOM/event handlers are live.  Bus exposed so tests can inject events.
 	(window as any).__sceneReady = true;
 	(window as any).__sguBus = bus;
+	// Expose scene + cinematic for browser-based test introspection (checking
+	// crew positions, HUD state, etc). Safe to expose — production build has
+	// no way to trigger __sceneReady hooks from user input.
+	(window as any).__sguScene = scene;
+	(window as any).__sguGetCinematic = () => cinematicController;
 
 	let debugFrame = 0;
 

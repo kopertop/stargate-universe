@@ -133,9 +133,9 @@ async function loadVrmInternal(entry: QueueEntry): Promise<void> {
 				throw new Error(`[VrmLoader] File loaded but contains no VRM data: ${entry.url}`);
 			}
 
-			// Optimize the VRM scene graph
+			// Optimize the VRM scene graph. combineSkeletons supersedes the
+			// deprecated removeUnnecessaryJoints and handles joint pruning.
 			VRMUtils.removeUnnecessaryVertices(vrm.scene);
-			VRMUtils.removeUnnecessaryJoints(vrm.scene);
 			VRMUtils.combineSkeletons(vrm.scene);
 
 			// Disable frustum culling on the VRM scene so skinned meshes

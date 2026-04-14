@@ -128,9 +128,9 @@ export class StarterPlayerController {
   //   'none'     — normal gameplay, idle anim has taken over
   private _pronePhase: "prone" | "standing" | "none" = "none";
   private _proneStartedAt = 0;   // performance.now() when setProne(true) fired
+  private _standStartedAt = 0;   // performance.now() when phase flipped to 'standing'
   private readonly PRONE_MIN_HOLD_MS = 2500;   // hold flat for this long before reacting to input
-  /** Speed multiplier when we finally play the getting-up clip forward. */
-  private readonly STAND_SPEED = 0.6;
+  private readonly STAND_DURATION_MS = 2200;   // slow-mo get-up lerp time
 
   get isProne(): boolean { return this._pronePhase !== "none"; }
 
@@ -147,48 +147,60 @@ export class StarterPlayerController {
     if (prone) {
       this._pronePhase = "prone";
       this._proneStartedAt = performance.now();
-      const anim = this.animController;
-      const cued = anim?.startGettingUp() ?? false;
-      if (!cued && this.vrmCharacter?.vrm) {
-        // Fallback when the clip isn't available — manual supine rotation.
-        this.vrmCharacter.root.rotation.x = -Math.PI / 2;
-        anim?.setPaused(true);
-      }
+      this.applyProneRotation();
+      // PAUSE the animation mixer so the idle clip doesn't spin the
+      // character while we've manually rotated the root.
+      this.animController?.setPaused(true);
       this.keyState.clear();
     } else {
       this._pronePhase = "none";
-      if (this.vrmCharacter?.vrm) {
-        this.vrmCharacter.root.rotation.x = 0;
-      }
+      if (this.vrmCharacter?.vrm) this.vrmCharacter.root.rotation.x = 0;
       this.animController?.setPaused(false);
+    }
+  }
+
+  /**
+   * Apply the supine rotation to the VRM root. Idempotent — safe to
+   * call every frame while prone. Also re-applies after VRM finishes
+   * loading if setProne(true) was called before the model was ready.
+   */
+  private applyProneRotation(): void {
+    if (this.vrmCharacter?.vrm) {
+      this.vrmCharacter.root.rotation.x = -Math.PI / 2;
     }
   }
 
   /** Advance the wake-up state machine. Called from updateAfterStep. */
   private updateProne(): void {
     if (this._pronePhase === "prone") {
+      // Re-apply supine rotation each frame — updateAfterStep below
+      // writes yaw, and we want X to stay locked at -π/2 regardless.
+      this.applyProneRotation();
       const now = performance.now();
       // Hold on the ground for at least PRONE_MIN_HOLD_MS for drama —
       // the cinematic just ended, Scott's dialogue is about to start.
       if (now - this._proneStartedAt < this.PRONE_MIN_HOLD_MS) return;
-      if (this.hasMovementIntent()) {
-        this._pronePhase = "standing";
-        const anim = this.animController;
-        if (anim) {
-          void anim.finishGettingUp(this.STAND_SPEED).then(() => {
-            this._pronePhase = "none";
-            if (this.vrmCharacter?.vrm) this.vrmCharacter.root.rotation.x = 0;
-          });
-        } else if (this.vrmCharacter?.vrm) {
-          // No animController — just reset rotation instantly.
-          this.vrmCharacter.root.rotation.x = 0;
-          this._pronePhase = "none";
-        }
+      // Auto-transition to standing after the hold — the player should be
+      // "slowly getting up" as the dialogue opens, not frozen until they
+      // tap a movement key. Movement intent also works as a fast-forward.
+      this._pronePhase = "standing";
+      this._standStartedAt = now;
+    } else if (this._pronePhase === "standing") {
+      // Manual slow lerp back to upright so the player sees a
+      // 2-second "getting up" motion. Once the Mixamo clip lands
+      // on R2 and we can confirm its frame-0 pose, swap to the
+      // animation-driven path (see old commits).
+      const t = Math.min(1, (performance.now() - this._standStartedAt) / this.STAND_DURATION_MS);
+      const eased = 1 - Math.pow(1 - t, 2);
+      if (this.vrmCharacter?.vrm) {
+        this.vrmCharacter.root.rotation.x = -Math.PI / 2 * (1 - eased);
+      }
+      if (t >= 1) {
+        this._pronePhase = "none";
+        if (this.vrmCharacter?.vrm) this.vrmCharacter.root.rotation.x = 0;
+        this.animController?.setPaused(false);
       }
     }
-    // 'standing' phase is driven by the animation's own timing; nothing
-    // to do per-frame — the Promise from finishGettingUp resolves via
-    // the mixer's "finished" event.
   }
 
   /** Detect movement intent — used to auto-stand up from prone. */

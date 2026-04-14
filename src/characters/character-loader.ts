@@ -104,9 +104,10 @@ export const loadVRMCharacter = async (
 			throw new Error(`[CharacterLoader] File parsed but no VRM data found: ${path}`);
 		}
 
-		// Optimise VRM scene graph
+		// Optimise VRM scene graph. combineSkeletons supersedes the deprecated
+		// removeUnnecessaryJoints and handles the joint pruning + skeleton
+		// merge in a single pass.
 		VRMUtils.removeUnnecessaryVertices(vrm.scene);
-		VRMUtils.removeUnnecessaryJoints(vrm.scene);
 		VRMUtils.combineSkeletons(vrm.scene);
 
 		// VRM models face -Z by default; rotate 180° so they face +Z (toward camera)

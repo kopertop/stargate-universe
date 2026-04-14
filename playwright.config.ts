@@ -56,7 +56,7 @@ export default defineConfig({
 		url: "http://localhost:5173",
 		// Always start a fresh managed server so a stale pre-existing Vite
 		// process can't die mid-run and cause ERR_CONNECTION_REFUSED on test 2+.
-		reuseExistingServer: false,
+		reuseExistingServer: true,
 		timeout: 60_000,
 	},
 });

@@ -52,13 +52,18 @@ function applyEasing(t: number, mode: Beat["easing"]): number {
 	}
 }
 
-// Gate center in world space (matches gate-room buildStargate placement)
-const GATE_CENTER = new THREE.Vector3(0, 3.2, 0);
-const GATE_BACK   = new THREE.Vector3(0, 3.2, 0.5);  // just behind the horizon
-// Overhead shot — high angle, not straight-down. y=18 gives both the
-// gate and the crew tumbling through enough framing to read, and
-// looking at a point slightly in front of the gate centers the action.
-const OVERHEAD    = new THREE.Vector3(0, 18, -12);
+// Gate center in world space — MUST match gate-room/index.ts:
+//   GATE_RADIUS=2.8, GATE_TUBE=0.22, so y = 2.72
+// (Previously hard-coded 3.2 here which put the kawoosh ~0.5 above
+// the real event horizon — players saw the portal floating behind
+// the gate because the kawoosh geometry didn't align with the ring.)
+const GATE_CENTER = new THREE.Vector3(0, 2.72, 0);
+const GATE_BACK   = new THREE.Vector3(0, 2.72, 0.5);  // just in front of the horizon
+// Overhead shot — camera in FRONT of the gate (+Z, player-side), high
+// up, looking down and BACKWARD past the gate into the landing zone
+// (z=-7 where crew tumble to). Previous coords had camera behind the
+// gate looking the wrong way; players only saw empty runway.
+const OVERHEAD    = new THREE.Vector3(0, 20, 8);
 // Wide establishing shot — camera far back and elevated so the whole
 // gate + room silhouette is visible. Stays static during dial & kawoosh
 // so the player actually reads the chevrons locking in.
@@ -112,14 +117,14 @@ const BEATS: Beat[] = [
 		lookAt:  GATE_BACK,
 		easing:  "linear",
 	},
-	// Beat 5 — OVERHEAD. Static high-angle, crew tumble through.
-	// LookAt is between the gate center (0,3.2,0) and the landing zone
-	// (~-5 Z), biased toward the gate so crew exiting are in frame.
+	// Beat 5 — OVERHEAD. Static high-angle from IN FRONT of the gate,
+	// looking down and back past the gate into the landing zone at z=-5.
+	// This frames gate-in-foreground + crew-tumbling-into-background.
 	{
 		start: 20, end: 32,
 		camFrom: OVERHEAD.clone(),
 		camTo:   OVERHEAD.clone(),
-		lookAt:  new THREE.Vector3(0, 2, -3),
+		lookAt:  new THREE.Vector3(0, 1, -5),
 		easing:  "linear",
 	},
 	// Beat 6 — DESCENT to Eli prone on the ground; Scott crouches in.
@@ -156,6 +161,74 @@ const T_YOUNG_IMPACT  = 28.5;
 const T_GATE_SHUTDOWN = 32;
 
 // ─── Named thrown actor (VRM crew) ────────────────────────────────────────────
+
+/**
+ * Build a minimal CharacterLoadResult backed by a colored capsule so the
+ * cinematic still has visible crew members even when a named VRM asset is
+ * missing or fails to load. Shape is a rough humanoid silhouette — good
+ * enough for wide / overhead shots; callers should only hit this path when
+ * the real VRM is unavailable.
+ */
+function createCapsuleFallback(color: number): CharacterLoadResult {
+	const root = new THREE.Group();
+	const geo = new THREE.CapsuleGeometry(0.25, 1.0, 4, 12);
+	const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.8 });
+	const body = new THREE.Mesh(geo, mat);
+	body.position.y = 0.75;
+	root.add(body);
+	const headGeo = new THREE.SphereGeometry(0.14, 12, 10);
+	const head = new THREE.Mesh(headGeo, new THREE.MeshStandardMaterial({ color: 0xf0d2a5, roughness: 0.7 }));
+	head.position.y = 1.55;
+	root.add(head);
+	const mixer = new THREE.AnimationMixer(root);
+	return {
+		root,
+		vrm: undefined,
+		mixer,
+		format: "glb",
+		update: (_delta: number) => { /* static capsule — no animation */ },
+		dispose: () => {
+			root.parent?.remove(root);
+			geo.dispose();
+			mat.dispose();
+			headGeo.dispose();
+			(head.material as THREE.Material).dispose();
+		},
+	};
+}
+
+/**
+ * Count renderable meshes inside a loaded character root. Used to detect
+ * "successful" VRM loads that actually produced no geometry (e.g. our
+ * 24 KB placeholder .vrm files parse fine but contain zero meshes).
+ */
+function countMeshes(root: THREE.Object3D): number {
+	let n = 0;
+	root.traverse((o) => { if ((o as THREE.Mesh).isMesh) n++; });
+	return n;
+}
+
+/**
+ * Wrap loadCrewMember so cinematic actors always render. Falls back to a
+ * capsule when: (a) the VRM network/parse fails entirely, or (b) the VRM
+ * parses but contains no meshes (our placeholder .vrm stubs trip this).
+ */
+async function loadCrewOrFallback(id: string, fallbackColor: number): Promise<CharacterLoadResult> {
+	try {
+		const result = await loadCrewMember(id);
+		const meshes = countMeshes(result.root);
+		console.log(`[cinematic] crew "${id}" loaded (meshes=${meshes})`);
+		if (meshes === 0) {
+			console.warn(`[cinematic] crew "${id}" has 0 meshes, swapping to capsule fallback`);
+			result.dispose?.();
+			return createCapsuleFallback(fallbackColor);
+		}
+		return result;
+	} catch (err) {
+		console.warn(`[cinematic] crew "${id}" failed to load, using capsule fallback`, err);
+		return createCapsuleFallback(fallbackColor);
+	}
+}
 
 interface ThrownActor {
 	char: CharacterLoadResult;
@@ -324,6 +397,7 @@ function createSkipHint(): { setProgress: (p: number) => void; dispose: () => vo
 
 export class GateRoomCinematicController {
 	private elapsed = 0;
+	private frozen = false;   // ?cinfreeze=1 — don't advance elapsed (dev tool)
 	private disposed = false;
 	private shakeIntensity = 0;
 	private readonly shakeOffset = new THREE.Vector3();
@@ -379,14 +453,21 @@ export class GateRoomCinematicController {
 		// ?cinstep=N — jump to elapsed = N seconds for testing. Pair with
 		// the same param on opening-cinematic to step through the whole
 		// 60-second opening one second at a time.
-		const cinStepRaw = new URLSearchParams(window.location.search).get("cinstep");
+		// ?cinfreeze=1 — additionally pin the clock to the cinstep value so
+		// frame-by-frame verification tools can inspect a specific beat
+		// without elapsed marching forward while crew VRMs stream in.
+		const params = new URLSearchParams(window.location.search);
+		const cinStepRaw = params.get("cinstep");
 		const cinStep = cinStepRaw !== null ? Number.parseFloat(cinStepRaw) : NaN;
 		if (Number.isFinite(cinStep)) {
 			this.elapsed = Math.max(0, Math.min(TOTAL_DURATION - 0.1, cinStep));
+			this.frozen = params.get("cinfreeze") === "1";
 		}
 
 		this.buildKawoosh();
-		this.buildChaosActors();
+		// Chaos actors (capsule placeholders) removed — they clashed
+		// visually with the VRM crew. All arrival actors are now the
+		// named thrown crew (Scott/Rush/TJ/Eli/Young).
 		this.loadCrew();
 		this.initAudio();
 		this.hidePlayerVisual();
@@ -609,12 +690,16 @@ export class GateRoomCinematicController {
 	// ── Crew loading ──────────────────────────────────────────────────────────
 
 	private async loadCrew() {
+		console.log("[cinematic] loadCrew() start");
+		// Use fallback-wrapped loader so missing VRM placeholders don't leave
+		// the cinematic empty. Colors chosen to visually differentiate the crew
+		// in wide/overhead shots when the real models are unavailable.
 		const [scott, rush, young, tj, eli] = await Promise.allSettled([
-			loadCrewMember("scott"),
-			loadCrewMember("rush"),
-			loadCrewMember("young"),
-			loadCrewMember("tj"),
-			loadCrewMember("eli"),
+			loadCrewOrFallback("scott", 0x4466aa),  // blue — military uniform
+			loadCrewOrFallback("rush",  0x444444),  // dark grey — civilian jacket
+			loadCrewOrFallback("young", 0x556677),  // slate — command
+			loadCrewOrFallback("tj",    0x88aabb),  // light blue — medic
+			loadCrewOrFallback("eli",   0x886644),  // tan — civilian hoodie
 		]);
 
 		// If the cinematic was disposed while crew was loading (e.g. player
@@ -788,13 +873,10 @@ export class GateRoomCinematicController {
 			this.subtitleShown.add("young-down");
 			this.subtitle.show("Get Young — he's not moving!", 2);
 		}
-		// Beat 6 — Scott's wake-up call to Eli (paired with scott-bark-eli
-		// voice line). The quest-opening player dialogue fires right after
-		// the cinematic ends — this subtitle is the cinematic's lead-in.
-		if (elapsed >= T_GATE_SHUTDOWN + 3 && elapsed < T_GATE_SHUTDOWN + 6 && !this.subtitleShown.has("scott-eli")) {
-			this.subtitleShown.add("scott-eli");
-			this.subtitle.show("Eli... Eli, can you hear me?", 3);
-		}
+		// "Eli... Eli, can you hear me?" is intentionally NOT a cinematic
+		// subtitle — it's the first line of the Scott opening dialogue,
+		// which starts as soon as the cinematic ends. Duplicating it here
+		// would show the line twice in a row.
 	}
 
 	// ── Beat-triggered crew visibility ────────────────────────────────────────
@@ -802,9 +884,10 @@ export class GateRoomCinematicController {
 	private updateCrew(elapsed: number) {
 		if (!this.crewLoaded) return;
 
-		// Hard rule: no crew visible until the overhead beat starts.
-		// The first 3 beats (wide/dial/kawoosh) show the empty gate room alone.
-		if (elapsed < T_OVERHEAD) {
+		// Crew are invisible during beats 1-3 (wide/dial/kawoosh). Scott
+		// is the FIRST to come through at T_SCOTT_EMERGE — his visibility
+		// is driven by updateThrown the moment his throw begins.
+		if (elapsed < T_SCOTT_EMERGE) {
 			return;
 		}
 
@@ -823,9 +906,7 @@ export class GateRoomCinematicController {
 			updateThrown(actor, beatE);
 		});
 
-		// Anonymous chaos actors — start emerging after Scott's all-clear
-		const chaosE = Math.max(0, elapsed - T_CHAOS_START);
-		this.chaosActors.forEach(actor => updateChaos(actor, chaosE));
+		// Chaos actors removed — nothing to update here.
 
 		// Shake on the chaos-arrival surge and again on Young's impact.
 		if (elapsed >= T_CHAOS_START + 0.3 && elapsed < T_CHAOS_START + 1 && this.shakeIntensity < 0.05) {
@@ -889,7 +970,12 @@ export class GateRoomCinematicController {
 	update(delta: number) {
 		if (this.disposed) return;
 
-		this.elapsed += delta;
+		// `frozen` is a dev/test flag — keep the clock pinned to the cinstep
+		// value so tests can take deterministic screenshots while slow VRM
+		// loads finish in the background.
+		if (!this.frozen) {
+			this.elapsed += delta;
+		}
 		this.applyCamera(this.elapsed);
 		this.updateKawoosh(delta, this.elapsed);
 		this.updateCrew(this.elapsed);

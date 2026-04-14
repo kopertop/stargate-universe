@@ -17,11 +17,11 @@
   "layers": [],
   "materials": [
     {
-      "color": "#1a1a2e",
+      "color": "#0e0e1a",
       "id": "material:gate-room:floor",
-      "metallicFactor": 0.1,
+      "metallicFactor": 0.3,
       "name": "Ancient Floor",
-      "roughnessFactor": 0.92,
+      "roughnessFactor": 0.8,
       "side": "double"
     }
   ],

@@ -293,49 +293,53 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 	// A torus with tube radius 0.4 gives a bold ring clearly readable at
 	// any distance. The emissive glow ensures it self-illuminates even in
 	// the dark establishing shot.
+	// ── Main ring — heavy metallic torus like the reference. The SGU gate
+	// has a chunky, industrial-looking ring. Dark metal with subtle blue
+	// emissive so it reads in the dark establishing shot but doesn't glow
+	// like a neon sign. The thicker tube (0.5) gives the chunky look.
 	const outerRingMat = new THREE.MeshStandardMaterial({
-		color: COLOR_ANCIENT_METAL,
-		roughness: 0.3,
-		metalness: 0.85,
-		emissive: 0x4488cc,
-		emissiveIntensity: 4.0,
+		color: 0x3a3a4a,
+		roughness: 0.5,
+		metalness: 0.92,
+		emissive: 0x112233,
+		emissiveIntensity: 1.0,
 	});
 	const outerRing = new THREE.Mesh(
-		new THREE.TorusGeometry(GATE_RADIUS, 0.4, 16, 64),
+		new THREE.TorusGeometry(GATE_RADIUS, 0.5, 24, 64),
 		outerRingMat,
 	);
 	outerRing.position.copy(GATE_CENTER);
 	scene.add(outerRing);
 
-	// Inner detail ring — slightly smaller, thinner torus
+	// Inner detail ring — the inner track where the symbols rotate.
+	// Slightly recessed, darker metal with faint glow.
 	const innerRingMat = new THREE.MeshStandardMaterial({
-		color: 0x222235,
-		roughness: 0.25,
-		metalness: 0.9,
-		emissive: 0x3366aa,
-		emissiveIntensity: 3.0,
+		color: 0x252535,
+		roughness: 0.4,
+		metalness: 0.95,
+		emissive: 0x0e1522,
+		emissiveIntensity: 0.8,
 	});
 	const innerRing = new THREE.Mesh(
-		new THREE.TorusGeometry(GATE_RADIUS - 0.15, 0.2, 12, 64),
+		new THREE.TorusGeometry(GATE_RADIUS - 0.2, 0.25, 16, 64),
 		innerRingMat,
 	);
 
-	// ── Glow halo — a flat ring behind the torus that catches distant views ──
-	// MeshBasicMaterial ignores lighting and always renders at full colour,
-	// guaranteeing the gate silhouette is visible even from 80 units out.
+	// ── Glow halo — subtle backlight, not an obvious disc. Makes the
+	// gate silhouette pop against the dark back wall from any distance.
 	const glowRingMat = new THREE.MeshBasicMaterial({
-		color: 0x2244aa,
+		color: 0x1a3366,
 		transparent: true,
-		opacity: 0.35,
+		opacity: 0.2,
 		side: THREE.DoubleSide,
 		depthWrite: false,
 	});
 	const glowRing = new THREE.Mesh(
-		new THREE.RingGeometry(GATE_RADIUS - 0.8, GATE_RADIUS + 0.8, 64),
+		new THREE.RingGeometry(GATE_RADIUS - 1.0, GATE_RADIUS + 1.2, 64),
 		glowRingMat,
 	);
 	glowRing.position.copy(GATE_CENTER);
-	glowRing.position.z -= 0.1; // slightly behind the torus
+	glowRing.position.z -= 0.15;
 	scene.add(glowRing);
 	innerRing.position.copy(GATE_CENTER);
 	scene.add(innerRing);
@@ -442,15 +446,15 @@ function buildLighting(scene: THREE.Scene, debugObjects: THREE.Object3D[]): THRE
 	// Room is 100×160×32. Point lights with physical decay can't reach
 	// across 80+ units. Use distance-independent lights for base fill,
 	// then add point-light accents for local colour only.
-	// Low ambient — just enough to keep surfaces readable, not washed out.
-	const ambientLight = new THREE.AmbientLight(0x334455, 3.0);
+	// Moody ambient — the reference is DARK with pools of light, not uniform.
+	const ambientLight = new THREE.AmbientLight(0x1a1a2a, 1.5);
 	scene.add(ambientLight);
-	const hemisphereLight = new THREE.HemisphereLight(0x556688, 0x222233, 2.0);
+	const hemisphereLight = new THREE.HemisphereLight(0x334466, 0x111122, 1.0);
 	scene.add(hemisphereLight);
 
-	// Directional from above-front — gentle fill, not blinding.
-	const dirLight = new THREE.DirectionalLight(0xaabbcc, 1.5);
-	dirLight.position.set(0, 25, 40);
+	// Directional from above — very subtle fill.
+	const dirLight = new THREE.DirectionalLight(0x8899aa, 0.8);
+	dirLight.position.set(0, 25, 10);
 	dirLight.target.position.set(0, 0, 0);
 	scene.add(dirLight);
 	scene.add(dirLight.target);
@@ -459,15 +463,14 @@ function buildLighting(scene: THREE.Scene, debugObjects: THREE.Object3D[]): THRE
 	// All decay:0 (infinite range) so the blue glow reads from the
 	// establishing shot 50+ units away.
 
-	// Directly IN FRONT of the gate ring — illuminates the ring face
-	// so the dormant gate silhouette is unmistakable.
-	const gateRingLight = new THREE.PointLight(0x6699ff, 6, 0, 0);
-	gateRingLight.position.set(0, GATE_CENTER.y, gateZ + 2);
+	// Directly IN FRONT of the gate ring — soft blue wash on the ring face.
+	const gateRingLight = new THREE.PointLight(0x4477cc, 3, 0, 0);
+	gateRingLight.position.set(0, GATE_CENTER.y, gateZ + 3);
 	scene.add(gateRingLight);
 	lights.push(gateRingLight);
 
-	// Wider gate-area blue glow
-	const gateFrontLight = new THREE.PointLight(COLOR_ANCIENT_GLOW, 4, 0, 0);
+	// Wider gate-area blue glow — subtle
+	const gateFrontLight = new THREE.PointLight(COLOR_ANCIENT_GLOW, 2, 0, 0);
 	gateFrontLight.position.set(0, 4, gateZ + 8);
 	scene.add(gateFrontLight);
 	lights.push(gateFrontLight);
@@ -482,8 +485,8 @@ function buildLighting(scene: THREE.Scene, debugObjects: THREE.Object3D[]): THRE
 	scene.add(gateTopLight);
 	lights.push(gateTopLight);
 
-	// Overhead room light — decay:0 for even fill
-	const overheadLight = new THREE.PointLight(0xffeedd, 2, 0, 0);
+	// Overhead room light — subtle warm fill
+	const overheadLight = new THREE.PointLight(0xffeedd, 0.8, 0, 0);
 	overheadLight.position.set(0, ROOM_HEIGHT - 3, ROOM_DEPTH / 4);
 	scene.add(overheadLight);
 	lights.push(overheadLight);

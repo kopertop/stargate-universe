@@ -261,6 +261,34 @@ function buildRoom(scene: THREE.Scene): void {
 			scene.add(strip);
 		}
 	}
+
+	// Aged metal floor grate panels — single InstancedMesh for all panels
+	// to keep draw calls at 1 instead of ~936 individual meshes.
+	const grateMat = new THREE.MeshStandardMaterial({
+		color: 0x181820,
+		roughness: 0.75,
+		metalness: 0.6,
+		emissive: 0x060608,
+		emissiveIntensity: 0.3,
+	});
+	const grateSpacingX = 4;
+	const grateSpacingZ = 4;
+	const grateGeo = new THREE.BoxGeometry(grateSpacingX - 0.15, 0.03, grateSpacingZ - 0.15);
+	const xSteps = Math.floor((ROOM_WIDTH - 4) / grateSpacingX);
+	const zSteps = Math.floor((ROOM_DEPTH - 4) / grateSpacingZ);
+	const grateInstanced = new THREE.InstancedMesh(grateGeo, grateMat, xSteps * zSteps);
+	const grateMatrix = new THREE.Matrix4();
+	let grateIdx = 0;
+	for (let xi = 0; xi < xSteps; xi++) {
+		for (let zi = 0; zi < zSteps; zi++) {
+			const x = -ROOM_WIDTH / 2 + 2 + xi * grateSpacingX + grateSpacingX / 2;
+			const z = -ROOM_DEPTH / 2 + 2 + zi * grateSpacingZ + grateSpacingZ / 2;
+			grateMatrix.makeTranslation(x, 0.015, z);
+			grateInstanced.setMatrixAt(grateIdx++, grateMatrix);
+		}
+	}
+	grateInstanced.instanceMatrix.needsUpdate = true;
+	scene.add(grateInstanced);
 }
 
 // ─── Stargate construction ───────────────────────────────────────────────────
@@ -348,56 +376,47 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 	// visually conflicted with the 9 chevrons and made the gate read as
 	// "too busy". The clean silhouette matches the show's look better.)
 
-	// Chevrons — 9 triangular markers around the ring. Each chevron is an
-	// isoceles triangle whose apex points radially INWARD toward the gate
-	// center (matching the canon Stargate — the pointed end of the V faces
-	// the event horizon). Local coordinate convention for the shape:
-	//   +Y = apex (will be rotated to face the center)
-	//   base sits on the outer ring surface
-	const CHEVRON_HEIGHT = 0.42;   // radial length (apex → base)
-	const CHEVRON_HALF_W = 0.26;   // tangential width at the base
-	const CHEVRON_DEPTH  = 0.14;   // extrusion depth (out of ring plane)
+	// Chevrons — 9 raised V-shaped bumps sitting ON the outer torus ring.
+	// Scaled for the 4m radius gate. Each is a chunky extruded triangle
+	// protruding forward from the ring face, apex pointing inward.
+	const CHEVRON_HEIGHT = 0.6;   // radial span (scaled for R=4)
+	const CHEVRON_HALF_W = 0.35;  // tangential half-width
+	const CHEVRON_DEPTH  = 0.3;   // protrusion forward from ring face
 	const chevronShape = new THREE.Shape();
-	chevronShape.moveTo( 0,               CHEVRON_HEIGHT / 2);  // apex (will point inward)
-	chevronShape.lineTo(-CHEVRON_HALF_W, -CHEVRON_HEIGHT / 2);  // base corner (tangent-left)
-	chevronShape.lineTo( CHEVRON_HALF_W, -CHEVRON_HEIGHT / 2);  // base corner (tangent-right)
+	chevronShape.moveTo( 0,               CHEVRON_HEIGHT / 2);
+	chevronShape.lineTo(-CHEVRON_HALF_W, -CHEVRON_HEIGHT / 2);
+	chevronShape.lineTo( CHEVRON_HALF_W, -CHEVRON_HEIGHT / 2);
 	chevronShape.closePath();
 	const chevronGeo = new THREE.ExtrudeGeometry(chevronShape, {
 		depth: CHEVRON_DEPTH,
-		bevelEnabled: false,
+		bevelEnabled: true,
+		bevelThickness: 0.04,
+		bevelSize: 0.03,
+		bevelSegments: 2,
 	});
-	// Center extrusion on z=0 so the chevron sits half in front of / half
-	// behind the ring plane (matches the recessed-setting on the show gate).
 	chevronGeo.translate(0, 0, -CHEVRON_DEPTH / 2);
 
 	const chevronMeshes: THREE.Mesh[] = [];
-	// Ring of 9 chevrons, evenly spaced. First chevron at the TOP of the
-	// gate (12 o'clock) — that's the canonical "primary chevron" position.
 	for (let i = 0; i < CHEVRON_COUNT; i++) {
 		const angle = Math.PI / 2 + (i / CHEVRON_COUNT) * Math.PI * 2;
 		const chevronMat = new THREE.MeshStandardMaterial({
 			color: COLOR_CHEVRON_OFF,
-			roughness: 0.4,
-			metalness: 0.7,
+			roughness: 0.35,
+			metalness: 0.8,
 			emissive: COLOR_CHEVRON_OFF,
-			emissiveIntensity: 0.1,
+			emissiveIntensity: 0.3,
 		});
 		const chevron = new THREE.Mesh(chevronGeo, chevronMat);
-		// Position the mesh origin on the ring radius and offset slightly
-		// forward (+Z) so the chevron clearly sits on the front face of the
-		// ring rather than embedded / occluded by its geometry.
-		const radialOffset = GATE_RADIUS;
+		// Position ON the torus surface — the outer torus tube radius is 0.5,
+		// so placing chevrons at GATE_RADIUS puts them right on the ring face.
+		// The +Z offset (0.55) pushes them forward of the tube center so they
+		// protrude from the front face like 3D bumps.
 		chevron.position.set(
-			GATE_CENTER.x + Math.cos(angle) * radialOffset,
-			GATE_CENTER.y + Math.sin(angle) * radialOffset,
-			GATE_CENTER.z + 0.18,
+			GATE_CENTER.x + Math.cos(angle) * GATE_RADIUS,
+			GATE_CENTER.y + Math.sin(angle) * GATE_RADIUS,
+			GATE_CENTER.z + 0.55,
 		);
-		// Rotate so local +Y (apex) points radially INWARD toward gate
-		// center. The direction "from chevron position to gate center" is
-		// (−cos(angle), −sin(angle)), whose atan2 is (angle + π). Since
-		// local +Y is already a π/2 rotation from local +X, we subtract
-		// π/2 to align local +Y with that inward vector.
-		chevron.rotation.z = angle + Math.PI - Math.PI / 2;
+		chevron.rotation.z = angle + Math.PI / 2;
 		scene.add(chevron);
 		chevronMeshes.push(chevron);
 	}
@@ -696,8 +715,10 @@ function shutdownGate(gate: GateRuntime): void {
 function updateDialing(gate: GateRuntime, delta: number): void {
 	gate.dialElapsed += delta;
 
-	// Spin the inner ring (SGU-style continuous rotation)
-	gate.innerRing.rotation.z += delta * 3.0;
+	// Spin the inner ring — alternates direction with each chevron lock.
+	// Odd chevrons spin clockwise, even counterclockwise (like a combination lock).
+	const spinDir = gate.lockedChevrons % 2 === 0 ? 1 : -1;
+	gate.innerRing.rotation.z += delta * 2.5 * spinDir;
 
 	// Lock chevrons at intervals
 	const targetChevrons = Math.min(
@@ -1508,6 +1529,12 @@ function createCO2Display(): HTMLDivElement {
 async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycle> {
 	const { scene, camera, player, renderer } = context;
 	camera.rotation.order = 'YXZ';
+	// Save original projection to restore on dispose (camera is shared across scenes)
+	const origNear = camera.near;
+	const origFar = camera.far;
+	camera.near = 0.1;
+	camera.far = 500;
+	camera.updateProjectionMatrix();
 	const bus = scopedBus();
 
 	wallMeshes.length = 0;
@@ -2550,6 +2577,10 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			// never otherwise freed — ARCH-003 debt). They are cheap to recreate on remount.
 			extWallMat.dispose();
 			extCeilingMat.dispose();
+			// Restore shared camera projection (modified in mount)
+			camera.near = origNear;
+			camera.far = origFar;
+			camera.updateProjectionMatrix();
 		}
 	};
 }

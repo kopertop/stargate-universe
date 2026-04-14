@@ -19,3 +19,7 @@ production/session-logs/
 gameplay-capture/
 test-results/
 test-reports/
+
+# Visual similarity tool output
+scripts/screenshots/
+scripts/reports/

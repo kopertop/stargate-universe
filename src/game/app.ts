@@ -109,9 +109,13 @@ export async function createGameApp(options: GameAppOptions) {
       activeScene?.player?.setExternalMoveInput(forward, strafe);
     },
     gotoScene: (sceneId: string) => loadScene(sceneId),
+    getCanvas: () => renderer.domElement as unknown as HTMLCanvasElement,
+    getCamera: () => camera,
+    getRenderer: () => renderer,
+    getScene: () => scene,
   };
-  installDebugApi(hostHooks);
   if (import.meta.env.DEV) {
+    installDebugApi(hostHooks);
     const toggleDev = (e: KeyboardEvent) => {
       if (e.code === "Backquote") toggleDebugOverlay(hostHooks);
     };

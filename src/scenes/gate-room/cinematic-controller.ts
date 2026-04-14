@@ -1094,13 +1094,23 @@ export class GateRoomCinematicController {
 			this.eventHorizon = undefined;
 		}
 
-		// Crew NPCs (VRM) — remove from scene and dispose GPU resources.
-		for (const c of [this.scottNpc, this.rushNpc, this.youngNpc, this.tjNpc, this.eliNpc]) {
-			if (!c) continue;
-			this.scene.remove(c.root);
-			c.dispose?.();
+		// Crew NPCs — KEEP in scene as gameplay NPCs (except cinematic Eli
+		// copy which would duplicate the player). Stand them upright at their
+		// landing positions so they're visible in the gameplay world.
+		for (const actor of this.thrownActors) {
+			actor.char.root.visible = true;
+			actor.char.root.rotation.set(0, 0, 0); // upright
 		}
-		this.scottNpc = this.rushNpc = this.youngNpc = this.tjNpc = this.eliNpc = undefined;
+		// Remove cinematic Eli (player takes over)
+		if (this.eliNpc) {
+			this.scene.remove(this.eliNpc.root);
+			this.eliNpc.dispose?.();
+			this.eliNpc = undefined;
+		}
+		// Keep Young down (unconscious)
+		if (this.youngNpc) {
+			this.youngNpc.root.rotation.x = -Math.PI / 2;
+		}
 		this.thrownActors = [];
 
 		for (const a of this.chaosActors) {

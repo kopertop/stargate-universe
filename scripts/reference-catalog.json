@@ -1,0 +1,116 @@
+{
+  "description": "Reference image catalog for SGU visual similarity comparisons",
+  "notes": "Each entry maps a reference image to a game camera angle/view. Screenshots should be named to match the entry 'name' field.",
+  "references": [
+    {
+      "name": "gate-room-front",
+      "reference_path": "/Users/cmoyer/Documents/Stargate/sgu-gateroom.webp",
+      "description": "Gate room head-on view — gate centered, full room visible, low camera angle. The definitive establishing shot of the Destiny gate room.",
+      "tags": ["gate-room", "gate", "architecture", "primary"],
+      "camera_hint": {
+        "position": "Center of room, ~2m height, facing gate directly",
+        "fov": 60,
+        "notes": "Low angle looking slightly up at the gate. Room pillars and ceiling visible. Dark moody lighting."
+      }
+    },
+    {
+      "name": "gate-active",
+      "reference_path": "/Users/cmoyer/Documents/Stargate/sgu-stargate.jpg",
+      "description": "Active stargate with event horizon — blue-white rippling wormhole, bright light spilling onto floor. Floor markings visible.",
+      "tags": ["gate", "event-horizon", "lighting", "primary"],
+      "camera_hint": {
+        "position": "Floor level, ~15m back from gate, centered",
+        "fov": 50,
+        "notes": "Looking straight at the active gate. Strong blue-white light floods the room. Yellow floor markers visible."
+      }
+    },
+    {
+      "name": "gate-closeup",
+      "reference_path": "/Users/cmoyer/Documents/Stargate/Stargate.jpeg",
+      "description": "Close-up of active gate event horizon — glowing chevrons, ripple effect visible through the ring.",
+      "tags": ["gate", "event-horizon", "detail"],
+      "camera_hint": {
+        "position": "Close to gate, ~5m, slightly off-center",
+        "fov": 45,
+        "notes": "Tight shot on the gate ring and event horizon. Chevron glow visible."
+      }
+    },
+    {
+      "name": "destiny-exterior",
+      "reference_path": "/Users/cmoyer/Documents/Stargate/Destiny.jpeg",
+      "description": "Destiny ship exterior in space — full ship visible with characteristic wing shape and hull detail.",
+      "tags": ["ship", "exterior", "space"],
+      "camera_hint": {
+        "position": "External camera, ship fills 60% of frame",
+        "fov": 40,
+        "notes": "Ship against star field. Blue/white light from nearby star illuminating hull."
+      }
+    },
+    {
+      "name": "destiny-ftl-exit",
+      "reference_path": "/Users/cmoyer/Documents/Stargate/Destiny out of FTL.jpeg",
+      "description": "Destiny dropping out of FTL — ship visible with FTL trail, dark space, glowing hull lights.",
+      "tags": ["ship", "exterior", "ftl", "lighting"],
+      "camera_hint": {
+        "position": "External camera, side angle showing full length",
+        "fov": 35,
+        "notes": "Dark space background. Ship hull lights and FTL glow visible."
+      }
+    },
+    {
+      "name": "observation-deck",
+      "reference_path": "/Users/cmoyer/Documents/Stargate/Observation Deck in FTL.jpeg",
+      "description": "Observation deck interior during FTL — large window, blue streaking light, silhouetted figure, organic pillars.",
+      "tags": ["interior", "observation-deck", "ftl", "atmosphere"],
+      "camera_hint": {
+        "position": "Behind the viewer position, looking toward window",
+        "fov": 55,
+        "notes": "Very blue/cyan lighting from FTL window. Organic curved pillars. Dark foreground furniture."
+      }
+    },
+    {
+      "name": "hatch-control",
+      "reference_path": "/Users/cmoyer/Documents/Stargate/Stargate-Universe-SGU-Destiny-Hatch-Control-1.jpg",
+      "description": "Destiny hatch control panel — Ancient tech prop, red/yellow status indicator, worn metallic surface.",
+      "tags": ["prop", "interface", "detail", "ancient-tech"],
+      "camera_hint": {
+        "position": "Close-up, wall-mounted prop",
+        "fov": 30,
+        "notes": "Detail shot of Ancient technology. Worn, used aesthetic. Green/amber indicator lights."
+      }
+    },
+    {
+      "name": "kino-dispenser",
+      "reference_path": "/Users/cmoyer/Documents/Stargate/Kino_dispenser.webp",
+      "description": "Kino dispenser unit — wall-mounted mechanical device with two Kino spheres visible in dispensing slot.",
+      "tags": ["prop", "kino", "detail", "ancient-tech"],
+      "camera_hint": {
+        "position": "Close-up, wall-mounted device",
+        "fov": 35,
+        "notes": "Metallic device with industrial/Ancient aesthetic. Pipes, slots, worn metal textures."
+      }
+    },
+    {
+      "name": "destiny-3q-view",
+      "reference_path": "/Users/cmoyer/Documents/Stargate/Screenshot 2026-02-08 at 2.49.13 PM.png",
+      "description": "Destiny 3D model three-quarter view — detailed hull geometry, panel lines, forward section visible.",
+      "tags": ["ship", "exterior", "model-reference"],
+      "camera_hint": {
+        "position": "Three-quarter overhead angle, full ship",
+        "fov": 40,
+        "notes": "Clean studio-style shot of ship model. Good reference for hull topology."
+      }
+    },
+    {
+      "name": "destiny-front-view",
+      "reference_path": "/Users/cmoyer/Documents/Stargate/Screenshot 2026-02-08 at 2.49.22 PM.png",
+      "description": "Destiny 3D model front view — head-on, showing characteristic flat disc shape and wing spread.",
+      "tags": ["ship", "exterior", "model-reference"],
+      "camera_hint": {
+        "position": "Directly in front, level with ship center",
+        "fov": 40,
+        "notes": "Head-on shot showing disc shape and wing geometry."
+      }
+    }
+  ]
+}

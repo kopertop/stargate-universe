@@ -10,6 +10,7 @@
  * with buttons for the most common actions so a human testing by hand
  * can click through the game flow.
  */
+import type * as THREE from "three";
 import { emit } from "./event-bus";
 import { AudioManager } from "./audio";
 import { getInput, Action, SguAction } from "./input";
@@ -40,6 +41,18 @@ export interface SguDebugApi {
 	readonly chooseDialogue: (responseId: string) => void;
 	/** AudioContext/listener state — useful when debugging silent audio. */
 	readonly audioState: () => { contextState: AudioContextState };
+	/**
+	 * Capture a screenshot on the next rendered frame.
+	 * Returns a data URL (image/png) of the canvas contents.
+	 * Optionally set camera position/target before capture.
+	 */
+	readonly screenshot: (opts?: {
+		cameraPos?: { x: number; y: number; z: number };
+		cameraTarget?: { x: number; y: number; z: number };
+		waitFrames?: number;
+	}) => Promise<string>;
+	/** Set camera position and look-at target directly. */
+	readonly setCamera: (pos: { x: number; y: number; z: number }, target: { x: number; y: number; z: number }) => void;
 }
 
 // ─── Implementation ─────────────────────────────────────────────────────────
@@ -49,6 +62,10 @@ interface HostHooks {
 	getPlayerPosition: () => { x: number; y: number; z: number } | undefined;
 	setExternalMove: ((forward: number, strafe: number) => void) | undefined;
 	gotoScene: (sceneId: string) => Promise<void>;
+	getCanvas: () => HTMLCanvasElement | undefined;
+	getCamera: () => THREE.PerspectiveCamera | undefined;
+	getRenderer: () => { render: (scene: THREE.Scene, camera: THREE.Camera) => void } | undefined;
+	getScene: () => THREE.Scene | undefined;
 }
 
 const actionMap = {
@@ -119,6 +136,53 @@ export function installDebugApi(hooks: HostHooks): void {
 		audioState: () => ({
 			contextState: AudioManager.getInstance().getContextState(),
 		}),
+		screenshot: (opts) => {
+			return new Promise<string>((resolve, reject) => {
+				const cam = hooks.getCamera();
+				const rndr = hooks.getRenderer();
+				const scn = hooks.getScene();
+				const canvas = hooks.getCanvas();
+
+				if (!cam || !rndr || !scn || !canvas) {
+					reject(new Error("Game not ready — no renderer/camera/scene"));
+					return;
+				}
+
+				if (opts?.cameraPos) {
+					cam.position.set(opts.cameraPos.x, opts.cameraPos.y, opts.cameraPos.z);
+				}
+				if (opts?.cameraTarget) {
+					cam.lookAt(opts.cameraTarget.x, opts.cameraTarget.y, opts.cameraTarget.z);
+				}
+
+				const framesToWait = opts?.waitFrames ?? 3;
+				let waited = 0;
+
+				const captureOnFrame = () => {
+					waited++;
+					if (waited < framesToWait) {
+						requestAnimationFrame(captureOnFrame);
+						return;
+					}
+
+					rndr.render(scn, cam);
+					try {
+						const dataUrl = canvas.toDataURL("image/png");
+						resolve(dataUrl);
+					} catch (err) {
+						reject(err);
+					}
+				};
+
+				requestAnimationFrame(captureOnFrame);
+			});
+		},
+		setCamera: (pos, target) => {
+			const cam = hooks.getCamera();
+			if (!cam) return;
+			cam.position.set(pos.x, pos.y, pos.z);
+			cam.lookAt(target.x, target.y, target.z);
+		},
 	};
 
 	(window as unknown as { __sgu?: SguDebugApi }).__sgu = api;

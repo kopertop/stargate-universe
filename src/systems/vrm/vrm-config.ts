@@ -105,7 +105,7 @@ export async function loadVrmConfig(url = "/assets/config/vrm-config.json"): Pro
 		const response = await fetch(url);
 
 		if (!response.ok) {
-			console.warn(`[VrmConfig] Failed to load config from ${url} (${response.status}). Using defaults.`);
+			console.info(`[VrmConfig] Failed to load config from ${url} (${response.status}). Using defaults.`);
 			return activeConfig;
 		}
 

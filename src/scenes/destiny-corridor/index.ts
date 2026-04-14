@@ -584,7 +584,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 						const result = shipState.repairSubsystem(interaction.repairingSubsystemId);
 						if (result.success) {
 							const sub = shipState.getSubsystem(interaction.repairingSubsystemId);
-							console.log(`Repaired ${interaction.repairingSubsystemId}: +${(result.conditionRestored * 100).toFixed(0)}% → ${((sub?.condition ?? 0) * 100).toFixed(0)}%`);
+							console.info(`Repaired ${interaction.repairingSubsystemId}: +${(result.conditionRestored * 100).toFixed(0)}% → ${((sub?.condition ?? 0) * 100).toFixed(0)}%`);
 						}
 						cancelRepair();
 					}

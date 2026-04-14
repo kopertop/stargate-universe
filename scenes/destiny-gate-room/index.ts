@@ -1,4 +1,10 @@
-import * as THREE from "three";
+/**
+ * @file index.ts
+ * @description Entry point for the Destiny Gate Room scene.
+ * Handles scene initialization and component registration.
+ */
+
+     1|import * as THREE from "three";
 import {
   createColocatedRuntimeSceneSource,
   defineGameScene

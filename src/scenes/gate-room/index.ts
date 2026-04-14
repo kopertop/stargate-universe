@@ -55,26 +55,24 @@ const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 const ROOM_WIDTH = 100;
 const ROOM_DEPTH = 160;
 const ROOM_HEIGHT = 32;
-const GATE_RADIUS = 2.8;
-// Tube cross-section radius — controls how thick/visible the ring is.
-// At 0.22, the ring was invisible from the establishing camera 50 units away
-// (sub-pixel tube). 0.6 gives a chunky, clearly readable ring profile
-// that reads as "big Ancient Stargate" from any distance.
-const GATE_TUBE = 0.6;
-const GATE_CENTER = new THREE.Vector3(0, GATE_RADIUS + GATE_TUBE - 0.3, 0); // centered in room
+// Gate scaled up to fill the frame like the reference — the SGU gate is
+// a massive structure. GATE_RADIUS=4 gives an 8-meter diameter ring that
+// dominates the establishing shot the way the show's gate does.
+const GATE_RADIUS = 4.0;
+const GATE_TUBE = 0.7;  // thick visible ring profile
+const GATE_CENTER = new THREE.Vector3(0, GATE_RADIUS + 0.2, 0); // bottom of ring just above floor
 const CHEVRON_COUNT = 9;
 
-// SGU color palette
-const COLOR_ANCIENT_METAL = 0x2a2a3a;
-const COLOR_ANCIENT_GLOW = 0x4488ff;
+// SGU color palette — blue-grey Ancient metal, matching the reference
+const COLOR_ANCIENT_METAL = 0x1e2030;  // dark blue-grey hull metal
+const COLOR_ANCIENT_GLOW = 0x4488ff;   // blue accent glow
 const COLOR_CHEVRON_OFF = 0x223355;  // visible dim blue even when unlit
 const COLOR_CHEVRON_ON = 0x44aaff;
 const COLOR_EVENT_HORIZON = 0x88bbff;
-// Wall and ceiling colours — light enough to read as "Ancient metal" even
-// with the massive room. Previous values (0x1a1a2e, 0x141425) were nearly
-// black and absorbed all ambient light, making the gate invisible at distance.
-const COLOR_WALL = 0x2a2a42;
-const COLOR_CEILING = 0x222238;
+// Wall and ceiling — dark blue-grey to match the SGU reference. The room
+// should feel like a dimly-lit Ancient military chamber, not a bright hall.
+const COLOR_WALL = 0x1a1a2e;
+const COLOR_CEILING = 0x141425;
 
 // Wall transparency — track wall meshes for camera occlusion
 const wallMeshes: THREE.Mesh[] = [];
@@ -100,22 +98,22 @@ type GateRuntime = {
 function createWallMaterial(): THREE.MeshStandardMaterial {
 	return new THREE.MeshStandardMaterial({
 		color: COLOR_WALL,
-		emissive: 0x1a1a33,
-		emissiveIntensity: 1.5,
-		roughness: 0.85,
-		metalness: 0.15,
-		side: THREE.DoubleSide
+		emissive: 0x0a0a18,
+		emissiveIntensity: 0.8,
+		roughness: 0.92,
+		metalness: 0.2,
+		side: THREE.DoubleSide,
 	});
 }
 
 function buildRoom(scene: THREE.Scene): void {
 	const ceilingMat = new THREE.MeshStandardMaterial({
 		color: COLOR_CEILING,
-		emissive: 0x111128,
-		emissiveIntensity: 1.5,
-		roughness: 0.9,
+		emissive: 0x060612,
+		emissiveIntensity: 0.5,
+		roughness: 0.95,
 		metalness: 0.1,
-		side: THREE.DoubleSide
+		side: THREE.DoubleSide,
 	});
 
 	// Back wall (behind gate)
@@ -179,29 +177,42 @@ function buildRoom(scene: THREE.Scene): void {
 	scene.add(ceiling);
 	wallMeshes.push(ceiling);
 
-	// Structural arch supports on walls — heavy Ancient architecture
+	// Structural arch supports — heavy Ancient buttresses along both walls,
+	// matching the reference's repeating arch motif. Spaced along Z with
+	// warm alcove lights between them (the amber glow panels in the ref).
 	const archMat = new THREE.MeshStandardMaterial({
-		color: 0x15152a,
-		roughness: 0.8,
-		metalness: 0.2
+		color: 0x12122a,
+		roughness: 0.85,
+		metalness: 0.25,
 	});
-	for (let i = -2; i <= 2; i++) {
-		if (i === 0) continue;
-		// Left wall arches
-		const leftArch = new THREE.Mesh(
-			new THREE.BoxGeometry(0.4, ROOM_HEIGHT, 0.6),
-			archMat
-		);
-		leftArch.position.set(-ROOM_WIDTH / 2 + 0.4, ROOM_HEIGHT / 2, i * 4);
-		scene.add(leftArch);
-
-		// Right wall arches
-		const rightArch = new THREE.Mesh(
-			new THREE.BoxGeometry(0.4, ROOM_HEIGHT, 0.6),
-			archMat
-		);
-		rightArch.position.set(ROOM_WIDTH / 2 - 0.4, ROOM_HEIGHT / 2, i * 4);
-		scene.add(rightArch);
+	const alcoveLightMat = new THREE.MeshStandardMaterial({
+		color: 0xffcc88,
+		emissive: 0xffaa55,
+		emissiveIntensity: 3.0,
+		roughness: 0.2,
+		metalness: 0,
+	});
+	const archSpacing = 8;
+	const archCount = Math.floor(ROOM_DEPTH / archSpacing);
+	for (let i = 0; i < archCount; i++) {
+		const z = -ROOM_DEPTH / 2 + 4 + i * archSpacing;
+		for (const xSign of [-1, 1]) {
+			const xBase = xSign * (ROOM_WIDTH / 2 - 0.3);
+			// Buttress column
+			const arch = new THREE.Mesh(
+				new THREE.BoxGeometry(0.6, ROOM_HEIGHT, 0.8),
+				archMat,
+			);
+			arch.position.set(xBase, ROOM_HEIGHT / 2, z);
+			scene.add(arch);
+			// Alcove warm light panel between buttresses (like the reference)
+			const alcove = new THREE.Mesh(
+				new THREE.BoxGeometry(0.1, 2.5, archSpacing - 1.5),
+				alcoveLightMat,
+			);
+			alcove.position.set(xBase + xSign * 0.1, 3.5, z + archSpacing / 2);
+			scene.add(alcove);
+		}
 	}
 
 	// Back wall structural frame around gate area
@@ -227,22 +238,24 @@ function buildRoom(scene: THREE.Scene): void {
 		scene.add(column);
 	}
 
-	// Amber floor guide strips — run the full room length, through the gate
-	const stripMat = new THREE.MeshStandardMaterial({
-		color: 0xddaa33,
-		emissive: 0xddaa33,
-		emissiveIntensity: 0.4,
-		roughness: 0.6,
-		metalness: 0.3
+	// Amber embedded floor lights — matching the SGU reference: two rows of
+	// warm rectangular lights flanking the center aisle, like runway markers.
+	// Wider and more orange than before to match the reference's amber tone.
+	const floorLightMat = new THREE.MeshStandardMaterial({
+		color: 0xffaa44,
+		emissive: 0xffaa44,
+		emissiveIntensity: 2.0,
+		roughness: 0.3,
+		metalness: 0.1,
 	});
 	const stripStartZ = ROOM_DEPTH / 2 - 2;
-	const stripEndZ = -ROOM_DEPTH / 2 + 2;
-	const stripSpacing = 1.4;
+	const stripEndZ = -2;  // stop near the gate
+	const stripSpacing = 2.2;
 	for (let z = stripStartZ; z >= stripEndZ; z -= stripSpacing) {
-		for (const x of [-1.2, 1.2]) {
+		for (const x of [-1.8, 1.8]) {
 			const strip = new THREE.Mesh(
-				new THREE.BoxGeometry(0.12, 0.02, 0.5),
-				stripMat
+				new THREE.BoxGeometry(0.6, 0.02, 0.25),
+				floorLightMat,
 			);
 			strip.position.set(x, 0.01, z);
 			scene.add(strip);

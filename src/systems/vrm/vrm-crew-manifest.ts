@@ -153,7 +153,7 @@ export async function loadCrewRoster(
 		console.info(`[CrewManifest] Loaded ${roster.length} crew members from ${url}`);
 		return roster;
 	} catch (error) {
-		console.error("[CrewManifest] Error loading roster. Using defaults.", error);
+		console.error(`[CrewManifest] Error loading roster from ${url}. Using defaults.`, error);
 		return roster;
 	}
 }

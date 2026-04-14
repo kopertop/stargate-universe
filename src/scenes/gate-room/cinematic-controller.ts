@@ -18,6 +18,7 @@ import * as THREE from "three";
 import { loadCrewMember } from "../../characters/character-loader";
 import type { CharacterLoadResult } from "../../characters/character-loader";
 import { AudioManager } from "../../systems/audio";
+import { CinematicCamera } from "../../systems/cinematic-camera";
 import { Action, getInput } from "../../systems/input";
 
 // ─── Beat definitions ─────────────────────────────────────────────────────────
@@ -59,14 +60,14 @@ function applyEasing(t: number, mode: Beat["easing"]): number {
 // the gate because the kawoosh geometry didn't align with the ring.)
 const GATE_CENTER = new THREE.Vector3(0, 2.72, 0);
 const GATE_BACK   = new THREE.Vector3(0, 2.72, 0.5);  // just in front of the horizon
-// Overhead shot — high angle looking down at the landing zone in FRONT
-// of the gate (+Z direction, where crew are thrown INTO the room).
-// Gate is at z=0; crew land at z=4-10; player spawn at z=12.
-const OVERHEAD    = new THREE.Vector3(0, 14, 8);
+// Overhead shot — high angle from BEHIND the landing zone so we look
+// backward TOWARD the gate. Gate appears at the TOP of the frame (z=0),
+// crew landing zone fills the center/bottom (z=4-10). Camera at z=12
+// (near spawn) looking back at the action.
+const OVERHEAD    = new THREE.Vector3(0, 14, 12);
 // Wide establishing shot — camera far back and elevated so the whole
-// gate + room silhouette is visible. Stays static during dial & kawoosh
-// so the player actually reads the chevrons locking in.
-const ESTABLISH   = new THREE.Vector3(0, 6, 22);
+// gate + room silhouette is visible. Pushed further back for the larger room.
+const ESTABLISH   = new THREE.Vector3(0, 7, 28);
 
 // ─── 40-second gate-room arrival ────────────────────────────────────────────
 //
@@ -116,15 +117,15 @@ const BEATS: Beat[] = [
 		lookAt:  GATE_BACK,
 		easing:  "linear",
 	},
-	// Beat 5 — OVERHEAD. High angle looking down at the landing zone in
-	// front of the gate (+Z). Gate at z=0, crew land z=4-10, player at z=12.
-	// Camera positioned above the action so we see: gate (top of frame),
-	// crew tumbling/landing (center), runway receding (bottom).
+	// Beat 5 — OVERHEAD. Camera elevated behind the landing zone (z=12)
+	// looking backward toward the gate (z=0). This frames the gate ring
+	// in the top third and the crew landing area (z=4-10) across the
+	// center and bottom thirds — the classic overhead chaos shot.
 	{
 		start: 20, end: 32,
 		camFrom: OVERHEAD.clone(),
 		camTo:   OVERHEAD.clone(),
-		lookAt:  new THREE.Vector3(0, 0, 5),
+		lookAt:  new THREE.Vector3(0, 0, 3),
 		easing:  "linear",
 	},
 	// Beat 6 — DESCENT to Eli prone on the ground; Scott crouches in.
@@ -400,8 +401,7 @@ export class GateRoomCinematicController {
 	private elapsed = 0;
 	private frozen = false;   // ?cinfreeze=1 — don't advance elapsed (dev tool)
 	private disposed = false;
-	private shakeIntensity = 0;
-	private readonly shakeOffset = new THREE.Vector3();
+	private cinCam: CinematicCamera;
 	private flickerActive = false;
 	private kawooshDisc: THREE.Mesh | undefined;
 	private kawooshElapsed = 0;
@@ -447,6 +447,7 @@ export class GateRoomCinematicController {
 	) {
 		this.scene = scene;
 		this.camera = camera;
+		this.cinCam = new CinematicCamera(camera);
 		this.onChevronLock = onChevronLock;
 		this.onComplete = onComplete;
 		this.playerObject = playerObject;
@@ -832,29 +833,18 @@ export class GateRoomCinematicController {
 	private applyCamera(elapsed: number) {
 		const beat = BEATS.find(b => elapsed >= b.start && elapsed < b.end) ?? BEATS[BEATS.length - 1];
 		const rawT = (elapsed - beat.start) / (beat.end - beat.start);
-		const t = applyEasing(Math.min(1, Math.max(0, rawT)), beat.easing);
 
-		const pos = new THREE.Vector3().lerpVectors(beat.camFrom, beat.camTo, t);
-
-		// Force-kill shake during the wide establishing + dial + overhead
-		// beats so residual landing shake doesn't wobble the calm shots.
+		// Kill shake during calm beats (establishing, dial, first second of overhead)
 		if (elapsed < T_OVERHEAD || (elapsed >= T_OVERHEAD && elapsed < T_OVERHEAD + 2)) {
-			this.shakeIntensity = 0;
+			this.cinCam.killShake();
 		}
+		this.cinCam.updateShake();
 
-		// Camera shake
-		if (this.shakeIntensity > 0.001) {
-			this.shakeOffset.set(
-				(Math.random() - 0.5) * this.shakeIntensity,
-				(Math.random() - 0.5) * this.shakeIntensity,
-				(Math.random() - 0.5) * this.shakeIntensity,
-			);
-			pos.add(this.shakeOffset);
-			this.shakeIntensity *= Math.pow(0.85, 1 / 60);
-		}
-
-		this.camera.position.copy(pos);
-		this.camera.lookAt(beat.lookAt);
+		// Use CinematicCamera.lerpTo for the beat transition
+		this.cinCam.lerpTo(
+			beat.camFrom, beat.camTo, beat.lookAt,
+			rawT, beat.easing,
+		);
 	}
 
 	// ── Subtitles ─────────────────────────────────────────────────────────────
@@ -927,11 +917,11 @@ export class GateRoomCinematicController {
 		// Chaos actors removed — nothing to update here.
 
 		// Shake on the chaos-arrival surge and again on Young's impact.
-		if (elapsed >= T_CHAOS_START + 0.3 && elapsed < T_CHAOS_START + 1 && this.shakeIntensity < 0.05) {
-			this.shakeIntensity = 0.22;
+		if (elapsed >= T_CHAOS_START + 0.3 && elapsed < T_CHAOS_START + 1 && this.cinCam.currentShakeIntensity < 0.05) {
+			this.cinCam.shake(0.22);
 		}
-		if (elapsed >= T_YOUNG_IMPACT && elapsed < T_YOUNG_IMPACT + 0.5 && this.shakeIntensity < 0.05) {
-			this.shakeIntensity = 0.35;
+		if (elapsed >= T_YOUNG_IMPACT && elapsed < T_YOUNG_IMPACT + 0.5 && this.cinCam.currentShakeIntensity < 0.05) {
+			this.cinCam.shake(0.35);
 		}
 	}
 

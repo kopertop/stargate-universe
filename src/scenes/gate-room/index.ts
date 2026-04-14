@@ -48,9 +48,13 @@ const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const ROOM_WIDTH = 26;
-const ROOM_DEPTH = 40;
-const ROOM_HEIGHT = 8;
+// Gate room scaled up so crew throws have space, overhead shots frame the
+// whole scene, and the room reads as a large military staging area (matches
+// the show's Destiny gate room proportions). Gate and characters are NOT
+// scaled — only the architectural envelope grows.
+const ROOM_WIDTH = 36;
+const ROOM_DEPTH = 60;
+const ROOM_HEIGHT = 12;
 const GATE_RADIUS = 2.8;
 const GATE_TUBE = 0.22;
 const GATE_CENTER = new THREE.Vector3(0, GATE_RADIUS + GATE_TUBE - 0.3, 0); // centered in room
@@ -1605,17 +1609,17 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		color: 0x1a2a3a, emissive: 0x66aaff, emissiveIntensity: 0.9,
 		roughness: 0.15, metalness: 0.1,
 	});
-	for (const cz of [10, 13, 16]) {          // 3 consoles along Z
+	for (const cz of [14, 18, 22]) {          // 3 consoles along Z, flanking Rush at z=18
 		const base = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.9, 0.8), consoleBaseMat);
-		base.position.set(-6.2, 0.45, cz);
+		base.position.set(-8.5, 0.45, cz);
 		consoleRoot.add(base);
 		const topPanel = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.05, 0.8), consolePanelMat);
-		topPanel.position.set(-6.2, 0.92, cz);
+		topPanel.position.set(-8.5, 0.92, cz);
 		consoleRoot.add(topPanel);
 		// Angled monitor rising from the back of the panel toward the
 		// operator (+X, toward the gate-room aisle).
 		const monitor = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.55, 0.04), consoleScreenMat);
-		monitor.position.set(-6.5, 1.25, cz);
+		monitor.position.set(-8.8, 1.25, cz);
 		monitor.rotation.z = -Math.PI / 2;   // vertical
 		monitor.rotation.x = 0.3;            // tilted forward
 		consoleRoot.add(monitor);

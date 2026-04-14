@@ -7,7 +7,7 @@
       "properties": {},
       "transform": {
         "pivot": { "x": 0, "y": 0, "z": 0 },
-        "position": { "x": 0, "y": 0.5, "z": 12 },
+        "position": { "x": 0, "y": 0.5, "z": 18 },
         "rotation": { "x": 0, "y": 3.141592653589793, "z": 0 },
         "scale": { "x": 1, "y": 1, "z": 1 }
       },
@@ -52,7 +52,7 @@
         },
         "role": "brush",
         "shape": "cube",
-        "size": { "x": 26, "y": 1, "z": 80 }
+        "size": { "x": 36, "y": 1, "z": 100 }
       },
       "geometry": {
         "primitives": [

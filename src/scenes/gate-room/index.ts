@@ -66,8 +66,11 @@ const COLOR_ANCIENT_GLOW = 0x4488ff;
 const COLOR_CHEVRON_OFF = 0x111122;
 const COLOR_CHEVRON_ON = 0x44aaff;
 const COLOR_EVENT_HORIZON = 0x88bbff;
-const COLOR_WALL = 0x1a1a2e;
-const COLOR_CEILING = 0x141425;
+// Wall and ceiling colours — light enough to read as "Ancient metal" even
+// with the massive room. Previous values (0x1a1a2e, 0x141425) were nearly
+// black and absorbed all ambient light, making the gate invisible at distance.
+const COLOR_WALL = 0x2a2a42;
+const COLOR_CEILING = 0x222238;
 
 // Wall transparency — track wall meshes for camera occlusion
 const wallMeshes: THREE.Mesh[] = [];
@@ -92,22 +95,22 @@ type GateRuntime = {
 
 function createWallMaterial(): THREE.MeshStandardMaterial {
 	return new THREE.MeshStandardMaterial({
-		color: 0x222238,
-		emissive: 0x141428,
-		emissiveIntensity: 1.0,
-		roughness: 0.9,
-		metalness: 0.1,
+		color: COLOR_WALL,
+		emissive: 0x1a1a33,
+		emissiveIntensity: 1.5,
+		roughness: 0.85,
+		metalness: 0.15,
 		side: THREE.DoubleSide
 	});
 }
 
 function buildRoom(scene: THREE.Scene): void {
 	const ceilingMat = new THREE.MeshStandardMaterial({
-		color: 0x181828,
-		emissive: 0x060612,
-		emissiveIntensity: 1.0,
-		roughness: 0.95,
-		metalness: 0.05,
+		color: COLOR_CEILING,
+		emissive: 0x111128,
+		emissiveIntensity: 1.5,
+		roughness: 0.9,
+		metalness: 0.1,
 		side: THREE.DoubleSide
 	});
 
@@ -399,55 +402,63 @@ function buildLighting(scene: THREE.Scene, debugObjects: THREE.Object3D[]): THRE
 	const lights: THREE.PointLight[] = [];
 	const gateZ = GATE_CENTER.z;
 
-	// Hemisphere fill — sky colour from above, ground bounce from below.
-	// Bumped intensity so the massive room (100×160×32) has base visibility
-	// everywhere, even before the gate activates.
-	const hemisphereLight = new THREE.HemisphereLight(0x4466aa, 0x111122, 4.0);
+	// ── Global ambient ──────────────────────────────────────────────────
+	// The room is 100×160×32 — hemisphere + directional must fill the
+	// entire volume so the gate is clearly visible even before it activates.
+	// High ambient so the 100×160×32 room is never pitch-black anywhere.
+	// Hemisphere provides subtle sky/ground colour separation on top of the
+	// flat ambient. Combined: ~12 lux equivalent base illumination.
+	const hemisphereLight = new THREE.HemisphereLight(0x6688cc, 0x222244, 10.0);
 	scene.add(hemisphereLight);
+	const ambientLight = new THREE.AmbientLight(0x445566, 6.0);
+	scene.add(ambientLight);
 
-	// Directional key light — fills the whole room regardless of size.
-	// Points from upper-right-front toward gate area for dramatic angle.
-	const dirLight = new THREE.DirectionalLight(0xccddff, 1.5);
-	dirLight.position.set(20, 25, 30);
+	// Directional key — uniform fill from above. High intensity to light
+	// both the gate end (z=0) and the spawn end (z=80) of the long room.
+	const dirLight = new THREE.DirectionalLight(0xccddff, 5.0);
+	dirLight.position.set(10, 28, 40);
 	dirLight.target.position.set(0, 0, 0);
 	scene.add(dirLight);
 	scene.add(dirLight.target);
 
-	// 1. Overhead area light — high candela, massive range to fill room
-	const overheadLight = new THREE.PointLight(0xffeedd, 300, 120, 1.2);
+	// ── Gate-area accents ────────────────────────────────────────────────
+	// 1. Overhead — centered in room, massive range
+	const overheadLight = new THREE.PointLight(0xffeedd, 600, 200, 1.0);
 	overheadLight.position.set(0, ROOM_HEIGHT - 3, ROOM_DEPTH / 4);
 	scene.add(overheadLight);
 	lights.push(overheadLight);
 
-	// 2. Gate front — blue Ancient glow, increased range for visibility
-	const gateFrontLight = new THREE.PointLight(COLOR_ANCIENT_GLOW, 500, 60, 1.2);
-	gateFrontLight.position.set(0, 3, gateZ + 4);
+	// 2. Gate front — blue Ancient glow
+	const gateFrontLight = new THREE.PointLight(COLOR_ANCIENT_GLOW, 800, 100, 1.0);
+	gateFrontLight.position.set(0, 4, gateZ + 6);
 	scene.add(gateFrontLight);
 	lights.push(gateFrontLight);
 
 	// 3. Gate back — backlight the ring
-	const gateBackLight = new THREE.PointLight(COLOR_ANCIENT_GLOW, 300, 40, 1.5);
-	gateBackLight.position.set(0, 4, gateZ - 5);
+	const gateBackLight = new THREE.PointLight(COLOR_ANCIENT_GLOW, 400, 60, 1.2);
+	gateBackLight.position.set(0, 5, gateZ - 6);
 	scene.add(gateBackLight);
 	lights.push(gateBackLight);
 
 	// 4. Gate top — highlights the upper ring
-	const gateTopLight = new THREE.PointLight(COLOR_ANCIENT_GLOW, 200, 30, 1.5);
-	gateTopLight.position.set(0, 10, gateZ);
+	const gateTopLight = new THREE.PointLight(COLOR_ANCIENT_GLOW, 300, 50, 1.2);
+	gateTopLight.position.set(0, 12, gateZ);
 	scene.add(gateTopLight);
 	lights.push(gateTopLight);
 
-	// 5-6. Warm amber side lights — range scaled for the wider room
+	// 5-6. Warm amber side lights — two per side, spaced along Z
 	const COLOR_WARM_ACCENT = 0xffaa44;
-	const leftSide = new THREE.PointLight(COLOR_WARM_ACCENT, 150, 80, 1.2);
-	leftSide.position.set(-ROOM_WIDTH / 3, 5, ROOM_DEPTH / 4);
-	scene.add(leftSide);
-	lights.push(leftSide);
+	for (const zOff of [ROOM_DEPTH / 6, ROOM_DEPTH / 2]) {
+		const left = new THREE.PointLight(COLOR_WARM_ACCENT, 200, 100, 1.0);
+		left.position.set(-ROOM_WIDTH / 3, 6, zOff);
+		scene.add(left);
+		lights.push(left);
 
-	const rightSide = new THREE.PointLight(COLOR_WARM_ACCENT, 150, 80, 1.2);
-	rightSide.position.set(ROOM_WIDTH / 3, 5, ROOM_DEPTH / 4);
-	scene.add(rightSide);
-	lights.push(rightSide);
+		const right = new THREE.PointLight(COLOR_WARM_ACCENT, 200, 100, 1.0);
+		right.position.set(ROOM_WIDTH / 3, 6, zOff);
+		scene.add(right);
+		lights.push(right);
+	}
 
 	// 7-10. Floor spotlights aimed at gate faces — restored from working prototype
 	const gateY = GATE_CENTER.y;

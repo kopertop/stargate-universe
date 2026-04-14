@@ -417,8 +417,12 @@ export class StarterPlayerController {
         root.rotation.x = 0;
         root.rotation.z = 0;
       }
-      // Hide capsule when VRM is loaded
-      this.visual.visible = false;
+      // Permanently remove capsule fallback once VRM is loaded — setting
+      // visible=false was unreliable because restorePlayerVisual and other
+      // traversals could re-enable children. Removing from parent is final.
+      if (this.visual.parent) {
+        this.visual.parent.remove(this.visual);
+      }
       // Handle first-person head hiding
       setFirstPersonMode(this.cameraMode === "fps", this.camera);
 

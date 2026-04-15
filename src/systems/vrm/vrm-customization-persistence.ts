@@ -28,8 +28,9 @@ export async function loadCustomization(characterId: string): Promise<VrmCustomi
 				return data as VrmCustomization;
 			}
 		}
-	} catch {
+	} catch (err) {
 		// API not available — fall through to localStorage
+		console.warn("[VrmCustomizationPersistence] API load failed, falling back to localStorage:", err);
 	}
 
 	// Fallback: localStorage
@@ -38,8 +39,9 @@ export async function loadCustomization(characterId: string): Promise<VrmCustomi
 		if (stored) {
 			return JSON.parse(stored) as VrmCustomization;
 		}
-	} catch {
+	} catch (err) {
 		// localStorage not available or corrupt
+		console.warn("[VrmCustomizationPersistence] localStorage read failed:", err);
 	}
 
 	return null;

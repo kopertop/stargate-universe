@@ -39,7 +39,7 @@ const CAMERA_PRESETS: CameraPreset[] = [
 		scene: "gate-room",
 		// Gate is at (0, 6.2, 0), radius 6. At z=14 with FOV 60, the gate
 		// fills ~80% of frame height, matching the reference framing.
-		position: { x: 0, y: 4.5, z: 14 },
+		position: { x: 0, y: 6.2, z: 14 },
 		target: { x: 0, y: 6.2, z: 0 },
 		description: "Head-on view of gate room, matching sgu-gateroom.webp reference",
 	},

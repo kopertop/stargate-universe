@@ -1,0 +1,66 @@
+{
+  "$schema": "Entity definitions — interactive objects, spawns, characters",
+  "entities": [
+    {
+      "id": "entity:player-spawn:gate-room",
+      "type": "player-spawn",
+      "name": "Gate Room Spawn",
+      "position": [0, 0.5, 12],
+      "rotationY": 3.14159,
+      "room": "gate-room"
+    },
+    {
+      "id": "entity:vrm-character:eli",
+      "type": "vrm-character",
+      "name": "Eli Wallace",
+      "characterId": "eli-wallace",
+      "vrmUrl": "assets/characters/eli.vrm",
+      "animationBundle": "player-locomotion",
+      "isPlayer": true,
+      "position": [0, 0.5, 12],
+      "room": "gate-room",
+      "notes": "Disabled until VRM WebGPU pipeline fix"
+    },
+    {
+      "id": "entity:stargate",
+      "type": "smart-object",
+      "name": "Destiny Stargate",
+      "position": [0, 0, -19.5],
+      "room": "gate-room",
+      "interactKey": "KeyG",
+      "interactDistance": 8.0,
+      "states": ["idle", "dialing", "kawoosh", "active", "shutdown"],
+      "notes": "Dynamic object — built programmatically in scene mount()"
+    },
+    {
+      "id": "entity:crate:1",
+      "type": "smart-object",
+      "name": "Supply Crate Alpha",
+      "position": [-2, 0, 21.5],
+      "room": "storage-bay",
+      "contents": { "ship-parts": 8 },
+      "interactKey": "KeyE",
+      "interactDistance": 2.5
+    },
+    {
+      "id": "entity:crate:2",
+      "type": "smart-object",
+      "name": "Supply Crate Beta",
+      "position": [-1, 0, 25.5],
+      "room": "storage-bay",
+      "contents": { "ship-parts": 6 },
+      "interactKey": "KeyE",
+      "interactDistance": 2.5
+    },
+    {
+      "id": "entity:crate:3",
+      "type": "smart-object",
+      "name": "Supply Crate Gamma",
+      "position": [2.5, 0, 24],
+      "room": "storage-bay",
+      "contents": { "ship-parts": 8 },
+      "interactKey": "KeyE",
+      "interactDistance": 2.5
+    }
+  ]
+}

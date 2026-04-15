@@ -1,0 +1,89 @@
+{
+  "$schema": "Room/section definitions for the Destiny ship",
+  "rooms": [
+    {
+      "id": "gate-room",
+      "name": "Gate Room",
+      "dimensions": { "width": 26, "height": 8, "depth": 40 },
+      "origin": [0, 0, 0],
+      "ambientColor": "#1a1a3a",
+      "ambientIntensity": 0.7,
+      "fogColor": "#050510",
+      "fogNear": 25,
+      "fogFar": 50,
+      "features": [
+        "stargate",
+        "gate-platform",
+        "structural-arches",
+        "gate-frame",
+        "floor-guide-strips",
+        "spotlight-fixtures",
+        "emissive-wall-strips",
+        "back-glow-panels"
+      ],
+      "doorways": [
+        { "wall": "front", "position": [0, 0, 20], "width": 4, "height": 4.5, "connectsTo": "corridor-a1" },
+        { "wall": "east", "position": [13, 0, 8], "width": 4, "height": 4, "connectsTo": null },
+        { "wall": "west", "position": [-13, 0, 8], "width": 4, "height": 4, "connectsTo": null }
+      ],
+      "playerSpawn": { "position": [0, 0.5, 12], "rotationY": 3.14159 },
+      "section": {
+        "atmosphere": 0.8,
+        "power": 0.7,
+        "integrity": 0.95,
+        "discovered": true
+      }
+    },
+    {
+      "id": "corridor-a1",
+      "name": "Corridor A1",
+      "dimensions": { "width": 4, "height": 5, "depth": 12 },
+      "origin": [0, 0, 18],
+      "ambientColor": "#1a1a3a",
+      "ambientIntensity": 0.15,
+      "fogColor": "#050510",
+      "fogNear": 20,
+      "fogFar": 40,
+      "features": [
+        "corridor-emissive-strips"
+      ],
+      "doorways": [
+        { "wall": "south", "connectsTo": "gate-room" },
+        { "wall": "north", "connectsTo": "storage-bay" }
+      ],
+      "section": {
+        "atmosphere": 0.6,
+        "power": 0.4,
+        "integrity": 0.85,
+        "discovered": false
+      },
+      "subsystems": [
+        { "id": "corridor-conduit-1", "type": "conduit", "condition": 0.25, "repairCost": 5, "position": [2, 1.5, 18] }
+      ]
+    },
+    {
+      "id": "storage-bay",
+      "name": "Storage Bay",
+      "dimensions": { "width": 10, "height": 5, "depth": 8 },
+      "origin": [0, 0, 23],
+      "features": [
+        "supply-crates"
+      ],
+      "section": {
+        "atmosphere": 0.5,
+        "power": 0.2,
+        "integrity": 0.8,
+        "discovered": false
+      },
+      "subsystems": [
+        { "id": "storage-lights", "type": "lighting-panel", "condition": 0.1, "repairCost": 3, "position": [5, 1.5, 23] },
+        { "id": "storage-console", "type": "console", "condition": 0.35, "repairCost": 5, "position": [-5, 1.2, 23] }
+      ],
+      "supplyCrates": [
+        { "id": "crate-1", "position": [-2, 0, 21.5], "contents": { "ship-parts": 8 } },
+        { "id": "crate-2", "position": [-1, 0, 25.5], "contents": { "ship-parts": 6 } },
+        { "id": "crate-3", "position": [2.5, 0, 24], "contents": { "ship-parts": 8 } }
+      ]
+    }
+  ]
+}

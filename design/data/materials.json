@@ -1,0 +1,217 @@
+{
+  "$schema": "Materials catalog — all game materials with PBR properties",
+  "materials": [
+    {
+      "id": "material:ancient:floor",
+      "name": "Ancient Floor",
+      "category": "structure",
+      "color": "#1a1a2e",
+      "emissiveColor": null,
+      "emissiveIntensity": 0,
+      "metallicFactor": 0.1,
+      "roughnessFactor": 0.92,
+      "side": "double",
+      "notes": "Dark navy floor used throughout Destiny ship"
+    },
+    {
+      "id": "material:ancient:wall",
+      "name": "Ancient Wall",
+      "category": "structure",
+      "color": "#222238",
+      "emissiveColor": "#141428",
+      "emissiveIntensity": 1.0,
+      "metallicFactor": 0.1,
+      "roughnessFactor": 0.9,
+      "side": "double",
+      "notes": "Standard wall material with subtle self-illumination"
+    },
+    {
+      "id": "material:ancient:ceiling",
+      "name": "Ancient Ceiling",
+      "category": "structure",
+      "color": "#181828",
+      "emissiveColor": "#060612",
+      "emissiveIntensity": 1.0,
+      "metallicFactor": 0.05,
+      "roughnessFactor": 0.95,
+      "side": "double",
+      "notes": "Dark ceiling with very subtle glow"
+    },
+    {
+      "id": "material:ancient:arch",
+      "name": "Arch Support",
+      "category": "structure",
+      "color": "#15152a",
+      "metallicFactor": 0.2,
+      "roughnessFactor": 0.8,
+      "notes": "Structural arch pillars"
+    },
+    {
+      "id": "material:ancient:frame",
+      "name": "Structural Frame",
+      "category": "structure",
+      "color": "#1a1a30",
+      "metallicFactor": 0.25,
+      "roughnessFactor": 0.75,
+      "notes": "Gate frame and structural beams"
+    },
+    {
+      "id": "material:gate:outer-ring",
+      "name": "Gate Outer Ring",
+      "category": "stargate",
+      "color": "#2a2a3a",
+      "metallicFactor": 0.85,
+      "roughnessFactor": 0.3,
+      "notes": "Polished ancient metal ring"
+    },
+    {
+      "id": "material:gate:inner-ring",
+      "name": "Gate Inner Ring",
+      "category": "stargate",
+      "color": "#222235",
+      "metallicFactor": 0.9,
+      "roughnessFactor": 0.25,
+      "notes": "Spinning inner ring — darker, more polished"
+    },
+    {
+      "id": "material:gate:segments",
+      "name": "Ring Segments",
+      "category": "stargate",
+      "color": "#333348",
+      "metallicFactor": 0.8,
+      "roughnessFactor": 0.35,
+      "notes": "Ornamental bumps around ring"
+    },
+    {
+      "id": "material:gate:chevron-off",
+      "name": "Chevron (Off)",
+      "category": "stargate",
+      "color": "#111122",
+      "emissiveColor": "#111122",
+      "emissiveIntensity": 0.1,
+      "metallicFactor": 0.7,
+      "roughnessFactor": 0.4,
+      "notes": "Inactive chevron marker"
+    },
+    {
+      "id": "material:gate:chevron-on",
+      "name": "Chevron (On)",
+      "category": "stargate",
+      "color": "#44aaff",
+      "emissiveColor": "#44aaff",
+      "emissiveIntensity": 1.2,
+      "metallicFactor": 0.7,
+      "roughnessFactor": 0.4,
+      "notes": "Active/locked chevron — bright cyan"
+    },
+    {
+      "id": "material:gate:event-horizon",
+      "name": "Event Horizon",
+      "category": "stargate",
+      "color": "#88bbff",
+      "emissiveColor": "#88bbff",
+      "emissiveIntensity": 0.8,
+      "metallicFactor": 0.0,
+      "roughnessFactor": 0.1,
+      "transparent": true,
+      "opacity": 0.8,
+      "notes": "Active wormhole surface — pulses when active"
+    },
+    {
+      "id": "material:accent:blue-strip",
+      "name": "Blue Emissive Strip",
+      "category": "accent",
+      "color": "#4488ff",
+      "emissiveColor": "#4488ff",
+      "emissiveIntensity": 0.5,
+      "notes": "Wall-mounted blue accent lighting"
+    },
+    {
+      "id": "material:accent:back-glow",
+      "name": "Back Glow Panel",
+      "category": "accent",
+      "color": "#2244aa",
+      "emissiveColor": "#2244aa",
+      "emissiveIntensity": 0.6,
+      "notes": "Back wall blue glow panels flanking gate"
+    },
+    {
+      "id": "material:accent:guide-strip",
+      "name": "Amber Guide Strip",
+      "category": "accent",
+      "color": "#ddaa33",
+      "emissiveColor": "#ddaa33",
+      "emissiveIntensity": 0.4,
+      "metallicFactor": 0.3,
+      "roughnessFactor": 0.6,
+      "notes": "Floor guide strips running length of room"
+    },
+    {
+      "id": "material:accent:ancient-glow",
+      "name": "Ancient Glow Panel",
+      "category": "accent",
+      "color": "#44ddcc",
+      "emissiveColor": "#44ddcc",
+      "emissiveIntensity": 0,
+      "notes": "Dynamic — activates at powerLevel > 0.6"
+    },
+    {
+      "id": "material:accent:emergency",
+      "name": "Emergency Strip",
+      "category": "accent",
+      "color": "#ff2200",
+      "emissiveColor": "#ff2200",
+      "emissiveIntensity": 0,
+      "notes": "Dynamic — activates at powerLevel < 0.3"
+    },
+    {
+      "id": "material:fixture:housing",
+      "name": "Spotlight Housing",
+      "category": "fixture",
+      "color": "#222233",
+      "metallicFactor": 0.4,
+      "roughnessFactor": 0.6,
+      "notes": "Spotlight fixture body"
+    },
+    {
+      "id": "material:fixture:lens",
+      "name": "Spotlight Lens",
+      "category": "fixture",
+      "color": "#ccddff",
+      "emissiveColor": "#bbddff",
+      "emissiveIntensity": 1.5,
+      "notes": "Bright lens on spotlight fixture"
+    },
+    {
+      "id": "material:crate:body",
+      "name": "Supply Crate Body",
+      "category": "interactive",
+      "color": "#776644",
+      "emissiveColor": "#221100",
+      "emissiveIntensity": 1.0,
+      "metallicFactor": 0.1,
+      "roughnessFactor": 0.85,
+      "notes": "Ancient supply crate — brownish"
+    },
+    {
+      "id": "material:crate:lid",
+      "name": "Supply Crate Lid",
+      "category": "interactive",
+      "color": "#887755",
+      "emissiveColor": "#221100",
+      "emissiveIntensity": 1.0,
+      "metallicFactor": 0.1,
+      "roughnessFactor": 0.8,
+      "notes": "Crate lid — opens on loot"
+    },
+    {
+      "id": "material:crate:glow",
+      "name": "Crate Glow Indicator",
+      "category": "interactive",
+      "color": "#ffaa22",
+      "emissiveColor": "#ffaa22",
+      "emissiveIntensity": 0.6,
+      "notes": "Dynamic — dims to #222211/0.1 when looted"
+    }
+  ]
+}

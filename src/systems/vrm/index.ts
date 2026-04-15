@@ -1,9 +1,19 @@
 /**
  * VRM Character Model System — public API surface.
  *
+ * Integrated with ggez pipeline: entities placed in Trident, animations
+ * through ggez animation editor, assets loaded via scene asset pipeline.
+ *
  * @see design/gdd/vrm-model-integration.md
  */
+
+// Asset loading
+export { loadVrm, isVrmCached, getCachedVrm, evictVrm, clearVrmCache, type VrmLoadResult } from "./vrm-asset-loader";
+
+// Configuration
 export { getVrmConfig, loadVrmConfig, type VrmConfig } from "./vrm-config";
+
+// Bone mapping
 export {
 	VRM_REQUIRED_BONES,
 	VRM_OPTIONAL_BONES,
@@ -12,28 +22,25 @@ export {
 	validateRequiredBones,
 	type VrmBoneName,
 } from "./vrm-bone-map";
+
+// Character management
 export {
-	loadVrm,
-	isVrmCached,
-	getCachedVrm,
-	evictVrm,
-	clearVrmCache,
-	type VrmLoadResult,
-} from "./vrm-loader";
-export {
-	VrmExpressionController,
-	type VrmExpressionName,
-	type VrmVisemeName,
-	type ExpressionTarget,
-} from "./vrm-expression-controller";
-export {
-	VrmLookAtController,
-	type LookAtMode,
-	type LookAtState,
-} from "./vrm-lookat-controller";
-export {
-	convertMToonToPBR,
-} from "./vrm-mtoon-converter";
+	VrmCharacterManager,
+	type VrmCharacterInstance,
+	type VrmCharacterOptions,
+	type LodTier,
+} from "./vrm-character-instance";
+
+// Animation retargeting
+export { createVrmAnimatorBridge, type VrmAnimatorBridge } from "./vrm-retarget-bridge";
+export { retargetClipToVrmSkeleton } from "./vrm-clip-retargeter";
+
+// VRM-specific features
+export { VrmExpressionController, type VrmExpressionName, type VrmVisemeName, type ExpressionTarget } from "./vrm-expression-controller";
+export { VrmLookAtController, type LookAtMode, type LookAtState } from "./vrm-lookat-controller";
+export { convertMToonToPBR, flattenVrmMaterials } from "./vrm-mtoon-converter";
+
+// Crew roster
 export {
 	DEFAULT_CREW_ROSTER,
 	getCrewRoster,
@@ -45,51 +52,11 @@ export {
 	type CrewExpressionProfile,
 	type SpringBoneProfile,
 } from "./vrm-crew-manifest";
+
+// Entity system
 export {
-	addCharacter,
-	removeCharacter,
-	getCharacter,
-	getAllCharacters,
-	setActiveCamera,
-	setFirstPersonMode,
-	spawnCrew,
-	update as updateVrmCharacters,
-	dispose as disposeVrmCharacters,
-	type VrmCharacterOptions,
-	type VrmCharacterInstance,
-	type LodTier,
-} from "./vrm-character-manager";
-export {
-	applyCustomization,
-	removeCustomization,
-	removeGear,
-	discoverMeshes,
-	discoverMaterials,
-	disposeCustomizer,
-	type DiscoveredMesh,
-	type DiscoveredMaterial,
-} from "./vrm-customizer";
-export type {
-	VrmCustomization,
-	MaterialOverride,
-	GearAttachment,
-	GearSlot,
-	GearCatalogItem,
-	MeshVisibilityOverride,
-} from "./vrm-customization-types";
-export {
-	GEAR_SLOTS,
-	GEAR_SLOT_BONES,
-	createEmptyCustomization,
-} from "./vrm-customization-types";
-export {
-	loadCustomization,
-	saveCustomization,
-	deleteCustomization,
-} from "./vrm-customization-persistence";
-export { loadAnimation, loadMixamoAnimation, loadVrmaAnimation } from "./vrm-animation-retarget";
-export {
-	VrmPlayerAnimationController,
-	type PlayerAnimationParams,
-} from "./vrm-player-animation-controller";
-export { RepairVfx } from "./vrm-repair-vfx";
+	createVrmEntitySystem,
+	findPlayerVrmEntity,
+	type VrmEntitySystemOptions,
+	type VrmEntitySystemResult,
+} from "./vrm-entity-system";

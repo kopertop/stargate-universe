@@ -1,0 +1,56 @@
+{
+  "version": "0.2.0",
+  "compounds": [
+    {
+      "name": "Game + Trident",
+      "configurations": ["Game Dev Server", "Trident Editor"],
+      "stopAll": true,
+      "presentation": {
+        "group": "ggez",
+        "order": 1
+      }
+    }
+  ],
+  "configurations": [
+    {
+      "name": "Game Dev Server",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "presentation": {
+        "group": "ggez",
+        "order": 2
+      }
+    },
+    {
+      "name": "Trident Editor",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "${workspaceFolder}/../trident",
+      "console": "integratedTerminal",
+      "presentation": {
+        "group": "ggez",
+        "order": 3
+      }
+    },
+    {
+      "name": "Chrome: Game",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/src"
+    },
+    {
+      "name": "Chrome: Trident",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5174",
+      "webRoot": "${workspaceFolder}/../trident/apps/editor/src"
+    }
+  ]
+}

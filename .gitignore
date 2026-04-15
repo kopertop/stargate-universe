@@ -8,4 +8,9 @@ production/session-logs/
 
 # OS
 .DS_Store
+
+# E2E test artifacts
+tests/screenshots/
+tests/results/
+
 package-lock.json

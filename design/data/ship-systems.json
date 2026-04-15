@@ -1,0 +1,44 @@
+{
+  "$schema": "Ship systems and resources for Destiny",
+  "systems": [
+    { "id": "power-grid", "name": "Power Grid", "condition": 0.4, "priority": 0, "powerDraw": 0, "powered": true },
+    { "id": "life-support", "name": "Life Support", "condition": 0.35, "priority": 1, "powerDraw": 200, "powered": false },
+    { "id": "shields", "name": "Shields", "condition": 0.2, "priority": 2, "powerDraw": 250, "powered": false },
+    { "id": "ftl-drive", "name": "FTL Drive", "condition": 0.5, "priority": 3, "powerDraw": 300, "powered": false },
+    { "id": "sensors", "name": "Sensors", "condition": 0.3, "priority": 4, "powerDraw": 100, "powered": false },
+    { "id": "communications", "name": "Communications", "condition": 0.15, "priority": 5, "powerDraw": 80, "powered": false },
+    { "id": "navigation", "name": "Navigation", "condition": 0.25, "priority": 6, "powerDraw": 60, "powered": false },
+    { "id": "weapons", "name": "Weapons", "condition": 0.1, "priority": 7, "powerDraw": 200, "powered": false }
+  ],
+  "constants": {
+    "MAX_POWER_OUTPUT": 1000,
+    "MIN_POWER_RATIO": 0.3,
+    "BASE_REPAIR_AMOUNT": 0.15,
+    "REPAIR_SKILL_MODIFIER": 0.8,
+    "INTERACT_DISTANCE": 2.5
+  },
+  "resources": {
+    "initial": {
+      "ship-parts": 10,
+      "water": 50,
+      "food": 40,
+      "lime": 20
+    }
+  },
+  "stargate": {
+    "GATE_RADIUS": 2.8,
+    "GATE_TUBE": 0.22,
+    "GATE_CENTER": [0, 2.5, 0],
+    "CHEVRON_COUNT": 9,
+    "RING_SEGMENT_COUNT": 36,
+    "DIAL_TIME_PER_CHEVRON": 0.6,
+    "KAWOOSH_DURATION": 1.2,
+    "SHUTDOWN_DURATION": 0.8,
+    "INNER_RING_SPEED": 3.0,
+    "states": ["idle", "dialing", "kawoosh", "active", "shutdown"]
+  },
+  "subsystemTypes": [
+    "door", "conduit", "console", "lighting-panel",
+    "life-support-unit", "vent", "water-recycler", "ancient-console"
+  ]
+}

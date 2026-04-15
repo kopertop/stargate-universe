@@ -60,3 +60,30 @@ export {
 	type VrmEntitySystemOptions,
 	type VrmEntitySystemResult,
 } from "./vrm-entity-system";
+
+// Customization types
+export {
+	type GearSlot,
+	GEAR_SLOTS,
+	GEAR_SLOT_BONES,
+	type VrmCustomization,
+	type MaterialOverride,
+	type GearAttachment,
+	type MeshVisibilityOverride,
+	type GearCatalogItem,
+	createEmptyCustomization,
+} from "./vrm-customization-types";
+
+// Customization persistence
+export { loadCustomization, saveCustomization } from "./vrm-customization-persistence";
+
+// Customizer
+export {
+	applyCustomization,
+	removeCustomization,
+	discoverMaterials,
+	type DiscoveredMaterial,
+	discoverMeshes,
+	type DiscoveredMesh,
+	disposeCustomizer,
+} from "./vrm-customizer";

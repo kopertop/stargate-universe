@@ -177,11 +177,15 @@ export class VrmPlayerController implements PlayerController {
 		this.characterManager.setFirstPersonMode(mode === "fps");
 	}
 
-	releasePointerLock(): void {
-		this.input.releasePointerLock();
-	}
+  releasePointerLock(): void {
+    this.input.releasePointerLock();
+  }
 
-	dispose(): void {
+  setRepairing(repairing: boolean): void {
+    // Repair system — implementation pending audio subsystem merge
+  }
+
+  dispose(): void {
 		this.gameplayRuntime.removeActor("player");
 		rigidBody.remove(this.world, this.body);
 		this.animatorBridge?.dispose();

@@ -81,7 +81,7 @@ export async function createGameApp(options: GameAppOptions) {
   // ACESFilmic tone mapping + exposure compensates so legacy intensity values
   // look correct without rewriting every scene's light intensities.
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 3.7;
+  renderer.toneMappingExposure = 3.9;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   shell.append(renderer.domElement);
 

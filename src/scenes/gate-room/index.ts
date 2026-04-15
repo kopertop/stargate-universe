@@ -56,10 +56,11 @@ const ROOM_WIDTH = 100;
 const ROOM_DEPTH = 160;
 const ROOM_HEIGHT = 32;
 // Gate scaled up to fill the frame like the reference — the SGU gate is
-// a massive structure. GATE_RADIUS=4 gives an 8-meter diameter ring that
-// dominates the establishing shot the way the show's gate does.
-const GATE_RADIUS = 4.0;
-const GATE_TUBE = 0.7;  // thick visible ring profile
+// a massive structure. GATE_RADIUS=6 gives a 12-meter diameter ring.
+// Edge comparison showed the reference gate fills ~60% of the frame width
+// while R=4 only filled ~5% from the gameplay camera at z=32.
+const GATE_RADIUS = 6.0;
+const GATE_TUBE = 0.9;  // thick visible ring profile (scaled with radius)
 const GATE_CENTER = new THREE.Vector3(0, GATE_RADIUS + 0.2, 0); // bottom of ring just above floor
 const CHEVRON_COUNT = 9;
 

@@ -800,7 +800,7 @@ function updateCameraPullIn(camera: THREE.PerspectiveCamera, playerPos: THREE.Ve
 
 // ─── Debug overlay ───────────────────────────────────────────────────────────
 
-function createDebugOverlay(renderer: THREE.WebGLRenderer): { element: HTMLDivElement; update: (delta: number) => void } {
+function createDebugOverlay(renderer: any): { element: HTMLDivElement; update: (delta: number) => void } {
 	const el = document.createElement("div");
 	el.id = "debug-overlay";
 	Object.assign(el.style, {
@@ -833,7 +833,7 @@ function createDebugOverlay(renderer: THREE.WebGLRenderer): { element: HTMLDivEl
 		fps = Math.round(1000 / (now - lastTime) * 10) / 10;
 		lastTime = now;
 
-		const info = renderer.info;
+		const info = renderer.info as any;
 		const fpsColor = fps >= 50 ? "#44ff88" : fps >= 30 ? "#ffaa44" : "#ff4444";
 
 		el.textContent = [
@@ -1754,8 +1754,8 @@ async function mount(context: GameSceneContext): Promise<GameSceneLifecycle> {
 
 			// ─── Debug overlays ──────────────────────────────────────────
 			if (debugMode) {
-				debug.update();
-				debugFrame++;
+			debug.update(0);
+			debugFrame++;
 				if (debugFrame % 15 === 0) {
 					const lines: string[] = ["=== SHIP STATE ==="];
 					for (const sys of shipState.getAllSystems()) {

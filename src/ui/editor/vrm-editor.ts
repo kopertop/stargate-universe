@@ -13,13 +13,13 @@
 import type { VRM } from "@pixiv/three-vrm";
 
 import {
-	applyCustomization,
-	removeCustomization,
-	type VrmCustomization,
-} from "../../systems/vrm";
-import { saveCustomization, loadCustomization } from "../../systems/vrm/vrm-customization-persistence";
-import { createEmptyCustomization } from "../../systems/vrm/vrm-customization-types";
-import type { MaterialOverride, GearAttachment, MeshVisibilityOverride } from "../../systems/vrm/vrm-customization-types";
+    applyCustomization,
+    removeCustomization,
+} from "../../../src/systems/vrm/vrm-customizer";
+import type { VrmCustomization } from "../../../src/systems/vrm/vrm-customization-types";
+import { saveCustomization, loadCustomization } from "../../../src/systems/vrm/vrm-customization-persistence";
+import { createEmptyCustomization } from "../../../src/systems/vrm/vrm-customization-types";
+import type { MaterialOverride, GearAttachment, MeshVisibilityOverride } from "../../../src/systems/vrm/vrm-customization-types";
 import { createEditorPreview, type EditorPreview } from "./vrm-editor-preview";
 import { createMaterialsTab, type MaterialsTab } from "./tabs/materials-tab";
 import { createVisibilityTab, type VisibilityTab } from "./tabs/visibility-tab";

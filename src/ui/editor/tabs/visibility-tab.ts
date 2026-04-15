@@ -2,8 +2,8 @@
  * Visibility Tab — checkbox toggles for each mesh in the VRM.
  */
 import type { VRM } from "@pixiv/three-vrm";
-import { discoverMeshes } from "../../../systems/vrm";
-import type { MeshVisibilityOverride } from "../../../systems/vrm/vrm-customization-types";
+import { discoverMeshes } from "../../../../src/systems/vrm/vrm-customizer";
+import type { MeshVisibilityOverride } from "../../../../src/systems/vrm/vrm-customization-types";
 
 export type VisibilityTabState = {
 	readonly overrides: Map<string, MeshVisibilityOverride>;

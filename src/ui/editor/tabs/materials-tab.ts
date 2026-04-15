@@ -2,8 +2,8 @@
  * Materials Tab — color pickers and PBR sliders for each VRM material.
  */
 import type { VRM } from "@pixiv/three-vrm";
-import { discoverMaterials, type DiscoveredMaterial } from "../../../systems/vrm";
-import type { MaterialOverride } from "../../../systems/vrm/vrm-customization-types";
+import { discoverMaterials, type DiscoveredMaterial } from "../../../../src/systems/vrm/vrm-customizer";
+import type { MaterialOverride } from "../../../../src/systems/vrm/vrm-customization-types";
 
 export type MaterialsTabState = {
 	readonly overrides: Map<string, MaterialOverride>;

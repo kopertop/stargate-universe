@@ -35,43 +35,45 @@ const CAMERA_PRESETS: CameraPreset[] = [
 	{
 		name: "gate-room-front",
 		scene: "gate-room",
-		position: { x: 0, y: 2.5, z: 30 },
-		target: { x: 0, y: 4.0, z: 0 },
+		// Gate is at (0, 6.2, 0), radius 6. At z=14 with FOV 60, the gate
+		// fills ~80% of frame height, matching the reference framing.
+		position: { x: 0, y: 4.5, z: 14 },
+		target: { x: 0, y: 6.2, z: 0 },
 		description: "Head-on view of gate room, matching sgu-gateroom.webp reference",
 	},
 	{
 		name: "gate-active",
 		scene: "gate-room",
-		position: { x: 0, y: 1.5, z: 25 },
-		target: { x: 0, y: 4.2, z: 0 },
+		position: { x: 0, y: 2.5, z: 16 },
+		target: { x: 0, y: 6.2, z: 0 },
 		description: "Floor-level view looking at gate, matching active stargate reference",
 	},
 	{
 		name: "gate-closeup",
 		scene: "gate-room",
-		position: { x: 2, y: 4, z: 8 },
-		target: { x: 0, y: 4.2, z: 0 },
+		position: { x: 1.5, y: 5.5, z: 10 },
+		target: { x: 0, y: 6.2, z: 0 },
 		description: "Close-up of gate ring, matching Stargate.jpeg reference",
 	},
 	{
 		name: "gate-room-wide",
 		scene: "gate-room",
-		position: { x: -15, y: 8, z: 35 },
+		position: { x: -12, y: 8, z: 22 },
 		target: { x: 0, y: 5, z: 0 },
 		description: "Wide establishing shot showing room architecture and gate",
 	},
 	{
 		name: "gate-room-overhead",
 		scene: "gate-room",
-		position: { x: 0, y: 25, z: 20 },
+		position: { x: 0, y: 20, z: 14 },
 		target: { x: 0, y: 0, z: 0 },
 		description: "High overhead angle showing floor layout and gate from above",
 	},
 	{
 		name: "gate-room-side",
 		scene: "gate-room",
-		position: { x: 25, y: 5, z: 15 },
-		target: { x: 0, y: 4, z: 0 },
+		position: { x: 18, y: 5, z: 10 },
+		target: { x: 0, y: 5, z: 0 },
 		description: "Side angle showing room depth, wall panels, and gate profile",
 	},
 ];
@@ -155,7 +157,9 @@ async function main() {
 
 	for (const [sceneId, presets] of byScene) {
 		console.log(`\nLoading scene: ${sceneId}`);
-		await page.goto(`${BASE_URL}/?scene=${sceneId}&webgl=1`);
+		// ?photo=1 hides the player + disables input so the preset camera isn't
+		// overridden each frame by third-person follow.
+		await page.goto(`${BASE_URL}/?scene=${sceneId}&webgl=1&photo=1`);
 
 		try {
 			await waitForSceneReady(page);

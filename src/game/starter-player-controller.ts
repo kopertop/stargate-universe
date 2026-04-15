@@ -465,6 +465,20 @@ export class StarterPlayerController {
     );
     const viewDirection = resolveViewDirection(this.yaw, this.pitch, new Vector3());
 
+    // Skip camera follow entirely when input is disabled (e.g. photo/capture
+    // mode). Without this, the spring-lerp below clobbers any externally set
+    // camera position (debug API, automated screenshots) every physics step.
+    if (!this._inputEnabled) {
+      this.gameplayRuntime.updateActor({
+        height: this.standingHeight,
+        id: "player",
+        position: vec3(translation[0], translation[1], translation[2]),
+        radius: this.radius,
+        tags: ["player"]
+      });
+      return;
+    }
+
     if (this.cameraMode === "fps") {
       this.camera.position.copy(eyePosition);
       this.camera.lookAt(eyePosition.clone().add(viewDirection));

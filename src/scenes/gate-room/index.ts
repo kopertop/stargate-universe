@@ -2401,7 +2401,10 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			compassHud.update(camera as any, delta);
 
 			// ─── Photo mode camera override ──────────────────────────────
-			if (photoMode) {
+			// Only re-apply URL-param camera if params are explicitly present.
+			// Without this guard, __sgu.setCamera() in automated capture gets
+			// clobbered each frame by the URL-param defaults.
+			if (photoMode && photoParams.has("camx")) {
 				const cx = Number(photoParams.get("camx") ?? "0");
 				const cy = Number(photoParams.get("camy") ?? "2");
 				const cz = Number(photoParams.get("camz") ?? "15");
@@ -2440,7 +2443,8 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			}
 
 			// ─── Camera pull-in + Player section tracking ───────────────
-			if (player) {
+			// Skip pull-in in photo mode so the preset camera stays put.
+			if (player && !photoMode) {
 				updateCameraPullIn(camera, player.object.position, delta);
 				const pz = player.object.position.z;
 				let newSection = "gate-room";

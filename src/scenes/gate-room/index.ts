@@ -1,3 +1,12 @@
+/**
+ * Gate Room Scene — Stargate arrival zone and ship entry point.
+ *
+ * Features the iconic Stargate with 9 chevrons, event horizon, and theDestiny's
+ * distinctive ring wall. Ships dock here; players emerge into the corridor beyond.
+ *
+ * @see design/gdd/ship-exploration.md
+ * @see design/gdd/destiny-gate-room.md
+ */
 import * as THREE from "three";
 import {
 	createColocatedRuntimeSceneSource,

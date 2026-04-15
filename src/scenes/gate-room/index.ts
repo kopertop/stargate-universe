@@ -60,7 +60,10 @@ const ROOM_HEIGHT = 32;
 // Edge comparison showed the reference gate fills ~60% of the frame width
 // while R=4 only filled ~5% from the gameplay camera at z=32.
 const GATE_RADIUS = 6.0;
-const GATE_TUBE = 0.9;  // thick visible ring profile (scaled with radius)
+// Flat ring cross-section — the SGU gate is a wide, shallow ring, not a donut.
+// WIDTH is the radial thickness (inner→outer edge); DEPTH is the thin Z extent.
+const GATE_RING_WIDTH = 1.6;
+const GATE_RING_DEPTH = 0.35;
 const GATE_CENTER = new THREE.Vector3(0, GATE_RADIUS + 0.2, 0); // bottom of ring just above floor
 const CHEVRON_COUNT = 9;
 
@@ -412,19 +415,10 @@ function createFlatRingGeometry(radius: number, width: number, depth: number, se
 }
 
 function buildStargate(scene: THREE.Scene): GateRuntime {
-	// ── Main ring — TorusGeometry for a thick, visible cross-section ────
-	// The old LatheGeometry with 0.22 tube was invisible from 50 units.
-	// A torus with tube radius 0.4 gives a bold ring clearly readable at
-	// any distance. The emissive glow ensures it self-illuminates even in
-	// the dark establishing shot.
-	// ── Main ring — heavy metallic torus like the reference. The SGU gate
-	// has a chunky, industrial-looking ring. Dark metal with subtle blue
-	// emissive so it reads in the dark establishing shot but doesn't glow
-	// like a neon sign. The thicker tube (0.5) gives the chunky look.
-	// Outer ring — MeshStandardMaterial so dialing animation can set emissive.
-	// fog:false so it punches through atmospheric fog at distance.
-	// Outer ring — dark metallic, matching the SGU reference's industrial look.
-	// The reference gate ring is dark gunmetal grey, not bright blue.
+	// ── Main ring — FLAT profile (rectangular cross-section), not a donut.
+	// The SGU gate is a wide, shallow ring — LatheGeometry with a rectangular
+	// profile matches the show's industrial look far better than TorusGeometry.
+	// fog:false so the ring punches through atmospheric fog at distance.
 	const outerRingMat = new THREE.MeshStandardMaterial({
 		color: 0x3a3a44,
 		roughness: 0.5,
@@ -434,13 +428,15 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 		fog: false,
 	});
 	const outerRing = new THREE.Mesh(
-		new THREE.TorusGeometry(GATE_RADIUS, GATE_TUBE, 24, 64),
+		createFlatRingGeometry(GATE_RADIUS, GATE_RING_WIDTH, GATE_RING_DEPTH, 64),
 		outerRingMat,
 	);
 	outerRing.position.copy(GATE_CENTER);
 	scene.add(outerRing);
 
-	// Inner ring — slightly recessed track, also dark metallic.
+	// Inner ring — a narrower inset track sitting just inside the main ring,
+	// with a slightly shallower depth so it reads as recessed. Darker and
+	// more metallic, matching the show's two-tier ring silhouette.
 	const innerRingMat = new THREE.MeshStandardMaterial({
 		color: 0x282832,
 		roughness: 0.4,
@@ -450,7 +446,7 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 		fog: false,
 	});
 	const innerRing = new THREE.Mesh(
-		new THREE.TorusGeometry(GATE_RADIUS - 0.3, GATE_TUBE * 0.35, 16, 64),
+		createFlatRingGeometry(GATE_RADIUS - GATE_RING_WIDTH / 2 - 0.2, 0.3, GATE_RING_DEPTH * 0.7, 64),
 		innerRingMat,
 	);
 
@@ -464,12 +460,12 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 	// visually conflicted with the 9 chevrons and made the gate read as
 	// "too busy". The clean silhouette matches the show's look better.)
 
-	// Chevrons — 9 raised V-shaped bumps sitting ON the outer torus ring.
-	// Scaled for the 4m radius gate. Each is a chunky extruded triangle
-	// protruding forward from the ring face, apex pointing inward.
-	const CHEVRON_HEIGHT = 0.6;   // radial span (scaled for R=4)
-	const CHEVRON_HALF_W = 0.35;  // tangential half-width
-	const CHEVRON_DEPTH  = 0.3;   // protrusion forward from ring face
+	// Chevrons — 9 raised V-shaped bumps sitting ON the outer ring face.
+	// Sized for GATE_RADIUS=6: ~13% of radius reads as a chunky industrial
+	// bump without overwhelming the ring. Apex points outward (radially out).
+	const CHEVRON_HEIGHT = 0.85;  // radial span
+	const CHEVRON_HALF_W = 0.45;  // tangential half-width
+	const CHEVRON_DEPTH  = 0.28;  // protrusion forward from ring face
 	const chevronShape = new THREE.Shape();
 	chevronShape.moveTo( 0,               CHEVRON_HEIGHT / 2);
 	chevronShape.lineTo(-CHEVRON_HALF_W, -CHEVRON_HEIGHT / 2);
@@ -484,6 +480,10 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 	});
 	chevronGeo.translate(0, 0, -CHEVRON_DEPTH / 2);
 
+	// Chevrons sit on the front face of the flat ring. Front face is at
+	// z = GATE_RING_DEPTH / 2, and the chevron back needs to just touch it:
+	// z = GATE_RING_DEPTH / 2 + CHEVRON_DEPTH / 2 = 0.175 + 0.14 ≈ 0.32
+	const chevronZ = GATE_CENTER.z + GATE_RING_DEPTH / 2 + CHEVRON_DEPTH / 2;
 	const chevronMeshes: THREE.Mesh[] = [];
 	for (let i = 0; i < CHEVRON_COUNT; i++) {
 		const angle = Math.PI / 2 + (i / CHEVRON_COUNT) * Math.PI * 2;
@@ -493,16 +493,13 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 			metalness: 0.8,
 			emissive: COLOR_CHEVRON_OFF,
 			emissiveIntensity: 0.3,
+			fog: false,
 		});
 		const chevron = new THREE.Mesh(chevronGeo, chevronMat);
-		// Position ON the torus surface — the outer torus tube radius is 0.5,
-		// so placing chevrons at GATE_RADIUS puts them right on the ring face.
-		// The +Z offset (0.55) pushes them forward of the tube center so they
-		// protrude from the front face like 3D bumps.
 		chevron.position.set(
 			GATE_CENTER.x + Math.cos(angle) * GATE_RADIUS,
 			GATE_CENTER.y + Math.sin(angle) * GATE_RADIUS,
-			GATE_CENTER.z + 0.55,
+			chevronZ,
 		);
 		chevron.rotation.z = angle + Math.PI / 2;
 		scene.add(chevron);
@@ -520,8 +517,9 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 		roughness: 0.1,
 		metalness: 0.0
 	});
+	// Event horizon fills the gate opening — inner edge of the outer ring.
 	const eventHorizon = new THREE.Mesh(
-		new THREE.CircleGeometry(GATE_RADIUS - GATE_TUBE - 0.05, 64),
+		new THREE.CircleGeometry(GATE_RADIUS - GATE_RING_WIDTH / 2 - 0.05, 64),
 		horizonMat
 	);
 	eventHorizon.position.copy(GATE_CENTER);

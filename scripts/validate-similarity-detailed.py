@@ -18,10 +18,8 @@ import tempfile
 import numpy as np
 from PIL import Image, ImageEnhance, ImageFilter
 
-# Add parent directory to path
 sys.path.insert(0, os.path.dirname(__file__))
-from importlib.machinery import SourceFileLoader
-sim = SourceFileLoader("visual_similarity", os.path.join(os.path.dirname(__file__), "visual-similarity.py")).load_module()
+import visual_similarity as sim
 
 
 REF_DIR = os.path.expanduser("~/Documents/Stargate")

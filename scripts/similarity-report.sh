@@ -36,7 +36,7 @@ done
 
 if [ "$VALIDATE_ONLY" = true ]; then
   echo "Running tool self-validation..."
-  python3 "$SCRIPT_DIR/visual-similarity.py" validate
+  python3 "$SCRIPT_DIR/visual_similarity.py" validate
   exit $?
 fi
 
@@ -63,7 +63,7 @@ mkdir -p "$REPORT_DIR"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 REPORT_FILE="$REPORT_DIR/similarity-$TIMESTAMP.json"
 
-python3 "$SCRIPT_DIR/visual-similarity.py" report "$CATALOG" "$SCREENSHOTS_DIR" -o "$REPORT_FILE"
+python3 "$SCRIPT_DIR/visual_similarity.py" report "$CATALOG" "$SCREENSHOTS_DIR" -o "$REPORT_FILE"
 
 echo ""
 echo "═══════════════════════════════════════════════════"

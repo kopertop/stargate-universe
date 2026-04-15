@@ -32,27 +32,6 @@ interface Beat {
 	easing: "linear" | "ease-in" | "ease-out" | "smooth";
 }
 
-function smooth(t: number): number {
-	return t * t * (3 - 2 * t);
-}
-
-function easeIn(t: number): number {
-	return t * t;
-}
-
-function easeOut(t: number): number {
-	return 1 - (1 - t) * (1 - t);
-}
-
-function applyEasing(t: number, mode: Beat["easing"]): number {
-	switch (mode) {
-		case "ease-in":  return easeIn(t);
-		case "ease-out": return easeOut(t);
-		case "smooth":   return smooth(t);
-		default:         return t;
-	}
-}
-
 // Gate center in world space — MUST match gate-room/index.ts:
 //   GATE_RADIUS=2.8, GATE_TUBE=0.22, so y = 2.72
 // (Previously hard-coded 3.2 here which put the kawoosh ~0.5 above

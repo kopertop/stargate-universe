@@ -325,10 +325,14 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 	// has a chunky, industrial-looking ring. Dark metal with subtle blue
 	// emissive so it reads in the dark establishing shot but doesn't glow
 	// like a neon sign. The thicker tube (0.5) gives the chunky look.
-	// Outer ring — fog:false so it punches through the atmospheric fog
-	// and reads as a visible metallic circle even at 25+ meters.
-	const outerRingMat = new THREE.MeshBasicMaterial({
-		color: 0x778899,
+	// Outer ring — MeshStandardMaterial so dialing animation can set emissive.
+	// fog:false so it punches through atmospheric fog at distance.
+	const outerRingMat = new THREE.MeshStandardMaterial({
+		color: 0x5a5a6a,
+		roughness: 0.4,
+		metalness: 0.92,
+		emissive: 0x1a3355,
+		emissiveIntensity: 1.8,
 		fog: false,
 	});
 	const outerRing = new THREE.Mesh(
@@ -338,9 +342,13 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 	outerRing.position.copy(GATE_CENTER);
 	scene.add(outerRing);
 
-	// Inner detail ring — also fog-exempt and upright.
-	const innerRingMat = new THREE.MeshBasicMaterial({
-		color: 0x2a3344,
+	// Inner ring — must be MeshStandardMaterial (dialing animation sets emissive).
+	const innerRingMat = new THREE.MeshStandardMaterial({
+		color: 0x303040,
+		roughness: 0.35,
+		metalness: 0.95,
+		emissive: 0x122240,
+		emissiveIntensity: 1.2,
 		fog: false,
 	});
 	const innerRing = new THREE.Mesh(
@@ -730,7 +738,7 @@ function updateDialing(gate: GateRuntime, delta: number): void {
 
 	// Inner ring glow increases during dial
 	const mat = gate.innerRing.material as THREE.MeshStandardMaterial;
-	mat.emissive = new THREE.Color(COLOR_ANCIENT_GLOW);
+	mat.emissive.set(COLOR_ANCIENT_GLOW);
 	mat.emissiveIntensity = 0.3 + (gate.lockedChevrons / CHEVRON_COUNT) * 0.5;
 
 	// All chevrons locked — start kawoosh

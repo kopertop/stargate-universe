@@ -181,10 +181,6 @@ export class VrmPlayerController implements PlayerController {
     this.input.releasePointerLock();
   }
 
-  setRepairing(repairing: boolean): void {
-    // Repair system — implementation pending audio subsystem merge
-  }
-
   dispose(): void {
 		this.gameplayRuntime.removeActor("player");
 		rigidBody.remove(this.world, this.body);

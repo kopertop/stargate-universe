@@ -191,10 +191,6 @@ export class StarterPlayerController implements PlayerController {
     this.pitch = MathUtils.clamp(this.pitch, this.camera.pitchMin, this.camera.pitchMax);
   }
 
-  setRepairing(repairing: boolean): void {
-    // Repair system (audio/VFX) — implementation pending audio subsystem merge
-  }
-
   releasePointerLock(): void {
     this.input.releasePointerLock();
   }

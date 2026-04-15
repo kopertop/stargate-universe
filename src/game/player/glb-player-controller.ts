@@ -175,12 +175,6 @@ export class GlbPlayerController implements PlayerController {
 
 	// ─── Public ─────────────────────────────────────────────────
 
-	setRepairing(isRepairing: boolean): void {
-		// TODO: Implement repairing visual feedback if needed
-		// For now, this is a no-op as repairing functionality
-		// is not yet implemented for GLB player controllers
-	}
-
 	setCameraMode(mode: CameraMode): void {
 		this.camera = createCameraController(mode, this.threeCamera);
 		this.camera.setStandingHeight(this.standingHeight);

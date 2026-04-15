@@ -18,6 +18,13 @@ export type RuntimePhysicsSession = {
   syncVisuals: () => void;
 };
 
+/**
+ * Creates a physics session for the game runtime, binding static and dynamic rigid bodies
+ * to scene meshes and synchronizing visual transforms each frame.
+ *
+ * @param options.runtimeScene - The Three.js runtime scene instance
+ * @param options.world - The Crashcat physics world
+ */
 export function createRuntimePhysicsSession(options: {
   runtimeScene: ThreeRuntimeSceneInstance;
   world: CrashcatPhysicsWorld;

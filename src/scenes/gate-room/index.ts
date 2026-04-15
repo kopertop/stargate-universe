@@ -257,27 +257,72 @@ function buildRoom(scene: THREE.Scene): void {
 		}
 	}
 
-	// Back wall structural frame around gate area
+	// Back wall structural frame around gate — heavy Ancient architecture.
+	// The SGU reference shows massive structural columns flanking the gate
+	// with an arched top beam, giving a cathedral-like framing effect.
 	const frameMat = new THREE.MeshStandardMaterial({
-		color: 0x1a1a30,
-		roughness: 0.75,
-		metalness: 0.25
+		color: 0x14141e,
+		roughness: 0.6,
+		metalness: 0.4,
+		emissive: 0x060610,
+		emissiveIntensity: 0.3,
 	});
-	// Top beam
+	// Top arch beam — wider than the gate, arched
 	const topBeam = new THREE.Mesh(
-		new THREE.BoxGeometry(10, 0.8, 0.6),
-		frameMat
+		new THREE.BoxGeometry(GATE_RADIUS * 3, 1.5, 1.0),
+		frameMat,
 	);
-	topBeam.position.set(0, ROOM_HEIGHT - 1, -ROOM_DEPTH / 2 + 0.5);
+	topBeam.position.set(0, GATE_CENTER.y + GATE_RADIUS + 2, -ROOM_DEPTH / 2 + 0.8);
 	scene.add(topBeam);
-	// Side columns
+	// Staircase structures flanking the gate — the SGU gate room has
+	// staircases on both sides leading up to a second-floor catwalk/balcony.
+	// These are the large angled structures visible in the reference image.
+	const stairMat = new THREE.MeshStandardMaterial({
+		color: 0x121220,
+		roughness: 0.65,
+		metalness: 0.4,
+		emissive: 0x040408,
+		emissiveIntensity: 0.2,
+	});
 	for (const xSign of [-1, 1]) {
-		const column = new THREE.Mesh(
-			new THREE.BoxGeometry(0.8, ROOM_HEIGHT, 0.6),
-			frameMat
+		// Staircase body — angled box from floor to second level
+		const stairHeight = ROOM_HEIGHT * 0.5;
+		const stairWidth = 4.0;
+		const stairDepth = 8.0;
+		const stair = new THREE.Mesh(
+			new THREE.BoxGeometry(stairWidth, stairHeight, stairDepth),
+			stairMat,
 		);
-		column.position.set(xSign * 4.5, ROOM_HEIGHT / 2, -ROOM_DEPTH / 2 + 0.5);
-		scene.add(column);
+		stair.position.set(
+			xSign * (GATE_RADIUS + 4),
+			stairHeight / 2,
+			-ROOM_DEPTH / 2 + stairDepth / 2 + 0.5,
+		);
+		scene.add(stair);
+
+		// Railing/wall along stair top
+		const railing = new THREE.Mesh(
+			new THREE.BoxGeometry(stairWidth, 1.5, stairDepth),
+			frameMat,
+		);
+		railing.position.set(
+			xSign * (GATE_RADIUS + 4),
+			stairHeight + 0.75,
+			-ROOM_DEPTH / 2 + stairDepth / 2 + 0.5,
+		);
+		scene.add(railing);
+
+		// Second floor platform extending from the staircase
+		const platform = new THREE.Mesh(
+			new THREE.BoxGeometry(stairWidth + 2, 0.5, ROOM_DEPTH * 0.3),
+			stairMat,
+		);
+		platform.position.set(
+			xSign * (GATE_RADIUS + 4),
+			stairHeight + 0.25,
+			0,
+		);
+		scene.add(platform);
 	}
 
 	// Amber embedded floor lights — matching the SGU reference: two rows of
@@ -369,50 +414,54 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 	// like a neon sign. The thicker tube (0.5) gives the chunky look.
 	// Outer ring — MeshStandardMaterial so dialing animation can set emissive.
 	// fog:false so it punches through atmospheric fog at distance.
+	// Outer ring — dark metallic, matching the SGU reference's industrial look.
+	// The reference gate ring is dark gunmetal grey, not bright blue.
 	const outerRingMat = new THREE.MeshStandardMaterial({
-		color: 0x5a5a6a,
-		roughness: 0.4,
-		metalness: 0.92,
-		emissive: 0x1a3355,
-		emissiveIntensity: 1.8,
+		color: 0x3a3a44,
+		roughness: 0.5,
+		metalness: 0.9,
+		emissive: 0x0e1520,
+		emissiveIntensity: 1.0,
 		fog: false,
 	});
 	const outerRing = new THREE.Mesh(
-		new THREE.TorusGeometry(GATE_RADIUS, 0.5, 24, 64),
+		new THREE.TorusGeometry(GATE_RADIUS, GATE_TUBE, 24, 64),
 		outerRingMat,
 	);
 	outerRing.position.copy(GATE_CENTER);
 	scene.add(outerRing);
 
-	// Inner ring — must be MeshStandardMaterial (dialing animation sets emissive).
+	// Inner ring — slightly recessed track, also dark metallic.
 	const innerRingMat = new THREE.MeshStandardMaterial({
-		color: 0x303040,
-		roughness: 0.35,
+		color: 0x282832,
+		roughness: 0.4,
 		metalness: 0.95,
-		emissive: 0x122240,
-		emissiveIntensity: 1.2,
+		emissive: 0x0a1020,
+		emissiveIntensity: 0.8,
 		fog: false,
 	});
 	const innerRing = new THREE.Mesh(
-		new THREE.TorusGeometry(GATE_RADIUS - 0.2, 0.25, 16, 64),
+		new THREE.TorusGeometry(GATE_RADIUS - 0.3, GATE_TUBE * 0.35, 16, 64),
 		innerRingMat,
 	);
 
-	// ── Glow halo — fog-exempt backlight disc behind the gate ring.
+	// ── Subtle glow halo — just barely extends beyond the ring, NOT the
+	// massive blue disc we had before. The reference shows the gate as a
+	// dark metallic ring against a dark wall, not a glowing blue portal.
 	const glowRingMat = new THREE.MeshBasicMaterial({
-		color: 0x1a3388,
+		color: 0x101828,
 		transparent: true,
-		opacity: 0.35,
+		opacity: 0.25,
 		side: THREE.DoubleSide,
 		depthWrite: false,
 		fog: false,
 	});
 	const glowRing = new THREE.Mesh(
-		new THREE.RingGeometry(GATE_RADIUS - 1.5, GATE_RADIUS + 3.5, 64),
+		new THREE.RingGeometry(GATE_RADIUS - 0.5, GATE_RADIUS + 1.0, 64),
 		glowRingMat,
 	);
 	glowRing.position.copy(GATE_CENTER);
-	glowRing.position.z -= 0.2;
+	glowRing.position.z -= 0.15;
 	scene.add(glowRing);
 	innerRing.position.copy(GATE_CENTER);
 	scene.add(innerRing);

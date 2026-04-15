@@ -188,6 +188,13 @@ export function getNpcManifests(): readonly CrewCharacterManifest[] {
 
 // ─── Parsing ────────────────────────────────────────────────────────────────
 
+/**
+ * Parse a raw manifest entry from JSON.
+ * Validates minimum required fields (id, vrmAsset) and returns null if invalid.
+ * 
+ * @param raw The raw object from JSON.
+ * @returns A CrewCharacterManifest or null if validation fails.
+ */
 function parseManifestEntry(raw: unknown): CrewCharacterManifest | null {
 	if (typeof raw !== "object" || raw === null) return null;
 

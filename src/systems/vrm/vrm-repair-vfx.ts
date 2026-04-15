@@ -61,7 +61,6 @@ export class RepairVfx {
 
 	private active = false;
 	private sparkAccumulator = 0;
-	private debugTimer = 0;
 
 	constructor(vrm: VRM, worldScene: Scene) {
 		this.vrm = vrm;
@@ -99,7 +98,7 @@ export class RepairVfx {
 		}
 
 		this.worldScene.add(this.sparkContainer);
-		console.info("[RepairVfx] Started — handBone:", !!this.handBone);
+		console.warn("[RepairVfx] Started — handBone:", !!this.handBone);
 	}
 
 	stop(): void {
@@ -121,12 +120,7 @@ export class RepairVfx {
 	update(delta: number): void {
 		if (!this.active && !this.hasAliveSparks()) return;
 
-		this.debugTimer += delta;
-		if (this.debugTimer > 2) {
-			this.debugTimer = 0;
-			const aliveCount = this.sparks.filter((s) => s.alive).length;
-			console.info(`[RepairVfx] alive=${aliveCount}`);
-		}
+		// Debug: removed — fires every 2s, production noise
 
 		// Emit new sparks
 		if (this.active) {

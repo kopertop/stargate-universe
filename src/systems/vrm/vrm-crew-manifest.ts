@@ -152,7 +152,7 @@ export async function loadCrewRoster(
 			(entry): entry is CrewCharacterManifest => entry !== null
 		);
 
-		console.info(`[CrewManifest] Loaded ${roster.length} crew members from ${url}`);
+		// Crew manifest loaded.
 		return roster;
 	} catch (error) {
 			console.error("[CrewManifest] Error loading roster. Using defaults.", error);

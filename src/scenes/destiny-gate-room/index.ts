@@ -288,7 +288,7 @@ async function buildStargate(scene: THREE.Scene): Promise<GateRuntime> {
 
 		scene.add(gateModel);
 		outerRing = gateModel;
-		console.info("[GateRoom] Loaded stargate GLB model");
+		// Gate model loaded.
 	} catch (error) {
 		console.error("[GateRoom] Failed to load stargate GLB, using fallback ring:", error);
 		// Fallback: simple torus

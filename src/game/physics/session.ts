@@ -55,9 +55,8 @@ export function createRuntimePhysicsSession(options: {
   }> = [];
 
   unsupportedDynamicInstanceMeshes.forEach((mesh) => {
-    console.info(
-      `Skipping dynamic instanced collider for ${mesh.nodeId}. Instanced runtime bodies currently support fixed collision only.`
-    );
+    // No-op: instanced runtime bodies currently support fixed collision only.
+    void mesh;
   });
 
   staticMeshes.forEach((mesh) => {

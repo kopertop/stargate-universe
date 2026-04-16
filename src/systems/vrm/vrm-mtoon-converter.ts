@@ -88,10 +88,8 @@ export function convertMToonToPBR(
 	}
 
 	if (result.converted > 0) {
-		console.info(
-			`[MToonConverter] Converted ${result.converted} MToon materials to PBR ` +
-			`(${result.skipped} already PBR)`
-		);
+		// MToon materials converted to PBR — silent on success.
+		void result.converted;
 	}
 
 	return result;

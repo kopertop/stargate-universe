@@ -137,17 +137,13 @@ export async function loadMixamoAnimation(
 
 	// Debug: log track names from the FBX to check bone naming
 	const trackBoneNames = new Set(clip.tracks.map((t) => t.name.split(".")[0]));
-	console.info(`[VrmAnimRetarget] "${clipName}" from ${url} (VRM ${isVrm0 ? "0.x" : "1.x"})`);
-	console.info(`  Clip tracks: ${clip.tracks.length}, bones: [${[...trackBoneNames].slice(0, 8).join(", ")}...]`);
-
+	// Animation retarget in progress — silent on success.
 	// Calculate hip height ratio for position scaling
 	const mixamoHips = asset.getObjectByName("mixamorigHips");
-	console.info(`  mixamorigHips found: ${!!mixamoHips}, pos.y: ${mixamoHips?.position?.y ?? "N/A"}`);
-
 	const vrmHipsY = vrm.humanoid.normalizedRestPose.hips?.position?.[1] ?? 1.0;
 	const motionHipsY = mixamoHips?.position?.y ?? 1.0;
 	const hipsPositionScale = vrmHipsY / motionHipsY;
-	console.info(`  Hip scale: vrm=${vrmHipsY.toFixed(3)} / motion=${motionHipsY.toFixed(3)} = ${hipsPositionScale.toFixed(3)}`);
+	void trackBoneNames; void mixamoHips; void hipsPositionScale;
 
 	const tracks: (QuaternionKeyframeTrack | VectorKeyframeTrack)[] = [];
 	let matchedTracks = 0;
@@ -247,7 +243,7 @@ export async function loadMixamoAnimation(
 		}
 	}
 
-	console.info(`  Retargeted: ${matchedTracks} matched, ${unmatchedBones} unmatched, ${tracks.length} output tracks`);
+	// Animation retarget complete.
 
 	return new AnimationClip(clipName, clip.duration, tracks);
 }

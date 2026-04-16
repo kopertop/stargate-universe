@@ -216,7 +216,7 @@ export class VrmCharacterManager {
 		instance.root.add(result.vrm.scene);
 		instance.fallbackMesh.visible = false;
 
-		console.info(`[VrmCharacterManager] Loaded "${instance.id}" from ${result.url}`);
+		// Character loaded successfully.
 	}
 
 	private onVrmFailed(instance: VrmCharacterInstance, error: unknown): void {

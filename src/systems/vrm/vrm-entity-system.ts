@@ -89,7 +89,7 @@ export function createVrmEntitySystem(options: VrmEntitySystemOptions): VrmEntit
 	}
 
 	if (npcInstances.length > 0) {
-		console.info(`[VrmEntitySystem] Spawned ${npcInstances.length} NPC character(s)`);
+		// NPCs spawned.
 	}
 
 	return {

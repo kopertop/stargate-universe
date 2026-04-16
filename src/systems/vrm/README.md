@@ -6,7 +6,7 @@ Manages VRM (Virtual YouTuber) character models throughout the game — loading,
 
 ```
 vrm-loader.ts        — Fetches and parses .vrm files into THREE.Object3D
-vrm-character-manager.ts — Orchestrates a VRM instance's full lifecycle
+vrm-character-instance.ts — Orchestrates a VRM instance's full lifecycle
 vrm-animation-retarget.ts — Maps game animations → VRM blendshapes/muscles
 vrm-expression-controller.ts — Blendshape/VRM expression state machine
 vrm-lookat-controller.ts   — Smooth look-at target tracking
@@ -22,7 +22,7 @@ vrm-repair-vfx.ts    — Visual effects for repair/regen moments
 
 ## Entry Point
 
-`vrm-character-manager.ts` — instantiate one per VRM character. Coordinates all other subsystems.
+`vrm-character-instance.ts` — instantiate one per VRM character. Coordinates all other subsystems.
 
 ## Usage
 

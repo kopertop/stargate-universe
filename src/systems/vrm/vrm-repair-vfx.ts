@@ -98,7 +98,6 @@ export class RepairVfx {
 		}
 
 		this.worldScene.add(this.sparkContainer);
-		console.warn("[RepairVfx] Started — handBone:", !!this.handBone);
 	}
 
 	stop(): void {

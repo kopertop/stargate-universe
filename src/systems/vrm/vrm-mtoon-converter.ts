@@ -126,7 +126,6 @@ function convertSingleMaterial(
 	} catch (error) {
 		const msg = `Failed to convert material "${material.name}": ${error}`;
 		result.errors.push(msg);
-		console.warn(`[MToonConverter] ${msg}`);
 		return material; // Keep original on failure
 	}
 }

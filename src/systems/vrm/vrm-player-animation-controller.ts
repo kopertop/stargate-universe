@@ -242,7 +242,6 @@ export class VrmPlayerAnimationController {
 		this.resetIdleVariantTimer();
 
 		const loadedCount = results.filter((r) => r.status === "fulfilled").length;
-		console.info(`[VrmPlayerAnimController] Loaded ${loadedCount}/${clipNames.length} animation clips`);
 
 		// Load idle variants in the background (non-blocking, optional)
 		this.loadIdleVariants(basePath);
@@ -269,7 +268,7 @@ export class VrmPlayerAnimationController {
 		}
 
 		if (this.idleVariants.length > 0) {
-			console.info(`[VrmPlayerAnimController] Loaded ${this.idleVariants.length} idle variants`);
+			// Idle variants ready
 		}
 	}
 

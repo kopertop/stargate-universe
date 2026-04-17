@@ -35,43 +35,43 @@ export type RuntimeSceneSource = {
  * (or no controller) without touching your scene definitions.
  */
 export interface PlayerController {
-  readonly object: Group;
-  /** Change the camera mode at runtime (e.g. cutscene → gameplay). */
-  setCameraMode(mode: CameraMode): void;
-  /** Give the pointer back to the OS (e.g. when opening a menu). */
-  releasePointerLock(): void;
-  /** Fixed-rate update (60 Hz). Apply movement forces before physics step. */
-  updateBeforeStep(deltaSeconds: number): void;
-  /** Fixed-rate update (60 Hz). Sync visuals to physics after step. */
-  updateAfterStep(deltaSeconds: number): void;
-  /** Variable-rate update. Consume mouse input and drive camera. */
-  updateCamera(deltaSeconds: number): void;
-  /** Called when player starts/stops repairing a subsystem. */
-  setRepairing(isRepairing: boolean): void;
-  dispose(): void;
+	readonly object: Group;
+	/** Change the camera mode at runtime (e.g. cutscene → gameplay). */
+	setCameraMode(mode: CameraMode): void;
+	/** Give the pointer back to the OS (e.g. when opening a menu). */
+	releasePointerLock(): void;
+	/** Fixed-rate update (60 Hz). Apply movement forces before physics step. */
+	updateBeforeStep(deltaSeconds: number): void;
+	/** Fixed-rate update (60 Hz). Sync visuals to physics after step. */
+	updateAfterStep(deltaSeconds: number): void;
+	/** Variable-rate update. Consume mouse input and drive camera. */
+	updateCamera(deltaSeconds: number): void;
+	/** Called when player starts/stops repairing a subsystem. */
+	setRepairing(isRepairing: boolean): void;
+	dispose(): void;
 }
 
 export type PlayerConfig = {
-  /**
-   * Override the camera mode set in the scene file.
-   * Defaults to the value exported by the runtime scene.
-   */
-  cameraMode?: CameraMode;
-  /**
-   * Pick a specific player-spawn entity by id.
-   * Defaults to the first spawn found in the scene.
-   */
-  spawnEntityId?: string;
-  /**
-   * Pick a specific vrm-character entity by id for the player model.
-   * When set, the player uses a VRM model instead of the capsule.
-   */
-  vrmEntityId?: string;
-  /**
-   * URL to a VRM model to use for the player character.
-   * When set, the player uses this VRM model instead of the capsule.
-   */
-  vrmUrl?: string;
+	/**
+	 * Override the camera mode set in the scene file.
+	 * Defaults to the value exported by the runtime scene.
+	 */
+	cameraMode?: CameraMode;
+	/**
+	 * Pick a specific player-spawn entity by id.
+	 * Defaults to the first spawn found in the scene.
+	 */
+	spawnEntityId?: string;
+	/**
+	 * Pick a specific vrm-character entity by id for the player model.
+	 * When set, the player uses a VRM model instead of the capsule.
+	 */
+	vrmEntityId?: string;
+	/**
+	 * URL to a VRM model to use for the player character.
+	 * When set, the player uses this VRM model instead of the capsule.
+	 */
+	vrmUrl?: string;
 };
 
 // ------------------------------------------------------------------

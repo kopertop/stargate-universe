@@ -1,3 +1,7 @@
+/**
+ * @file Runtime physics session — Crashcat rigid body management and visual sync.
+ * @see src/game/physics/index.ts
+ */
 import { deriveRenderScene, type DerivedRenderMesh, type DerivedRenderScene } from "@ggez/render-pipeline";
 import {
   createDynamicRigidBody,

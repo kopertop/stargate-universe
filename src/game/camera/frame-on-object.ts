@@ -1,3 +1,7 @@
+/**
+ * @file Camera fallback — positions camera to frame a given object in view.
+ * @see src/game/camera/index.ts
+ */
 import { Box3, PerspectiveCamera, Sphere, Vector3, type Object3D } from "three";
 
 const VIEW_DIRECTION = new Vector3(1, 0.55, 1).normalize();

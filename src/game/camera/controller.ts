@@ -1,3 +1,7 @@
+/**
+ * @file Camera controller implementations and shared CameraController interface.
+ * @see src/game/camera/index.ts
+ */
 import { PerspectiveCamera, Vector3 } from "three";
 import type { SceneSettings } from "@ggez/shared";
 import { FpsCameraController } from "./fps";

@@ -1,3 +1,7 @@
+/**
+ * @file Default gameplay systems factory — Trigger, Sequence, Openable, Mover, PathMover.
+ * @see src/game/gameplay/index.ts
+ */
 import {
   createMoverSystemDefinition,
   createOpenableSystemDefinition,

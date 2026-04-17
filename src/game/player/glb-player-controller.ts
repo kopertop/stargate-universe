@@ -390,9 +390,9 @@ export class GlbPlayerController implements PlayerController {
 						this.walkAction.setLoop(2200, Infinity); // LoopRepeat
 						// Walk animation loaded
 					}
-				} catch (error) {
-					console.warn("[GlbPlayerController] Failed to load walk animation:", error);
-				}
+				} catch {
+				// Walk animation optional — model renders fine without it
+			}
 			} else if (gltf.animations.length > 0) {
 				// Use first embedded animation as walk
 				this.walkAction = this.mixer.clipAction(gltf.animations[0]);

@@ -35,20 +35,20 @@ export type RuntimeSceneSource = {
  * (or no controller) without touching your scene definitions.
  */
 export interface PlayerController {
-	readonly object: Group;
-	/** Change the camera mode at runtime (e.g. cutscene → gameplay). */
-	setCameraMode(mode: CameraMode): void;
-	/** Give the pointer back to the OS (e.g. when opening a menu). */
-	releasePointerLock(): void;
-	/** Fixed-rate update (60 Hz). Apply movement forces before physics step. */
-	updateBeforeStep(deltaSeconds: number): void;
-	/** Fixed-rate update (60 Hz). Sync visuals to physics after step. */
-	updateAfterStep(deltaSeconds: number): void;
-	/** Variable-rate update. Consume mouse input and drive camera. */
-	updateCamera(deltaSeconds: number): void;
-	/** Notify the controller that a repair action has started/stopped. */
-	setRepairing(repairing: boolean): void;
-	dispose(): void;
+  readonly object: Group;
+  /** Change the camera mode at runtime (e.g. cutscene → gameplay). */
+  setCameraMode(mode: CameraMode): void;
+  /** Give the pointer back to the OS (e.g. when opening a menu). */
+  releasePointerLock(): void;
+  /** Fixed-rate update (60 Hz). Apply movement forces before physics step. */
+  updateBeforeStep(deltaSeconds: number): void;
+  /** Fixed-rate update (60 Hz). Sync visuals to physics after step. */
+  updateAfterStep(deltaSeconds: number): void;
+  /** Variable-rate update. Consume mouse input and drive camera. */
+  updateCamera(deltaSeconds: number): void;
+  /** Called when player starts/stops repairing a subsystem. */
+  setRepairing(isRepairing: boolean): void;
+  dispose(): void;
 }
 
 export type PlayerConfig = {
@@ -62,16 +62,16 @@ export type PlayerConfig = {
    * Defaults to the first spawn found in the scene.
    */
   spawnEntityId?: string;
-	/**
-	 * Pick a specific vrm-character entity by id for the player model.
-	 * When set, the player uses a VRM model instead of the capsule.
-	 */
-	vrmEntityId?: string;
-	/**
-	 * Directly specify the VRM URL to load for the player.
-	 * Convenience alias — used by scene files that know the path directly.
-	 */
-	vrmUrl?: string;
+  /**
+   * Pick a specific vrm-character entity by id for the player model.
+   * When set, the player uses a VRM model instead of the capsule.
+   */
+  vrmEntityId?: string;
+  /**
+   * URL to a VRM model to use for the player character.
+   * When set, the player uses this VRM model instead of the capsule.
+   */
+  vrmUrl?: string;
 };
 
 // ------------------------------------------------------------------

@@ -1701,10 +1701,9 @@ async function mount(context: GameSceneContext): Promise<GameSceneLifecycle> {
 						if (sub) {
 							consumeResource("ship-parts", sub.repairCost);
 							shipState.repairSubsystem(sub.id);
-							shipState.distributePower();
-							console.log(`Repaired ${sub.id} segment ${repairCompletedSegments}/${repairTotalSegments}: ${(sub.condition * 100).toFixed(0)}%`);
+						shipState.distributePower();
 
-							// Check if fully repaired or out of parts
+						// Check if fully repairedor out of parts
 							if (sub.condition >= 1.0 || repairCompletedSegments >= repairTotalSegments || !hasResource("ship-parts", sub.repairCost)) {
 								cancelRepair();
 							}

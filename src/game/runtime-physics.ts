@@ -71,7 +71,7 @@ export function createRuntimePhysicsSession(options: {
   });
 
   return {
-    colliderCount: physicsMeshes.length,
+    colliderCount: staticMeshes.length + dynamicMeshes.length,
     dispose() {
       for (const body of bodiesByNodeId.values()) {
         rigidBody.remove(options.world, body);

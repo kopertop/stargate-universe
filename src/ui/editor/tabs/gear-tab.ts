@@ -15,6 +15,7 @@ export type GearTabState = {
 export type GearTab = {
 	readonly element: HTMLElement;
 	readonly state: GearTabState;
+	hydrateOverrides(saved: readonly GearAttachment[]): void;
 	dispose(): void;
 };
 
@@ -47,6 +48,11 @@ export function createGearTab(
 	return {
 		element: container,
 		state: { equipped },
+		hydrateOverrides(saved: readonly GearAttachment[]) {
+			for (const attachment of saved) {
+				equipped.set(attachment.slotId, attachment);
+			}
+		},
 		dispose() {
 			container.remove();
 		},

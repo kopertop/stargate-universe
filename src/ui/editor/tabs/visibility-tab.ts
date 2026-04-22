@@ -32,16 +32,12 @@ export function createVisibilityTab(
 		empty.className = "vrm-editor-empty";
 		empty.textContent = "No named meshes found";
 		container.appendChild(empty);
-<<<<<<< HEAD
 		return {
 			element: container,
 			state: { overrides },
 			hydrateOverrides() {},
 			dispose() { container.remove(); },
 		};
-=======
-		return { element: container, state: { overrides }, hydrateOverrides() {}, dispose() {} };
->>>>>>> a58c88e (fix(physics): correct colliderCount — static colliders now get rigid bodies)
 	}
 
 	const section = document.createElement("div");

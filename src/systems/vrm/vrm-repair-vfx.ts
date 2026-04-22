@@ -99,7 +99,6 @@ export class RepairVfx {
 		}
 
 		this.worldScene.add(this.sparkContainer);
-		console.info("[RepairVfx] Started — handBone:", !!this.handBone);
 	}
 
 	stop(): void {
@@ -124,8 +123,6 @@ export class RepairVfx {
 		this.debugTimer += delta;
 		if (this.debugTimer > 2) {
 			this.debugTimer = 0;
-			const aliveCount = this.sparks.filter((s) => s.alive).length;
-			console.info(`[RepairVfx] alive=${aliveCount}`);
 		}
 
 		// Emit new sparks

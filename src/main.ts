@@ -59,21 +59,21 @@ const installPrompt = createInstallPrompt();
 (window as any).__sguInstallPrompt = installPrompt;
 
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
-	void registerServiceWorker({
-		url:   "/sw.js",
-		scope: "/",
-		onUpdateReady: (registration) => {
-			// New build available in the background. For now, auto-apply
-			// after a short delay so returning players get fresh content
-			// without a "Reload?" prompt. Swap to a UI prompt when we have
-			// a HUD toast system.
-			console.info("[SW] New version ready — applying in 5s");
-			setTimeout(() => {
-				registration.waiting?.postMessage({ type: "SKIP_WAITING" });
-			}, 5000);
-		},
-		onError: (err) => console.warn("[SW] registration failed:", err.message),
-	});
+		void registerServiceWorker({
+			url:   "/sw.js",
+			scope: "/",
+			onUpdateReady: (registration: ServiceWorkerRegistration) => {
+				// New build available in the background. For now, auto-apply
+				// after a short delay so returning players get fresh content
+				// without a "Reload?" prompt. Swap to a UI prompt when we have
+				// a HUD toast system.
+				console.info("[SW] New version ready — applying in 5s");
+				setTimeout(() => {
+					registration.waiting?.postMessage({ type: "SKIP_WAITING" });
+				}, 5000);
+			},
+			onError: (err: DOMException) => console.warn("[SW] registration failed:", err.message),
+		});
 }
 
 const root = document.querySelector<HTMLDivElement>("#app");

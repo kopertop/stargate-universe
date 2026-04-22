@@ -1845,7 +1845,6 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			char.root.position.set(rushPos.x, rushPos.y, rushPos.z);
 			char.root.rotation.y = -Math.PI / 2; // face +X (toward aisle)
 			scene.add(char.root);
-			console.log("[GateRoom] Dr. Rush character loaded (", char.format, ")");
 		})
 		.catch((err: unknown) => {
 			console.warn("[GateRoom] Dr. Rush VRM load failed:", err);
@@ -2563,7 +2562,6 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 							consumeResource("ship-parts", sub.repairCost);
 							shipState.repairSubsystem(sub.id);
 							shipState.distributePower();
-							console.log(`Repaired ${sub.id} segment ${repairCompletedSegments}/${repairTotalSegments}: ${(sub.condition * 100).toFixed(0)}%`);
 
 							// Check if fully repaired or out of parts
 							if (sub.condition >= 1.0 || repairCompletedSegments >= repairTotalSegments || !hasResource("ship-parts", sub.repairCost)) {

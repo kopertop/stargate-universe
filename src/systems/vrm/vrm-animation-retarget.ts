@@ -240,8 +240,6 @@ export async function loadMixamoAnimation(
 		}
 	}
 
-	console.info(`  Retargeted: ${matchedTracks} matched, ${unmatchedBones} unmatched, ${tracks.length} output tracks`);
-
 	return new AnimationClip(clipName, clip.duration, tracks);
 }
 

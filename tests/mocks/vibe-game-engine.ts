@@ -319,7 +319,9 @@ function makeQuestManager(opts?: { emit?: unknown }): QuestManager {
 	}
 
 	function advanceFromCollect(type: string) {
-		for (const state of log.active.values()) {
+		// Snapshot to avoid iterator-invalidation when quest completion deletes from log.active mid-iteration.
+		const states = [...log.active.values()];
+		for (const state of states) {
 			for (const obj of state.objectives) {
 				if (!obj.completed && obj.visible && obj.type === 'collect' && obj.targetId === type) {
 					obj.current = (obj.current ?? 0) + 1;

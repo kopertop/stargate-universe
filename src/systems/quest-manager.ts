@@ -32,9 +32,11 @@ export const createQuestManager = (): QuestManager => {
 			}
 		}
 	});
+	// Snapshot to avoid iterator-invalidation when quest completion deletes from log.active mid-iteration.
 	const unsubCollected = on('resource:collected', ({ type }) => {
 		const log = manager.getQuestLog();
-		for (const state of log.active.values()) {
+		const states = [...log.active.values()];
+		for (const state of states) {
 			for (const obj of state.objectives) {
 				if (!obj.completed && obj.visible && obj.type === 'collect' && obj.targetId === type) {
 					manager.advanceObjective(state.definition.id, obj.id);

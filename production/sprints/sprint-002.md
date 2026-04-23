@@ -1,17 +1,17 @@
-# Sprint 2 — 2026-04-01 to 2026-04-14
+# Sprint 2 — 2026-04-15 to 2026-04-28
 
 ## Sprint Goal
 
-Expand the exploration experience: add wall physics so rooms feel solid, create
-visual door frames between areas, implement basic Kino Remote UI (quick-check
-mode), and add more explorable sections with discoverable content.
+Harden the exploration loop: add wall colliders so Destiny feels solid, expand the
+ship with more explorable sections, and start the Kino Remote (diegetic menu) so the
+player can check ship status without the debug overlay.
 
 ## Capacity
 
 - Total days: 14 calendar days
-- Available hours: ~8-10 hrs (Sprint 1 showed we move faster than estimated)
-- Buffer (20%): ~2 hrs
-- Productive hours: ~6-8 hrs
+- Available hours: ~6-8 hrs (a few hours per week)
+- Buffer (25%): ~1.5 hrs reserved for debugging/unplanned work
+- Productive hours: ~5-6 hrs
 
 ## Tasks
 
@@ -19,58 +19,49 @@ mode), and add more explorable sections with discoverable content.
 
 | ID | Task | Est. Hrs | Dependencies | Acceptance Criteria | Design Doc |
 |----|------|----------|-------------|---------------------|------------|
-| S2-01 | **Wall physics colliders** — Add Crashcat colliders to corridor/storage walls so player can't walk through them | 1.5 | S1-02 | Player bounces off all walls. No walk-through. | player-controller.md |
-| S2-02 | **Door frame geometry** — Visual door frames at room transitions (gate room→corridor, corridor→storage). Archway meshes with emissive edge lighting. | 1 | S1-03 | Doorways are visually obvious. Player can see the transition between rooms. | ship-exploration.md |
-| S2-03 | **Kino Remote quick-check** — Tab key shows small overlay: current Ship Parts count, active section name, subsystem conditions for current room. Game continues while displayed. | 2 | S1-01, S1-02 | Tab shows overlay. Gameplay continues. Shows resources + section info. Release to dismiss. | kino-remote.md |
-| S2-04 | **Section discovery** — Entering a new section triggers discovery event, Kino Remote logs it, debug overlay shows explored/unexplored status | 1 | S1-02, S2-03 | Walking into corridor/storage for first time fires event. Section marked explored permanently. | ship-exploration.md |
+| S2-01 | **Wall physics colliders** — Add Crashcat rigid bodies to corridor walls, floors, and ceilings so the player can't walk through walls. | 1.5 | S1-03 | Player collides with walls in all rooms. No clipping through geometry. Collider mesh matches visual mesh within tolerance. | ship-exploration.md |
+| S2-02 | **Corridor/door framing** — Visual door frames with accent lighting near openings. Doors that visually close/open based on ship state (even if no animation yet). | 1 | S2-01 | Doorways have visible frames. Frames have accent lighting (emissive strips). Closed doors block player movement when section is unpowered. | ship-exploration.md, ship-atmosphere-lighting.md |
+| S2-03 | **Expand ship: Engineering section** — Add 2-3 more rooms (engineering bay, corridor junction, auxiliary power room) with power conduits and subsystems to repair. | 1.5 | S2-01 | Player can navigate from gate room through corridors to engineering. At least 2 new repairable subsystems. Resource crates in engineering. | ship-exploration.md |
 
 ### Should Have
 
 | ID | Task | Est. Hrs | Dependencies | Acceptance Criteria | Design Doc |
 |----|------|----------|-------------|---------------------|------------|
-| S2-05 | **Additional rooms** — Add 2 more explorable rooms branching from the gate room (e.g., observation deck, crew quarters) with unique subsystems and crates | 2 | S2-01, S2-02 | 5 total rooms. Each has unique subsystems and at least 1 crate. | ship-exploration.md |
-| S2-06 | **Ambient audio** — Basic ambient ship hum that scales with power level. Gate activation sounds. Repair feedback sound. | 1 | S1-04 | Ship hum plays. Volume scales with section power. Gate dial has audio. | ship-atmosphere-lighting.md |
+| S2-04 | **Kino Remote: Ship Status tab** — Diegetic handheld device showing section power levels and subsystem conditions. Replaces debug overlay for ship info. | 2 | S1-02 | Press Tab (or dedicated key) to raise Kino Remote. Shows current section power, atmosphere, subsystem conditions. Smooth raise/lower animation. | kino-remote.md |
+| S2-05 | **Minimap in Kino Remote** — Rudimentary top-down map showing discovered rooms and player position. | 1 | S2-04 | Kino Remote shows a map tab. Visited rooms appear on map. Player blip shows current position. Undiscovered rooms are dark/hidden. | kino-remote.md |
 
 ### Nice to Have
 
 | ID | Task | Est. Hrs | Dependencies | Acceptance Criteria | Design Doc |
 |----|------|----------|-------------|---------------------|------------|
-| S2-07 | **Degradation tick** — Subsystems slowly degrade over time, requiring ongoing maintenance | 0.5 | S1-02 | Subsystem conditions decrease slowly. Player must re-repair periodically. | ship-state-system.md |
-| S2-08 | **Power priority via debug UI** — Temporary UI to reorder ship system priorities and see power redistribution | 1 | S1-02 | Can change priority order. Power redistribution updates visually. | ship-state-system.md |
+| S2-06 | **Door open/close animation** — Ancient-style sliding door animation when power state changes. | 0.5 | S2-02 | Doors animate open/close over ~0.5s. Sound effect on open/close. | — |
+| S2-07 | **Footstep audio** — Different footstep sounds per floor material (metal grate vs smooth floor). | 0.5 | S2-01 | Walking plays footstep sounds. Different sounds on different surfaces. | — |
 
-### Infrastructure (Required — run after every task)
+## Carryover from Previous Sprint
 
-| ID | Task | Est. Hrs | Dependencies | Acceptance Criteria | Design Doc |
-|----|------|----------|-------------|---------------------|------------|
-| S2-09 | **Playwright E2E test harness** — Set up Playwright for automated browser testing. Dev server starts, game loads, tests navigate via keyboard input simulation. Screenshot capture on each test step. | 1.5 | None | `bun run test:e2e` launches game + Playwright. Screenshots saved to `tests/screenshots/`. At least 1 passing test. | — |
-| S2-10 | **E2E test suite: core gameplay** — Tests covering Sprint 1+2 features: player spawns, can move (WASD), wall collision (walk into wall → position doesn't pass through), camera pull-in near walls, gate dial sequence, crate looting, repair interaction, section discovery, Kino Remote overlay. Each test captures before/after screenshots. | 2 | S2-09, all S2 tasks | All tests pass. Screenshots generated for: spawn view, each room, wall collision, gate active, crate looted, repair before/after, Kino Remote overlay. | — |
-
-**Testing protocol**: After completing each Must Have/Should Have task, run
-`bun run test:e2e` and inspect the generated screenshots in `tests/screenshots/`
-before moving to the next task. This catches visual regressions immediately.
-
-## Carryover from Sprint 1
-
-None — all tasks completed.
+- Unpushed commit on main: `chore: add package-lock.json to .gitignore` — needs kopertop push access
 
 ## Risks
 
 | Risk | Probability | Impact | Mitigation |
 |------|------------|--------|------------|
-| Crashcat programmatic collider API unknown | Medium | High | Research ggez physics docs. Fallback: add walls to runtime JSON as physics brushes. |
-| Audio integration with ggez unknown | Medium | Medium | Use basic Web Audio API / Howler.js if ggez audio isn't straightforward. |
-| Kino Remote UI complexity creep | Low | Medium | Keep it to quick-check only (no full mode this sprint). |
-
-## Dependencies on External Factors
-
-- May need to research Crashcat collider API for programmatic wall physics.
+| Crashcat collider authoring is tedious for complex geometry | Medium | Medium | Use simplified box/capsule colliders instead of mesh colliders. Programmatic placement from scene metadata. |
+| Kino Remote UI complexity (diegetic device, not flat HUD) | Medium | High | Start with flat overlay inside a textured frame. Add 3D device model later. Focus on data display, not form factor. |
+| Engineering section content pipeline (new rooms, assets) | Low | Medium | Reuse existing corridor geometry. Variation through lighting and props, not new models. |
 
 ## Definition of Done for this Sprint
 
 - [ ] All Must Have tasks completed
-- [ ] Player cannot walk through any walls
-- [ ] Doorways are visually framed and obvious
-- [ ] Kino Remote quick-check shows relevant game state
-- [ ] Section discovery works and persists
+- [ ] Player cannot walk through walls anywhere
+- [ ] At least 5 explorable rooms (gate room + existing 2 + engineering 2-3)
+- [ ] Doors respond to ship power state
+- [ ] Kino Remote shows ship status (if Should Have completed)
 - [ ] Code compiles with zero TypeScript errors
 - [ ] Committed to feature branch, pushed to remote
+
+## Notes
+
+Sprint 1 retro showed velocity exceeded estimates — all 8 tasks in one session.
+Sprint 2 raises scope with wall colliders (a known pain point) and the first
+diegetic UI. If wall colliders prove harder than expected, the Kino Remote
+slides to Sprint 3.

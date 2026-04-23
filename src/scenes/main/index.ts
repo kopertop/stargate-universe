@@ -1,3 +1,8 @@
+/**
+ * Main Scene — Primary entry point scene.
+ *
+ * @see design/gdd/
+ */
 import {
   createColocatedRuntimeSceneSource,
   defineGameScene

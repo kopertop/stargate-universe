@@ -1,0 +1,11 @@
+name = "stargate-universe"
+compatibility_date = "2025-04-01"
+pages_build_output_dir = "dist"
+
+[[r2_buckets]]
+binding = "GAME_ASSETS"
+bucket_name = "sgu-assets"
+
+[[r2_buckets]]
+binding = "GAME_DATA"
+bucket_name = "sgu-game-data"

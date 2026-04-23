@@ -195,6 +195,7 @@ export async function createGameApp(options: GameAppOptions) {
         resolveAssetUrl: ({ path }) => path
       });
 
+
       if (disposed || token !== loadToken) {
         runtimeScene.dispose();
         return;
@@ -431,7 +432,7 @@ async function buildPlayer(options: {
           }
         }
       } catch (error) {
-        console.warn("[buildPlayer] Failed to load animation bundle:", error);
+        console.error("[buildPlayer] Failed to load animation bundle:", error);
       }
     }
 

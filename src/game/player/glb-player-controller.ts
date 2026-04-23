@@ -180,11 +180,15 @@ export class GlbPlayerController implements PlayerController {
 		this.pitch = MathUtils.clamp(this.pitch, this.camera.pitchMin, this.camera.pitchMax);
 	}
 
-	releasePointerLock(): void {
-		this.input.releasePointerLock();
-	}
+  releasePointerLock(): void {
+    this.input.releasePointerLock();
+  }
 
-	dispose(): void {
+  setRepairing(repairing: boolean): void {
+    // Repair system — implementation pending audio subsystem merge
+  }
+
+  dispose(): void {
 		this.gameplayRuntime.removeActor("player");
 		rigidBody.remove(this.world, this.body);
 		this.mixer?.stopAllAction();

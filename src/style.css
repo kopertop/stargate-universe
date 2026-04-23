@@ -53,3 +53,60 @@ canvas {
 .game-status[hidden] {
   display: none;
 }
+
+/* ─── Loading Screen ─────────────────────────── */
+
+.loading-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: #05070a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  transition: opacity 0.6s ease-out;
+}
+
+.loading-screen.fade-out {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.loading-title {
+  font-size: 28px;
+  font-weight: 300;
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  color: #4488ff;
+}
+
+.loading-subtitle {
+  font-size: 13px;
+  color: #556;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.loading-bar-track {
+  width: 240px;
+  height: 2px;
+  background: #1a1a2e;
+  border-radius: 1px;
+  overflow: hidden;
+  margin-top: 12px;
+}
+
+.loading-bar-fill {
+  height: 100%;
+  width: 30%;
+  background: #4488ff;
+  border-radius: 1px;
+  animation: loading-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes loading-pulse {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}

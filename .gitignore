@@ -12,3 +12,5 @@ production/session-logs/
 # E2E test artifacts
 tests/screenshots/
 tests/results/
+
+package-lock.json

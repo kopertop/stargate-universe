@@ -35,9 +35,12 @@ export function createRuntimePhysicsSession(options: {
     ...renderScene.meshes,
     ...instancedMeshes.filter((mesh) => !unsupportedDynamicInstanceNodeIds.has(mesh.nodeId))
   ];
+  // Meshes with physics.enabled=true get a rigid body.
+  // "fixed" bodyType → static body. Everything else (dynamic, kinematic) → dynamic body.
   const physicsMeshes = allMeshes.filter((mesh) => mesh.physics?.enabled);
   const physicsMeshIds = new Set(physicsMeshes.map((mesh) => mesh.nodeId));
-  const staticMeshes = allMeshes.filter((mesh) => !physicsMeshIds.has(mesh.nodeId));
+  const dynamicMeshes = physicsMeshes.filter((mesh) => mesh.physics?.bodyType !== "fixed");
+  const staticMeshes = physicsMeshes.filter((mesh) => mesh.physics?.bodyType === "fixed");
   const bodiesByNodeId = new Map<string, CrashcatRigidBody>();
   const dynamicBindings: Array<{
     body: CrashcatRigidBody;
@@ -45,7 +48,7 @@ export function createRuntimePhysicsSession(options: {
   }> = [];
 
   unsupportedDynamicInstanceMeshes.forEach((mesh) => {
-    console.warn(
+    console.info(
       `Skipping dynamic instanced collider for ${mesh.nodeId}. Instanced runtime bodies currently support fixed collision only.`
     );
   });
@@ -55,7 +58,7 @@ export function createRuntimePhysicsSession(options: {
     bodiesByNodeId.set(mesh.nodeId, body);
   });
 
-  physicsMeshes.forEach((mesh) => {
+  dynamicMeshes.forEach((mesh) => {
     const body = createDynamicRigidBody(options.world, mesh);
     bodiesByNodeId.set(mesh.nodeId, body);
 

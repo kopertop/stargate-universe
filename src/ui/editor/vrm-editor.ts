@@ -295,7 +295,7 @@ async function handleSave(): Promise<void> {
 		await saveCustomization(customization);
 		console.info(`[VrmEditor] Saved customization for "${activeEditor.characterId}"`);
 	} catch (err) {
-		console.error("[VrmEditor] Failed to save customization", err);
+		console.error("[VrmEditor] Failed to save customization", err instanceof Error ? err.message : String(err));
 	}
 }
 

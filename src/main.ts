@@ -62,7 +62,7 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 		void registerServiceWorker({
 			url:   "/sw.js",
 			scope: "/",
-			onUpdateReady: (registration: ServiceWorkerRegistration) => {
+			onUpdateReady: (registration: any) => {
 				// New build available in the background. For now, auto-apply
 				// after a short delay so returning players get fresh content
 				// without a "Reload?" prompt. Swap to a UI prompt when we have
@@ -72,7 +72,7 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 					registration.waiting?.postMessage({ type: "SKIP_WAITING" });
 				}, 5000);
 			},
-			onError: (err: DOMException) => console.warn("[SW] registration failed:", err.message),
+			onError: (err: any) => console.warn("[SW] registration failed:", err.message),
 		});
 }
 

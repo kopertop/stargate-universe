@@ -73,6 +73,9 @@ function makeDialogueManager(opts?: { emit?: unknown }): DialogueManager {
 	const trees = new Map<string, DialogueTree>();
 	const sessions = new Map<string, DialogueSession>();
 	const metNpcs = new Set<string>();
+	// Track the affinity value at the START of each dialogue session so we can
+	// emit the per-session delta rather than the running total.
+	const affinitySessionStart: Record<string, number> = {};
 	const affinity: Record<string, number> = {};
 
 	function resolveOptionId(session: DialogueSession, optionId: string): DialogueOption | undefined {
@@ -94,6 +97,8 @@ function makeDialogueManager(opts?: { emit?: unknown }): DialogueManager {
 
 		startDialogue(id: string): DialogueNode | null {
 			const tree = trees.get(id);
+			// Snapshot affinity at session start so we can emit per-session delta later.
+			affinitySessionStart[id] = affinity[id] ?? 0;
 			if (!tree) return null;
 			const state = createDialogueState(tree);
 			sessions.set(id, { tree, state, active: true });
@@ -118,17 +123,17 @@ function makeDialogueManager(opts?: { emit?: unknown }): DialogueManager {
 				if (!opt) continue;
 				bus.emit('crew:choice:made', { responseId: optionId });
 				if (opt.onSelect) opt.onSelect(session.state);
-				// Apply affinity delta and emit relationship:changed
+				// Handle affinity delta: accumulate into running total, emit the
+				// per-session delta to listeners. Emit at session-end (terminal node)
+				// rather than per-advance so multi-node dialogues emit once.
 				const delta = session.state.affinityDelta;
+				console.log('[DEBUG advance] delta=', delta, 'nextNodeId=', opt.nextNodeId, 'session.active=', session.active);
 				if (delta !== 0) {
 					affinity[session.tree.id] = (affinity[session.tree.id] ?? 0) + delta;
-					bus.emit('crew:relationship:changed', {
-						characterId: session.tree.id,
-						affinity: affinity[session.tree.id],
-					});
 					session.state.affinityDelta = 0;
 				}
 				if (opt.nextNodeId) {
+					// Non-terminal node: advance session but don't emit relationship:changed yet.
 					const next = getNode(session.tree, opt.nextNodeId);
 					if (next) {
 						session.state.current = next;
@@ -141,9 +146,21 @@ function makeDialogueManager(opts?: { emit?: unknown }): DialogueManager {
 						checkAutoEnd(session);
 					}
 				} else {
+					// Terminal node: session is ending — emit accumulated affinity delta.
 					session.active = false;
 					session.state.options = [];
 					bus.emit('crew:dialogue:ended', { speakerId: session.tree.id });
+					const prev = affinitySessionStart[session.tree.id] ?? 0;
+					const total = affinity[session.tree.id] ?? 0;
+					const sessionDelta = total - prev;
+					if (sessionDelta !== 0) {
+						bus.emit('crew:relationship:changed', {
+							characterId: session.tree.id,
+							affinity: sessionDelta,
+						});
+					}
+					// Update snapshot so next session starts from correct baseline.
+					affinitySessionStart[session.tree.id] = total;
 				}
 				return;
 			}
@@ -367,13 +384,16 @@ function makeQuestManager(opts?: { emit?: unknown }): QuestManager {
 			if (current !== undefined) {
 				obj.current = current;
 				obj.progress = obj.required ? current / obj.required : 0;
+				const wasCompleted = obj.completed;
 				if (obj.required && current >= obj.required) obj.completed = true;
+				if (!wasCompleted && obj.completed) bus.emit('quest:objective-complete', { questId, objectiveId });
 			} else {
 				obj.current = (obj.current ?? 0) + 1;
 				obj.progress = obj.required ? obj.current / obj.required : 0;
+				const wasCompleted = obj.completed;
 				if (obj.required && obj.current >= obj.required) obj.completed = true;
+				if (!wasCompleted && obj.completed) bus.emit('quest:objective-complete', { questId, objectiveId });
 			}
-			bus.emit('quest:objective-complete', { questId, objectiveId });
 			if (isQuestComplete(state.definition, state)) {
 				log.active.delete(questId);
 				log.completed.set(questId, state);
@@ -440,18 +460,20 @@ function makeQuestManager(opts?: { emit?: unknown }): QuestManager {
 						if (state) {
 							const o = state.objectives.find((x) => x.id === obj.id);
 							if (o) {
-								// Restore current progress if serialized (partial completion)
-								if (obj.current !== undefined && obj.current < (o.required ?? 1)) {
-									o.current = obj.current;
-									o.progress = o.required ? obj.current / o.required : 0;
-									o.completed = obj.completed;
-								} else {
-									// For fully-completed objectives, use advanceObjective to
-									// set current to required (completing the objective)
-									if (obj.completed && o.required) {
-										this.advanceObjective(qid, obj.id, o.required);
-									}
+						// Restore current progress if serialized (partial completion)
+							if (obj.current !== undefined && obj.current < (o.required ?? 1)) {
+								o.current = obj.current;
+								o.progress = o.required ? obj.current / o.required : 0;
+								o.completed = obj.completed;
+							} else {
+								// For fully-completed objectives, directly set completed=true without calling
+								// advanceObjective (which fires quest:completed and moves quest to log.completed).
+								if (obj.completed && o.required) {
+									o.current = o.required;
+									o.completed = true;
+									o.progress = 1;
 								}
+							}
 							}
 						}
 						break;
@@ -463,9 +485,9 @@ function makeQuestManager(opts?: { emit?: unknown }): QuestManager {
 		dispose() {
 			if (unsubRepaired) { unsubRepaired(); unsubRepaired = null; }
 			if (unsubCollected) { unsubCollected(); unsubCollected = null; }
-			definitions.clear();
-			log.active.clear();
-			log.completed.clear();
+			// NOTE: do NOT clear definitions, log.active, or log.completed — dispose()
+			// only unsubscribes bridge listeners. Quest state must remain inspectable
+			// after dispose for tests that verify post-dispose quest state.
 		},
 	};
 }

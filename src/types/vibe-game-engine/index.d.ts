@@ -1,6 +1,8 @@
 /// <reference types="vite/client" />
 /// <reference lib="es2022" />
 
+export {};
+
 /**
  * Minimal type stub for @kopertop/vibe-game-engine.
  * Provides the types used by stargate-universe without requiring

@@ -16,12 +16,13 @@ import type {
 	DialogueManagerSnapshot,
 	NpcDefinition,
 	NpcInstance,
+	NpcInstanceState,
 	NpcManager,
 	QuestDefinition,
 	QuestManager,
 	QuestLog,
 	QuestState,
-} from '../../src/types/vibe-game-engine/index.js';
+} from '../../src/types/vibe-game-engine/index';
 
 // ── Bus helpers ─────────────────────────────────────────────────────────────
 
@@ -178,10 +179,12 @@ function makeDialogueManager(opts?: { emit?: unknown }): DialogueManager {
 				acceptedQuests: allAccepted,
 				metNpcs: [...metNpcs],
 				affinity,
-				dialogues: [...sessions.entries()].map(([id, s]) => ({
+				dialogues: Object.fromEntries(
+				[...sessions.entries()].map(([id, s]) => [id, {
 					id,
 					started: s.active || s.state.history.length > 0,
-				})),
+				}]),
+			),
 			};
 		},
 
@@ -239,7 +242,7 @@ function makeNpcManager(opts: { dialogueManager: DialogueManager; on: unknown })
 			const instance: NpcInstance = {
 				id: def.id,
 				defId: def.id,
-				state: def.behavior.startingState ?? 'idle',
+				state: (def.behavior.startingState ?? 'idle') as NpcInstanceState,
 				definition: def,
 				inDialogue: false,
 			};

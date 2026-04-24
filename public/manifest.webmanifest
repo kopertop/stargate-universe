@@ -8,6 +8,11 @@
   "orientation": "landscape",
   "background_color": "#000005",
   "theme_color": "#4488ff",
+  "categories": [
+    "games",
+    "entertainment"
+  ],
+  "lang": "en-US",
   "icons": [
     {
       "src": "/icons/icon-192.svg",
@@ -27,10 +32,5 @@
       "type": "image/svg+xml",
       "purpose": "maskable"
     }
-  ],
-  "categories": [
-    "games",
-    "entertainment"
-  ],
-  "lang": "en-US"
+  ]
 }

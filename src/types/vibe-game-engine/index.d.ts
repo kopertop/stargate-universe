@@ -45,6 +45,12 @@ declare module "@kopertop/vibe-game-engine" {
 		icons: Array<{ src: string; sizes: string; type: string; purpose?: string }>;
 	}): string;
 
+	// ── Input ──────────────────────────────────────────────────────────────
+
+	export const DEFAULT_KEY_BINDINGS: Record<string, number>;
+	export const DEFAULT_GAMEPAD_BINDINGS: Record<number, number[]>;
+	export class InputManager { /* ... */ }
+
 	// ── Cross-cutting event bus ────────────────────────────────────────────
 
 	export function on<T = unknown>(event: string, handler: (data: T) => void): () => void;

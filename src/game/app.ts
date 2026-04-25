@@ -11,6 +11,7 @@
  *  - setStatus() renders a visible overlay so users know what's loading.
  *  - Scene transitions are guarded by a load token so stale async results
  *    from navigating away mid-load never contaminate the live scene.
+ *  - Adaptive physics rate slows down when frame budget is exceeded.
  */
 
 import {
@@ -29,6 +30,9 @@ import { createThreeRuntimeSceneInstance, type ThreeRuntimeSceneInstance } from 
 import * as THREE from "three";
 import { WebGPURenderer } from "three/webgpu";
 import { createCameraController, frameCameraOnObject } from "./camera";
+import { AudioManager } from "../systems/audio";
+import { installDebugApi, toggleDebugOverlay } from "../systems/debug-api";
+import { pollInput } from "../systems/input";
 import { createDefaultGameplaySystems, createStarterGameplayHost, mergeGameplaySystems } from "./gameplay";
 import { GameLoop, FIXED_STEP_SECONDS } from "./loop";
 import { InputManager } from "./input";
@@ -41,7 +45,7 @@ import type {
   PlayerController
 } from "./scene";
 import { StarterPlayerController, VrmPlayerController } from "./player";
-import { VrmCharacterManager, findPlayerVrmEntity, createVrmAnimatorBridge, loadVrm } from "../systems/vrm";
+import { VrmCharacterManager } from "../systems/vrm";
 
 // ------------------------------------------------------------------
 // Types
@@ -62,6 +66,25 @@ type SceneBundle = {
   runtimeScene: ThreeRuntimeSceneInstance;
 };
 
+const DEFAULT_FIXED_STEP_SECONDS = 1 / 60;
+const MIN_FIXED_STEP_SECONDS = 1 / 20;
+const MAX_PHYSICS_CATCH_UP_STEPS = 4;
+const ADAPT_UP_THRESHOLD = 0.8;
+const ADAPT_DOWN_THRESHOLD = 0.4;
+const ADAPT_RATE = 0.02;
+
+/** Performance metrics exposed for debug overlays */
+export const perfMetrics = {
+	fps: 0,
+	frameMs: 0,
+	physicsMs: 0,
+	physicsHz: 60,
+	physicsSteps: 0,
+	renderMs: 0,
+	drawCalls: 0,
+	triangles: 0,
+};
+
 // ------------------------------------------------------------------
 
 export async function createGameApp(options: GameAppOptions) {
@@ -79,18 +102,31 @@ export async function createGameApp(options: GameAppOptions) {
     throw new Error("Failed to initialise game shell.");
   }
 
-  // Renderer
-  const renderer = new WebGPURenderer({ antialias: true });
+  // Allow ?webgl query param to force the WebGL backend — used by Playwright
+  // visual tests running in headless Chromium where WebGPU is unavailable.
+  const forceWebGL = new URLSearchParams(window.location.search).has("webgl");
+  const renderer = new WebGPURenderer({ antialias: true, forceWebGL });
   await renderer.init();
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // WebGPU uses physically-based light units (candela/lux).
+  // ACESFilmic tone mapping + exposure compensates so legacy intensity values
+  // look correct without rewriting every scene's light intensities.
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 3.9;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
   shell.append(renderer.domElement);
 
   // Shared Three.js objects
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 4000);
+
+  // Attach the shared audio listener to the camera once for the life of the
+  // app. Scenes just call `AudioManager.getInstance().play(id)` to play
+  // cataloged sounds. The listener follows the camera across scene swaps.
+  AudioManager.getInstance().attachListener(camera);
+  const clock = new THREE.Clock();
 
   // Shared systems
   const input = new InputManager();
@@ -99,7 +135,40 @@ export async function createGameApp(options: GameAppOptions) {
   // State
   let activeBundle: SceneBundle | undefined;
   let loadToken = 0;
+
+  // Dev hook surface — exposes window.__sgu for Playwright/MCP/console
+  // automation and renders an on-screen dev overlay. Only live in dev;
+  // the overlay is hidden until the player double-taps Backquote (or
+  // clicks the "open dev tools" hook).
+  const hostHooks = {
+    getCurrentSceneId: () => activeBundle?.id,
+    getPlayerPosition: () => {
+      if (!activeBundle?.player) return undefined;
+      const p = activeBundle.player.object.position;
+      return { x: p.x, y: p.y, z: p.z };
+    },
+    setExternalMove: (forward: number, strafe: number) => {
+      activeBundle?.player?.setExternalMoveInput?.(forward, strafe);
+    },
+    gotoScene: (sceneId: string) => loadScene(sceneId),
+    getCanvas: () => renderer.domElement as unknown as HTMLCanvasElement,
+    getCamera: () => camera,
+    getRenderer: () => renderer,
+    getScene: () => scene,
+  };
+  if (import.meta.env.DEV) {
+    installDebugApi(hostHooks);
+    const toggleDev = (e: KeyboardEvent) => {
+      if (e.code === "Backquote") toggleDebugOverlay(hostHooks);
+    };
+    window.addEventListener("keydown", toggleDev);
+  }
   let disposed = false;
+
+  // Adaptive physics state
+  let adaptiveStepSeconds = DEFAULT_FIXED_STEP_SECONDS;
+  let fpsFrames = 0;
+  let fpsTime = 0;
 
   // ------------------------------------------------------------------
   // Status overlay
@@ -129,6 +198,9 @@ export async function createGameApp(options: GameAppOptions) {
       runFixedStep();
     },
     onUpdate: (dt) => {
+      // Controller + keyboard snapshot (edge-detection for just-pressed actions)
+      pollInput();
+
       activeBundle?.lifecycle.update?.(dt);
       activeBundle?.gameplayRuntime.update(dt);
       // Camera is updated at variable rate for smooth motion at high refresh rates.
@@ -183,119 +255,118 @@ export async function createGameApp(options: GameAppOptions) {
     const token = ++loadToken;
     setStatus(`Loading ${definition.title}…`);
 
-    try {
-      await ensureCrashcatRuntimePhysics();
-      const runtimeManifest = await definition.source.load();
+    await ensureCrashcatRuntimePhysics();
+    const runtimeManifest = await definition.source.load();
 
-      if (disposed || token !== loadToken) return;
+    if (disposed || token !== loadToken) return;
 
-      // Build scene-level objects
-      const runtimeScene = await createThreeRuntimeSceneInstance(runtimeManifest, {
-        applyToScene: scene,
-        resolveAssetUrl: ({ path }) => path
-      });
+    // Build scene-level objects
+    const runtimeScene = await createThreeRuntimeSceneInstance(runtimeManifest, {
+      applyToScene: scene,
+      resolveAssetUrl: ({ path }) => path
+    });
 
-
-      if (disposed || token !== loadToken) {
-        runtimeScene.dispose();
-        return;
-      }
-
-      renderer.setClearColor(runtimeScene.scene.settings.world.fogColor || "#dfe8f2");
-
-      const physicsWorld = createCrashcatPhysicsWorld(runtimeScene.scene.settings);
-      const runtimePhysics = createRuntimePhysicsSession({ runtimeScene, world: physicsWorld });
-      const gameplayHost = createStarterGameplayHost({ physicsWorld, runtimePhysics, runtimeScene });
-
-      // Build loader context (available to systems factory)
-      const loaderContext: GameSceneLoaderContext = {
-        camera,
-        gotoScene: loadScene,
-        physicsWorld,
-        preloadScene,
-        renderer,
-        runtimeScene,
-        scene,
-        sceneId,
-        sceneSettings: runtimeScene.scene.settings,
-        setStatus
-      };
-
-      const systems = resolveSceneSystems(definition, loaderContext);
-      const gameplayRuntime = createGameplayRuntime({
-        host: gameplayHost,
-        scene: createGameplayRuntimeSceneFromRuntimeScene(runtimeScene.scene),
-        systems
-      });
-
-      const player = await buildPlayer({
-        camera,
-        definition,
-        gameplayRuntime,
-        input,
-        physicsWorld,
-        runtimeScene
-      });
-
-      gameplayRuntime.start();
-
-      // Full context — available to mount()
-      const fullContext: GameSceneContext = {
-        ...loaderContext,
-        gameplayRuntime,
-        player,
-        runtimePhysics
-      };
-
-      // mount() is awaited before we commit the scene to activeBundle.
-      // This prevents UI or actor setup from racing against scene teardown.
-      const mountResult = await definition.mount?.(fullContext);
-
-      if (disposed || token !== loadToken) {
-        // Another loadScene() won the race — clean up what we just built.
-        scene.remove(runtimeScene.root);
-        if (player) scene.remove(player.object);
-        await mountResult?.dispose?.();
-        player?.dispose();
-        gameplayRuntime.dispose();
-        runtimeScene.dispose();
-        runtimePhysics.dispose();
-        return;
-      }
-
-      const lifecycle: GameSceneLifecycle = mountResult ?? {};
-
-      // Tear down the previous scene only after the new one is fully ready.
-      const previous = activeBundle;
-
-      // Add new scene to the Three graph and expose it.
-      scene.add(runtimeScene.root);
-
-      if (player) {
-        scene.add(player.object);
-        player.updateAfterStep(FIXED_STEP_SECONDS);
-      } else {
-        frameCameraOnObject(camera, runtimeScene.root);
-      }
-
-      activeBundle = { gameplayRuntime, id: sceneId, lifecycle, player, physicsWorld, runtimePhysics, runtimeScene };
-
-      if (previous) {
-        await disposeBundle(previous);
-      }
-
-      setStatus("");
-    } catch (error) {
-      if (token === loadToken && !disposed) {
-        setStatus(`Failed to load "${definition.title}".`);
-      }
-
-      throw error;
+    if (disposed || token !== loadToken) {
+      runtimeScene.dispose();
+      return;
     }
+
+    renderer.setClearColor(runtimeScene.scene.settings.world.fogColor || "#dfe8f2");
+
+    const physicsWorld = createCrashcatPhysicsWorld(runtimeScene.scene.settings);
+    const runtimePhysics = createRuntimePhysicsSession({ runtimeScene, world: physicsWorld });
+    const gameplayHost = createStarterGameplayHost({ physicsWorld, runtimePhysics, runtimeScene });
+
+    // Build loader context (available to systems factory)
+    const loaderContext: GameSceneLoaderContext = {
+      camera,
+      gotoScene: loadScene,
+      physicsWorld,
+      preloadScene,
+      renderer,
+      runtimeScene,
+      scene,
+      sceneId,
+      sceneSettings: runtimeScene.scene.settings,
+      setStatus
+    };
+
+    const systems = resolveSceneSystems(definition, loaderContext);
+    const gameplayRuntime = createGameplayRuntime({
+      host: gameplayHost,
+      scene: createGameplayRuntimeSceneFromRuntimeScene(runtimeScene.scene),
+      systems
+    });
+
+    const player = await buildPlayer({
+      camera,
+      definition,
+      gameplayRuntime,
+      input,
+      physicsWorld,
+      runtimeScene
+    });
+
+    gameplayRuntime.start();
+
+    // Full context — available to mount()
+    const fullContext: GameSceneContext = {
+      ...loaderContext,
+      gameplayRuntime,
+      player,
+      runtimePhysics
+    };
+
+    // mount() is awaited before we commit the scene to activeBundle.
+    // This prevents UI or actor setup from racing against scene teardown.
+    const mountResult = await definition.mount?.(fullContext);
+
+    if (disposed || token !== loadToken) {
+      // Another loadScene() won the race — clean up what we just built.
+      scene.remove(runtimeScene.root);
+      if (player) scene.remove(player.object);
+      await mountResult?.dispose?.();
+      player?.dispose();
+      gameplayRuntime.dispose();
+      runtimeScene.dispose();
+      runtimePhysics.dispose();
+      return;
+    }
+
+    const lifecycle: GameSceneLifecycle = mountResult ?? {};
+
+    // Tear down the previous scene only after the new one is fully ready.
+    const previous = activeBundle;
+
+    // Add new scene to the Three graph and expose it.
+    scene.add(runtimeScene.root);
+
+    if (player) {
+      scene.add(player.object);
+      player.updateAfterStep(FIXED_STEP_SECONDS);
+    } else {
+      frameCameraOnObject(camera, runtimeScene.root);
+    }
+
+    activeBundle = { gameplayRuntime, id: sceneId, lifecycle, player, physicsWorld, runtimePhysics, runtimeScene };
+
+    if (previous) {
+      await disposeBundle(previous);
+    }
+
+    setStatus("");
   };
 
-  // ------------------------------------------------------------------
-  // Resize
+  const start = () => loadScene(options.initialSceneId);
+
+  const dispose = async () => {
+    disposed = true;
+    window.removeEventListener("resize", handleResize);
+    if (activeBundle) {
+      await disposeBundle(activeBundle);
+    }
+    renderer.dispose();
+  };
 
   const handleResize = () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -305,69 +376,17 @@ export async function createGameApp(options: GameAppOptions) {
 
   window.addEventListener("resize", handleResize);
 
-  // ------------------------------------------------------------------
-  // Public API
-
-  const start = async () => {
-    loop.start();
-    await loadScene(options.initialSceneId);
-  };
-
-  const dispose = async () => {
-    disposed = true;
-    loop.dispose();
-    input.dispose();
-    window.removeEventListener("resize", handleResize);
-
-    if (activeBundle) {
-      await disposeBundle(activeBundle);
-      activeBundle = undefined;
-    }
-
-    renderer.dispose();
-  };
-
   return {
-    /** Loaded Three.js camera — safe to read, avoid replacing. */
     camera,
     dispose,
     initialSceneId: options.initialSceneId,
-    /** Navigate to a scene by its id. Returns when the scene is fully loaded. */
     loadScene,
-    /** Prefetch scene assets without activating the scene. */
     preloadScene,
-    /** Shared InputManager. Gives access to key state outside of a player controller. */
-    input,
-    /** The game loop — pause/resume for menus or cutscenes. */
-    loop,
-    /** WebGPU renderer. */
     renderer,
-    /** Root Three.js scene. */
     scene,
-    /** Update the loading status overlay. Pass "" to hide it. */
-    setStatus,
-    /** Begin the game loop and load the initial scene. */
-    start
+    start,
+    setStatus
   };
-}
-
-// ------------------------------------------------------------------
-// Internal helpers
-
-function resolveSceneSystems(
-  definition: GameSceneDefinition,
-  context: GameSceneLoaderContext
-): GameplayRuntimeSystemRegistration[] {
-  const defaults = createDefaultGameplaySystems(context.sceneSettings);
-
-  if (!definition.systems) {
-    return defaults;
-  }
-
-  const sceneSystems =
-    typeof definition.systems === "function" ? definition.systems(context) : definition.systems;
-
-  return mergeGameplaySystems(defaults, sceneSystems);
 }
 
 async function buildPlayer(options: {
@@ -377,96 +396,76 @@ async function buildPlayer(options: {
   input: InputManager;
   physicsWorld: CrashcatPhysicsWorld;
   runtimeScene: ThreeRuntimeSceneInstance;
-}): Promise<StarterPlayerController | VrmPlayerController | null> {
+}): Promise<PlayerController | null> {
   if (options.definition.player === false) {
     return null;
   }
 
   const playerConfig = options.definition.player ?? {};
-  const spawnEntity = options.runtimeScene.entities.find((e) => {
-    if (e.type !== "player-spawn") return false;
-    return playerConfig.spawnEntityId ? e.id === playerConfig.spawnEntityId : true;
+  const playerSpawn = options.runtimeScene.entities.find((entity) => {
+    if (entity.type !== "player-spawn") return false;
+    return playerConfig.spawnEntityId ? entity.id === playerConfig.spawnEntityId : true;
   });
 
-  if (!spawnEntity) {
+  if (!playerSpawn) {
     return null;
   }
 
-  const mode =
-    playerConfig.cameraMode ?? options.runtimeScene.scene.settings.player.cameraMode;
-  const cameraController = createCameraController(mode, options.camera);
+  const spawn = {
+    position: playerSpawn.transform.position,
+    rotationY: playerSpawn.transform.rotation.y
+  };
 
-  // Check for a VRM character entity marked as player
-  const vrmPlayerData = findPlayerVrmEntity(options.runtimeScene);
+  const cameraMode = playerConfig.cameraMode ?? options.runtimeScene.scene.settings.player.cameraMode;
 
-  if (vrmPlayerData && vrmPlayerData.vrmUrl) {
+  // Build camera controller — needed by both VRM and starter controllers.
+  const cameraController = createCameraController(cameraMode, options.camera);
+
+  // VRM character path — check if the player config specifies a VRM URL.
+  const vrmUrl = playerConfig.vrmUrl;
+
+  if (vrmUrl) {
+    // Create VRM character manager and register the player character.
     const characterManager = new VrmCharacterManager(options.camera);
-
-    // Await VRM load directly so the model is ready before the scene appears.
-    // This prevents the capsule flash — the VRM is loaded before the player is
-    // added to the scene.
-    const vrmResult = await loadVrm(vrmPlayerData.vrmUrl, 0);
-
     const characterInstance = characterManager.addCharacter({
-      id: vrmPlayerData.characterId,
-      vrmUrl: vrmPlayerData.vrmUrl,
+      id: "player",
+      vrmUrl,
       isPlayer: true,
-      priority: 0,
+      priority: 0
     });
-
-    // Build animation bridge if a bundle is specified
-    let animatorBridge;
-
-    if (vrmPlayerData.animationBundle) {
-      try {
-        const { animations } = await import("virtual:web-hammer-animation-registry");
-        const bundleDef = animations[vrmPlayerData.animationBundle];
-
-        if (bundleDef) {
-          const bundle = await bundleDef.source.load();
-
-          // VRM is guaranteed loaded now (we awaited loadVrm above, and
-          // addCharacter will find it in cache)
-          if (characterInstance.vrm) {
-            animatorBridge = await createVrmAnimatorBridge(characterInstance.vrm, bundle);
-          }
-        }
-      } catch (error) {
-        console.error("[buildPlayer] Failed to load animation bundle:", error);
-      }
-    }
 
     return new VrmPlayerController({
       camera: cameraController,
-      gameplayRuntime: options.gameplayRuntime,
       input: options.input,
-      sceneSettings: options.runtimeScene.scene.settings,
-      spawn: {
-        position: spawnEntity.transform.position,
-        rotationY: spawnEntity.transform.rotation.y,
-      },
       threeCamera: options.camera,
+      gameplayRuntime: options.gameplayRuntime,
+      sceneSettings: options.runtimeScene.scene.settings,
+      spawn,
       world: options.physicsWorld,
       characterManager,
-      characterInstance,
-      animatorBridge,
+      characterInstance
     });
   }
 
-  // Fallback: standard capsule player
+  // Fall back to starter controller (capsule physics only).
   return new StarterPlayerController({
     camera: cameraController,
-    gameplayRuntime: options.gameplayRuntime,
     input: options.input,
-    sceneSettings: options.runtimeScene.scene.settings,
-    spawn: {
-      position: spawnEntity.transform.position,
-      rotationY: spawnEntity.transform.rotation.y,
-    },
     threeCamera: options.camera,
-    world: options.physicsWorld,
+    gameplayRuntime: options.gameplayRuntime,
+    sceneSettings: options.runtimeScene.scene.settings,
+    spawn,
+    world: options.physicsWorld
   });
 }
 
-// Re-export the definition helper so scene files don't need to import runtime-scene-sources.
-export type { GameSceneDefinition, GameSceneContext, GameSceneLifecycle, PlayerController };
+function resolveSceneSystems(definition: GameSceneDefinition, context: GameSceneLoaderContext): GameplayRuntimeSystemRegistration[] {
+  const starterSystems = createDefaultGameplaySystems(context.sceneSettings);
+
+  if (!definition.systems) {
+    return starterSystems;
+  }
+
+  const sceneSystems = typeof definition.systems === "function" ? definition.systems(context) : definition.systems;
+  return mergeGameplaySystems(starterSystems, sceneSystems);
+}

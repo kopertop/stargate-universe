@@ -1,81 +1,100 @@
-# Stargate Universe — Game Project
+# Stargate Universe
 
-A 3D exploration/adventure game set in the Stargate universe, built with ggez (Three.js game framework) and managed through Claude Code Game Studios agent architecture.
+A browser-based sci-fi open-world RPG set in the Stargate Universe TV series. Players take on the
+role of crew aboard the ancient ship Destiny, exploring uncharted galaxies, managing resources,
+making story-defining choices, and surviving against alien threats — all running natively in the
+browser with WebGPU rendering.
 
-## Technology Stack
+## Engine
 
-- **Engine**: ggez (Three.js game framework) + Three.js 0.181
-- **Renderer**: WebGPU (via `three/webgpu`, WebGL fallback)
-- **Physics**: Crashcat (ggez built-in) — always Crashcat, never Rapier
-- **Language**: TypeScript (strict mode)
-- **Build**: Vite + Bun
-- **Package Manager**: Bun
-- **Animation**: ggez animation pipeline (`@ggez/anim-*`)
-- **Level Editing**: ggez World Editor (exports `.runtime.json` scenes)
-- **Version Control**: Git with feature branches
+Built on **`@kopertop/vibe-game-engine`** ([kopertop/vibe-game-engine](https://github.com/kopertop/vibe-game-engine))
+via the `@ggez/*` package ecosystem.
 
-## Project Structure
+- **Renderer:** Three.js r181 + WebGPU (`three/webgpu`), WebGL fallback
+- **Physics:** Crashcat (`@ggez/runtime-physics-crashcat`) — always Crashcat, never Rapier
+- **Animation:** `@ggez/anim-runtime` + `@ggez/anim-three` with VRM retargeting
+- **Event bus:** `@ggez/gameplay-runtime` typed event bus
+- **Scene system:** ggez World Editor → `scene.runtime.json` exports consumed at runtime
+- **Build:** Vite + Bun + Wrangler (Cloudflare Pages deployment)
 
-```text
-/
-├── CLAUDE.md                    # This file — master configuration
-├── .claude/                     # Agent definitions, skills, hooks, rules, docs
-├── src/
-│   ├── main.ts                  # Entry point
-│   ├── game/                    # Core game shell (app, camera, physics, player controller)
-│   ├── scenes/                  # Scene modules (each scene = a level/area)
-│   │   └── <scene-id>/
-│   │       ├── index.ts         # Scene logic, systems, mount hook
-│   │       ├── scene.runtime.json  # Exported from ggez editor
-│   │       └── assets/          # Scene-local assets
-│   ├── animations/              # Animation bundles from ggez animation editor
-│   ├── systems/                 # Custom gameplay systems
-│   └── ui/                      # HUD, menus, overlays
-├── design/                      # Game design documents
-│   └── gdd/                     # Per-system GDDs
-├── assets/                      # Shared game assets (models, textures, audio)
-├── tests/                       # Test suites
-├── prototypes/                  # Throwaway prototypes
-└── production/                  # Sprint plans, milestones, session state
-```
+## Architecture Status
 
-## Technical Preferences
+### Implemented
 
-- **Naming**: Files: kebab-case. Variables/functions: camelCase. Types/classes: PascalCase. Constants: UPPER_SNAKE_CASE.
-- **Indentation**: Tabs (3-space width). JSON/YAML: 2-space.
-- **Modules**: ESM (import/export). No require().
-- **Async**: async/await always. No `.then()` chains.
-- **Validation**: Zod for runtime validation where needed.
-- **Target Framerate**: 60 FPS
-- **Frame Budget**: 16.6ms
-- **Testing**: Vitest for unit/integration tests
+- Fixed-timestep game loop (ggez game-dev shell)
+- VRM character system (~3,600 LOC — character loading, retargeting, LOD)
+- Crashcat physics integration
+- Typed event bus
+- Auto-discovered scene system
+- Ship state management
+- Basic inventory
 
-## ggez Integration
+### Pending
 
-- Scenes are authored in the ggez World Editor and exported as `scene.runtime.json`
-- Each scene module in `src/scenes/<id>/` can define custom systems, mount hooks, and lifecycle callbacks
-- The game shell (`src/game/app.ts`) handles scene loading, physics stepping, and the render loop
-- Player controller is provided by ggez starter — customize in `src/game/starter-player-controller.ts`
-- Use `@ggez/gameplay-runtime` for gameplay systems (event bus, entity queries)
+- Dialogue system (`/add-dialogue`)
+- NPC AI (`/add-npc`)
+- Save / load (`/add-save-field`)
+- HUD / player UI (`/add-hud-element`)
+- Crafting system (`/add-recipe`)
+- Planet generation (`/add-planet`, `/add-biome`)
 
-## Coordination Rules
 
-@.claude/docs/coordination-rules.md
+## Key Paths
+
+| Path | Contents |
+|---|---|
+| `src/game/` | Core game shell — app, camera, physics, player controller |
+| `src/systems/` | Custom gameplay systems (ECS-style) |
+| `src/scenes/` | Scene modules — each scene = one level/area |
+| `src/animations/` | Animation bundles from ggez animation editor |
+| `src/ui/` | HUD, menus, overlays (HTML overlay on canvas) |
+| `design/gdd/` | Per-system Game Design Documents (15 GDDs authored) |
+| `assets/` | Shared models, textures, audio |
+| `production/` | Sprint plans, milestones, session state |
+
+## Skills
+
+To add content to this game, use the **vibe-game-engine Agent Skills** from
+`~/.claude/skills/` (or the engine's `skills/` directory). The most relevant skills are:
+
+| Skill | What it creates |
+|---|---|
+| `/add-scene` | New level or area with scene module + runtime.json stub |
+| `/add-npc` | NPC with VRM model, schedule, and dialogue hooks |
+| `/add-dialogue` | Branching dialogue tree (Bioware-style) |
+| `/add-item` | Inventory item (collectible, tool, consumable, story artifact) |
+| `/add-quest` | Quest with objectives, stages, and rewards |
+| `/add-crew-member` | Named Destiny crew member with VRM config and relationship arc |
+| `/add-episode` | Story episode with narrative beats, choices, and episode-end snapshot |
+| `/add-planet` | Full planet definition for the planetary-runs system |
+| `/add-level` | **META** — full level orchestrating scene + NPCs + quests + audio |
+
+See [`docs/skills-roadmap.xlsx`](https://github.com/kopertop/vibe-game-engine/blob/main/docs/skills-roadmap.xlsx)
+in the engine repo for the complete 47-skill inventory.
+
+## Dev Conventions
+
+- **Indentation:** Tabs (not spaces)
+- **Style:** Functional TypeScript preferred — pure functions, no classes unless required by a library
+- **Modules:** ESM only (`import`/`export`); no `require()`
+- **Async:** `async`/`await` always; no `.then()` chains
+- **Validation:** Zod for runtime validation at all content boundaries
+- **Package manager:** Bun
+- **Naming:** `kebab-case` files, `camelCase` variables/functions, `PascalCase` types, `UPPER_SNAKE_CASE` constants
+- **Target:** 60 FPS, 16.6 ms frame budget
 
 ## Collaboration Protocol
 
 **User-driven collaboration, not autonomous execution.**
-Every task follows: **Question -> Options -> Decision -> Draft -> Approval**
+Every task follows: **Question → Options → Decision → Draft → Approval**
 
-- Agents MUST ask "May I write this to [filepath]?" before using Write/Edit tools
-- Agents MUST show drafts or summaries before requesting approval
-- Multi-file changes require explicit approval for the full changeset
+- Ask before writing to any file
+- Show drafts or summaries before requesting approval
 - No commits without user instruction
 
-## Coding Standards
+## Extended Docs
 
-@.claude/docs/coding-standards.md
-
-## Context Management
-
-@.claude/docs/context-management.md
+- `@.claude/docs/coordination-rules.md` — agent coordination rules
+- `@.claude/docs/coding-standards.md` — detailed coding standards
+- `@.claude/docs/context-management.md` — context management across sessions
+- `design/gdd/` — per-system Game Design Documents

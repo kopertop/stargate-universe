@@ -1,0 +1,408 @@
+{
+  "attrs": {
+    "training": true,
+    "InputDim": 441,
+    "OutputDim": 352,
+    "RegularizationDim": 544,
+    "SequenceLength": 16,
+    "SequenceWindow": 0.5,
+    "LatentDim": 1024,
+    "Plotting": false
+  },
+  "estimatorCodeDim": 4,
+  "estimatorHard": false,
+  "params": {
+    "InputStats.Norm": {
+      "shape": [
+        2,
+        441
+      ],
+      "offset": 0,
+      "count": 882
+    },
+    "OutputStats.Norm": {
+      "shape": [
+        2,
+        352
+      ],
+      "offset": 882,
+      "count": 704
+    },
+    "RegularizationStats.Norm": {
+      "shape": [
+        2,
+        544
+      ],
+      "offset": 1586,
+      "count": 1088
+    },
+    "TimeStats.Norm": {
+      "shape": [
+        2,
+        1
+      ],
+      "offset": 2674,
+      "count": 2
+    },
+    "Encoder.Space.L1.Layer.weight": {
+      "shape": [
+        1024,
+        896
+      ],
+      "offset": 2676,
+      "count": 917504
+    },
+    "Encoder.Space.L1.Layer.bias": {
+      "shape": [
+        1024
+      ],
+      "offset": 920180,
+      "count": 1024
+    },
+    "Encoder.Space.L2.Layer.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "offset": 921204,
+      "count": 1048576
+    },
+    "Encoder.Space.L2.Layer.bias": {
+      "shape": [
+        1024
+      ],
+      "offset": 1969780,
+      "count": 1024
+    },
+    "Encoder.Space.L3.Layer.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "offset": 1970804,
+      "count": 1048576
+    },
+    "Encoder.Space.L3.Layer.bias": {
+      "shape": [
+        1024
+      ],
+      "offset": 3019380,
+      "count": 1024
+    },
+    "Encoder.Time.L1.Layer.weight": {
+      "shape": [
+        1024,
+        16
+      ],
+      "offset": 3020404,
+      "count": 16384
+    },
+    "Encoder.Time.L1.Layer.bias": {
+      "shape": [
+        1024
+      ],
+      "offset": 3036788,
+      "count": 1024
+    },
+    "Encoder.Time.L2.Layer.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "offset": 3037812,
+      "count": 1048576
+    },
+    "Encoder.Time.L2.Layer.bias": {
+      "shape": [
+        1024
+      ],
+      "offset": 4086388,
+      "count": 1024
+    },
+    "Encoder.Time.L3.Layer.weight": {
+      "shape": [
+        1,
+        1024
+      ],
+      "offset": 4087412,
+      "count": 1024
+    },
+    "Encoder.Time.L3.Layer.bias": {
+      "shape": [
+        1
+      ],
+      "offset": 4088436,
+      "count": 1
+    },
+    "Estimator.Layers.L1.Layer.weight": {
+      "shape": [
+        1024,
+        441
+      ],
+      "offset": 4088437,
+      "count": 451584
+    },
+    "Estimator.Layers.L1.Layer.bias": {
+      "shape": [
+        1024
+      ],
+      "offset": 4540021,
+      "count": 1024
+    },
+    "Estimator.Layers.L2.Layer.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "offset": 4541045,
+      "count": 1048576
+    },
+    "Estimator.Layers.L2.Layer.bias": {
+      "shape": [
+        1024
+      ],
+      "offset": 5589621,
+      "count": 1024
+    },
+    "Estimator.Layers.L3.Layer.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "offset": 5590645,
+      "count": 1048576
+    },
+    "Estimator.Layers.L3.Layer.bias": {
+      "shape": [
+        1024
+      ],
+      "offset": 6639221,
+      "count": 1024
+    },
+    "Denoiser.Layers.L1.Layer.weight": {
+      "shape": [
+        1024,
+        1465
+      ],
+      "offset": 6640245,
+      "count": 1500160
+    },
+    "Denoiser.Layers.L1.Layer.bias": {
+      "shape": [
+        1024
+      ],
+      "offset": 8140405,
+      "count": 1024
+    },
+    "Denoiser.Layers.L2.Layer.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "offset": 8141429,
+      "count": 1048576
+    },
+    "Denoiser.Layers.L2.Layer.bias": {
+      "shape": [
+        1024
+      ],
+      "offset": 9190005,
+      "count": 1024
+    },
+    "Denoiser.Layers.L3.Layer.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "offset": 9191029,
+      "count": 1048576
+    },
+    "Denoiser.Layers.L3.Layer.bias": {
+      "shape": [
+        1024
+      ],
+      "offset": 10239605,
+      "count": 1024
+    },
+    "Decoder.Layers.L1.FiLM.Scale.weight": {
+      "shape": [
+        1465,
+        1
+      ],
+      "offset": 10240629,
+      "count": 1465
+    },
+    "Decoder.Layers.L1.FiLM.Scale.bias": {
+      "shape": [
+        1465
+      ],
+      "offset": 10242094,
+      "count": 1465
+    },
+    "Decoder.Layers.L1.FiLM.Shift.weight": {
+      "shape": [
+        1465,
+        1
+      ],
+      "offset": 10243559,
+      "count": 1465
+    },
+    "Decoder.Layers.L1.FiLM.Shift.bias": {
+      "shape": [
+        1465
+      ],
+      "offset": 10245024,
+      "count": 1465
+    },
+    "Decoder.Layers.L1.Layer.Layer.weight": {
+      "shape": [
+        1024,
+        1465
+      ],
+      "offset": 10246489,
+      "count": 1500160
+    },
+    "Decoder.Layers.L1.Layer.Layer.bias": {
+      "shape": [
+        1024
+      ],
+      "offset": 11746649,
+      "count": 1024
+    },
+    "Decoder.Layers.L2.FiLM.Scale.weight": {
+      "shape": [
+        1024,
+        1
+      ],
+      "offset": 11747673,
+      "count": 1024
+    },
+    "Decoder.Layers.L2.FiLM.Scale.bias": {
+      "shape": [
+        1024
+      ],
+      "offset": 11748697,
+      "count": 1024
+    },
+    "Decoder.Layers.L2.FiLM.Shift.weight": {
+      "shape": [
+        1024,
+        1
+      ],
+      "offset": 11749721,
+      "count": 1024
+    },
+    "Decoder.Layers.L2.FiLM.Shift.bias": {
+      "shape": [
+        1024
+      ],
+      "offset": 11750745,
+      "count": 1024
+    },
+    "Decoder.Layers.L2.Layer.Layer.weight": {
+      "shape": [
+        1024,
+        1024
+      ],
+      "offset": 11751769,
+      "count": 1048576
+    },
+    "Decoder.Layers.L2.Layer.Layer.bias": {
+      "shape": [
+        1024
+      ],
+      "offset": 12800345,
+      "count": 1024
+    },
+    "Decoder.Layers.L3.FiLM.Scale.weight": {
+      "shape": [
+        1024,
+        1
+      ],
+      "offset": 12801369,
+      "count": 1024
+    },
+    "Decoder.Layers.L3.FiLM.Scale.bias": {
+      "shape": [
+        1024
+      ],
+      "offset": 12802393,
+      "count": 1024
+    },
+    "Decoder.Layers.L3.FiLM.Shift.weight": {
+      "shape": [
+        1024,
+        1
+      ],
+      "offset": 12803417,
+      "count": 1024
+    },
+    "Decoder.Layers.L3.FiLM.Shift.bias": {
+      "shape": [
+        1024
+      ],
+      "offset": 12804441,
+      "count": 1024
+    },
+    "Decoder.Layers.L3.Layer.Layer.weight": {
+      "shape": [
+        352,
+        1024
+      ],
+      "offset": 12805465,
+      "count": 360448
+    },
+    "Decoder.Layers.L3.Layer.Layer.bias": {
+      "shape": [
+        352
+      ],
+      "offset": 13165913,
+      "count": 352
+    },
+    "Decoder.Layers.R.FiLM.Scale.weight": {
+      "shape": [
+        1024,
+        1
+      ],
+      "offset": 13166265,
+      "count": 1024
+    },
+    "Decoder.Layers.R.FiLM.Scale.bias": {
+      "shape": [
+        1024
+      ],
+      "offset": 13167289,
+      "count": 1024
+    },
+    "Decoder.Layers.R.FiLM.Shift.weight": {
+      "shape": [
+        1024,
+        1
+      ],
+      "offset": 13168313,
+      "count": 1024
+    },
+    "Decoder.Layers.R.FiLM.Shift.bias": {
+      "shape": [
+        1024
+      ],
+      "offset": 13169337,
+      "count": 1024
+    },
+    "Decoder.Layers.R.Layer.Layer.weight": {
+      "shape": [
+        544,
+        1024
+      ],
+      "offset": 13170361,
+      "count": 557056
+    },
+    "Decoder.Layers.R.Layer.Layer.bias": {
+      "shape": [
+        544
+      ],
+      "offset": 13727417,
+      "count": 544
+    }
+  }
+}

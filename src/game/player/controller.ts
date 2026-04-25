@@ -81,6 +81,7 @@ type KinematicBody = NonNullable<ReturnType<typeof rigidBody.get>>;
 
 export class StarterPlayerController implements PlayerController {
   readonly object = new Group();
+  inputEnabled = true;
 
   private readonly body: CrashcatRigidBody;
   private camera: CameraController;
@@ -193,6 +194,22 @@ export class StarterPlayerController implements PlayerController {
 
   releasePointerLock(): void {
     this.input.releasePointerLock();
+  }
+
+  setExternalMoveInput(_forward: number, _strafe: number): void {
+    // not implemented
+  }
+
+  setSprintOverride(_sprinting: boolean): void {
+    // not implemented
+  }
+
+  applyOrbitDelta(_dx: number, _dy: number): void {
+    // not implemented
+  }
+
+  setProne(_prone: boolean): void {
+    // not implemented
   }
 
   dispose(): void {

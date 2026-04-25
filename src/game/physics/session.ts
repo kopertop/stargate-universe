@@ -84,6 +84,8 @@ export function createRuntimePhysicsSession(options: {
   });
 
   return {
+    // Explicitly count static + dynamic to avoid double-counting static meshes
+    // that may appear in both the render scene and instanced mesh lists
     colliderCount: staticMeshes.length + dynamicMeshes.length,
     dispose() {
       for (const body of bodiesByNodeId.values()) {

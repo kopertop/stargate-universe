@@ -1,0 +1,147 @@
+{
+  "assets": [],
+  "entities": [
+    {
+      "id": "entity:player-spawn:scrubber-room",
+      "name": "Player Spawn",
+      "properties": {},
+      "transform": {
+        "pivot": { "x": 0, "y": 0, "z": 0 },
+        "position": { "x": 0, "y": 0.5, "z": 8 },
+        "rotation": { "x": 0, "y": 3.141592653589793, "z": 0 },
+        "scale": { "x": 1, "y": 1, "z": 1 }
+      },
+      "type": "player-spawn"
+    }
+  ],
+  "layers": [],
+  "materials": [
+    {
+      "color": "#0d0d1a",
+      "id": "material:scrubber-room:floor",
+      "metallicFactor": 0.15,
+      "name": "Industrial Floor",
+      "roughnessFactor": 0.92,
+      "side": "double"
+    }
+  ],
+  "metadata": {
+    "exportedAt": "2026-04-11T00:00:00.000Z",
+    "format": "web-hammer-engine",
+    "version": 6
+  },
+  "nodes": [
+    {
+      "data": {
+        "materialId": "material:scrubber-room:floor",
+        "physics": {
+          "angularDamping": 0,
+          "bodyType": "fixed",
+          "canSleep": true,
+          "ccd": false,
+          "colliderShape": "trimesh",
+          "contactSkin": 0,
+          "enabled": true,
+          "friction": 0.9,
+          "gravityScale": 1,
+          "linearDamping": 0,
+          "lockRotations": false,
+          "lockTranslations": false,
+          "restitution": 0,
+          "sensor": false
+        },
+        "role": "brush",
+        "shape": "cube",
+        "size": { "x": 14, "y": 1, "z": 22 }
+      },
+      "geometry": {
+        "primitives": [
+          {
+            "indices": [0, 2, 1, 2, 3, 1, 4, 6, 5, 6, 7, 5, 8, 10, 9, 10, 11, 9, 12, 14, 13, 14, 15, 13, 16, 18, 17, 18, 19, 17, 20, 22, 21, 22, 23, 21],
+            "material": {
+              "color": "#0d0d1a",
+              "id": "material:scrubber-room:floor",
+              "metallicFactor": 0.15,
+              "name": "Industrial Floor",
+              "roughnessFactor": 0.92,
+              "side": "double"
+            },
+            "normals": [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1],
+            "positions": [7, 0.5, 11, 7, 0.5, -11, 7, -0.5, 11, 7, -0.5, -11, -7, 0.5, -11, -7, 0.5, 11, -7, -0.5, -11, -7, -0.5, 11, -7, 0.5, -11, 7, 0.5, -11, -7, 0.5, 11, 7, 0.5, 11, -7, -0.5, 11, 7, -0.5, 11, -7, -0.5, -11, 7, -0.5, -11, -7, 0.5, 11, 7, 0.5, 11, -7, -0.5, 11, 7, -0.5, 11, 7, 0.5, -11, -7, 0.5, -11, 7, -0.5, -11, -7, -0.5, -11],
+            "uvs": [0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0]
+          }
+        ]
+      },
+      "id": "node:scrubber-room:floor",
+      "kind": "primitive",
+      "name": "Industrial Floor",
+      "transform": {
+        "pivot": { "x": 0, "y": 0, "z": 0 },
+        "position": { "x": 0, "y": -0.5, "z": 0 },
+        "rotation": { "x": 0, "y": 0, "z": 0 },
+        "scale": { "x": 1, "y": 1, "z": 1 }
+      }
+    },
+    {
+      "data": {
+        "castShadow": false,
+        "color": "#220000",
+        "enabled": true,
+        "groundColor": "#0a0005",
+        "intensity": 0.5,
+        "type": "hemisphere"
+      },
+      "id": "node:scrubber-room:light:hemisphere",
+      "kind": "light",
+      "name": "Emergency Hemisphere Light",
+      "transform": {
+        "pivot": { "x": 0, "y": 0, "z": 0 },
+        "position": { "x": 0, "y": 5, "z": 0 },
+        "rotation": { "x": 0, "y": 0, "z": 0 },
+        "scale": { "x": 1, "y": 1, "z": 1 }
+      }
+    }
+  ],
+  "settings": {
+    "player": {
+      "cameraMode": "third-person",
+      "canCrouch": false,
+      "canJump": false,
+      "canRun": false,
+      "crouchHeight": 1.2,
+      "height": 1.8,
+      "jumpHeight": 1.2,
+      "movementSpeed": 5.0,
+      "runningSpeed": 8.0
+    },
+    "world": {
+      "ambientColor": "#110000",
+      "ambientIntensity": 0.4,
+      "fogColor": "#0a0005",
+      "fogFar": 18,
+      "fogNear": 8,
+      "gravity": {
+        "x": 0,
+        "y": -9.81,
+        "z": 0
+      },
+      "lod": {
+        "bakedAt": "",
+        "enabled": false,
+        "lowDetailRatio": 0.2,
+        "midDetailRatio": 0.5
+      },
+      "physicsEnabled": true,
+      "skybox": {
+        "affectsLighting": false,
+        "blur": 0,
+        "enabled": false,
+        "format": "image",
+        "intensity": 1,
+        "lightingIntensity": 1,
+        "name": "",
+        "source": ""
+      }
+    }
+  }
+}

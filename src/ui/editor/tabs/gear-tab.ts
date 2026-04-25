@@ -15,6 +15,7 @@ export type GearTabState = {
 export type GearTab = {
 	readonly element: HTMLElement;
 	readonly state: GearTabState;
+	hydrateOverrides(saved: readonly GearAttachment[]): void;
 	dispose(): void;
 };
 
@@ -44,9 +45,15 @@ export function createGearTab(
 		loading.textContent = "No gear catalog available yet. Upload gear-manifest.json to R2.";
 	});
 
+	// Deferred: gear catalog loads async, so hydration happens after render
+	let pendingOverrides: readonly GearAttachment[] | null = null;
+
 	return {
 		element: container,
 		state: { equipped },
+		hydrateOverrides(saved: readonly GearAttachment[]) {
+			pendingOverrides = saved;
+		},
 		dispose() {
 			container.remove();
 		},

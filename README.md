@@ -1,6 +1,8 @@
-# stargate-universe
+# Stargate Universe
 
-Vanilla Vite + TypeScript + Three.js + Rapier starter for Web Hammer runtime.
+A browser-based sci-fi open-world RPG set in the Stargate Universe TV series. Players crew the ancient ship *Destiny*, managing resources, exploring alien worlds, and making story-defining choices — rendered in real-time WebGPU in the browser.
+
+Built on **Three.js r181 WebGPU** + Crashcat physics + the `@ggez/*` vibe-game-engine runtime.
 
 ## Scripts
 
@@ -61,6 +63,31 @@ src/animations/player-locomotion/
 		jump-start.glb
 		run-forward.glb
 ```
+
+---
+
+## Screenshots / Demo
+
+### The Air Crisis Questline
+
+The first major questline aboard *Destiny*: CO₂ scrubbers are failing, the atmosphere is
+going toxic, and the only way to fix them is to gate to a desert planet and mine calcium
+deposits for lime. Three scenes, one decision loop.
+
+**Gate Room** — Quest begins here. Rush delivers the briefing. Press G to dial the gate.
+
+![Gate room — blue atmospheric lighting, runway floor markings, Ancient gate](promo/gate-room-lit.jpg)
+
+**Desert Planet** — Sprint against the clock. Collect 3 calcium deposits before the timer expires and the gate closes.
+
+![Desert planet — sandy terrain, active gate with blue event horizon, scattered mineral deposits](promo/desert-planet.jpg)
+
+**CO₂ Scrubber Room** — Emergency red. Flickering power. Interact with each scrubber unit to
+repair it. Atmosphere is TOXIC — EVACUATE until all three are fixed.
+
+![Scrubber room — emergency red lighting, failing scrubber unit glowing red, HUD showing TOXIC atmosphere](promo/scrubber-room-lit.jpg)
+
+---
 
 Typical usage:
 

@@ -36,10 +36,20 @@ export type RuntimeSceneSource = {
  */
 export interface PlayerController {
 	readonly object: Group;
+	/** Set to false to silence player input (menus, cutscenes). */
+	inputEnabled: boolean;
 	/** Change the camera mode at runtime (e.g. cutscene → gameplay). */
 	setCameraMode(mode: CameraMode): void;
+	/** Set external movement axes (e.g. gamepad) in [-1, 1]. */
+	setExternalMoveInput(forward: number, strafe: number): void;
 	/** Give the pointer back to the OS (e.g. when opening a menu). */
 	releasePointerLock(): void;
+	/** Override sprint state (e.g. gamepad trigger held). */
+	setSprintOverride(sprinting: boolean): void;
+	/** Apply an orbit delta to the camera directly (e.g. gamepad right stick). */
+	applyOrbitDelta(dx: number, dy: number): void;
+	/** Set the player prone state (e.g. entering a crawl space). */
+	setProne(prone: boolean): void;
 	/** Fixed-rate update (60 Hz). Apply movement forces before physics step. */
 	updateBeforeStep(deltaSeconds: number): void;
 	/** Fixed-rate update (60 Hz). Sync visuals to physics after step. */

@@ -76,6 +76,7 @@ type KinematicBody = NonNullable<ReturnType<typeof rigidBody.get>>;
 
 export class GlbPlayerController implements PlayerController {
 	readonly object = new Group();
+	inputEnabled = true;
 
 	private readonly body: CrashcatRigidBody;
 	private camera: CameraController;
@@ -178,6 +179,22 @@ export class GlbPlayerController implements PlayerController {
 	setRepairing(_isRepairing: boolean): void {
 		// GLB player controller does not support repairing animation state.
 		// VRM controllers drive isRepairing via animatorBridge.
+	}
+
+	setExternalMoveInput(_forward: number, _strafe: number): void {
+		// Not implemented for GLB controller
+	}
+
+	setSprintOverride(_sprinting: boolean): void {
+		// Not implemented for GLB controller
+	}
+
+	applyOrbitDelta(_dx: number, _dy: number): void {
+		// Not implemented for GLB controller
+	}
+
+	setProne(_prone: boolean): void {
+		// Not implemented for GLB controller
 	}
 
 	setCameraMode(mode: CameraMode): void {

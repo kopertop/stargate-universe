@@ -36,9 +36,28 @@ type ResourceEvents = {
 	"inventory:story-item:acquired": { itemId: string; itemName: string };
 };
 
+/** Quest events */
+type QuestEvents = {
+	"quest:started": { questId: string };
+	"quest:objective-complete": { questId: string; objectiveId: string };
+	"quest:completed": { questId: string };
+	"quest:failed": { questId: string };
+};
+
 /** Crew & Dialogue events */
 type CrewEvents = {
 	"crew:dialogue:started": { speakerId: string; dialogueId: string };
+	"crew:dialogue:node": {
+		speakerId: string;
+		dialogueId: string;
+		nodeId: string;
+		/** Displayed speaker name (e.g. "Dr. Nicholas Rush") */
+		speaker: string;
+		/** The line of dialogue spoken by the NPC */
+		text: string;
+		/** Player-selectable response options for this node */
+		options: ReadonlyArray<{ id: string; label: string }>;
+	};
 	"crew:dialogue:ended": { speakerId: string; dialogueId: string };
 	"crew:choice:made": { dialogueId: string; nodeId: string; responseId: string };
 	"crew:morale:changed": { morale: number };
@@ -63,6 +82,8 @@ type PlayerEvents = {
 	"player:interact": { targetId: string; action: string };
 	"player:entered:section": { sectionId: string };
 	"player:kino:deployed": Record<string, never>;
+	/** Fired by the UI when the player picks a dialogue response option. */
+	"player:dialogue:choice": { responseId: string };
 };
 
 /** Episode events */
@@ -97,18 +118,27 @@ type GameEvents = {
 	"game:resumed": Record<string, never>;
 };
 
+/** Save / Load events */
+type SaveEvents = {
+	"save:completed": { slotId: string };
+	"save:loaded": { slotId: string };
+	"save:failed": { slotId: string; error: string };
+};
+
 /** All events combined — the master type map for mitt */
 export type GameEventMap =
 	ShipEvents &
 	GateEvents &
 	ResourceEvents &
 	CrewEvents &
+	QuestEvents &
 	CharacterEvents &
 	TimerEvents &
 	PlayerEvents &
 	EpisodeEvents &
 	PlanetEvents &
-	GameEvents;
+	GameEvents &
+	SaveEvents;
 
 /** Event name union type */
 export type GameEventName = keyof GameEventMap;
@@ -116,8 +146,6 @@ export type GameEventName = keyof GameEventMap;
 // ─── Event Bus Implementation ────────────────────────────────────────────────
 
 const MAX_REENTRY_DEPTH = 8;
-const DEBUG_LOG_EVENTS = false;
-const DEBUG_LOG_FILTER: string = "*";
 
 const emitter = mitt<GameEventMap>();
 let reentryDepth = 0;
@@ -139,12 +167,6 @@ export function emit<K extends GameEventName>(event: K, payload: GameEventMap[K]
 		return;
 	}
 
-	if (DEBUG_LOG_EVENTS) {
-		if (DEBUG_LOG_FILTER === "*" || event.startsWith(DEBUG_LOG_FILTER.replace("*", ""))) {
-			console.debug(`[EventBus] ${event}`, payload);
-		}
-	}
-
 	// mitt's emit is synchronous — handlers run immediately
 	// We wrap in try/catch at the mitt handler level via safeOn
 	emitter.emit(event, payload);
@@ -163,7 +185,7 @@ export function on<K extends GameEventName>(
 		try {
 			handler(payload);
 		} catch (error) {
-			console.error(`[EventBus] Handler error for "${event}":`, error);
+			console.error(`[EventBus] Handler error for "${event}":`, error instanceof Error ? error.message : String(error));
 		}
 	};
 
@@ -207,8 +229,10 @@ export function scopedBus() {
 	const unsubscribers: Array<() => void> = [];
 
 	return {
-		on<K extends GameEventName>(event: K, handler: Handler<GameEventMap[K]>): void {
-			unsubscribers.push(on(event, handler));
+		on<K extends GameEventName>(event: K, handler: Handler<GameEventMap[K]>): () => void {
+			const unsub = on(event, handler);
+			unsubscribers.push(unsub);
+			return unsub;
 		},
 
 		onAny(handler: (event: GameEventName, payload: unknown) => void): void {

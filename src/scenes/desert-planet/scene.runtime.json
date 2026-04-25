@@ -1,0 +1,147 @@
+{
+  "assets": [],
+  "entities": [
+    {
+      "id": "entity:player-spawn:desert-planet",
+      "name": "Player Spawn",
+      "properties": {},
+      "transform": {
+        "pivot": { "x": 0, "y": 0, "z": 0 },
+        "position": { "x": 0, "y": 0.5, "z": 4 },
+        "rotation": { "x": 0, "y": 0, "z": 0 },
+        "scale": { "x": 1, "y": 1, "z": 1 }
+      },
+      "type": "player-spawn"
+    }
+  ],
+  "layers": [],
+  "materials": [
+    {
+      "color": "#c2a065",
+      "id": "material:desert-planet:ground",
+      "metallicFactor": 0.0,
+      "name": "Desert Sand",
+      "roughnessFactor": 0.95,
+      "side": "double"
+    }
+  ],
+  "metadata": {
+    "exportedAt": "2026-04-11T00:00:00.000Z",
+    "format": "web-hammer-engine",
+    "version": 6
+  },
+  "nodes": [
+    {
+      "data": {
+        "materialId": "material:desert-planet:ground",
+        "physics": {
+          "angularDamping": 0,
+          "bodyType": "fixed",
+          "canSleep": true,
+          "ccd": false,
+          "colliderShape": "trimesh",
+          "contactSkin": 0,
+          "enabled": true,
+          "friction": 0.9,
+          "gravityScale": 1,
+          "linearDamping": 0,
+          "lockRotations": false,
+          "lockTranslations": false,
+          "restitution": 0,
+          "sensor": false
+        },
+        "role": "brush",
+        "shape": "cube",
+        "size": { "x": 120, "y": 1, "z": 120 }
+      },
+      "geometry": {
+        "primitives": [
+          {
+            "indices": [0, 2, 1, 2, 3, 1, 4, 6, 5, 6, 7, 5, 8, 10, 9, 10, 11, 9, 12, 14, 13, 14, 15, 13, 16, 18, 17, 18, 19, 17, 20, 22, 21, 22, 23, 21],
+            "material": {
+              "color": "#c2a065",
+              "id": "material:desert-planet:ground",
+              "metallicFactor": 0.0,
+              "name": "Desert Sand",
+              "roughnessFactor": 0.95,
+              "side": "double"
+            },
+            "normals": [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1],
+            "positions": [60, 0.5, 60, 60, 0.5, -60, 60, -0.5, 60, 60, -0.5, -60, -60, 0.5, -60, -60, 0.5, 60, -60, -0.5, -60, -60, -0.5, 60, -60, 0.5, -60, 60, 0.5, -60, -60, 0.5, 60, 60, 0.5, 60, -60, -0.5, 60, 60, -0.5, 60, -60, -0.5, -60, 60, -0.5, -60, -60, 0.5, 60, 60, 0.5, 60, -60, -0.5, 60, 60, -0.5, 60, 60, 0.5, -60, -60, 0.5, -60, 60, -0.5, -60, -60, -0.5, -60],
+            "uvs": [0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0]
+          }
+        ]
+      },
+      "id": "node:desert-planet:ground",
+      "kind": "primitive",
+      "name": "Desert Ground",
+      "transform": {
+        "pivot": { "x": 0, "y": 0, "z": 0 },
+        "position": { "x": 0, "y": -0.5, "z": 0 },
+        "rotation": { "x": 0, "y": 0, "z": 0 },
+        "scale": { "x": 1, "y": 1, "z": 1 }
+      }
+    },
+    {
+      "data": {
+        "castShadow": false,
+        "color": "#d4922a",
+        "enabled": true,
+        "groundColor": "#7a5a1a",
+        "intensity": 0.8,
+        "type": "hemisphere"
+      },
+      "id": "node:desert-planet:light:hemisphere",
+      "kind": "light",
+      "name": "Desert Hemisphere Light",
+      "transform": {
+        "pivot": { "x": 0, "y": 0, "z": 0 },
+        "position": { "x": 0, "y": 20, "z": 0 },
+        "rotation": { "x": 0, "y": 0, "z": 0 },
+        "scale": { "x": 1, "y": 1, "z": 1 }
+      }
+    }
+  ],
+  "settings": {
+    "player": {
+      "cameraMode": "third-person",
+      "canCrouch": false,
+      "canJump": true,
+      "canRun": true,
+      "crouchHeight": 1.2,
+      "height": 1.8,
+      "jumpHeight": 1.6,
+      "movementSpeed": 7.0,
+      "runningSpeed": 11.0
+    },
+    "world": {
+      "ambientColor": "#d4922a",
+      "ambientIntensity": 0.6,
+      "fogColor": "#c8a05a",
+      "fogFar": 80,
+      "fogNear": 40,
+      "gravity": {
+        "x": 0,
+        "y": -9.81,
+        "z": 0
+      },
+      "lod": {
+        "bakedAt": "",
+        "enabled": false,
+        "lowDetailRatio": 0.2,
+        "midDetailRatio": 0.5
+      },
+      "physicsEnabled": true,
+      "skybox": {
+        "affectsLighting": false,
+        "blur": 0,
+        "enabled": false,
+        "format": "image",
+        "intensity": 1,
+        "lightingIntensity": 1,
+        "name": "",
+        "source": ""
+      }
+    }
+  }
+}

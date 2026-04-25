@@ -1,0 +1,70 @@
+{
+	"version": "1.0",
+	"description": "SGU core crew character roster — maps character IDs to VRM assets and metadata",
+	"crew": [
+		{
+			"id": "rush",
+			"name": "Dr. Nicholas Rush",
+			"path": "/assets/characters/nicholas-rush/nicholas-rush.vrm",
+			"role": "scientist",
+			"gender": "male",
+			"expressionIntensity": 0.6,
+			"notes": "Older male, 50s, gaunt, disheveled dark-grey hair, intense eyes, dark civilian jacket"
+		},
+		{
+			"id": "young",
+			"name": "Colonel Everett Young",
+			"path": "/assets/characters/everett-young/everett-young.vrm",
+			"role": "commander",
+			"gender": "male",
+			"expressionIntensity": 0.5,
+			"notes": "Male, 40s, military bearing, short brown hair, SGU dark-grey uniform"
+		},
+		{
+			"id": "scott",
+			"name": "Lt. Matthew Scott",
+			"path": "/assets/characters/matthew-scott/matthew-scott.vrm",
+			"role": "military",
+			"gender": "male",
+			"expressionIntensity": 0.7,
+			"notes": "Male, late 20s, young military, SGU uniform"
+		},
+		{
+			"id": "eli",
+			"name": "Eli Wallace",
+			"path": "/assets/characters/eli-wallace/eli-wallace.vrm",
+			"role": "engineer",
+			"gender": "male",
+			"isPlayer": true,
+			"expressionIntensity": 0.9,
+			"notes": "Male, early 20s, slightly stocky, casual hoodie/t-shirt, messy hair, friendly face"
+		},
+		{
+			"id": "chloe",
+			"name": "Chloe Armstrong",
+			"path": "/assets/characters/chloe-armstrong/chloe-armstrong.vrm",
+			"role": "civilian",
+			"gender": "female",
+			"expressionIntensity": 0.85,
+			"notes": "Female, early 20s, civilian, dark hair, civilian clothes"
+		},
+		{
+			"id": "greer",
+			"name": "MSgt. Ronald Greer",
+			"path": "/assets/characters/ronald-greer/ronald-greer.vrm",
+			"role": "military",
+			"gender": "male",
+			"expressionIntensity": 0.5,
+			"notes": "Male, 30s, muscular, bald/close-cropped, intense, SGU uniform"
+		},
+		{
+			"id": "tj",
+			"name": "TJ (Tamara Johansen)",
+			"path": "/assets/characters/tamara-johansen/tamara-johansen.vrm",
+			"role": "medic",
+			"gender": "female",
+			"expressionIntensity": 0.75,
+			"notes": "Female, late 20s, military medic, SGU uniform with medic markings"
+		}
+	]
+}

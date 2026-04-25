@@ -144,6 +144,7 @@ test.describe("Core Gameplay", () => {
 		await screenshot(page, "17-escape-menu-dom");
 	});
 
+// @ts-expect-error — Playwright 1.50+ TestDetails doesn't include timeout
 	test("full exploration walkthrough with screenshots", { timeout: 90_000 }, async ({ page }) => {
 		await capturePointer(page);
 

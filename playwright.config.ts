@@ -1,21 +1,32 @@
-import { defineConfig } from "@playwright/test";
+import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
+	// E2E tests
 	testDir: "tests/e2e",
 	outputDir: "tests/results",
 	timeout: 30_000,
 	expect: { timeout: 10_000 },
+	// Visual snapshot config
+	snapshotDir: "./tests/visual/__snapshots__",
+	updateSnapshots: "missing",
 	use: {
 		baseURL: "http://localhost:5173",
-		screenshot: "off", // we take manual screenshots in tests
-		video: "off",
-		trace: "off",
+		screenshot: "on",
+		video: "retain-on-failure",
+		// WebGL software renderer — required for headless Chromium (no GPU)
+		launchOptions: {
+			args: [
+				"--use-gl=swiftshader",
+				"--disable-gpu-sandbox",
+				"--ignore-gpu-blocklist",
+			],
+		},
 	},
 	projects: [
 		{
 			name: "chromium",
 			use: {
-				browserName: "chromium",
+				...devices["Desktop Chrome"],
 				viewport: { width: 1280, height: 720 },
 			},
 		},

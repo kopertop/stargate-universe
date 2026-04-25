@@ -2,8 +2,23 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>stargate-universe</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Stargate Universe</title>
+
+    <!-- PWA — installable, fullscreen, landscape. Manifest is generated at build time from
+         @kopertop/vibe-game-engine's typed helper (scripts/gen-manifest.ts). -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#4488ff" />
+    <meta name="description" content="Survive aboard the Ancient vessel Destiny — a browser-native sci-fi RPG." />
+
+    <!-- iOS home-screen install (Capacitor wrapper also reads these). -->
+    <link rel="apple-touch-icon" href="/icons/icon-512.svg" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="SGU" />
+
+    <!-- Favicon (reuse the 192 SVG until real rasterized assets land). -->
+    <link rel="icon" type="image/svg+xml" href="/icons/icon-192.svg" />
   </head>
   <body>
     <div id="app"></div>

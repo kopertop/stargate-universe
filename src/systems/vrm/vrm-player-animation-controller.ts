@@ -110,6 +110,10 @@ export class VrmPlayerAnimationController {
 	private repairAction: AnimationAction | undefined;
 	private strafeLeftAction: AnimationAction | undefined;
 	private strafeRightAction: AnimationAction | undefined;
+	/** Mixamo "Getting Up" — plays once, cinematic wake-up, LoopOnce. */
+	private gettingUpAction: AnimationAction | undefined;
+	/** Resolves when the getting-up clip finishes and we've returned to idle. */
+	private gettingUpDone: (() => void) | undefined;
 
 	/** Pool of idle variant actions for cycling. */
 	private idleVariants: AnimationAction[] = [];
@@ -151,7 +155,7 @@ export class VrmPlayerAnimationController {
 		if (this.loading || this.loaded) return;
 		this.loading = true;
 
-		const clipNames = ["idle", "walk", "run", "jump", "strafe-left", "strafe-right", "repair"] as const;
+		const clipNames = ["idle", "walk", "run", "jump", "strafe-left", "strafe-right", "repair", "getting-up"] as const;
 		const extensions = ["fbx", "glb", "vrma"];
 
 		const results = await Promise.allSettled(
@@ -227,13 +231,27 @@ export class VrmPlayerAnimationController {
 					action.play();
 					action.setEffectiveWeight(0);
 					break;
+
+				case "getting-up":
+					this.gettingUpAction = action;
+					action.setLoop(LoopOnce, 1);
+					action.clampWhenFinished = true;
+					// Don't play until startGettingUp() — stay at bind pose.
+					break;
 			}
 		}
 
-		// Listen for jump animation to finish
+		// Listen for jump / get-up animation to finish
 		this.mixer.addEventListener("finished", (e) => {
 			if (e.action === this.jumpAction) {
 				this.returnToLocomotion();
+			} else if (e.action === this.gettingUpAction) {
+				// Return to idle weight; release the waiting caller.
+				if (this.idleAction) this.idleAction.setEffectiveWeight(1);
+				if (this.gettingUpAction) this.gettingUpAction.setEffectiveWeight(0);
+				const cb = this.gettingUpDone;
+				this.gettingUpDone = undefined;
+				cb?.();
 			}
 		});
 
@@ -321,6 +339,63 @@ export class VrmPlayerAnimationController {
 		}
 
 		this.mixer.update(delta);
+	}
+
+	/**
+	 * Freeze / unfreeze the animation mixer. Use while the player is in
+	 * a manually-posed state (prone, sitting, custom rig) so the idle
+	 * loop doesn't compound with the manual pose and cause spinning.
+	 */
+	setPaused(paused: boolean): void {
+		this.mixer.timeScale = paused ? 0 : 1;
+	}
+
+	/**
+	 * Pose the character in the first frame of the "getting up"
+	 * animation — supine (lying on back). Useful for the cinematic
+	 * wake-up. Pair with `finishGettingUp()` to play the clip forward
+	 * when the player hits a movement key.
+	 *
+	 * @returns true if the clip is available and was cued, false
+	 *          otherwise (clip not loaded → caller should fall back).
+	 */
+	startGettingUp(): boolean {
+		if (!this.gettingUpAction) return false;
+		// Suppress idle so the supine pose reads cleanly.
+		this.idleAction?.setEffectiveWeight(0);
+		// Pin the action to frame 0 and let the mixer keep it posed.
+		// Setting timeScale=0 stops time for everything else too; set
+		// action.paused = true to freeze just this action.
+		this.gettingUpAction.reset();
+		this.gettingUpAction.play();
+		this.gettingUpAction.setEffectiveWeight(1);
+		this.gettingUpAction.paused = true;
+		// Mixer must be running for the pose to render. Explicitly
+		// unpause in case a prior setPaused(true) froze the whole thing.
+		this.mixer.timeScale = 1;
+		return true;
+	}
+
+	/**
+	 * Resume playing the cued "getting up" animation. Returns a
+	 * promise that resolves when the clip finishes (and idle has
+	 * taken back over). Slow playback multiplier available for
+	 * "groggy" wake-up feel.
+	 */
+	finishGettingUp(speed = 1): Promise<void> {
+		if (!this.gettingUpAction) return Promise.resolve();
+		this.gettingUpAction.paused = false;
+		this.gettingUpAction.timeScale = speed;
+		return new Promise<void>((resolve) => {
+			// Timer safety — if finished event never fires (e.g. missing
+			// clip binding), resolve after the nominal clip duration.
+			const safetyMs = ((this.gettingUpAction?.getClip().duration ?? 2) / Math.max(0.1, speed)) * 1000 + 500;
+			const safetyTimer = setTimeout(() => {
+				this.gettingUpDone = undefined;
+				resolve();
+			}, safetyMs);
+			this.gettingUpDone = () => { clearTimeout(safetyTimer); resolve(); };
+		});
 	}
 
 	/** Clean up mixer and all actions. */

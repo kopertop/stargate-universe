@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+	<!--
+		Maskable icon — Android can crop this to any shape (circle, squircle,
+		teardrop). Safe zone is the central 80% (409×409 centered). We fill
+		the full canvas with a solid background so cropping doesn't reveal
+		transparent corners, and keep the main art within the safe zone.
+	-->
+	<defs>
+		<radialGradient id="bg" cx="50%" cy="50%" r="50%">
+			<stop offset="0%"   stop-color="#0a1230"/>
+			<stop offset="100%" stop-color="#000005"/>
+		</radialGradient>
+		<linearGradient id="ring" x1="0%" y1="0%" x2="100%" y2="100%">
+			<stop offset="0%"   stop-color="#4488ff"/>
+			<stop offset="100%" stop-color="#1a3a8a"/>
+		</linearGradient>
+	</defs>
+	<rect width="512" height="512" fill="url(#bg)"/>
+
+	<!-- Center art sized to fit the ~409px safe zone -->
+	<g transform="translate(256 256)">
+		<circle r="130" fill="none" stroke="#4488ff" stroke-width="4"  opacity="0.35"/>
+		<circle r="118" fill="none" stroke="url(#ring)" stroke-width="20"/>
+		<circle r="100" fill="#020818"/>
+
+		<g fill="#88bbff">
+			<path d="M -14 -116 L 0 -132 L 14 -116 L 10 -104 L -10 -104 Z" opacity="1"/>
+			<g opacity="0.55">
+				<path d="M -14 -116 L 0 -132 L 14 -116 L 10 -104 L -10 -104 Z" transform="rotate(40)"/>
+				<path d="M -14 -116 L 0 -132 L 14 -116 L 10 -104 L -10 -104 Z" transform="rotate(80)"/>
+				<path d="M -14 -116 L 0 -132 L 14 -116 L 10 -104 L -10 -104 Z" transform="rotate(120)"/>
+				<path d="M -14 -116 L 0 -132 L 14 -116 L 10 -104 L -10 -104 Z" transform="rotate(160)"/>
+				<path d="M -14 -116 L 0 -132 L 14 -116 L 10 -104 L -10 -104 Z" transform="rotate(200)"/>
+				<path d="M -14 -116 L 0 -132 L 14 -116 L 10 -104 L -10 -104 Z" transform="rotate(240)"/>
+				<path d="M -14 -116 L 0 -132 L 14 -116 L 10 -104 L -10 -104 Z" transform="rotate(280)"/>
+				<path d="M -14 -116 L 0 -132 L 14 -116 L 10 -104 L -10 -104 Z" transform="rotate(320)"/>
+			</g>
+		</g>
+
+		<text x="0" y="8" text-anchor="middle" font-family="'Courier New',monospace"
+			font-weight="bold" font-size="44" fill="#88bbff" letter-spacing="6">SGU</text>
+	</g>
+</svg>

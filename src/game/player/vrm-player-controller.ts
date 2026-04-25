@@ -78,6 +78,7 @@ type KinematicBody = NonNullable<ReturnType<typeof rigidBody.get>>;
 
 export class VrmPlayerController implements PlayerController {
 	readonly object = new Group();
+	inputEnabled = true;
 
 	private readonly body: CrashcatRigidBody;
 	private camera: CameraController;
@@ -320,6 +321,26 @@ export class VrmPlayerController implements PlayerController {
     if (this.animatorBridge) {
       this.animatorBridge.animator.setBool("isRepairing", isRepairing);
     }
+  }
+
+  /** Set external movement axes (e.g. gamepad) in [-1, 1]. */
+  setExternalMoveInput(forward: number, strafe: number): void {
+    // Not yet implemented for VRM controller
+  }
+
+  /** Override sprint state (e.g. gamepad trigger held). */
+  setSprintOverride(sprinting: boolean): void {
+    // Not yet implemented for VRM controller
+  }
+
+  /** Apply an orbit delta to the camera directly (e.g. gamepad right stick). */
+  applyOrbitDelta(dx: number, dy: number): void {
+    // Not yet implemented for VRM controller
+  }
+
+  /** Set the player prone state (e.g. entering a crawl space). */
+  setProne(prone: boolean): void {
+    // Not yet implemented for VRM controller
   }
 
 	/** Variable-rate update — camera. */

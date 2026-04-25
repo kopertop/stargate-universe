@@ -1,0 +1,147 @@
+{
+  "assets": [],
+  "entities": [
+    {
+      "id": "entity:player-spawn:gate-room",
+      "name": "Player Spawn",
+      "properties": {},
+      "transform": {
+        "pivot": { "x": 0, "y": 0, "z": 0 },
+        "position": { "x": 0, "y": 0.5, "z": 20 },
+        "rotation": { "x": 0, "y": 3.141592653589793, "z": 0 },
+        "scale": { "x": 1, "y": 1, "z": 1 }
+      },
+      "type": "player-spawn"
+    }
+  ],
+  "layers": [],
+  "materials": [
+    {
+      "color": "#0e0e1a",
+      "id": "material:gate-room:floor",
+      "metallicFactor": 0.3,
+      "name": "Ancient Floor",
+      "roughnessFactor": 0.8,
+      "side": "double"
+    }
+  ],
+  "metadata": {
+    "exportedAt": "2026-03-31T12:00:00.000Z",
+    "format": "web-hammer-engine",
+    "version": 6
+  },
+  "nodes": [
+    {
+      "data": {
+        "materialId": "material:gate-room:floor",
+        "physics": {
+          "angularDamping": 0,
+          "bodyType": "fixed",
+          "canSleep": true,
+          "ccd": false,
+          "colliderShape": "trimesh",
+          "contactSkin": 0,
+          "enabled": true,
+          "friction": 0.9,
+          "gravityScale": 1,
+          "linearDamping": 0,
+          "lockRotations": false,
+          "lockTranslations": false,
+          "restitution": 0,
+          "sensor": false
+        },
+        "role": "brush",
+        "shape": "cube",
+        "size": { "x": 100, "y": 1, "z": 200 }
+      },
+      "geometry": {
+        "primitives": [
+          {
+            "indices": [0, 2, 1, 2, 3, 1, 4, 6, 5, 6, 7, 5, 8, 10, 9, 10, 11, 9, 12, 14, 13, 14, 15, 13, 16, 18, 17, 18, 19, 17, 20, 22, 21, 22, 23, 21],
+            "material": {
+              "color": "#1a1a2e",
+              "id": "material:gate-room:floor",
+              "metallicFactor": 0.1,
+              "name": "Ancient Floor",
+              "roughnessFactor": 0.92,
+              "side": "double"
+            },
+            "normals": [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1],
+            "positions": [13, 0.5, 40, 13, 0.5, -40, 13, -0.5, 40, 13, -0.5, -40, -13, 0.5, -40, -13, 0.5, 40, -13, -0.5, -40, -13, -0.5, 40, -13, 0.5, -40, 13, 0.5, -40, -13, 0.5, 40, 13, 0.5, 40, -13, -0.5, 40, 13, -0.5, 40, -13, -0.5, -40, 13, -0.5, -40, -13, 0.5, 40, 13, 0.5, 40, -13, -0.5, 40, 13, -0.5, 40, 13, 0.5, -40, -13, 0.5, -40, 13, -0.5, -40, -13, -0.5, -40],
+            "uvs": [0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0]
+          }
+        ]
+      },
+      "id": "node:gate-room:floor",
+      "kind": "primitive",
+      "name": "Floor",
+      "transform": {
+        "pivot": { "x": 0, "y": 0, "z": 0 },
+        "position": { "x": 0, "y": -0.5, "z": 0 },
+        "rotation": { "x": 0, "y": 0, "z": 0 },
+        "scale": { "x": 1, "y": 1, "z": 1 }
+      }
+    },
+    {
+      "data": {
+        "castShadow": false,
+        "color": "#0a0a1a",
+        "enabled": true,
+        "groundColor": "#050510",
+        "intensity": 1.0,
+        "type": "hemisphere"
+      },
+      "id": "node:gate-room:light:hemisphere",
+      "kind": "light",
+      "name": "Hemisphere Light",
+      "transform": {
+        "pivot": { "x": 0, "y": 0, "z": 0 },
+        "position": { "x": 0, "y": 8, "z": 0 },
+        "rotation": { "x": 0, "y": 0, "z": 0 },
+        "scale": { "x": 1, "y": 1, "z": 1 }
+      }
+    }
+  ],
+  "settings": {
+    "player": {
+      "cameraMode": "third-person",
+      "canCrouch": false,
+      "canJump": true,
+      "canRun": true,
+      "crouchHeight": 1.2,
+      "height": 1.8,
+      "jumpHeight": 1.6,
+      "movementSpeed": 7.0,
+      "runningSpeed": 11.0
+    },
+    "world": {
+      "ambientColor": "#1a1a3a",
+      "ambientIntensity": 0.7,
+      "fogColor": "#050510",
+      "fogFar": 80,
+      "fogNear": 40,
+      "gravity": {
+        "x": 0,
+        "y": -9.81,
+        "z": 0
+      },
+      "lod": {
+        "bakedAt": "",
+        "enabled": false,
+        "lowDetailRatio": 0.2,
+        "midDetailRatio": 0.5
+      },
+      "physicsEnabled": true,
+      "skybox": {
+        "affectsLighting": false,
+        "blur": 0,
+        "enabled": false,
+        "format": "image",
+        "intensity": 1,
+        "lightingIntensity": 1,
+        "name": "",
+        "source": ""
+      }
+    }
+  }
+}

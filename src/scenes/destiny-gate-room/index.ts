@@ -1,21 +1,45 @@
-/**
- * Gate Room Scene — Stargate arrival zone and ship entry point.
- *
- * Features the iconic Stargate with 9 chevrons, event horizon, and theDestiny's
- * distinctive ring wall. Ships dock here; players emerge into the corridor beyond.
- *
- * @see design/gdd/ship-exploration.md
- * @see design/gdd/destiny-gate-room.md
- */
 import * as THREE from "three";
 import {
 	createColocatedRuntimeSceneSource,
 	defineGameScene
-} from "../../game/loaders/scene-sources";
-import type { GameSceneContext, GameSceneLifecycle } from "../../game/scene";
+} from "../../game/runtime-scene-sources";
+import type { GameSceneModuleContext, GameSceneLifecycle } from "../../game/scene-types";
+import { perfMetrics } from "../../game/app";
 import { ShipState, SHIP_STATE_CONFIG, type Section, type Subsystem } from "../../systems/ship-state";
 import { emit, scopedBus } from "../../systems/event-bus";
+import { Action, SguAction, getInput } from "../../systems/input";
+import { createDialogueManager } from "../../systems/dialogue-manager";
+import { createNpcManager } from "../../systems/npc-manager";
+import { createQuestManager } from "../../systems/quest-manager";
+import { createSaveManager } from "../../systems/save-manager";
+import { drRushNpc } from "../../npcs/dr-rush";
+import { drRushDialogue } from "../../dialogues/dr-rush";
+import { registerDestinyPowerCrisis } from "../../quests/destiny-power-crisis";
+import { registerAirCrisis, QUEST_ID as AIR_CRISIS_QUEST_ID } from "../../quests/air-crisis";
+import type { NpcInstance } from "../../types/npc";
+import { setSceneManagers } from "./context";
 import { initResources, getResource, addResource, consumeResource, hasResource, getAllResources } from "../../systems/resources";
+import { isLimeCollected, setLimeCollected } from "../../systems/scene-transition-state";
+import { createHud, createDialoguePanel } from "@kopertop/vibe-game-engine";
+import {
+	NeuralLocomotionController,
+	encodeInput,
+	SEQ_LENGTH,
+	SEQ_WINDOW,
+	BONE_COUNT,
+	type SequenceOutput,
+} from "@kopertop/vibe-game-engine";
+import { createHorizontalCompass } from "../../ui/horizontal-compass";
+import { box } from "crashcat";
+import {
+	CRASHCAT_OBJECT_LAYER_STATIC,
+	MotionType,
+	rigidBody,
+	type CrashcatRigidBody,
+} from "@ggez/runtime-physics-crashcat";
+import type { DialoguePanelEventBus } from "@kopertop/vibe-game-engine";
+import { loadVRMCharacter, type CharacterLoadResult } from "../../characters/character-loader";
+import { GateRoomCinematicController } from "./cinematic-controller";
 
 const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 	import: "default",
@@ -24,20 +48,33 @@ const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const ROOM_WIDTH = 26;
-const ROOM_DEPTH = 40;
-const ROOM_HEIGHT = 8;
-const GATE_RADIUS = 2.8;
-const GATE_TUBE = 0.22;
-const GATE_CENTER = new THREE.Vector3(0, GATE_RADIUS + GATE_TUBE - 0.3, 0); // centered in room
-const CHEVRON_COUNT = 7; // Standard dial is 7 chevrons; 8-9 only for special events
+// Gate room scaled to match the show's Destiny gate room — a massive
+// cavernous Ancient chamber. Gate and characters are NOT scaled — only
+// the architectural envelope grows. The room needs to be large enough
+// for crew to be thrown 15-20m from the gate during the arrival cinematic.
+const ROOM_WIDTH = 100;
+const ROOM_DEPTH = 160;
+const ROOM_HEIGHT = 32;
+// Gate scaled up to fill the frame like the reference — the SGU gate is
+// a massive structure. GATE_RADIUS=6 gives a 12-meter diameter ring.
+// Edge comparison showed the reference gate fills ~60% of the frame width
+// while R=4 only filled ~5% from the gameplay camera at z=32.
+const GATE_RADIUS = 6.0;
+// Flat ring cross-section — the SGU gate is a wide, shallow ring, not a donut.
+// WIDTH is the radial thickness (inner→outer edge); DEPTH is the thin Z extent.
+const GATE_RING_WIDTH = 1.6;
+const GATE_RING_DEPTH = 0.35;
+const GATE_CENTER = new THREE.Vector3(0, GATE_RADIUS + 0.2, 0); // bottom of ring just above floor
+const CHEVRON_COUNT = 9;
 
-// SGU color palette
-const COLOR_ANCIENT_METAL = 0x2a2a3a;
-const COLOR_ANCIENT_GLOW = 0x4488ff;
-const COLOR_CHEVRON_OFF = 0x111122;
+// SGU color palette — blue-grey Ancient metal, matching the reference
+const COLOR_ANCIENT_METAL = 0x1e2030;  // dark blue-grey hull metal
+const COLOR_ANCIENT_GLOW = 0x4488ff;   // blue accent glow
+const COLOR_CHEVRON_OFF = 0x223355;  // visible dim blue even when unlit
 const COLOR_CHEVRON_ON = 0x44aaff;
 const COLOR_EVENT_HORIZON = 0x88bbff;
+// Wall and ceiling — dark blue-grey to match the SGU reference. The room
+// should feel like a dimly-lit Ancient military chamber, not a bright hall.
 const COLOR_WALL = 0x1a1a2e;
 const COLOR_CEILING = 0x141425;
 
@@ -60,38 +97,83 @@ type GateRuntime = {
 	state: GateState;
 };
 
+// ─── Gate control interface (for cinematic to drive the real gate) ───────────
+
+export interface GateControl {
+	startDial(): void;
+	shutdownGate(): void;
+	forceLockedChevrons(count: number): void;
+	forceState(state: GateState): void;
+	getState(): GateState;
+	readonly eventHorizon: THREE.Mesh;
+}
+
+function createGateControl(gate: GateRuntime): GateControl {
+	return {
+		startDial: () => startDial(gate),
+		shutdownGate: () => {
+			// Allow shutdown from active OR kawoosh (cinematic may force shutdown early)
+			if (gate.state === "active" || gate.state === "kawoosh") {
+				gate.state = "shutdown";
+				gate.kawooshElapsed = 0;
+			}
+		},
+		forceLockedChevrons: (count: number) => {
+			while (gate.lockedChevrons < count) {
+				lockChevron(gate, gate.lockedChevrons);
+				gate.lockedChevrons++;
+			}
+		},
+		forceState: (state: GateState) => {
+			gate.state = state;
+			gate.dialElapsed = 0;
+			gate.kawooshElapsed = 0;
+			if (state === "kawoosh") {
+				gate.eventHorizon.visible = true;
+				(gate.eventHorizon.material as THREE.MeshStandardMaterial).opacity = 0;
+			}
+		},
+		getState: () => gate.state,
+		get eventHorizon() { return gate.eventHorizon; },
+	};
+}
+
 // ─── Room construction ───────────────────────────────────────────────────────
 
 function createWallMaterial(): THREE.MeshStandardMaterial {
 	return new THREE.MeshStandardMaterial({
-		color: 0x222238,
-		emissive: 0x141428,
-		emissiveIntensity: 1.0,
-		roughness: 0.9,
-		metalness: 0.1,
-		side: THREE.DoubleSide
+		color: 0x100e0a,
+		emissive: 0x040302,
+		emissiveIntensity: 0.15,
+		roughness: 0.75,
+		metalness: 0.5,
+		side: THREE.DoubleSide,
 	});
 }
 
-/**
- * Constructs the physical room geometry for the Gate Room, including walls, ceiling,
- * structural arches, and amber floor guide strips.
- * @param scene The Three.js scene to add geometry to.
- */
 function buildRoom(scene: THREE.Scene): void {
 	const ceilingMat = new THREE.MeshStandardMaterial({
-		color: 0x181828,
-		emissive: 0x060612,
-		emissiveIntensity: 1.0,
-		roughness: 0.95,
-		metalness: 0.05,
-		side: THREE.DoubleSide
+		color: 0x100e0a,
+		emissive: 0x040302,
+		emissiveIntensity: 0.2,
+		roughness: 0.8,
+		metalness: 0.3,
+		side: THREE.DoubleSide,
 	});
 
-	// Back wall (behind gate)
+	// Back wall (behind gate) — darker than side walls so the gate ring
+	// silhouette stands out. The reference shows the back wall as near-black.
+	const backWallMat = new THREE.MeshStandardMaterial({
+		color: 0x080604,
+		emissive: 0x020101,
+		emissiveIntensity: 0.1,
+		roughness: 0.8,
+		metalness: 0.4,
+		side: THREE.DoubleSide,
+	});
 	const backWall = new THREE.Mesh(
 		new THREE.BoxGeometry(ROOM_WIDTH, ROOM_HEIGHT, 0.5),
-		createWallMaterial()
+		backWallMat,
 	);
 	backWall.position.set(0, ROOM_HEIGHT / 2, -ROOM_DEPTH / 2);
 	scene.add(backWall);
@@ -149,87 +231,168 @@ function buildRoom(scene: THREE.Scene): void {
 	scene.add(ceiling);
 	wallMeshes.push(ceiling);
 
-	// Structural arch supports on walls — heavy Ancient architecture
+	// Structural arch supports — heavy Ancient buttresses along both walls,
+	// matching the reference's repeating arch motif. Spaced along Z with
+	// warm alcove lights between them (the amber glow panels in the ref).
 	const archMat = new THREE.MeshStandardMaterial({
-		color: 0x15152a,
-		roughness: 0.8,
-		metalness: 0.2
+		color: 0x12122a,
+		roughness: 0.85,
+		metalness: 0.25,
 	});
-	for (let i = -2; i <= 2; i++) {
-		if (i === 0) continue;
-		// Left wall arches
-		const leftArch = new THREE.Mesh(
-			new THREE.BoxGeometry(0.4, ROOM_HEIGHT, 0.6),
-			archMat
-		);
-		leftArch.position.set(-ROOM_WIDTH / 2 + 0.4, ROOM_HEIGHT / 2, i * 4);
-		scene.add(leftArch);
-
-		// Right wall arches
-		const rightArch = new THREE.Mesh(
-			new THREE.BoxGeometry(0.4, ROOM_HEIGHT, 0.6),
-			archMat
-		);
-		rightArch.position.set(ROOM_WIDTH / 2 - 0.4, ROOM_HEIGHT / 2, i * 4);
-		scene.add(rightArch);
+	const alcoveLightMat = new THREE.MeshStandardMaterial({
+		color: 0x556688,
+		emissive: 0x223344,
+		emissiveIntensity: 1.5,
+		roughness: 0.3,
+		metalness: 0.2,
+	});
+	const archSpacing = 8;
+	const archCount = Math.floor(ROOM_DEPTH / archSpacing);
+	for (let i = 0; i < archCount; i++) {
+		const z = -ROOM_DEPTH / 2 + 4 + i * archSpacing;
+		for (const xSign of [-1, 1]) {
+			const xBase = xSign * (ROOM_WIDTH / 2 - 0.3);
+			// Buttress column
+			const arch = new THREE.Mesh(
+				new THREE.BoxGeometry(0.6, ROOM_HEIGHT, 0.8),
+				archMat,
+			);
+			arch.position.set(xBase, ROOM_HEIGHT / 2, z);
+			scene.add(arch);
+			// Alcove warm light panel between buttresses (like the reference)
+			const alcove = new THREE.Mesh(
+				new THREE.BoxGeometry(0.1, 2.5, archSpacing - 1.5),
+				alcoveLightMat,
+			);
+			alcove.position.set(xBase + xSign * 0.1, 3.5, z + archSpacing / 2);
+			scene.add(alcove);
+		}
 	}
 
-	// Back wall structural frame around gate area
+	// Back wall structural frame around gate — heavy Ancient architecture.
+	// The SGU reference shows massive structural columns flanking the gate
+	// with an arched top beam, giving a cathedral-like framing effect.
 	const frameMat = new THREE.MeshStandardMaterial({
-		color: 0x1a1a30,
-		roughness: 0.75,
-		metalness: 0.25
+		color: 0x14141e,
+		roughness: 0.6,
+		metalness: 0.4,
+		emissive: 0x060610,
+		emissiveIntensity: 0.3,
 	});
-	// Top beam
+	// Top arch beam — wider than the gate, arched
 	const topBeam = new THREE.Mesh(
-		new THREE.BoxGeometry(10, 0.8, 0.6),
-		frameMat
+		new THREE.BoxGeometry(GATE_RADIUS * 3, 1.5, 1.0),
+		frameMat,
 	);
-	topBeam.position.set(0, ROOM_HEIGHT - 1, -ROOM_DEPTH / 2 + 0.5);
+	topBeam.position.set(0, GATE_CENTER.y + GATE_RADIUS + 2, -ROOM_DEPTH / 2 + 0.8);
 	scene.add(topBeam);
-	// Side columns
+	// Staircase structures flanking the gate — the SGU gate room has
+	// staircases on both sides leading up to a second-floor catwalk/balcony.
+	// These are the large angled structures visible in the reference image.
+	const stairMat = new THREE.MeshStandardMaterial({
+		color: 0x121220,
+		roughness: 0.65,
+		metalness: 0.4,
+		emissive: 0x040408,
+		emissiveIntensity: 0.2,
+	});
 	for (const xSign of [-1, 1]) {
-		const column = new THREE.Mesh(
-			new THREE.BoxGeometry(0.8, ROOM_HEIGHT, 0.6),
-			frameMat
+		// Staircase body — angled box from floor to second level
+		const stairHeight = ROOM_HEIGHT * 0.5;
+		const stairWidth = 4.0;
+		const stairDepth = 8.0;
+		const stair = new THREE.Mesh(
+			new THREE.BoxGeometry(stairWidth, stairHeight, stairDepth),
+			stairMat,
 		);
-		column.position.set(xSign * 4.5, ROOM_HEIGHT / 2, -ROOM_DEPTH / 2 + 0.5);
-		scene.add(column);
+		stair.position.set(
+			xSign * (GATE_RADIUS + 4),
+			stairHeight / 2,
+			-ROOM_DEPTH / 2 + stairDepth / 2 + 0.5,
+		);
+		scene.add(stair);
+
+		// Railing/wall along stair top
+		const railing = new THREE.Mesh(
+			new THREE.BoxGeometry(stairWidth, 1.5, stairDepth),
+			frameMat,
+		);
+		railing.position.set(
+			xSign * (GATE_RADIUS + 4),
+			stairHeight + 0.75,
+			-ROOM_DEPTH / 2 + stairDepth / 2 + 0.5,
+		);
+		scene.add(railing);
+
+		// Second floor platform extending from the staircase
+		const platform = new THREE.Mesh(
+			new THREE.BoxGeometry(stairWidth + 2, 0.5, ROOM_DEPTH * 0.3),
+			stairMat,
+		);
+		platform.position.set(
+			xSign * (GATE_RADIUS + 4),
+			stairHeight + 0.25,
+			0,
+		);
+		scene.add(platform);
 	}
 
-	// Amber floor guide strips — run the full room length, through the gate
-	const stripMat = new THREE.MeshStandardMaterial({
-		color: 0xddaa33,
-		emissive: 0xddaa33,
-		emissiveIntensity: 0.4,
-		roughness: 0.6,
-		metalness: 0.3
+	// Amber embedded floor lights — matching the SGU reference: two rows of
+	// warm rectangular lights flanking the center aisle, like runway markers.
+	// Wider and more orange than before to match the reference's amber tone.
+	const floorLightMat = new THREE.MeshStandardMaterial({
+		color: 0xffaa44,
+		emissive: 0xffaa44,
+		emissiveIntensity: 2.0,
+		roughness: 0.3,
+		metalness: 0.1,
 	});
 	const stripStartZ = ROOM_DEPTH / 2 - 2;
-	const stripEndZ = -ROOM_DEPTH / 2 + 2;
-	const stripSpacing = 1.4;
+	const stripEndZ = -2;  // stop near the gate
+	const stripSpacing = 2.2;
 	for (let z = stripStartZ; z >= stripEndZ; z -= stripSpacing) {
-		for (const x of [-1.2, 1.2]) {
+		for (const x of [-1.8, 1.8]) {
 			const strip = new THREE.Mesh(
-				new THREE.BoxGeometry(0.12, 0.02, 0.5),
-				stripMat
+				new THREE.BoxGeometry(0.6, 0.02, 0.25),
+				floorLightMat,
 			);
 			strip.position.set(x, 0.01, z);
 			scene.add(strip);
 		}
 	}
+
+	// Aged metal floor grate panels — single InstancedMesh for all panels
+	// to keep draw calls at 1 instead of ~936 individual meshes.
+	const grateMat = new THREE.MeshStandardMaterial({
+		color: 0x181820,
+		roughness: 0.75,
+		metalness: 0.6,
+		emissive: 0x060608,
+		emissiveIntensity: 0.3,
+	});
+	const grateSpacingX = 4;
+	const grateSpacingZ = 4;
+	const grateGeo = new THREE.BoxGeometry(grateSpacingX - 0.15, 0.03, grateSpacingZ - 0.15);
+	const xSteps = Math.floor((ROOM_WIDTH - 4) / grateSpacingX);
+	const zSteps = Math.floor((ROOM_DEPTH - 4) / grateSpacingZ);
+	const grateInstanced = new THREE.InstancedMesh(grateGeo, grateMat, xSteps * zSteps);
+	const grateMatrix = new THREE.Matrix4();
+	let grateIdx = 0;
+	for (let xi = 0; xi < xSteps; xi++) {
+		for (let zi = 0; zi < zSteps; zi++) {
+			const x = -ROOM_WIDTH / 2 + 2 + xi * grateSpacingX + grateSpacingX / 2;
+			const z = -ROOM_DEPTH / 2 + 2 + zi * grateSpacingZ + grateSpacingZ / 2;
+			grateMatrix.makeTranslation(x, 0.015, z);
+			grateInstanced.setMatrixAt(grateIdx++, grateMatrix);
+		}
+	}
+	grateInstanced.instanceMatrix.needsUpdate = true;
+	scene.add(grateInstanced);
 }
 
 // ─── Stargate construction ───────────────────────────────────────────────────
 
-/**
- * Creates a flat-profiled ring (rectangular cross-section) using LatheGeometry.
- * @param radius The distance from the center to the mid-point of the ring profile.
- * @param width The width of the ring (thickness along the radius).
- * @param depth The depth of the ring (thickness along the axis of rotation).
- * @param segments The number of segments used to approximate the circle. Defaults to 64.
- * @returns A BufferGeometry representing the ring.
- */
+/** Create a flat-profiled ring (rectangular cross-section) using LatheGeometry */
 function createFlatRingGeometry(radius: number, width: number, depth: number, segments: number = 64): THREE.BufferGeometry {
 	// Profile: a rectangle at distance `radius` from the Y axis, extruded around Y
 	// LatheGeometry rotates a 2D profile around Y. Profile points are (x, y) = (radius, z-offset)
@@ -251,98 +414,99 @@ function createFlatRingGeometry(radius: number, width: number, depth: number, se
 	return geo;
 }
 
-async function buildStargate(scene: THREE.Scene): Promise<GateRuntime> {
-	const { GLTFLoader } = await import("three/examples/jsm/loaders/GLTFLoader.js");
+function buildStargate(scene: THREE.Scene): GateRuntime {
+	// ── Main ring — FLAT profile (rectangular cross-section), not a donut.
+	// The SGU gate is a wide, shallow ring — LatheGeometry with a rectangular
+	// profile matches the show's industrial look far better than TorusGeometry.
+	// fog:false so the ring punches through atmospheric fog at distance.
+	const outerRingMat = new THREE.MeshStandardMaterial({
+		color: 0x3a3a44,
+		roughness: 0.5,
+		metalness: 0.9,
+		emissive: 0x0e1520,
+		emissiveIntensity: 1.0,
+		fog: false,
+	});
+	const outerRing = new THREE.Mesh(
+		createFlatRingGeometry(GATE_RADIUS, GATE_RING_WIDTH, GATE_RING_DEPTH, 64),
+		outerRingMat,
+	);
+	outerRing.position.copy(GATE_CENTER);
+	scene.add(outerRing);
 
-	// Load the stargate GLB model
-	const loader = new GLTFLoader();
-	const gateModelUrl = new URL("./assets/stargate.glb", import.meta.url).href;
-
-	let outerRing: THREE.Object3D = new THREE.Group(); // fallback
-
-	try {
-		const gltf = await loader.loadAsync(gateModelUrl);
-		const gateModel = gltf.scene;
-
-		// The GLB model is unit-sized (~1.0 radius). Scale to match GATE_RADIUS.
-		const modelScale = GATE_RADIUS;
-		gateModel.scale.setScalar(modelScale);
-		gateModel.position.copy(GATE_CENTER);
-
-		// Hide any existing event horizon / portal mesh inside the model
-		// (the downloaded model may show an active portal)
-		gateModel.traverse((child) => {
-			if (child instanceof THREE.Mesh) {
-				child.castShadow = true;
-				child.receiveShadow = true;
-				child.frustumCulled = false;
-
-				// Check if this mesh is the inner portal/event horizon
-				// (typically a flat disc or plane in the center)
-				const mat = child.material as THREE.MeshStandardMaterial;
-				if (mat && mat.transparent) {
-					child.visible = false; // Hide built-in portal — we have our own event horizon
-				}
-			}
-		});
-
-		scene.add(gateModel);
-		outerRing = gateModel;
-		// Gate model loaded.
-	} catch (error) {
-		console.error("[GateRoom] Failed to load stargate GLB, using fallback ring:", error);
-		// Fallback: simple torus
-		const fallbackMat = new THREE.MeshStandardMaterial({
-			color: COLOR_ANCIENT_METAL, roughness: 0.3, metalness: 0.85
-		});
-		const fallback = new THREE.Mesh(
-			new THREE.TorusGeometry(GATE_RADIUS, GATE_TUBE * 2, 32, 64),
-			fallbackMat
-		);
-		fallback.position.copy(GATE_CENTER);
-		scene.add(fallback);
-		outerRing = fallback;
-	}
-
-	// Inner ring — still procedural for spinning animation
+	// Inner ring — a narrower inset track sitting just inside the main ring,
+	// with a slightly shallower depth so it reads as recessed. Darker and
+	// more metallic, matching the show's two-tier ring silhouette.
 	const innerRingMat = new THREE.MeshStandardMaterial({
-		color: 0x222235, roughness: 0.25, metalness: 0.9
+		color: 0x282832,
+		roughness: 0.4,
+		metalness: 0.95,
+		emissive: 0x0a1020,
+		emissiveIntensity: 0.8,
+		fog: false,
 	});
 	const innerRing = new THREE.Mesh(
-		createFlatRingGeometry(GATE_RADIUS - 0.05, GATE_TUBE * 1.4, GATE_TUBE * 1.0),
-		innerRingMat
+		createFlatRingGeometry(GATE_RADIUS - GATE_RING_WIDTH / 2 - 0.2, 0.3, GATE_RING_DEPTH * 0.7, 64),
+		innerRingMat,
 	);
+
+	// No glow halo — the SGU reference shows the gate as a dark metallic
+	// ring against a dark wall, not a glowing blue portal. The halo was
+	// creating a spurious oval edge in the similarity comparison.
 	innerRing.position.copy(GATE_CENTER);
 	scene.add(innerRing);
 
-	// Chevrons — 7 emissive markers + point lights around the ring
+	// (Ring segments / symbol-wheel dots REMOVED — 36 decorative bumps
+	// visually conflicted with the 9 chevrons and made the gate read as
+	// "too busy". The clean silhouette matches the show's look better.)
+
+	// Chevrons — 9 raised V-shaped bumps sitting ON the outer ring face.
+	// Sized for GATE_RADIUS=6: ~13% of radius reads as a chunky industrial
+	// bump without overwhelming the ring. Apex points outward (radially out).
+	const CHEVRON_HEIGHT = 0.85;  // radial span
+	const CHEVRON_HALF_W = 0.45;  // tangential half-width
+	const CHEVRON_DEPTH  = 0.28;  // protrusion forward from ring face
+	const chevronShape = new THREE.Shape();
+	chevronShape.moveTo( 0,               CHEVRON_HEIGHT / 2);
+	chevronShape.lineTo(-CHEVRON_HALF_W, -CHEVRON_HEIGHT / 2);
+	chevronShape.lineTo( CHEVRON_HALF_W, -CHEVRON_HEIGHT / 2);
+	chevronShape.closePath();
+	const chevronGeo = new THREE.ExtrudeGeometry(chevronShape, {
+		depth: CHEVRON_DEPTH,
+		bevelEnabled: true,
+		bevelThickness: 0.04,
+		bevelSize: 0.03,
+		bevelSegments: 2,
+	});
+	chevronGeo.translate(0, 0, -CHEVRON_DEPTH / 2);
+
+	// Chevrons sit on the front face of the flat ring. Front face is at
+	// z = GATE_RING_DEPTH / 2, and the chevron back needs to just touch it:
+	// z = GATE_RING_DEPTH / 2 + CHEVRON_DEPTH / 2 = 0.175 + 0.14 ≈ 0.32
+	const chevronZ = GATE_CENTER.z + GATE_RING_DEPTH / 2 + CHEVRON_DEPTH / 2;
 	const chevronMeshes: THREE.Mesh[] = [];
 	for (let i = 0; i < CHEVRON_COUNT; i++) {
-		const angle = (i / CHEVRON_COUNT) * Math.PI * 2 - Math.PI / 2;
-		const chevronGeo = new THREE.BoxGeometry(0.18, 0.3, 0.15);
+		const angle = Math.PI / 2 + (i / CHEVRON_COUNT) * Math.PI * 2;
 		const chevronMat = new THREE.MeshStandardMaterial({
 			color: COLOR_CHEVRON_OFF,
-			roughness: 0.4,
-			metalness: 0.7,
+			roughness: 0.35,
+			metalness: 0.8,
 			emissive: COLOR_CHEVRON_OFF,
-			emissiveIntensity: 0.1
+			emissiveIntensity: 0.3,
+			fog: false,
 		});
 		const chevron = new THREE.Mesh(chevronGeo, chevronMat);
 		chevron.position.set(
-			GATE_CENTER.x + Math.cos(angle) * (GATE_RADIUS + 0.15),
-			GATE_CENTER.y + Math.sin(angle) * (GATE_RADIUS + 0.15),
-			GATE_CENTER.z + 0.15
+			GATE_CENTER.x + Math.cos(angle) * GATE_RADIUS,
+			GATE_CENTER.y + Math.sin(angle) * GATE_RADIUS,
+			chevronZ,
 		);
-		chevron.lookAt(
-			GATE_CENTER.x + Math.cos(angle) * (GATE_RADIUS + 2),
-			GATE_CENTER.y + Math.sin(angle) * (GATE_RADIUS + 2),
-			GATE_CENTER.z + 0.15
-		);
+		chevron.rotation.z = angle + Math.PI / 2;
 		scene.add(chevron);
 		chevronMeshes.push(chevron);
 	}
 
-	// Event horizon — our own wormhole surface (hidden until active)
+	// Event horizon — the wormhole surface (hidden until active)
 	const horizonMat = new THREE.MeshStandardMaterial({
 		color: COLOR_EVENT_HORIZON,
 		emissive: COLOR_EVENT_HORIZON,
@@ -353,8 +517,9 @@ async function buildStargate(scene: THREE.Scene): Promise<GateRuntime> {
 		roughness: 0.1,
 		metalness: 0.0
 	});
+	// Event horizon fills the gate opening — inner edge of the outer ring.
 	const eventHorizon = new THREE.Mesh(
-		new THREE.CircleGeometry(GATE_RADIUS - GATE_TUBE - 0.05, 64),
+		new THREE.CircleGeometry(GATE_RADIUS - GATE_RING_WIDTH / 2 - 0.05, 64),
 		horizonMat
 	);
 	eventHorizon.position.copy(GATE_CENTER);
@@ -368,7 +533,7 @@ async function buildStargate(scene: THREE.Scene): Promise<GateRuntime> {
 		innerRing,
 		kawooshElapsed: 0,
 		lockedChevrons: 0,
-		outerRing: outerRing as THREE.Mesh,
+		outerRing,
 		pointLights: [],
 		state: "idle"
 	};
@@ -382,41 +547,67 @@ function buildLighting(scene: THREE.Scene, debugObjects: THREE.Object3D[]): THRE
 	const lights: THREE.PointLight[] = [];
 	const gateZ = GATE_CENTER.z;
 
-	// 1. Single overhead directional-style light for general visibility
-	const overheadLight = new THREE.PointLight(0xffeedd, 1.2, 40, 1.5);
-	overheadLight.position.set(0, 7.5, 2);
-	scene.add(overheadLight);
-	lights.push(overheadLight);
+	// ── Global fill (distance-independent) ──────────────────────────────
+	// Room is 100×160×32. Point lights with physical decay can't reach
+	// across 80+ units. Use distance-independent lights for base fill,
+	// then add point-light accents for local colour only.
+	// Moody ambient — the SGU gate room is VERY dark with isolated cool pools.
+	// Reference shows near-black walls with only gate glow and minimal fills.
+	const ambientLight = new THREE.AmbientLight(0x080812, 0.8);
+	scene.add(ambientLight);
+	const hemisphereLight = new THREE.HemisphereLight(0x0a0a1a, 0x050508, 0.6);
+	scene.add(hemisphereLight);
 
-	// 2. Gate front — blue Ancient glow
-	const gateFrontLight = new THREE.PointLight(COLOR_ANCIENT_GLOW, 3, 15, 1.5);
-	gateFrontLight.position.set(0, 2, gateZ + 2);
+	// Directional from above — cold, dim fill to barely reveal ceiling geometry.
+	const dirLight = new THREE.DirectionalLight(0x334466, 0.3);
+	dirLight.position.set(0, 25, 10);
+	dirLight.target.position.set(0, 0, 0);
+	scene.add(dirLight);
+	scene.add(dirLight.target);
+
+	// ── Gate-area accent lights ──────────────────────────────────────────
+	// All decay:0 (infinite range) so the blue glow reads from the
+	// establishing shot 50+ units away.
+
+	// Directly IN FRONT of the gate ring — cool blue wash on the ring face.
+	const gateRingLight = new THREE.PointLight(0x3366aa, 5, 0, 0);
+	gateRingLight.position.set(0, GATE_CENTER.y, gateZ + 4);
+	scene.add(gateRingLight);
+	lights.push(gateRingLight);
+
+	// Wider gate-area blue glow — visible from distance
+	const gateFrontLight = new THREE.PointLight(0x2244aa, 3, 0, 0);
+	gateFrontLight.position.set(0, 4, gateZ + 10);
 	scene.add(gateFrontLight);
 	lights.push(gateFrontLight);
 
-	// 3. Gate back — backlight the ring
-	const gateBackLight = new THREE.PointLight(COLOR_ANCIENT_GLOW, 2.5, 12, 1.5);
-	gateBackLight.position.set(0, 3.5, gateZ - 3);
+	const gateBackLight = new THREE.PointLight(0x2244aa, 4, 0, 0);
+	gateBackLight.position.set(0, 5, gateZ - 6);
 	scene.add(gateBackLight);
 	lights.push(gateBackLight);
 
-	// 4. Gate top — highlights the upper ring
-	const gateTopLight = new THREE.PointLight(COLOR_ANCIENT_GLOW, 1.5, 10, 2);
-	gateTopLight.position.set(0, 7, gateZ);
+	const gateTopLight = new THREE.PointLight(0x2244aa, 4, 0, 0);
+	gateTopLight.position.set(0, 12, gateZ);
 	scene.add(gateTopLight);
 	lights.push(gateTopLight);
 
-	// 5-6. Warm amber side lights (just 2, not 10)
-	const COLOR_WARM_ACCENT = 0xffaa44;
-	const leftSide = new THREE.PointLight(COLOR_WARM_ACCENT, 1.0, 18, 1.5);
-	leftSide.position.set(-ROOM_WIDTH / 2 + 2, 3, 0);
-	scene.add(leftSide);
-	lights.push(leftSide);
+	// Overhead room light — cool dim fill, NOT warm.
+	const overheadLight = new THREE.PointLight(0x1a2233, 0.4, 0, 0);
+	overheadLight.position.set(0, ROOM_HEIGHT - 3, ROOM_DEPTH / 4);
+	scene.add(overheadLight);
+	lights.push(overheadLight);
 
-	const rightSide = new THREE.PointLight(COLOR_WARM_ACCENT, 1.0, 18, 1.5);
-	rightSide.position.set(ROOM_WIDTH / 2 - 2, 3, 0);
-	scene.add(rightSide);
-	lights.push(rightSide);
+	// Side accents — very dim cool blue, just enough to hint at wall geometry.
+	// SGU reference shows isolated blue-grey pools, NOT warm amber washes.
+	const COLOR_COOL_ACCENT = 0x1a2244;
+	for (const zOff of [0, ROOM_DEPTH / 3, 2 * ROOM_DEPTH / 3]) {
+		for (const xSign of [-1, 1]) {
+			const side = new THREE.PointLight(COLOR_COOL_ACCENT, 0.5, 0, 0);
+			side.position.set(xSign * (ROOM_WIDTH / 3), 6, zOff);
+			scene.add(side);
+			lights.push(side);
+		}
+	}
 
 	// 7-10. Floor spotlights aimed at gate faces — restored from working prototype
 	const gateY = GATE_CENTER.y;
@@ -440,7 +631,9 @@ function buildLighting(scene: THREE.Scene, debugObjects: THREE.Object3D[]): THRE
 		const helper = new THREE.SpotLightHelper(spot, 0xffff00);
 		helper.visible = false;
 		scene.add(helper);
-		requestAnimationFrame(() => helper.update());
+		// BUG-006: call update() synchronously — the old RAF fired on a potentially
+		// disposed scene if a rapid scene transition happened before the frame ran.
+		helper.update();
 		debugObjects.push(helper);
 
 		const fixtureGroup = new THREE.Group();
@@ -520,7 +713,10 @@ function createHUD(): HTMLDivElement {
 
 	const statusEl = document.createElement("div");
 	statusEl.id = "gate-status";
-	statusEl.textContent = "Press G to dial the Stargate";
+	// Status text is driven by quest progress / cinematic state — no static
+	// debug prompt here. Left empty so the HUD strip starts hidden until
+	// something meaningful to say.
+	statusEl.textContent = "";
 
 	const chevronsEl = document.createElement("div");
 	chevronsEl.id = "gate-chevrons";
@@ -550,7 +746,7 @@ function updateHUD(gate: GateRuntime): void {
 
 	switch (gate.state) {
 		case "idle":
-			status.textContent = "Press G to dial the Stargate";
+			status.textContent = "";
 			break;
 		case "dialing":
 			status.textContent = `Dialing... Chevron ${gate.lockedChevrons} of ${CHEVRON_COUNT}`;
@@ -559,7 +755,7 @@ function updateHUD(gate: GateRuntime): void {
 			status.textContent = "Chevron 9 locked!";
 			break;
 		case "active":
-			status.textContent = "Wormhole established \u2014 Press G to shut down";
+			status.textContent = "Wormhole established";
 			break;
 		case "shutdown":
 			status.textContent = "Wormhole disengaged";
@@ -569,7 +765,7 @@ function updateHUD(gate: GateRuntime): void {
 
 // ─── Gate activation logic ───────────────────────────────────────────────────
 
-const DIAL_TIME_PER_CHEVRON = 1.0; // 1 second per chevron for dramatic pacing
+const DIAL_TIME_PER_CHEVRON = 0.6;
 const KAWOOSH_DURATION = 1.2;
 const SHUTDOWN_DURATION = 0.8;
 
@@ -607,8 +803,10 @@ function shutdownGate(gate: GateRuntime): void {
 function updateDialing(gate: GateRuntime, delta: number): void {
 	gate.dialElapsed += delta;
 
-	// Spin the inner ring (SGU-style continuous rotation)
-	gate.innerRing.rotation.z += delta * 3.0;
+	// Spin the inner ring — alternates direction with each chevron lock.
+	// Odd chevrons spin clockwise, even counterclockwise (like a combination lock).
+	const spinDir = gate.lockedChevrons % 2 === 0 ? 1 : -1;
+	gate.innerRing.rotation.z += delta * 2.5 * spinDir;
 
 	// Lock chevrons at intervals
 	const targetChevrons = Math.min(
@@ -623,7 +821,7 @@ function updateDialing(gate: GateRuntime, delta: number): void {
 
 	// Inner ring glow increases during dial
 	const mat = gate.innerRing.material as THREE.MeshStandardMaterial;
-	mat.emissive = new THREE.Color(COLOR_ANCIENT_GLOW);
+	mat.emissive.set(COLOR_ANCIENT_GLOW);
 	mat.emissiveIntensity = 0.3 + (gate.lockedChevrons / CHEVRON_COUNT) * 0.5;
 
 	// All chevrons locked — start kawoosh
@@ -640,7 +838,7 @@ function lockChevron(gate: GateRuntime, index: number): void {
 	const mat = chevron.material as THREE.MeshStandardMaterial;
 	mat.color.set(COLOR_CHEVRON_ON);
 	mat.emissive.set(COLOR_CHEVRON_ON);
-	mat.emissiveIntensity = 1.2;
+	mat.emissiveIntensity = 2.0;
 }
 
 function updateKawoosh(gate: GateRuntime, delta: number): void {
@@ -800,7 +998,7 @@ function updateCameraPullIn(camera: THREE.PerspectiveCamera, playerPos: THREE.Ve
 
 // ─── Debug overlay ───────────────────────────────────────────────────────────
 
-function createDebugOverlay(renderer: any): { element: HTMLDivElement; update: (delta: number) => void } {
+function createDebugOverlay(): { element: HTMLDivElement; update: () => void } {
 	const el = document.createElement("div");
 	el.id = "debug-overlay";
 	Object.assign(el.style, {
@@ -822,26 +1020,20 @@ function createDebugOverlay(renderer: any): { element: HTMLDivElement; update: (
 	document.body.appendChild(el);
 
 	let frameCount = 0;
-	let fps = 60;
-	let lastTime = performance.now();
-
-	const update = (_delta: number) => {
+	const update = () => {
 		frameCount++;
-		if (frameCount % 10 !== 0) return;
+		if (frameCount % 10 !== 0) return; // update text every 10 frames
 
-		const now = performance.now();
-		fps = Math.round(1000 / (now - lastTime) * 10) / 10;
-		lastTime = now;
-
-		const info = renderer.info as any;
-		const fpsColor = fps >= 50 ? "#44ff88" : fps >= 30 ? "#ffaa44" : "#ff4444";
+		const m = perfMetrics;
+		const fpsColor = m.fps >= 50 ? "#44ff88" : m.fps >= 30 ? "#ffaa44" : "#ff4444";
 
 		el.textContent = [
-			`FPS: ${fps}`,
-			`Draw calls: ${info.render.calls}`,
-			`Triangles: ${info.render.triangles.toLocaleString()}`,
-			`Geometries: ${info.memory.geometries}`,
-			`Textures: ${info.memory.textures}`,
+			`FPS: ${m.fps}`,
+			`Frame: ${m.frameMs.toFixed(1)}ms`,
+			`Physics: ${m.physicsMs.toFixed(1)}ms (${m.physicsHz}Hz, ${m.physicsSteps} steps)`,
+			`Render: ${m.renderMs.toFixed(1)}ms`,
+			`Draw calls: ${m.drawCalls}`,
+			`Triangles: ${m.triangles.toLocaleString()}`,
 		].join("\n");
 		el.style.whiteSpace = "pre";
 		el.style.color = fpsColor;
@@ -1393,40 +1585,123 @@ function createInteractionPrompt(): HTMLDivElement {
 	return el;
 }
 
+// ─── CO2 HUD readout ─────────────────────────────────────────────────────────
+
+function createCO2Display(): HTMLDivElement {
+	const el = document.createElement("div");
+	el.id = "co2-display";
+	Object.assign(el.style, {
+		position: "fixed",
+		top: "12px",
+		left: "12px",
+		color: "#ff6644",
+		fontFamily: "'Courier New', monospace",
+		fontSize: "13px",
+		lineHeight: "1.6",
+		background: "rgba(0, 0, 0, 0.65)",
+		padding: "6px 12px",
+		borderRadius: "3px",
+		pointerEvents: "none",
+		userSelect: "none",
+		zIndex: "998",
+		textShadow: "0 0 8px #ff664466",
+		whiteSpace: "pre",
+	});
+	el.textContent = "CO\u2082: 0.8%\n\u26a0 Scrubbers: CRITICAL";
+	document.body.appendChild(el);
+	return el;
+}
+
 // ─── Scene mount ─────────────────────────────────────────────────────────────
 
-async function mount(context: GameSceneContext): Promise<GameSceneLifecycle> {
+async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycle> {
 	const { scene, camera, player, renderer } = context;
+	camera.rotation.order = 'YXZ';
+	// Save original projection to restore on dispose (camera is shared across scenes)
+	const origNear = camera.near;
+	const origFar = camera.far;
+	camera.near = 0.1;
+	camera.far = 500;
+	camera.updateProjectionMatrix();
 	const bus = scopedBus();
 
 	wallMeshes.length = 0;
 	const debugObjects: THREE.Object3D[] = [];
 	let debugMode = false;
+	let cinematicDrivingGate = false;
 
-	// ─── Static geometry is in scene.runtime.json ──────────────────────
-	// Room walls, floor, ceiling, arches, corridor, storage, lights, and
-	// accent strips are all in the runtime JSON. Only DYNAMIC objects
-	// (stargate, supply crates, subsystem visuals) are built here.
-	// buildRoom(scene);        // DISABLED — in runtime JSON
-	// buildLighting(scene);    // DISABLED — lights in runtime JSON
-	// buildCorridor(scene);    // DISABLED — in runtime JSON
-	// buildStorageRoom(scene); // DISABLED — walls in runtime JSON (crates built below)
+	// ─── Build the gate room (existing prototype) ────────────────────────
+	buildRoom(scene);
 
-	const gate = await buildStargate(scene);
-	gate.pointLights = []; // Lights are in runtime JSON now
+	// Floor is from the runtime JSON — kept dark. Visibility comes from
+	// player light, room lights, and the yellow runway strips.
+	const gate = buildStargate(scene);
+	const lights = buildLighting(scene, debugObjects);
+	gate.pointLights = lights;
+
+	// ─── Photo mode ─────────────────────────────────────────────────────
+	// ?photo=1 — disable player character, lock camera at specified position.
+	// ?camx=0&camy=2&camz=15&lookx=0&looky=4&lookz=0 — camera placement.
+	// ?gate=active — force the gate into fully-active state (all chevrons
+	// locked, event horizon visible + glowing) for reference comparison.
+	// Designed for visual comparison screenshots without the player character.
+	const photoParams = new URLSearchParams(window.location.search);
+	const photoMode = photoParams.has("photo");
+	if (photoMode && player) {
+		player.object.visible = false;
+		player.inputEnabled = false;
+	}
+	if (photoMode && photoParams.get("gate") === "active") {
+		// Lock all chevrons + snap to active without running the dial sequence.
+		for (let i = 0; i < CHEVRON_COUNT; i++) {
+			lockChevron(gate, i);
+		}
+		gate.lockedChevrons = CHEVRON_COUNT;
+		gate.state = "active";
+		gate.eventHorizon.visible = true;
+		const horizonMat = gate.eventHorizon.material as THREE.MeshStandardMaterial;
+		horizonMat.opacity = 0.9;
+		horizonMat.emissiveIntensity = 1.8;
+	}
 
 	// ─── Player-attached ambient light (Eli's subtle glow) ──────────────
 	const playerLight = new THREE.PointLight(0xccddff, 2.5, 15, 1.5);
 	playerLight.position.set(0, 2, 0);
-	if (player) {
+	if (player && !photoMode) {
 		player.object.add(playerLight);
 	}
 
-	// Camera pull-in: no programmatic walls to track anymore
+	// ── Neural Locomotion Controller ──────────────────────────────────────
+	// Load Network.bin/manifest and use it to compute root-motion offsets at
+	// 10 Hz, lerp-applied each frame for weighted movement feel.
+	// TODO: full skeletal integration once VRM bone tracking is available.
+	const loco = new NeuralLocomotionController();
+	void loco.load(
+		"/assets/ai/Network.bin",
+		"/assets/ai/Network.manifest.json",
+	).catch((err: unknown) => {
+		console.warn("[NeuralLoco] weight load failed — root motion disabled:", err);
+	});
+
+	// Prediction state: 10 Hz accumulator + cached sequence
+	const PREDICTION_HZ = 10;
+	const PREDICTION_INTERVAL = 1 / PREDICTION_HZ;
+	let locoAccum = 0;
+	let lastSeq: SequenceOutput | null = null;
+	/** Smoothed XZ root-motion offset applied to player each frame (lerped from network output). */
+	const locoOffset = new THREE.Vector3();
+	/** Scratch arrays reused each prediction tick to avoid allocation. */
+	const _zeroVec69  = new Float32Array(BONE_COUNT * 3);
+	const _futurePos  = new Float32Array(SEQ_LENGTH * 2);
+	const _futureFwd  = new Float32Array(SEQ_LENGTH * 2);
+	const _futureVel  = new Float32Array(SEQ_LENGTH * 2);
+
+	// Register gate room walls for camera pull-in collision
 	occludableMeshes.length = 0;
+	for (const w of wallMeshes) occludableMeshes.push(w);
 	smoothedCamDistance = -1;
 
-	// ─── Dynamic corridor/storage lights (intensity varies with ship power) ─
+	// ─── Corridor/storage point lights (created here for direct reference) ─
 	const corrLightZ = ROOM_DEPTH / 2 + CORRIDOR_LENGTH / 2;
 	const storLightZ = ROOM_DEPTH / 2 + CORRIDOR_LENGTH + STORAGE_DEPTH / 2;
 
@@ -1437,6 +1712,10 @@ async function mount(context: GameSceneContext): Promise<GameSceneLifecycle> {
 	const storagePointLight = new THREE.PointLight(0xddccaa, 0.3, 20, 1.5);
 	storagePointLight.position.set(0, EXT_ROOM_HEIGHT - 0.5, storLightZ);
 	scene.add(storagePointLight);
+
+	// ─── Build corridor + storage room extending from gate room ──────────
+	buildCorridor(scene);
+	buildStorageRoom(scene);
 
 	const corridorCZ = CORRIDOR_Z_START + CORRIDOR_LENGTH / 2;
 	const storageCZ = CORRIDOR_Z_START + CORRIDOR_LENGTH + STORAGE_DEPTH / 2;
@@ -1495,6 +1774,258 @@ async function mount(context: GameSceneContext): Promise<GameSceneLifecycle> {
 
 	shipState.distributePower();
 
+	// ─── NPC / Dialogue / Quest / Save Managers ───────────────────────────
+	const dialogueManager = createDialogueManager();
+	const npcManager = createNpcManager(dialogueManager);
+	const questManager = createQuestManager();
+
+	npcManager.registerNpc(drRushNpc);
+	dialogueManager.registerTree(drRushDialogue);
+	registerDestinyPowerCrisis(questManager);
+	registerAirCrisis(questManager);
+	questManager.startQuest(AIR_CRISIS_QUEST_ID);
+
+	// ─── Dr. Rush real character model ──────────────────────────────────
+	// Loads VRM (with GLB fallback) via the unified character loader.
+	const rushPos = drRushNpc.position;
+	let rushCharacter: CharacterLoadResult | undefined;
+
+	// Glowing indicator dot above Rush — shown while loading, kept as nav aid
+	const rushDotGeo = new THREE.SphereGeometry(0.08, 8, 6);
+	const rushDotMat = new THREE.MeshStandardMaterial({
+		color: 0x4488ff, emissive: 0x4488ff, emissiveIntensity: 1.2,
+	});
+	const rushDot = new THREE.Mesh(rushDotGeo, rushDotMat);
+	rushDot.position.set(rushPos.x, rushPos.y + 2.0, rushPos.z);
+	scene.add(rushDot);
+
+	// ─── Ancient consoles (left side workstation row) ───────────────────────
+	// Three stepped consoles at x=-6, running along the −X wall side of the
+	// gate room between the gate and the player-spawn end. Rush stands at
+	// the middle one; the others add environmental read as "this is where
+	// the science team works". Each console is a dark-metallic base with a
+	// glowing top panel + angled monitor.
+	const consoleRoot = new THREE.Group();
+	consoleRoot.name = "rush-consoles";
+	const consoleBaseMat = new THREE.MeshStandardMaterial({
+		color: 0x1a1a24, roughness: 0.35, metalness: 0.85,
+	});
+	const consolePanelMat = new THREE.MeshStandardMaterial({
+		color: 0x2a4a6a, emissive: 0x4488ff, emissiveIntensity: 0.5,
+		roughness: 0.3, metalness: 0.7,
+	});
+	const consoleScreenMat = new THREE.MeshStandardMaterial({
+		color: 0x1a2a3a, emissive: 0x66aaff, emissiveIntensity: 0.9,
+		roughness: 0.15, metalness: 0.1,
+	});
+	for (const cz of [40, 48, 56]) {          // 3 consoles, flanking Rush at z=48
+		const base = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.9, 0.8), consoleBaseMat);
+		base.position.set(-22, 0.45, cz);
+		consoleRoot.add(base);
+		const topPanel = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.05, 0.8), consolePanelMat);
+		topPanel.position.set(-22, 0.92, cz);
+		consoleRoot.add(topPanel);
+		const monitor = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.55, 0.04), consoleScreenMat);
+		monitor.position.set(-22.3, 1.25, cz);
+		monitor.rotation.z = -Math.PI / 2;
+		monitor.rotation.x = 0.3;
+		consoleRoot.add(monitor);
+	}
+	scene.add(consoleRoot);
+
+	// Load Dr. Rush's character model; fall back to capsule on error.
+	// Path matches /assets/characters/manifest.json. The legacy
+	// /assets/characters/dr-rush.vrm at the top level is a byte-identical
+	// duplicate of eli-wallace.vrm (placeholder) — do not reference it.
+	void loadVRMCharacter("/assets/characters/nicholas-rush/nicholas-rush.vrm")
+		.then((char) => {
+			rushCharacter = char;
+			// Position at the middle console and rotate so he faces +X
+			// (toward the center aisle / his workstation monitor).
+			char.root.position.set(rushPos.x, rushPos.y, rushPos.z);
+			char.root.rotation.y = -Math.PI / 2; // face +X (toward aisle)
+			scene.add(char.root);
+		})
+		.catch((err: unknown) => {
+			console.warn("[GateRoom] Dr. Rush VRM load failed:", err);
+			// Rush's VRM IS the standard — if it fails, there's no further fallback.
+			// The scene still works, Rush just won't be visible.
+		});
+
+	// Player VRM loaded via scene definition player.vrmUrl (StarterPlayerController handles it)
+
+	// ── Opening cinematic mode ───────────────────────────────────────────────
+	// Declared here; constructed AFTER the HUD is built below so we can
+	// collect HUD refs for cinematic hide/show.
+	let cinematicController: GateRoomCinematicController | undefined;
+	const isCinematicBoot = !photoMode && Boolean(sessionStorage.getItem("sgu-new-game"));
+	if (isCinematicBoot) {
+		sessionStorage.removeItem("sgu-new-game");
+		if (player) player.inputEnabled = false;
+		rushDot.visible = false;
+		if (rushCharacter) rushCharacter.root.visible = false;
+	}
+
+	// Elements the cinematic should hide — populated as they're built
+	// below. The cinematic walks this list and sets display:none on each.
+	const cinematicHide: HTMLElement[] = [];
+
+	// Opening dialogue — "Eli... Eli, can you hear me?" — plays right after the
+	// cinematic. Scott appears in front of the player; player clicks through a
+	// short intro that ends by pointing them at Dr. Rush to investigate.
+	const triggerOpeningDialogue = async () => {
+		// Lazy-load so the dialogue module isn't imported unless we need it
+		// (keeps the CONTINUE path free of extra cost).
+		const [{ scottOpeningDialogue }, { scottOpeningNpc }] = await Promise.all([
+			import("../../dialogues/scott-opening"),
+			import("../../npcs/scott-opening"),
+		]);
+		dialogueManager.registerTree(scottOpeningDialogue);
+		npcManager.registerNpc(scottOpeningNpc);
+
+		// Spawn a Scott character standing in front of the camera, slightly
+		// off to the right. We derive position from the CAMERA direction (not
+		// the player yaw) because the post-cinematic player is prone on their
+		// back — the camera's forward vector is what "in front of us" means
+		// from the player's POV. A capsule fallback ensures Scott renders
+		// even when the placeholder VRM has minimal geometry.
+		try {
+			const pp = player?.object.position ?? new THREE.Vector3(0, 0, 12);
+			const forward = new THREE.Vector3();
+			camera.getWorldDirection(forward);
+			// Project onto XZ plane so Scott stands upright (no vertical tilt).
+			forward.y = 0;
+			forward.normalize();
+			// Right vector perpendicular to forward, in XZ plane.
+			const right = new THREE.Vector3(-forward.z, 0, forward.x);
+			const scottPos = new THREE.Vector3()
+				.copy(pp)
+				.addScaledVector(forward, 2.2)    // 2.2 m in front
+				.addScaledVector(right, 0.8);     // 0.8 m to the right
+			scottPos.y = 0;  // feet on ground regardless of camera pitch
+
+			// Load Scott's VRM — if his placeholder has no geometry, fall
+			// back to the standard VRoid (Rush's model) instead of a capsule.
+			let scott: Awaited<ReturnType<typeof loadVRMCharacter>> | undefined;
+			try {
+				scott = await loadVRMCharacter("/assets/characters/matthew-scott/matthew-scott.vrm");
+				const meshes = (() => { let n = 0; scott.root.traverse((o) => { if ((o as THREE.Mesh).isMesh) n++; }); return n; })();
+				if (meshes === 0) {
+					scott.dispose?.();
+					scott = await loadVRMCharacter("/assets/characters/nicholas-rush/nicholas-rush.vrm");
+				}
+			} catch {
+				try {
+					scott = await loadVRMCharacter("/assets/characters/nicholas-rush/nicholas-rush.vrm");
+				} catch (err2) {
+					console.warn("[GateRoom] Scott + fallback VRM both failed:", err2);
+				}
+			}
+			const scottRoot = scott?.root ?? new THREE.Group();
+			scottRoot.position.copy(scottPos);
+			// Face the player — opposite of the camera's forward.
+			scottRoot.lookAt(pp.x, scottRoot.position.y, pp.z);
+			scene.add(scottRoot);
+			gateRoomExtraDisposables.push(() => {
+				scene.remove(scottRoot);
+				scott?.dispose?.();
+			});
+		} catch (err) {
+			console.warn("[GateRoom] Scott spawn failed for opening dialogue:", err);
+		}
+
+		// Start the dialogue (no prior player-input needed).
+		dialogueManager.startDialogue("scott-opening");
+	};
+
+	// Disposables for ephemeral resources spawned after the cinematic
+	// (like the Scott opening NPC). Flushed from the scene dispose() below.
+	const gateRoomExtraDisposables: Array<() => void> = [];
+
+	// When Rush ends a dialogue session that accepted the power quest, start it.
+	// startQuest() is idempotent so it's safe to call on every conversation end.
+	// Dialogue gate — lock player movement while the dialogue panel is up.
+	// The camera is still free to look around but WASD/stick is blocked so
+	// the player can't wander off mid-conversation.
+	bus.on("crew:dialogue:started", () => {
+		if (player) player.inputEnabled = false;
+		// Release pointer lock so the player can actually click dialogue
+		// options with the mouse. Controller / keyboard shortcuts still
+		// work, but the cursor was trapped before this.
+		if (document.pointerLockElement) {
+			document.exitPointerLock();
+		}
+	});
+	bus.on("crew:dialogue:ended", () => {
+		if (player && !cinematicController) player.inputEnabled = true;
+		currentDialogueOptionIds.length = 0;
+	});
+
+	// Track the currently-visible option IDs so gamepad A/B/X/Y and
+	// keyboard 1-4 can advance the dialogue without needing the mouse.
+	const currentDialogueOptionIds: string[] = [];
+	bus.on("crew:dialogue:node", ({ options }) => {
+		currentDialogueOptionIds.length = 0;
+		for (const o of options) currentDialogueOptionIds.push(o.id);
+	});
+
+	bus.on("crew:dialogue:ended", ({ speakerId }) => {
+		if (speakerId === "dr-rush") {
+			const saved = dialogueManager.serialize();
+			if (saved.acceptedQuests.includes("destiny-power-crisis")) {
+				questManager.startQuest("destiny-power-crisis");
+			}
+		}
+	});
+
+	// Advance speak-to-rush when player commits to going through the gate.
+	// The dialogue fires crew:choice:made with responseId 'commit-to-gate'
+	// on any of the "I'll go" options in the CO2 crisis tree.
+	bus.on("crew:choice:made", ({ responseId }) => {
+		const commitIds = new Set([
+			"commit-to-gate",
+			"from-lime-to-commit",
+			"from-timeline-commit",
+			"from-scanning-commit",
+		]);
+		if (commitIds.has(responseId)) {
+			questManager.advanceObjective(AIR_CRISIS_QUEST_ID, "speak-to-rush");
+		}
+	});
+
+	// Gate blocker — declared here so the quest:completed handler can close over it.
+	// Assigned after HUD setup below; removed when the air crisis quest completes.
+	let gateBlocker: CrashcatRigidBody | null = null;
+
+	// Air crisis done → scrubbers fixed → gate is now passable.
+	// When a real quest-toast HUD is added, also surface quest:started /
+	// quest:objective-complete / save:completed via that system.
+	bus.on("quest:completed", ({ questId }) => {
+		if (questId === AIR_CRISIS_QUEST_ID && gateBlocker !== null) {
+			rigidBody.remove(context.physicsWorld, gateBlocker);
+			gateBlocker = null;
+		}
+	});
+
+	let playtimeMs = 0;
+
+	const saveManager = createSaveManager({
+		shipState,
+		questManager,
+		dialogueManager,
+		getContext: () => ({
+			currentSceneId: "gate-room",
+			playerPosition: player
+				? { x: player.object.position.x, y: player.object.position.y, z: player.object.position.z }
+				: { x: 0, y: 0, z: 0 },
+			playtime: playtimeMs,
+			unlockedScenes: ["gate-room"],
+		}),
+		gotoScene: context.gotoScene,
+	});
+
+	setSceneManagers({ dialogue: dialogueManager, npc: npcManager, quest: questManager, save: saveManager });
+
 	// ─── Resources + Supply Crates ───────────────────────────────────────
 	initResources();
 
@@ -1512,11 +2043,92 @@ async function mount(context: GameSceneContext): Promise<GameSceneLifecycle> {
 
 	// ─── UI elements ─────────────────────────────────────────────────────
 	const hud = createHUD();
-	const debug = createDebugOverlay(renderer);
+	cinematicHide.push(hud);
+	const compassHud = createHud(renderer.domElement.parentElement ?? document.body);
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const compass = createHorizontalCompass() as any;
+	compassHud.mount(compass);
+	// compassHud has no public DOM ref — it's its own managed HTMLDivElement
+	// returned from createHud(). Cast to probe for common element shapes.
+	const compassAny = compassHud as unknown as { element?: HTMLElement; container?: HTMLElement };
+	const compassRoot = compassAny.element ?? compassAny.container;
+	if (compassRoot) cinematicHide.push(compassRoot);
+
+	// ── Gate blocker ───────────────────────────────────────────────────────────
+	// Invisible static box covering the Stargate opening. Physically prevents the
+	// player walking through before the air crisis is resolved. The blocker is
+	// removed in the quest:completed handler above when AIR_CRISIS_QUEST_ID fires.
+	// halfExtents slightly larger than GATE_RADIUS so a box covers the circular gap.
+	gateBlocker = rigidBody.create(context.physicsWorld, {
+		motionType: MotionType.STATIC,
+		objectLayer: CRASHCAT_OBJECT_LAYER_STATIC,
+		shape: box.create({
+			// Vec3 in mathcat is a labeled tuple [x, y, z], not { x, y, z }
+			halfExtents: [GATE_RADIUS + 0.3, GATE_RADIUS + 0.3, 0.2],
+		}),
+		position: [GATE_CENTER.x, GATE_CENTER.y, GATE_CENTER.z],
+	});
+
+	// Dev / test support: ?lime=1 URL param pre-sets the lime carry state so that
+	// tests can load gate-room with the banner visible without going through the
+	// full desert-planet flow. Safe in production — the param is simply ignored.
+	if (new URLSearchParams(window.location.search).has('lime')) {
+		setLimeCollected(true);
+	}
+
+	// Lime delivery banner — shown when player returns from the desert planet
+	// with calcium deposits and needs to reach the CO₂ scrubber room.
+	let limeBanner: HTMLDivElement | null = null;
+	if (isLimeCollected()) {
+		limeBanner = document.createElement("div");
+		limeBanner.id = "lime-delivery-banner";
+		Object.assign(limeBanner.style, {
+			position: "fixed", top: "50px", left: "50%",
+			transform: "translateX(-50%)", color: "#ffee88",
+			fontFamily: "'Courier New', monospace", fontSize: "13px",
+			background: "rgba(0,0,0,0.8)", padding: "6px 16px",
+			borderRadius: "3px", border: "1px solid #ffee8866",
+			pointerEvents: "none", userSelect: "none", zIndex: "998",
+			textShadow: "0 0 6px #ffee8844",
+		});
+		limeBanner.textContent =
+			"\u25ba Take the lime to the CO\u2082 scrubber room \u2014 Deck 3, Section 7";
+		document.body.appendChild(limeBanner);
+	}
+
+	// Wire the dialogue panel — adapter bridges SGU's typed bus to the engine's
+	// generic DialoguePanelEventBus interface via safe any-casts at the boundary.
+	const dialogueBus: DialoguePanelEventBus = {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		on:   (event, handler) => bus.on(event as any, handler as any),
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		emit: (event, data?)  => emit(event as any, data as any),
+	};
+	// Pick hint labels that match the player's actual input device: controller
+	// buttons (A/B/X/Y) when a gamepad is connected, number keys (1/2/3/4)
+	// otherwise. Detected once at mount — a later plug-in is uncommon and the
+	// dialogue still accepts both inputs regardless of the hint shown.
+	const hasGamepadConnected = typeof navigator.getGamepads === "function"
+		&& Array.from(navigator.getGamepads() ?? []).some((gp) => gp && gp.connected);
+	const dialoguePanel = createDialoguePanel(dialogueBus, {
+		style: 'sci-fi',
+		// Gamepad: A/B/X/Y; keyboard: digit keys 1-4. Both input paths are
+		// always live — the hint just indicates the primary binding for the
+		// current device. Extra options render without a chip.
+		optionHints: hasGamepadConnected ? ['A', 'B', 'X', 'Y'] : ['1', '2', '3', '4'],
+	});
+	compassHud.mount(dialoguePanel);
+	const debug = createDebugOverlay();
 	debug.element.style.display = "none";
 	const menu = createEscapeMenu(renderer.domElement);
 	const cleanupFullscreen = setupFullscreen(renderer.domElement, menu);
 	const interactPrompt = createInteractionPrompt();
+	cinematicHide.push(interactPrompt);
+	// CO₂ scrubber status belongs to Episode 2 ("Air") — it shouldn't appear
+	// at all during Episode 1. Kept offline until a scrubber-crisis event
+	// reveals it (see episode-scripting todo). Construction is deferred so
+	// the DOM element doesn't even exist on first boot.
+	let co2Display: HTMLDivElement | undefined; // created when Ep-2 scrubber crisis begins
 	const repairBar = createRepairProgressBar3D();
 	scene.add(repairBar.group);
 
@@ -1548,7 +2160,13 @@ async function mount(context: GameSceneContext): Promise<GameSceneLifecycle> {
 	const SECONDS_PER_REPAIR_PART = 1.0;
 	let nearestSub: SubsystemVisual | null = null;
 	let nearestCrate: SupplyCrate | null = null;
-	type InteractTarget = "subsystem" | "crate" | null;
+	let nearestNpc: NpcInstance | null = null;
+	let nearGate = false;
+	let nearScrubberEntrance = false;
+	// Scrubber entrance trigger — front-left corridor mouth (visible when carrying lime)
+	const SCRUBBER_ENTRANCE_POS = new THREE.Vector3(0, 0, ROOM_DEPTH / 2 - 3);
+	const SCRUBBER_ENTRANCE_RADIUS = 3.0;
+	type InteractTarget = "subsystem" | "crate" | "npc" | "gate" | "scrubber-entrance" | null;
 	let interactTarget: InteractTarget = null;
 	let repairingSubsystemId: string | null = null;
 	/** Total segments needed to fully repair this subsystem. */
@@ -1569,56 +2187,246 @@ async function mount(context: GameSceneContext): Promise<GameSceneLifecycle> {
 		}
 	};
 
-	const handleKeyDown = (e: KeyboardEvent) => {
-		if (e.code === "Backquote") {
-			const now = performance.now();
-			if (now - lastBackquoteTime < 400) { toggleDebug(); lastBackquoteTime = 0; }
-			else lastBackquoteTime = now;
-			return;
-		}
-		if (e.code === "KeyG" && !menu.visible) {
-			if (gate.state === "idle") startDial(gate);
-			else if (gate.state === "active") shutdownGate(gate);
-		}
-		if (e.code === "KeyE" && !e.repeat && !menu.visible) {
-			if (interactTarget === "crate" && nearestCrate && !nearestCrate.looted) {
-				// Loot the crate (instant)
-				addResource("ship-parts", nearestCrate.contents);
-				markCrateLooted(nearestCrate);
-			} else if (interactTarget === "subsystem" && nearestSub && !repairingSubsystemId) {
-				const sub = shipState.getSubsystem(nearestSub.id);
-				if (sub && sub.condition < 1.0) {
-					const cost = sub.repairCost;
-					if (hasResource("ship-parts", cost)) {
-						// Calculate how many segments needed to reach 100%
-						const repairPerSegment = SHIP_STATE_CONFIG.BASE_REPAIR_AMOUNT * SHIP_STATE_CONFIG.REPAIR_SKILL_MODIFIER;
-						const remaining = 1.0 - sub.condition;
-						const segmentsToFull = Math.ceil(remaining / repairPerSegment);
+	/** Previous-frame player position used to derive velocity for loco input. */
+	const _prevPlayerPos = new THREE.Vector3();
+	if (player) _prevPlayerPos.copy(player.object.position);
 
-						repairingSubsystemId = sub.id;
-						repairTotalSegments = segmentsToFull;
-						repairCompletedSegments = 0;
-						repairSegmentElapsed = 0;
-						player?.setRepairing(true);
-						repairBar.init(segmentsToFull, nearestSub.mesh.position);
-					}
-				}
+	// All input is polled from the shared InputManager in update() below.
+	// No ad-hoc window listeners — keyboard + gamepad go through the same
+	// action system (Action.Interact, SguAction.DialGate, etc.).
+	const input = getInput();
+
+	/** Handle the "interact" trigger — keyboard E and gamepad A both fire this. */
+	const tryInteract = (): void => {
+		if (menu.visible) return;
+		if (interactTarget === "gate" && gate.state === "active") {
+			questManager.advanceObjective(AIR_CRISIS_QUEST_ID, "gate-to-planet");
+			void context.gotoScene("desert-planet");
+		} else if (interactTarget === "crate" && nearestCrate && !nearestCrate.looted) {
+			addResource("ship-parts", nearestCrate.contents);
+			markCrateLooted(nearestCrate);
+		} else if (interactTarget === "subsystem" && nearestSub && !repairingSubsystemId) {
+			const sub = shipState.getSubsystem(nearestSub.id);
+			if (sub && sub.condition < 1.0 && hasResource("ship-parts", sub.repairCost)) {
+				const repairPerSegment = SHIP_STATE_CONFIG.BASE_REPAIR_AMOUNT * SHIP_STATE_CONFIG.REPAIR_SKILL_MODIFIER;
+				const remaining = 1.0 - sub.condition;
+				const segs = Math.ceil(remaining / repairPerSegment);
+				repairingSubsystemId = sub.id;
+				repairTotalSegments = segs;
+				repairCompletedSegments = 0;
+				repairSegmentElapsed = 0;
+				player?.setRepairing(true);
+				repairBar.init(segs, nearestSub.mesh.position);
 			}
+		} else if (interactTarget === "npc" && nearestNpc && !nearestNpc.inDialogue) {
+			emit("player:interact", { targetId: nearestNpc.definition.id, action: "talk" });
+		} else if (interactTarget === "scrubber-entrance") {
+			void context.gotoScene("scrubber-room");
 		}
 	};
-	const handleKeyUp = (e: KeyboardEvent) => {
-		if (e.code === "KeyE") {
-			cancelRepair();
-		}
-	};
-	window.addEventListener("keydown", handleKeyDown);
-	window.addEventListener("keyup", handleKeyUp);
+
+	// ─── Opening cinematic kick-off ──────────────────────────────────────
+	// Constructed here (not earlier) so we have HUD refs to hide for the
+	// cinematic duration.
+	if (isCinematicBoot) {
+		// Hide every registered HUD element for the cinematic's lifetime.
+		for (const el of cinematicHide) el.style.display = "none";
+
+		const gateControl = createGateControl(gate);
+		cinematicDrivingGate = true;
+		cinematicController = new GateRoomCinematicController(
+			scene,
+			camera as import("three").PerspectiveCamera,
+			gateControl,
+			() => {
+				// Cinematic complete — restore HUD, gameplay NPCs, input.
+				cinematicDrivingGate = false;
+				for (const el of cinematicHide) el.style.display = "";
+				if (player) {
+					player.inputEnabled = true;
+					player.setProne(true);
+				}
+				if (rushCharacter) rushCharacter.root.visible = true;
+				rushDot.visible = true;
+				cinematicController = undefined;
+				void triggerOpeningDialogue();
+			},
+			(cleanup) => gateRoomExtraDisposables.push(cleanup),
+			player?.object ?? undefined,
+		);
+
+		// If Rush loads AFTER the cinematic starts, keep him hidden.
+		const rushHidePoll = setInterval(() => {
+			if (rushCharacter && cinematicController) {
+				rushCharacter.root.visible = false;
+				clearInterval(rushHidePoll);
+			} else if (!cinematicController) {
+				clearInterval(rushHidePoll);
+			}
+		}, 100);
+	}
+
+	// ─── Test hooks ──────────────────────────────────────────────────────
+	// Signal to Playwright that this scene's 3-D setup is complete and
+	// DOM/event handlers are live.  Bus exposed so tests can inject events.
+	(window as any).__sceneReady = true;
+	(window as any).__sguBus = bus;
+	// Expose scene + cinematic for browser-based test introspection (checking
+	// crew positions, HUD state, etc). Safe to expose — production build has
+	// no way to trigger __sceneReady hooks from user input.
+	(window as any).__sguScene = scene;
+	(window as any).__sguGetCinematic = () => cinematicController;
 
 	let debugFrame = 0;
 
 	return {
 		update(delta: number) {
-			updateGate(gate, delta);
+			playtimeMs += delta * 1000;
+
+			// ─── Input (unified: keyboard + gamepad via InputManager) ───────
+			// InputManager is polled once per frame in app.ts. We only read
+			// state here — both keyboard and gamepad go through the same
+			// action bindings defined in src/systems/input.ts.
+			if (input.gamepad.isConnected && player) {
+				// Left stick → movement. Engine dead-zones and clamps already.
+				const move = input.gamepad.getMovement();
+				player.setExternalMoveInput(-move.z, move.x);
+				// Right stick → camera orbit
+				const look = input.gamepad.getLook();
+				if (look.x !== 0 || look.y !== 0) {
+					player.applyOrbitDelta(look.x * delta * 2.2, look.y * delta * 1.8);
+				}
+				// Sprint when gamepad Sprint action is held (B/Circle by default)
+				player.setSprintOverride(input.isAction(Action.Sprint));
+			} else if (player) {
+				player.setExternalMoveInput(0, 0);
+				player.setSprintOverride(false);
+			}
+
+			// Dialogue shortcuts — gamepad A/B/X/Y and keyboard 1-4 pick
+			// the 1st/2nd/3rd/4th visible option while the dialogue panel
+			// is open. Consume the edge so Action.Jump/MenuConfirm on A
+			// don't also fire during dialogue.
+			if (currentDialogueOptionIds.length > 0) {
+				const pick = input.isActionJustPressed(SguAction.Dialogue0) ? 0
+					: input.isActionJustPressed(SguAction.Dialogue1) ? 1
+					: input.isActionJustPressed(SguAction.Dialogue2) ? 2
+					: input.isActionJustPressed(SguAction.Dialogue3) ? 3
+					: -1;
+				if (pick >= 0 && pick < currentDialogueOptionIds.length) {
+					emit("player:dialogue:choice", { responseId: currentDialogueOptionIds[pick] });
+				}
+			}
+
+			// Interact (KeyE / Gamepad A) — single fire on leading edge.
+			// Skipped while a dialogue is open so A doesn't double-fire.
+			if (input.isActionJustPressed(Action.Interact) && currentDialogueOptionIds.length === 0) {
+				tryInteract();
+			}
+			if (input.isActionJustReleased(Action.Interact)) {
+				cancelRepair();
+			}
+
+			// Manual gate dial was a debug prototype shortcut — gate state is
+			// now driven entirely by the cinematic + quest scripts. KeyG /
+			// Gamepad Y no longer triggers a dial here.
+
+			// Debug overlay toggle (double-tap Backquote).
+			if (input.isActionJustPressed(SguAction.DebugToggle)) {
+				const now = performance.now();
+				if (now - lastBackquoteTime < 400) { toggleDebug(); lastBackquoteTime = 0; }
+				else lastBackquoteTime = now;
+			}
+
+			// ─── Neural locomotion (10 Hz predict, 60 fps lerp) ──────────────
+			if (player && loco.isLoaded) {
+				locoAccum += delta;
+				if (locoAccum >= PREDICTION_INTERVAL) {
+					locoAccum -= PREDICTION_INTERVAL;
+
+					// Build trajectory from current velocity/facing — bone arrays are zero
+					// (no skeletal mesh yet; root motion still emerges from trajectory input).
+					// TODO: populate bone arrays from VRM skeleton when available.
+					const vel = player.object.position.clone()
+						.sub(_prevPlayerPos)
+						.divideScalar(delta);
+					const vx = vel.x, vz = vel.z;
+					const spd = Math.sqrt(vx * vx + vz * vz);
+					// Facing from camera yaw (camera looks -Z at yaw=0)
+					const fwdX = -Math.sin(camera.rotation.y);
+					const fwdZ = -Math.cos(camera.rotation.y);
+
+					for (let i = 0; i < SEQ_LENGTH; i++) {
+						const t = (i / (SEQ_LENGTH - 1)) * SEQ_WINDOW;
+						_futurePos[i * 2]     = vx * t;
+						_futurePos[i * 2 + 1] = vz * t;
+						_futureFwd[i * 2]     = fwdX;
+						_futureFwd[i * 2 + 1] = fwdZ;
+						_futureVel[i * 2]     = vx;
+						_futureVel[i * 2 + 1] = vz;
+					}
+
+					try {
+						const encoded = encodeInput({
+							bonePositions:         _zeroVec69,
+							boneForwardAxes:       _zeroVec69,
+							boneUpAxes:            _zeroVec69,
+							boneVelocities:        _zeroVec69,
+							futureRootPositionsXZ: _futurePos,
+							futureRootForwardsXZ:  _futureFwd,
+							futureRootVelocitiesXZ: _futureVel,
+							guidancePositions:     _zeroVec69,
+						});
+						lastSeq = loco.predict(encoded);
+					} catch {
+						// prediction errors are non-fatal — skip this tick
+					}
+				}
+
+				// Lerp-apply root motion at 60 fps: sample the cached sequence at
+				// the interpolated phase and blend into player position.
+				if (lastSeq) {
+					const phase = Math.min(locoAccum / PREDICTION_INTERVAL, 1.0);
+					const pose = loco.sampleAt(lastSeq, phase * SEQ_WINDOW);
+					const [dx, , dz] = pose.rootDelta;  // skip Y-rotation (no skeleton yet)
+					// Scale down: the raw delta is for 1/60 s of a biped; treat it as
+					// a nudge weight rather than full displacement.
+					const LOCO_SCALE = 0.06;
+					locoOffset.set(dx * LOCO_SCALE, 0, dz * LOCO_SCALE);
+					// Smooth lerp toward target offset so it doesn't stutter
+					const LERP_K = 1 - Math.exp(-delta * 12);
+					player.object.position.addScaledVector(locoOffset, LERP_K);
+				}
+
+				_prevPlayerPos.copy(player.object.position);
+			}
+
+			npcManager.update(delta);
+			// ─── VRM/GLB character physics + animation ──────────────────────
+			if (rushCharacter) rushCharacter.update(delta);
+						// During cinematic, skip auto-dialing — cinematic drives chevron timing.
+						// Kawoosh/active/shutdown still auto-advance via the real state machine.
+						if (!(cinematicDrivingGate && gate.state === "dialing")) {
+							updateGate(gate, delta);
+						}
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			if (cinematicController) cinematicController.update(delta);
+			compassHud.update(camera as any, delta);
+
+			// ─── Photo mode camera override ──────────────────────────────
+			// Only re-apply URL-param camera if params are explicitly present.
+			// Without this guard, __sgu.setCamera() in automated capture gets
+			// clobbered each frame by the URL-param defaults.
+			if (photoMode && photoParams.has("camx")) {
+				const cx = Number(photoParams.get("camx") ?? "0");
+				const cy = Number(photoParams.get("camy") ?? "2");
+				const cz = Number(photoParams.get("camz") ?? "15");
+				const lx = Number(photoParams.get("lookx") ?? "0");
+				const ly = Number(photoParams.get("looky") ?? "4");
+				const lz = Number(photoParams.get("lookz") ?? "0");
+				camera.position.set(cx, cy, cz);
+				camera.lookAt(lx, ly, lz);
+			}
 
 			// ─── Ship State driven lighting ──────────────────────────────
 			// Recalculate power distribution so section power reflects repairs
@@ -1648,7 +2456,8 @@ async function mount(context: GameSceneContext): Promise<GameSceneLifecycle> {
 			}
 
 			// ─── Camera pull-in + Player section tracking ───────────────
-			if (player) {
+			// Skip pull-in in photo mode so the preset camera stays put.
+			if (player && !photoMode) {
 				updateCameraPullIn(camera, player.object.position, delta);
 				const pz = player.object.position.z;
 				let newSection = "gate-room";
@@ -1660,9 +2469,10 @@ async function mount(context: GameSceneContext): Promise<GameSceneLifecycle> {
 					emit("player:entered:section", { sectionId: newSection });
 				}
 
-				// Find nearest interactable (crates or subsystems)
+				// Find nearest interactable (crates, subsystems, or NPCs)
 				nearestSub = null;
 				nearestCrate = null;
+				nearestNpc = null;
 				interactTarget = null;
 				let nearestDist = 2.5;
 				const pp = player.object.position;
@@ -1689,6 +2499,50 @@ async function mount(context: GameSceneContext): Promise<GameSceneLifecycle> {
 					}
 				}
 
+				// Check NPCs
+				for (const npc of npcManager.getAllNpcs()) {
+					const { position, behavior } = npc.definition;
+					const npcVec = new THREE.Vector3(position.x, position.y, position.z);
+					const dist = npcVec.distanceTo(pp);
+					if (dist < behavior.interactionRadius! && dist < nearestDist) {
+						nearestNpc = npc;
+						nearestSub = null;
+						nearestCrate = null;
+						nearestDist = dist;
+						interactTarget = "npc";
+					}
+				}
+
+				// Check gate entrance — only when wormhole is active
+				nearGate = false;
+				const gateXZDist = Math.sqrt(
+					(pp.x - GATE_CENTER.x) ** 2 + (pp.z - GATE_CENTER.z) ** 2
+				);
+				if (gate.state === "active" && gateXZDist < 2.0) {
+					nearGate = true;
+					if (gateXZDist < nearestDist) {
+						nearestSub = null;
+						nearestCrate = null;
+						nearestNpc = null;
+						nearestDist = gateXZDist;
+						interactTarget = "gate";
+					}
+				}
+
+				// Scrubber entrance — only visible when player is carrying lime
+				nearScrubberEntrance = false;
+				if (isLimeCollected()) {
+					const entranceDist = pp.distanceTo(SCRUBBER_ENTRANCE_POS);
+					if (entranceDist < SCRUBBER_ENTRANCE_RADIUS && entranceDist < nearestDist) {
+						nearScrubberEntrance = true;
+						nearestSub = null;
+						nearestCrate = null;
+						nearestNpc = null;
+						nearestDist = entranceDist;
+						interactTarget = "scrubber-entrance";
+					}
+				}
+
 				// Cancel repair if player moved away from target
 				if (repairingSubsystemId && !nearestSub) {
 					cancelRepair();
@@ -1706,10 +2560,10 @@ async function mount(context: GameSceneContext): Promise<GameSceneLifecycle> {
 						const sub = shipState.getSubsystem(repairingSubsystemId);
 						if (sub) {
 							consumeResource("ship-parts", sub.repairCost);
-						shipState.repairSubsystem(sub.id);
-						shipState.distributePower();
+							shipState.repairSubsystem(sub.id);
+							shipState.distributePower();
 
-						// Check if fully repaired or out of parts
+							// Check if fully repaired or out of parts
 							if (sub.condition >= 1.0 || repairCompletedSegments >= repairTotalSegments || !hasResource("ship-parts", sub.repairCost)) {
 								cancelRepair();
 							}
@@ -1746,6 +2600,15 @@ async function mount(context: GameSceneContext): Promise<GameSceneLifecycle> {
 						interactPrompt.style.display = "block";
 						interactPrompt.textContent = `${sub.type} \u2014 Optimal`;
 					}
+				} else if (interactTarget === "npc" && nearestNpc) {
+					interactPrompt.style.display = "block";
+					interactPrompt.textContent = `[E] Talk to ${nearestNpc.definition.name}`;
+				} else if (interactTarget === "gate") {
+					interactPrompt.style.display = "block";
+					interactPrompt.textContent = "[E] Step through the Stargate";
+				} else if (interactTarget === "scrubber-entrance") {
+					interactPrompt.style.display = "block";
+					interactPrompt.textContent = "[E] Take the lime to the CO\u2082 scrubber room \u2014 Deck 3, Section 7";
 				} else {
 					interactPrompt.style.display = "none";
 				}
@@ -1753,8 +2616,8 @@ async function mount(context: GameSceneContext): Promise<GameSceneLifecycle> {
 
 			// ─── Debug overlays ──────────────────────────────────────────
 			if (debugMode) {
-			debug.update(0);
-			debugFrame++;
+				debug.update();
+				debugFrame++;
 				if (debugFrame % 15 === 0) {
 					const lines: string[] = ["=== SHIP STATE ==="];
 					for (const sys of shipState.getAllSystems()) {
@@ -1782,34 +2645,76 @@ async function mount(context: GameSceneContext): Promise<GameSceneLifecycle> {
 			}
 		},
 		dispose() {
-			window.removeEventListener("keydown", handleKeyDown);
-			window.removeEventListener("keyup", handleKeyUp);
+			limeBanner?.remove();
 			cancelRepair();
 			repairBar.dispose();
 			cleanupFullscreen();
 			hud.remove();
+			compassHud.unmount(dialoguePanel);
+			dialoguePanel.dispose();
+			compassHud.dispose();
 			debug.element.remove();
 			shipDebugEl.remove();
 			interactPrompt.remove();
+			co2Display?.remove();
 			menu.dispose();
+			// Rush and player character cleanup
+			rushCharacter?.dispose();
+						scene.remove(rushDot);
+			rushDotGeo.dispose();
+			rushDotMat.dispose();
+
+			for (const cleanup of gateRoomExtraDisposables) cleanup();
+			gateRoomExtraDisposables.length = 0;
+			dialogueManager.dispose();
+			npcManager.dispose();
+			questManager.dispose();
+			saveManager.dispose();
+			if (cinematicController) {
+				cinematicController.dispose();
+				cinematicController = undefined;
+				// Restore player input if scene is torn down mid-cinematic
+				if (player) player.inputEnabled = true;
+			}
+		setSceneManagers(null);
 			shipState.dispose();
 			bus.cleanup();
 			wallMeshes.length = 0;
+			// BUG-003: dispose all GPU geometry + material objects created during mount()
+			// to prevent VRAM accumulation across gate-room → desert-planet round trips.
+			// The traversal covers everything added via buildRoom, buildStargate,
+			// buildLighting, buildCorridor, buildStorageRoom, and inline mount() code.
+			scene.traverse((obj) => {
+				if (obj instanceof THREE.Mesh) {
+					obj.geometry.dispose();
+					if (Array.isArray(obj.material)) {
+						obj.material.forEach((m) => m.dispose());
+					} else {
+						(obj.material as THREE.Material).dispose();
+					}
+				}
+			});
+			// Also dispose the module-level shared materials (created once at import time,
+			// never otherwise freed — ARCH-003 debt). They are cheap to recreate on remount.
+			extWallMat.dispose();
+			extCeilingMat.dispose();
+			// Restore shared camera projection (modified in mount)
+			camera.near = origNear;
+			camera.far = origFar;
+			camera.updateProjectionMatrix();
 		}
 	};
 }
 
 // ─── Scene definition ────────────────────────────────────────────────────────
 
-export const destinyGateRoomScene = defineGameScene({
-	id: "destiny-gate-room",
+export const gateRoomScene = defineGameScene({
+	id: "gate-room",
 	source: createColocatedRuntimeSceneSource({
 		assetUrlLoaders,
 		manifestLoader: () => import("./scene.runtime.json?raw").then((module) => module.default)
 	}),
-	title: "Destiny Gate Room",
-	player: {
-		vrmUrl: "/characters/eli.vrm",
-	},
+	title: "Gate Room",
+	player: { vrmUrl: "https://pub-c642ba55d4f641de916d72786545c520.r2.dev/characters/eli.vrm" },
 	mount
 });

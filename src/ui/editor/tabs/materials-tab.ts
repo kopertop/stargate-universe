@@ -2,8 +2,8 @@
  * Materials Tab — color pickers and PBR sliders for each VRM material.
  */
 import type { VRM } from "@pixiv/three-vrm";
-import { discoverMaterials, type DiscoveredMaterial } from "../../../../src/systems/vrm/vrm-customizer";
-import type { MaterialOverride } from "../../../../src/systems/vrm/vrm-customization-types";
+import { discoverMaterials, type DiscoveredMaterial } from "../../../systems/vrm/vrm-customizer";
+import type { MaterialOverride } from "../../../systems/vrm/vrm-customization-types";
 
 export type MaterialsTabState = {
 	readonly overrides: Map<string, MaterialOverride>;
@@ -12,6 +12,7 @@ export type MaterialsTabState = {
 export type MaterialsTab = {
 	readonly element: HTMLElement;
 	readonly state: MaterialsTabState;
+	hydrateOverrides(saved: readonly MaterialOverride[]): void;
 	dispose(): void;
 };
 
@@ -32,7 +33,12 @@ export function createMaterialsTab(
 		empty.className = "vrm-editor-empty";
 		empty.textContent = "No editable materials found";
 		container.appendChild(empty);
-		return { element: container, state: { overrides }, dispose() {} };
+		return {
+			element: container,
+			state: { overrides },
+			hydrateOverrides() {},
+			dispose() { container.remove(); },
+		};
 	}
 
 	// Group materials by mesh name
@@ -94,6 +100,39 @@ export function createMaterialsTab(
 	return {
 		element: container,
 		state: { overrides },
+		hydrateOverrides(saved: readonly MaterialOverride[]) {
+			for (const override of saved) {
+				overrides.set(override.target, override);
+				// Sync color input
+				if (override.color) {
+					const colorInput = container.querySelector<HTMLInputElement>(
+						`[id="${CSS.escape(override.target)}"] input[type="color"]`,
+					);
+					if (colorInput) colorInput.value = override.color;
+				}
+				// Sync roughness and metalness sliders by scanning row labels
+				const allRows = container.querySelectorAll<HTMLElement>(".vrm-editor-section");
+				for (const sec of allRows) {
+					const rows = sec.querySelectorAll<HTMLElement>(".vrm-editor-row");
+					for (const row of rows) {
+						const lbl = row.querySelector(".vrm-editor-label");
+						if (!lbl) continue;
+						const slider = row.querySelector<HTMLInputElement>("input[type=range]");
+						if (!slider) continue;
+						if (override.roughness !== undefined && lbl.textContent === "Roughness") {
+							slider.value = String(override.roughness);
+							const valEl = row.querySelector(".vrm-editor-value");
+							if (valEl) valEl.textContent = override.roughness.toFixed(2);
+						}
+						if (override.metalness !== undefined && lbl.textContent === "Metalness") {
+							slider.value = String(override.metalness);
+							const valEl = row.querySelector(".vrm-editor-value");
+							if (valEl) valEl.textContent = override.metalness.toFixed(2);
+						}
+					}
+				}
+			}
+		},
 		dispose() {
 			container.remove();
 		},
@@ -109,7 +148,11 @@ function createRow(label: string, createInput: () => HTMLElement): HTMLElement {
 	labelEl.textContent = label;
 	row.appendChild(labelEl);
 
-	row.appendChild(createInput());
+	const inputWrap = document.createElement("span");
+	inputWrap.id = label;
+	inputWrap.appendChild(createInput());
+	row.appendChild(inputWrap);
+
 	return row;
 }
 

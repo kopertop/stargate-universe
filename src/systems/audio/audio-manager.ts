@@ -33,20 +33,62 @@ export class AudioManager {
 	private readonly loader = new AudioLoader();
 	private readonly bufferCache = new Map<string, globalThis.AudioBuffer>();
 	private readonly activeSounds = new Map<string, Audio | PositionalAudio>();
+	private listenerParent: Camera | undefined;
 
 	private constructor() {}
 
 	static getInstance(): AudioManager {
 		if (!AudioManager.instance) {
 			AudioManager.instance = new AudioManager();
+			// Expose for Playwright/debug inspection
+			(window as unknown as { __sguAudio?: AudioManager }).__sguAudio = AudioManager.instance;
 		}
 		return AudioManager.instance;
 	}
 
+	/** The AudioContext state — exposed for diagnostics. */
+	getContextState(): AudioContextState {
+		return this.listener.context.state;
+	}
+
+	/**
+	 * Resume the underlying AudioContext if the browser suspended it
+	 * (autoplay policy or tab backgrounded). Must be called from a
+	 * user-gesture event handler in the autoplay-blocked case.
+	 */
+	async resumeContext(): Promise<void> {
+		if (this.listener.context.state === "suspended") {
+			await this.listener.context.resume().catch(() => { /* ignore */ });
+		}
+	}
+
+	/**
+	 * Suspend the AudioContext so all sounds go silent without losing
+	 * their buffers. Use when the tab is backgrounded — looping tracks
+	 * resume at the same position on resumeContext().
+	 */
+	async suspendContext(): Promise<void> {
+		if (this.listener.context.state === "running") {
+			await this.listener.context.suspend().catch(() => { /* ignore */ });
+		}
+	}
+
 	/** Attach the listener to the camera. Call once during scene setup. */
 	attachListener(camera: Camera): void {
+		if (this.listenerParent && this.listenerParent !== camera) {
+			this.listenerParent.remove(this.listener);
+		}
 		if (!camera.children.includes(this.listener)) {
 			camera.add(this.listener);
+		}
+		this.listenerParent = camera;
+	}
+
+	/** Detach the listener from its current camera. */
+	detachListener(): void {
+		if (this.listenerParent) {
+			this.listenerParent.remove(this.listener);
+			this.listenerParent = undefined;
 		}
 	}
 
@@ -61,8 +103,15 @@ export class AudioManager {
 	 * @param id Sound ID from the catalog
 	 * @param parent Optional Object3D for positional audio. If the catalog
 	 *   entry is positional and a parent is provided, uses PositionalAudio.
+	 * @param options Per-call overrides for volume/loop. Useful when the same
+	 *   catalog entry is used as both a one-shot cinematic cue and a looping
+	 *   menu bed.
 	 */
-	async play(id: SoundId, parent?: Object3D): Promise<void> {
+	async play(
+		id: SoundId,
+		parent?: Object3D,
+		options?: { volume?: number; loop?: boolean },
+	): Promise<void> {
 		const entry = SOUND_CATALOG[id];
 		const key = parent ? `${id}:${parent.uuid}` : id;
 
@@ -75,15 +124,18 @@ export class AudioManager {
 			? this.createPositionalSound(parent)
 			: this.createGlobalSound();
 
+		const loop = options?.loop ?? entry.loop;
+		const volume = options?.volume ?? entry.volume;
+
 		sound.setBuffer(buffer);
-		sound.setVolume(entry.volume);
-		sound.setLoop(entry.loop);
+		sound.setVolume(volume);
+		sound.setLoop(loop);
 		sound.play();
 
 		this.activeSounds.set(key, sound);
 
 		// Auto-cleanup non-looping sounds when finished
-		if (!entry.loop) {
+		if (!loop) {
 			sound.onEnded = () => {
 				this.activeSounds.delete(key);
 				if (sound instanceof PositionalAudio && parent) {
@@ -125,6 +177,7 @@ export class AudioManager {
 	/** Dispose all resources. */
 	dispose(): void {
 		this.stopAll();
+		this.detachListener();
 		this.bufferCache.clear();
 	}
 

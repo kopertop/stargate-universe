@@ -89,12 +89,12 @@ export function openVrmEditor(characterId: string, vrm: VRM): void {
 		activeTabId: "materials",
 	};
 
-	// Load existing customization
+	// Load existing customization and hydrate all three tabs
 	loadCustomization(characterId).then((saved) => {
 		if (saved && activeEditor) {
-			// Pending Implementation: UI state population from saved customization
-			// Integration requires mapping VrmCustomization keys to specific tab internals.
-			// For now, the tabs start from current VRM state
+			activeEditor.materialsTab.hydrateOverrides(saved.materials);
+			activeEditor.visibilityTab.hydrateOverrides(saved.meshVisibility);
+			activeEditor.gearTab.hydrateOverrides(saved.gear);
 		}
 	}).catch(() => {
 		// No saved customization — start fresh
@@ -295,7 +295,7 @@ async function handleSave(): Promise<void> {
 		await saveCustomization(customization);
 		// Customization saved successfully.
 	} catch (err) {
-		console.error("[VrmEditor] Failed to save customization", err);
+		console.error("[VrmEditor] Failed to save customization", err instanceof Error ? err.message : String(err));
 	}
 }
 

@@ -2,8 +2,8 @@
  * Visibility Tab — checkbox toggles for each mesh in the VRM.
  */
 import type { VRM } from "@pixiv/three-vrm";
-import { discoverMeshes } from "../../../../src/systems/vrm/vrm-customizer";
-import type { MeshVisibilityOverride } from "../../../../src/systems/vrm/vrm-customization-types";
+import { discoverMeshes } from "../../../systems/vrm/vrm-customizer";
+import type { MeshVisibilityOverride } from "../../../systems/vrm/vrm-customization-types";
 
 export type VisibilityTabState = {
 	readonly overrides: Map<string, MeshVisibilityOverride>;
@@ -12,6 +12,7 @@ export type VisibilityTabState = {
 export type VisibilityTab = {
 	readonly element: HTMLElement;
 	readonly state: VisibilityTabState;
+	hydrateOverrides(saved: readonly MeshVisibilityOverride[]): void;
 	dispose(): void;
 };
 
@@ -31,7 +32,12 @@ export function createVisibilityTab(
 		empty.className = "vrm-editor-empty";
 		empty.textContent = "No named meshes found";
 		container.appendChild(empty);
-		return { element: container, state: { overrides }, dispose() {} };
+		return {
+			element: container,
+			state: { overrides },
+			hydrateOverrides() {},
+			dispose() { container.remove(); },
+		};
 	}
 
 	const section = document.createElement("div");
@@ -80,6 +86,15 @@ export function createVisibilityTab(
 	return {
 		element: container,
 		state: { overrides },
+		hydrateOverrides(saved: readonly MeshVisibilityOverride[]) {
+			for (const override of saved) {
+				overrides.set(override.meshName, override);
+				const checkbox = container.querySelector<HTMLInputElement>(
+					`#mesh-vis-${CSS.escape(override.meshName)}`,
+				);
+				if (checkbox) checkbox.checked = override.visible;
+			}
+		},
 		dispose() {
 			container.remove();
 		},

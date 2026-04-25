@@ -14,3 +14,21 @@ tests/screenshots/
 tests/results/
 
 package-lock.json
+
+# Wrangler state
+.wrangler/
+
+# Claude State
+.claude/worktrees/
+
+# Tests
+gameplay-capture/
+test-results/
+test-reports/
+
+# Visual similarity tool output
+scripts/screenshots/
+scripts/reports/
+
+# Python
+__pycache__

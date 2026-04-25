@@ -19,7 +19,6 @@ jobs:
         with:
           repository: kopertop/vibe-game-engine
           path: vibe-game-engine
-          token: ${{ secrets.GH_PAT_GGEZ }}
 
       - uses: oven-sh/setup-bun@v2
         with:

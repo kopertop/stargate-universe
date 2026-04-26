@@ -1,0 +1,20 @@
+# Static assets — 1 year cache (fingerprinted)
+/assets/*
+/icons/*
+/apple-touch-icon.png
+/og-image.png
+  Cache-Control: public, max-age=31536000, immutable
+
+# Cacheable discovery files — 1 hour cache
+/sitemap.xml
+/robots.txt
+  Cache-Control: public, max-age=3600
+
+# PWA files — 1 week
+/manifest.webmanifest
+/sw.js
+  Cache-Control: public, max-age=604800
+
+# HTML — never cache
+/*
+  Cache-Control: no-cache, must-revalidate

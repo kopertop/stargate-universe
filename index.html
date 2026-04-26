@@ -3,19 +3,66 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Stargate Universe</title>
+    <title>Stargate Universe — Survive Aboard the Ancient Vessel Destiny</title>
 
     <!-- PWA — installable, fullscreen, landscape. Manifest is generated at build time from
          @kopertop/vibe-game-engine's typed helper (scripts/gen-manifest.ts). -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#4488ff" />
-    <meta name="description" content="Survive aboard the Ancient vessel Destiny — a browser-native sci-fi RPG." />
+    <meta name="description" content="Survive aboard the Ancient vessel Destiny — a browser-native sci-fi RPG. Explore uncharted galaxies, manage resources, and make story-defining choices." />
 
     <!-- iOS home-screen install (Capacitor wrapper also reads these). -->
-    <link rel="apple-touch-icon" href="/icons/icon-512.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="SGU" />
+
+    <!-- SEO -->
+    <meta name="robots" content="index, follow" />
+    <meta name="keywords" content="Stargate Universe, browser game, sci-fi RPG, Destiny, exploration game, Three.js, WebGPU" />
+    <meta name="author" content="CLMTek LLC" />
+    <link rel="canonical" href="https://stargate-universe.coredumped.org/" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://stargate-universe.coredumped.org/" />
+    <meta property="og:title" content="Stargate Universe — Survive Aboard the Ancient Vessel Destiny" />
+    <meta property="og:description" content="Survive aboard the Ancient vessel Destiny — a browser-native sci-fi RPG. Explore uncharted galaxies, manage resources, and make story-defining choices." />
+    <meta property="og:image" content="https://stargate-universe.coredumped.org/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Stargate Universe — a browser-native sci-fi RPG" />
+    <meta property="og:site_name" content="Stargate Universe" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Stargate Universe — Survive Aboard the Ancient Vessel Destiny" />
+    <meta name="twitter:description" content="Survive aboard the Ancient vessel Destiny — a browser-native sci-fi RPG. Explore uncharted galaxies, manage resources, and make story-defining choices." />
+    <meta name="twitter:image" content="https://stargate-universe.coredumped.org/og-image.png" />
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Stargate Universe",
+      "url": "https://stargate-universe.coredumped.org/",
+      "description": "Survive aboard the Ancient vessel Destiny — a browser-native sci-fi RPG. Explore uncharted galaxies, manage resources, and make story-defining choices.",
+      "applicationCategory": "Game",
+      "operatingSystem": "Web",
+      "browserRequirements": "Requires JavaScript",
+      "author": {
+        "@type": "Organization",
+        "name": "CLMTek LLC",
+        "url": "https://shellybot.app"
+      },
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      }
+    }
+    </script>
 
     <!-- Favicon (reuse the 192 SVG until real rasterized assets land). -->
     <link rel="icon" type="image/svg+xml" href="/icons/icon-192.svg" />

@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+
+# Block duplicate URLs caused by trailing slashes or query params
+Disallow: /*?pwa=1
+Disallow: /*?
+
+# Sitemap
+Sitemap: https://stargate-universe.coredumped.org/sitemap.xml

@@ -4,6 +4,8 @@ import { initialSceneId, scenes } from "./scenes";
 import { on, emit } from "./systems/event-bus";
 import { AudioManager } from "./systems/audio";
 import { installFullscreenBehavior } from "./systems/fullscreen";
+import { getInput } from "./systems/input";
+import { installControllerCalibration } from "./systems/controller-calibration";
 import { createInstallPrompt, registerServiceWorker } from "@kopertop/vibe-game-engine";
 
 // Chrome autoplay policy: audio contexts created before a user gesture
@@ -50,6 +52,11 @@ window.addEventListener("focus", handleVisibility);
 // browser doesn't steal it for "exit fullscreen". Escape is routed to
 // the in-game menu via InputManager's Action.Pause instead.
 installFullscreenBehavior();
+
+// Controller calibration — shows a modal when an unknown gamepad connects
+// so the player can resolve A/B/X/Y mappings for Nintendo-style pads.
+// Safe to call before any scene mounts; it just registers the callback.
+installControllerCalibration(getInput());
 
 // ─── PWA — service worker + installability ────────────────────────────────────
 // Skipped entirely on localhost dev (no need to cache the dev server).

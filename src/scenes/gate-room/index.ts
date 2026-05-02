@@ -40,6 +40,7 @@ import {
 import type { DialoguePanelEventBus } from "@kopertop/vibe-game-engine";
 import { loadVRMCharacter, type CharacterLoadResult } from "../../characters/character-loader";
 import { GateRoomCinematicController } from "./cinematic-controller";
+import { formatInteractPrompt } from "../../ui/interact-prompt-text";
 
 const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 	import: "default",
@@ -55,16 +56,24 @@ const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 const ROOM_WIDTH = 100;
 const ROOM_DEPTH = 160;
 const ROOM_HEIGHT = 32;
-// Gate scaled up to fill the frame like the reference — the SGU gate is
-// a massive structure. GATE_RADIUS=6 gives a 12-meter diameter ring.
-// Edge comparison showed the reference gate fills ~60% of the frame width
-// while R=4 only filled ~5% from the gameplay camera at z=32.
-const GATE_RADIUS = 6.0;
+// Gate scaled down 50% from the original R=6 silhouette — the SGU gate is
+// still a large structure but now a 6-meter diameter ring, proportioned for
+// the room and readable as a doorway rather than a cathedral arch.
+const GATE_RADIUS = 3.0;
 // Flat ring cross-section — the SGU gate is a wide, shallow ring, not a donut.
 // WIDTH is the radial thickness (inner→outer edge); DEPTH is the thin Z extent.
-const GATE_RING_WIDTH = 1.6;
-const GATE_RING_DEPTH = 0.35;
-const GATE_CENTER = new THREE.Vector3(0, GATE_RADIUS + 0.2, 0); // bottom of ring just above floor
+const GATE_RING_WIDTH = 0.8;
+const GATE_RING_DEPTH = 0.175;
+// Sink the gate so the PORTAL bottom (event horizon) sits 0.2m below the
+// floor — characters walk through without any ledge or step. The outer
+// ring naturally dips further below floor (hidden under the platform),
+// which is exactly the canonical SGU look: a ring set into a raised dais.
+// Inner portal radius = GATE_RADIUS - GATE_RING_WIDTH/2 - 0.05
+//                     = 3.0 - 0.4 - 0.05 = 2.55
+// Portal bottom y = GATE_CENTER.y - 2.55 = -0.2  →  GATE_CENTER.y = 2.35
+const GATE_PORTAL_SINK = 0.2;
+const GATE_PORTAL_INNER_RADIUS = GATE_RADIUS - GATE_RING_WIDTH / 2 - 0.05;
+const GATE_CENTER = new THREE.Vector3(0, GATE_PORTAL_INNER_RADIUS - GATE_PORTAL_SINK, 0);
 const CHEVRON_COUNT = 9;
 
 // SGU color palette — blue-grey Ancient metal, matching the reference
@@ -461,11 +470,11 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 	// "too busy". The clean silhouette matches the show's look better.)
 
 	// Chevrons — 9 raised V-shaped bumps sitting ON the outer ring face.
-	// Sized for GATE_RADIUS=6: ~13% of radius reads as a chunky industrial
-	// bump without overwhelming the ring. Apex points outward (radially out).
-	const CHEVRON_HEIGHT = 0.85;  // radial span
-	const CHEVRON_HALF_W = 0.45;  // tangential half-width
-	const CHEVRON_DEPTH  = 0.28;  // protrusion forward from ring face
+	// Sized at ~14% of radius — a chunky industrial bump that reads as a
+	// "locked glyph" without overwhelming the ring. Apex points outward.
+	const CHEVRON_HEIGHT = 0.425;  // radial span
+	const CHEVRON_HALF_W = 0.225;  // tangential half-width
+	const CHEVRON_DEPTH  = 0.14;   // protrusion forward from ring face
 	const chevronShape = new THREE.Shape();
 	chevronShape.moveTo( 0,               CHEVRON_HEIGHT / 2);
 	chevronShape.lineTo(-CHEVRON_HALF_W, -CHEVRON_HEIGHT / 2);
@@ -474,8 +483,8 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 	const chevronGeo = new THREE.ExtrudeGeometry(chevronShape, {
 		depth: CHEVRON_DEPTH,
 		bevelEnabled: true,
-		bevelThickness: 0.04,
-		bevelSize: 0.03,
+		bevelThickness: 0.02,
+		bevelSize: 0.015,
 		bevelSegments: 2,
 	});
 	chevronGeo.translate(0, 0, -CHEVRON_DEPTH / 2);
@@ -2105,19 +2114,28 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		emit: (event, data?)  => emit(event as any, data as any),
 	};
-	// Pick hint labels that match the player's actual input device: controller
-	// buttons (A/B/X/Y) when a gamepad is connected, number keys (1/2/3/4)
-	// otherwise. Detected once at mount — a later plug-in is uncommon and the
-	// dialogue still accepts both inputs regardless of the hint shown.
-	const hasGamepadConnected = typeof navigator.getGamepads === "function"
-		&& Array.from(navigator.getGamepads() ?? []).some((gp) => gp && gp.connected);
+	// Arrow-key selection dialogue — the highlighted option follows
+	// ↑/↓ (keyboard) or the gamepad D-pad / left stick. Confirm with
+	// A (gamepad) or Enter (keyboard). The panel shows the confirm hint
+	// next to the highlighted row so the player can see which button to
+	// press. Detection is refreshed once per frame in the update loop.
+	const confirmHintInitial = getInput().gamepad.isConnected ? "A" : "Enter";
 	const dialoguePanel = createDialoguePanel(dialogueBus, {
 		style: 'sci-fi',
-		// Gamepad: A/B/X/Y; keyboard: digit keys 1-4. Both input paths are
-		// always live — the hint just indicates the primary binding for the
-		// current device. Extra options render without a chip.
-		optionHints: hasGamepadConnected ? ['A', 'B', 'X', 'Y'] : ['1', '2', '3', '4'],
+		navigation: 'select',
+		confirmHint: confirmHintInitial,
 	});
+	// Keyboard nav listener — raw keydown so it feels instant. Only
+	// intercepts when a dialogue is open so arrows stay free for other
+	// UI elsewhere. Cleanup registered so scene exit detaches it.
+	const dialogueKeyHandler = (ev: KeyboardEvent): void => {
+		if (!dialoguePanel.isOpen()) return;
+		if (ev.code === "ArrowUp") { ev.preventDefault(); dialoguePanel.selectPrev(); }
+		else if (ev.code === "ArrowDown") { ev.preventDefault(); dialoguePanel.selectNext(); }
+		else if (ev.code === "Enter") { ev.preventDefault(); dialoguePanel.confirmSelection(); }
+	};
+	window.addEventListener("keydown", dialogueKeyHandler);
+	gateRoomExtraDisposables.push(() => window.removeEventListener("keydown", dialogueKeyHandler));
 	compassHud.mount(dialoguePanel);
 	const debug = createDebugOverlay();
 	debug.element.style.display = "none";
@@ -2253,6 +2271,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 				void triggerOpeningDialogue();
 			},
 			(cleanup) => gateRoomExtraDisposables.push(cleanup),
+			context.physicsWorld,
 			player?.object ?? undefined,
 		);
 
@@ -2304,18 +2323,18 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 				player.setSprintOverride(false);
 			}
 
-			// Dialogue shortcuts — gamepad A/B/X/Y and keyboard 1-4 pick
-			// the 1st/2nd/3rd/4th visible option while the dialogue panel
-			// is open. Consume the edge so Action.Jump/MenuConfirm on A
-			// don't also fire during dialogue.
-			if (currentDialogueOptionIds.length > 0) {
-				const pick = input.isActionJustPressed(SguAction.Dialogue0) ? 0
-					: input.isActionJustPressed(SguAction.Dialogue1) ? 1
-					: input.isActionJustPressed(SguAction.Dialogue2) ? 2
-					: input.isActionJustPressed(SguAction.Dialogue3) ? 3
-					: -1;
-				if (pick >= 0 && pick < currentDialogueOptionIds.length) {
-					emit("player:dialogue:choice", { responseId: currentDialogueOptionIds[pick] });
+			// Dialogue navigation — gamepad D-pad moves the highlight.
+			// Keyboard ↑/↓/Enter are handled by the `dialogueKeyHandler`
+			// window listener installed below (raw keydown, not polled)
+			// so they don't need per-frame edge detection here.
+			// MenuConfirm (Enter + gamepad A) fires the highlighted option.
+			if (dialoguePanel.isOpen()) {
+				if (input.isActionJustPressed(Action.DPadUp)) {
+					dialoguePanel.selectPrev();
+				} else if (input.isActionJustPressed(Action.DPadDown)) {
+					dialoguePanel.selectNext();
+				} else if (input.isActionJustPressed(Action.MenuConfirm)) {
+					dialoguePanel.confirmSelection();
 				}
 			}
 
@@ -2588,13 +2607,16 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 					interactPrompt.style.display = "none";
 				} else if (interactTarget === "crate" && nearestCrate) {
 					interactPrompt.style.display = "block";
-					interactPrompt.textContent = `[E] Open crate (+${nearestCrate.contents} Ship Parts)`;
+					interactPrompt.textContent = formatInteractPrompt(`Open crate (+${nearestCrate.contents} Ship Parts)`);
 				} else if (interactTarget === "subsystem" && nearestSub) {
 					const sub = shipState.getSubsystem(nearestSub.id);
 					if (sub && sub.condition < 1.0) {
 						interactPrompt.style.display = "block";
 						if (parts >= sub.repairCost) {
-							interactPrompt.textContent = `[Hold E] Repair ${sub.type} (${(sub.condition * 100).toFixed(0)}%) \u2014 ${sub.repairCost} parts`;
+							interactPrompt.textContent = formatInteractPrompt(
+								`Repair ${sub.type} (${(sub.condition * 100).toFixed(0)}%) \u2014 ${sub.repairCost} parts`,
+								"hold",
+							);
 						} else {
 							interactPrompt.textContent = `Repair ${sub.type} \u2014 Need ${sub.repairCost} Ship Parts (have ${parts})`;
 						}
@@ -2604,13 +2626,13 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 					}
 				} else if (interactTarget === "npc" && nearestNpc) {
 					interactPrompt.style.display = "block";
-					interactPrompt.textContent = `[E] Talk to ${nearestNpc.definition.name}`;
+					interactPrompt.textContent = formatInteractPrompt(`Talk to ${nearestNpc.definition.name}`);
 				} else if (interactTarget === "gate") {
 					interactPrompt.style.display = "block";
-					interactPrompt.textContent = "[E] Step through the Stargate";
+					interactPrompt.textContent = formatInteractPrompt("Step through the Stargate");
 				} else if (interactTarget === "scrubber-entrance") {
 					interactPrompt.style.display = "block";
-					interactPrompt.textContent = "[E] Take the lime to the CO\u2082 scrubber room \u2014 Deck 3, Section 7";
+					interactPrompt.textContent = formatInteractPrompt("Take the lime to the CO\u2082 scrubber room \u2014 Deck 3, Section 7");
 				} else {
 					interactPrompt.style.display = "none";
 				}

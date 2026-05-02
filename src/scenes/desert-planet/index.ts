@@ -26,6 +26,7 @@ import { createQuestManager } from "../../systems/quest-manager";
 import { registerAirCrisis, QUEST_ID as AIR_CRISIS_QUEST_ID } from "../../quests/air-crisis";
 import { createHud, createCompass, createDialoguePanel } from "@kopertop/vibe-game-engine";
 import { setLimeCollected } from "../../systems/scene-transition-state";
+import { formatInteractPrompt } from "../../ui/interact-prompt-text";
 
 const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 	import: "default",
@@ -517,10 +518,10 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			// Update prompt
 			if (nearestDeposit) {
 				interactPrompt.style.display = "block";
-				interactPrompt.textContent = "[E] Collect calcium deposit";
+				interactPrompt.textContent = formatInteractPrompt("Collect calcium deposit");
 			} else if (nearGate && collectedCount >= totalDeposits) {
 				interactPrompt.style.display = "block";
-				interactPrompt.textContent = "[E] Return through the Stargate to Destiny";
+				interactPrompt.textContent = formatInteractPrompt("Return through the Stargate to Destiny");
 			} else if (nearGate) {
 				interactPrompt.style.display = "block";
 				interactPrompt.textContent = `Collect all ${totalDeposits} deposits before returning`;

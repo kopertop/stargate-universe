@@ -16,15 +16,10 @@ import {
   type CrashcatRigidBody
 } from "@ggez/runtime-physics-crashcat";
 import {
-  BoxGeometry,
-  CapsuleGeometry,
   Group,
   MathUtils,
-  Mesh,
-  MeshStandardMaterial,
   PerspectiveCamera,
   Scene,
-  SphereGeometry,
   Vector3
 } from "three";
 
@@ -231,45 +226,15 @@ export class StarterPlayerController {
     this.groundProbeSettings.collideWithBackfaces = true;
     this.groundProbeSettings.treatConvexAsSolid = false;
 
-    // ── Soldier character mesh (primitives: body + head + shoulders) ──────────
-    // Entire group is positioned so feet align with the base of the physics capsule.
-    const h = this.standingHeight;
-    const r = this.radius;
-
-    const torsoMat = new MeshStandardMaterial({ color: 0x1e2033, roughness: 0.75, metalness: 0.15 });
-    const legMat   = new MeshStandardMaterial({ color: 0x14141e, roughness: 0.85 });
-    const headMat  = new MeshStandardMaterial({ color: 0x2a2a3c, roughness: 0.65 });
-    const padMat   = new MeshStandardMaterial({ color: 0x111122, roughness: 0.6, metalness: 0.3 });
-
-    // Legs (lower capsule)
-    const legMesh  = new Mesh(new CapsuleGeometry(r * 0.88, h * 0.3, 4, 8), legMat);
-    legMesh.position.y = h * 0.22;
-    legMesh.castShadow = true; legMesh.receiveShadow = true;
-
-    // Torso (upper capsule)
-    const torsoMesh = new Mesh(new CapsuleGeometry(r * 1.05, h * 0.22, 4, 8), torsoMat);
-    torsoMesh.position.y = h * 0.6;
-    torsoMesh.castShadow = true; torsoMesh.receiveShadow = true;
-
-    // Head (sphere, slight forward offset for over-the-shoulder readability)
-    const headMesh = new Mesh(new SphereGeometry(r * 0.82, 10, 8), headMat);
-    headMesh.position.set(0, h * 0.88, r * 0.08);
-    headMesh.castShadow = true; headMesh.receiveShadow = true;
-
-    // Shoulder pads
-    const padGeo = new BoxGeometry(r * 0.72, r * 0.44, r * 0.88);
-    const leftPad  = new Mesh(padGeo, padMat);
-    const rightPad = new Mesh(padGeo, padMat);
-    leftPad.position.set(-r * 1.35, h * 0.69, 0);
-    rightPad.position.set( r * 1.35, h * 0.69, 0);
-    leftPad.castShadow = true;  leftPad.receiveShadow = true;
-    rightPad.castShadow = true; rightPad.receiveShadow = true;
-
+    // ── Empty placeholder group ────────────────────────────────────────────
+    // Per the "VRM-only" mandate, the legacy capsule-and-shoulder-pads dummy
+    // is gone. While the real VRM loads (async), the player renders nothing
+    // — a brief empty space is less jarring than a pill-shape cartoon that
+    // then vanishes. The group is retained (not undefined) so references
+    // like `this.visual.visible` and `.rotation.set(0, yaw, 0)` keep working.
     this.visual = new Group();
-    this.visual.name = "capsule-fallback";
-    // Offset so feet sit at the bottom of the physics capsule
+    this.visual.name = "player-visual-stub";
     this.visual.position.y = -this.footOffset;
-    this.visual.add(legMesh, torsoMesh, headMesh, leftPad, rightPad);
 
     const spawnPosition = {
       x: options.spawn.position.x,

@@ -9,7 +9,6 @@
  */
 import type { VRM } from "@pixiv/three-vrm";
 import {
-	CapsuleGeometry,
 	Group,
 	Layers,
 	Mesh,
@@ -56,8 +55,6 @@ export type VrmCharacterInstance = {
 	firstPersonSetup: boolean;
 	loading: boolean;
 	failed: boolean;
-	/** Capsule fallback mesh, shown until VRM loads (or on failure). */
-	readonly fallbackMesh: Mesh;
 };
 
 // ─── Manager ────────────────────────────────────────────────────────────────
@@ -101,9 +98,10 @@ export function addCharacter(options: VrmCharacterOptions): VrmCharacterInstance
 	const root = new Group();
 	root.name = `vrm-character-${options.id}`;
 
-	const fallbackMesh = createFallbackCapsule();
-	root.add(fallbackMesh);
-
+	// Per VRM-only mandate: no fallback capsule. Root renders empty until
+	// the real VRM loads. On failure we emit `character:model:failed` so
+	// the loading screen / caller can show a text notification instead of
+	// leaving a debug-blue pill standing in for the character.
 	const instance: VrmCharacterInstance = {
 		id: options.id,
 		vrmUrl: options.vrmUrl,
@@ -117,7 +115,6 @@ export function addCharacter(options: VrmCharacterOptions): VrmCharacterInstance
 		firstPersonSetup: false,
 		loading: true,
 		failed: false,
-		fallbackMesh,
 	};
 
 	characters.set(options.id, instance);
@@ -141,9 +138,6 @@ export function removeCharacter(id: string): void {
 	if (instance.vrm) {
 		instance.root.remove(instance.vrm.scene);
 	}
-
-	instance.root.remove(instance.fallbackMesh);
-	disposeFallbackCapsule(instance.fallbackMesh);
 	characters.delete(id);
 }
 
@@ -356,9 +350,6 @@ function onVrmLoaded(instance: VrmCharacterInstance, result: VrmLoadResult): voi
 	// Add VRM scene to the character root
 	instance.root.add(result.vrm.scene);
 
-	// Hide fallback capsule
-	instance.fallbackMesh.visible = false;
-
 	// Emit load event
 	emit("character:model:loaded", { characterId: instance.id });
 
@@ -379,9 +370,6 @@ function onVrmLoaded(instance: VrmCharacterInstance, result: VrmLoadResult): voi
 function onVrmFailed(instance: VrmCharacterInstance, error: unknown): void {
 	instance.loading = false;
 	instance.failed = true;
-
-	// Keep fallback capsule visible
-	instance.fallbackMesh.visible = true;
 
 	const message = error instanceof Error ? error.message : String(error);
 	console.error(
@@ -480,24 +468,7 @@ function updateVrm(instance: VrmCharacterInstance, delta: number): void {
 	}
 }
 
-// ─── Internal: Fallback Capsule ─────────────────────────────────────────────
-
-function createFallbackCapsule(): Mesh {
-	const mesh = new Mesh(
-		new CapsuleGeometry(0.3, 1.0, 4, 12),
-		new MeshStandardMaterial({
-			color: "#7dd3fc",
-			emissive: "#0f4c81",
-			emissiveIntensity: 0.12,
-			roughness: 0.62,
-		})
-	);
-
-	mesh.castShadow = true;
-	mesh.receiveShadow = true;
-	mesh.name = "vrm-fallback-capsule";
-	return mesh;
-}
+// ─── (Fallback capsule removed — VRM-only mandate, 2026-04-15) ──────────
 
 // ─── Default Pose ───────────────────────────────────────────────────────────
 
@@ -522,9 +493,4 @@ function applyAPose(vrm: VRM): void {
 
 	if (leftArm) leftArm.rotation.z = -A_POSE_ANGLE;
 	if (rightArm) rightArm.rotation.z = A_POSE_ANGLE;
-}
-
-function disposeFallbackCapsule(mesh: Mesh): void {
-	mesh.geometry.dispose();
-	(mesh.material as MeshStandardMaterial).dispose();
 }

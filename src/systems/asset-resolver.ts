@@ -12,13 +12,17 @@ const R2_PUBLIC_URL = (import.meta.env.VITE_R2_PUBLIC_URL as string | undefined)
 
 /**
  * Paths that live under `public/` locally and should NEVER be rewritten to
- * R2 in development, even when VITE_R2_PUBLIC_URL is set. The bucket may
- * not mirror these yet (see BUG-001 — VRM 404s were caused by R2 rewrite
- * in dev). Anything not in this list (e.g. `/audio/...` music/SFX) falls
- * through to R2 in both dev and prod.
+ * R2 in development, even when VITE_R2_PUBLIC_URL is set. Kept narrow so
+ * that VRMs + animations can pull from R2 in dev (the local copies are
+ * either placeholder stubs or outdated).
+ *
+ * Character manifest URLs are R2-canonical. The character loader keeps a
+ * known-crew local mirror for dev and CORS fallback, so local route smoke
+ * tests still work before the bucket CORS policy is configured.
  */
-const LOCAL_DEV_PREFIXES = [
-	"/assets/", // characters, animations, scene assets
+const LOCAL_DEV_PREFIXES: string[] = [
+	// (Empty — everything under /assets/ is now served from R2 in dev.
+	//  Re-add specific sub-paths here if you need offline dev work.)
 ];
 
 /**

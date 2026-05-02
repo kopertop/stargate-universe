@@ -133,6 +133,7 @@ export class AudioManager {
 		this.stop(id, parent);
 
 		const buffer = await this.loadBuffer(entry.path);
+		if (!buffer) return;
 
 		const sound = entry.positional && parent
 			? this.createPositionalSound(parent)
@@ -211,14 +212,19 @@ export class AudioManager {
 
 	// ─── Internal ──────────────────────────────────────────────────────────────
 
-	private async loadBuffer(path: string): Promise<globalThis.AudioBuffer> {
+	private async loadBuffer(path: string): Promise<globalThis.AudioBuffer | null> {
 		const cached = this.bufferCache.get(path);
 		if (cached) return cached;
 
-		const url = resolveAssetUrl(path);
-		const buffer = await this.loader.loadAsync(url);
-		this.bufferCache.set(path, buffer);
-		return buffer;
+		try {
+			const url = resolveAssetUrl(path);
+			const buffer = await this.loader.loadAsync(url);
+			this.bufferCache.set(path, buffer);
+			return buffer;
+		} catch (err) {
+			console.warn(`[AudioManager] Failed to load ${path}:`, err);
+			return null;
+		}
 	}
 
 	private createGlobalSound(): Audio {

@@ -6,15 +6,15 @@ import { fileURLToPath } from "node:url";
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig({
-  plugins: [createWebHammerGamePlugin({ initialSceneId: "destiny-gate-room", projectName: "stargate-universe" })],
-  resolve: {
-    alias: {
-      "@kopertop/vibe-game-engine": resolve(__dirname, "src/types/vibe-game-engine/index"),
-    },
-  },
-  server: {
-    fs: {
-      allow: [searchForWorkspaceRoot(process.cwd())]
-    }
-  }
+	plugins: [createWebHammerGamePlugin({ initialSceneId: "start-screen", projectName: "stargate-universe" })],
+	resolve: {
+		alias: {
+			"@kopertop/vibe-game-engine": resolve(__dirname, "src/types/vibe-game-engine/index"),
+		},
+	},
+	server: {
+		fs: {
+			allow: [searchForWorkspaceRoot(process.cwd())]
+		}
+	}
 });

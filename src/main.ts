@@ -164,4 +164,8 @@ const app = await createGameApp({
 	scenes
 });
 
-void app.start();
+const startPromise = app.start();
+
+if (startSceneId === "start-screen") {
+	void startPromise.then(dismissLoading);
+}

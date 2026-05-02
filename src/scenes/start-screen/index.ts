@@ -17,6 +17,13 @@ import type { GameSceneModuleContext, GameSceneLifecycle } from "../../game/scen
 import { AudioManager } from "../../systems/audio";
 import { getInput } from "../../systems/input";
 import { hasStoredSaveGame } from "../../systems/save-manager";
+import {
+	DEFAULT_GAME_SETTINGS,
+	applyGameSettings,
+	readGameSettings,
+	writeGameSettings,
+	type GameSettings,
+} from "../../systems/settings";
 import packageJson from "../../../package.json";
 import startBackdropUrl from "./assets/destiny-restored-start.png?url";
 
@@ -72,6 +79,7 @@ const buildStarField = (scene: THREE.Scene): THREE.Points => {
 
 interface StartUI {
 	root: HTMLDivElement;
+	isSettingsOpen: () => boolean;
 	/** Move focus indicator by ±1 (wraps). Plays hover SFX. */
 	moveFocus: (delta: number) => void;
 	/** Activate the currently focused button. Plays select SFX. */
@@ -181,6 +189,180 @@ const createStartUI = (
 	});
 	panel.appendChild(menu);
 
+	let settingsPanel: HTMLDivElement | undefined;
+	let settingsKeydown: ((event: KeyboardEvent) => void) | undefined;
+	let settings = readGameSettings();
+	applyGameSettings(settings);
+
+	const updateSettings = (patch: Partial<GameSettings>): void => {
+		settings = { ...settings, ...patch };
+		writeGameSettings(settings);
+	};
+
+	const closeSettings = (): void => {
+		settingsPanel?.remove();
+		settingsPanel = undefined;
+		if (settingsKeydown) {
+			window.removeEventListener("keydown", settingsKeydown);
+			settingsKeydown = undefined;
+		}
+		void AudioManager.getInstance().play("menu-close");
+	};
+
+	const openSettings = (): void => {
+		if (settingsPanel) return;
+		void AudioManager.getInstance().play("menu-open");
+
+		const overlay = document.createElement("div");
+		Object.assign(overlay.style, {
+			position: "absolute",
+			inset: "0",
+			zIndex: "3",
+			display: "flex",
+			alignItems: "center",
+			paddingLeft: "clamp(28px, 5.25vw, 82px)",
+			background: "linear-gradient(90deg, rgba(0, 3, 8, 0.86), rgba(0, 3, 8, 0.5), rgba(0, 3, 8, 0.18))",
+			backdropFilter: "blur(2px)",
+		});
+
+		const settingsBox = document.createElement("div");
+		Object.assign(settingsBox.style, {
+			width: "min(460px, calc(100vw - 48px))",
+			border: "1px solid rgba(140, 210, 255, 0.24)",
+			background: "rgba(1, 10, 17, 0.82)",
+			boxShadow: "0 22px 70px rgba(0, 0, 0, 0.48)",
+			padding: "28px",
+		});
+		overlay.appendChild(settingsBox);
+
+		const heading = document.createElement("div");
+		Object.assign(heading.style, {
+			color: "rgba(255, 255, 255, 0.96)",
+			fontSize: "24px",
+			fontWeight: "300",
+			letterSpacing: "0.18em",
+			marginBottom: "24px",
+			textTransform: "uppercase",
+		});
+		heading.textContent = "Settings";
+		settingsBox.appendChild(heading);
+
+		const createSlider = (
+			label: string,
+			value: number,
+			onInput: (value: number) => void,
+		): void => {
+			const row = document.createElement("label");
+			Object.assign(row.style, {
+				display: "grid",
+				gap: "10px",
+				marginBottom: "22px",
+			});
+
+			const rowHeader = document.createElement("div");
+			Object.assign(rowHeader.style, {
+				display: "flex",
+				justifyContent: "space-between",
+				color: "rgba(255, 255, 255, 0.78)",
+				fontSize: "13px",
+				letterSpacing: "0.1em",
+				textTransform: "uppercase",
+			});
+
+			const text = document.createElement("span");
+			text.textContent = label;
+			const readout = document.createElement("span");
+			readout.textContent = `${Math.round(value * 100)}%`;
+			rowHeader.append(text, readout);
+
+			const slider = document.createElement("input");
+			slider.type = "range";
+			slider.min = "0";
+			slider.max = "100";
+			slider.value = String(Math.round(value * 100));
+			Object.assign(slider.style, {
+				accentColor: "#8cd2ff",
+				width: "100%",
+			});
+			slider.addEventListener("input", () => {
+				const nextValue = Number(slider.value) / 100;
+				readout.textContent = `${slider.value}%`;
+				onInput(nextValue);
+			});
+
+			row.append(rowHeader, slider);
+			settingsBox.appendChild(row);
+		};
+
+		createSlider("Master volume", settings.masterVolume, (value) => updateSettings({ masterVolume: value }));
+		createSlider("Music volume", settings.musicVolume, (value) => updateSettings({ musicVolume: value }));
+		createSlider("Effects volume", settings.effectsVolume, (value) => updateSettings({ effectsVolume: value }));
+
+		const fullscreenRow = document.createElement("label");
+		Object.assign(fullscreenRow.style, {
+			display: "flex",
+			alignItems: "center",
+			gap: "12px",
+			color: "rgba(255, 255, 255, 0.78)",
+			fontSize: "13px",
+			letterSpacing: "0.1em",
+			marginBottom: "28px",
+			textTransform: "uppercase",
+		});
+		const fullscreenInput = document.createElement("input");
+		fullscreenInput.type = "checkbox";
+		fullscreenInput.checked = settings.fullscreen;
+		fullscreenInput.style.accentColor = "#8cd2ff";
+		fullscreenInput.addEventListener("change", () => updateSettings({ fullscreen: fullscreenInput.checked }));
+		const fullscreenText = document.createElement("span");
+		fullscreenText.textContent = "Enter fullscreen on launch";
+		fullscreenRow.append(fullscreenInput, fullscreenText);
+		settingsBox.appendChild(fullscreenRow);
+
+		const actions = document.createElement("div");
+		Object.assign(actions.style, {
+			display: "flex",
+			gap: "12px",
+		});
+
+		const makeSettingsButton = (label: string, onClick: () => void): HTMLButtonElement => {
+			const btn = document.createElement("button");
+			Object.assign(btn.style, {
+				background: "rgba(13, 46, 68, 0.72)",
+				border: "1px solid rgba(140, 210, 255, 0.42)",
+				color: "#ffffff",
+				cursor: "pointer",
+				font: "inherit",
+				fontSize: "13px",
+				letterSpacing: "0.08em",
+				padding: "12px 18px",
+				textTransform: "uppercase",
+			});
+			btn.textContent = label;
+			btn.addEventListener("click", onClick);
+			return btn;
+		};
+
+		actions.append(
+			makeSettingsButton("Reset", () => {
+				updateSettings(DEFAULT_GAME_SETTINGS);
+				closeSettings();
+				openSettings();
+			}),
+			makeSettingsButton("Back", closeSettings),
+		);
+		settingsBox.appendChild(actions);
+
+		settingsPanel = overlay;
+		settingsKeydown = (event: KeyboardEvent) => {
+			if (event.key !== "Escape") return;
+			event.preventDefault();
+			closeSettings();
+		};
+		window.addEventListener("keydown", settingsKeydown);
+		root.appendChild(overlay);
+	};
+
 	// ── Button factory ────────────────────────────────────────────────────
 	const makeButton = (label: string, onClick: () => void): HTMLButtonElement => {
 		const btn = document.createElement("button");
@@ -231,7 +413,7 @@ const createStartUI = (
 	const canContinue = hasStoredSaveGame();
 	const continueBtn = makeButton("CONTINUE GAME", onContinue);
 	const newGameBtn = makeButton("NEW GAME", onNewGame);
-	const settingsBtn = makeButton("SETTINGS", () => undefined);
+	const settingsBtn = makeButton("SETTINGS", openSettings);
 	const exitBtn = makeButton("EXIT", () => undefined);
 	continueBtn.disabled = !canContinue;
 	menu.appendChild(continueBtn);
@@ -318,9 +500,15 @@ const createStartUI = (
 
 	return {
 		root,
+		isSettingsOpen: () => Boolean(settingsPanel),
 		moveFocus,
 		confirm,
-		dispose: () => root.remove(),
+		dispose: () => {
+			if (settingsKeydown) {
+				window.removeEventListener("keydown", settingsKeydown);
+			}
+			root.remove();
+		},
 	};
 };
 
@@ -375,7 +563,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			stars.rotation.y += delta * 0.015;
 			stars.rotation.x  = Math.sin(elapsed * 0.08) * 0.04;
 
-			if (transitioning) return;
+			if (transitioning || ui.isSettingsOpen()) return;
 
 			// D-pad / arrow-keys — edge-detected single step per press
 			if (input.isActionJustPressed(Action.DPadUp) || input.isActionJustPressed(Action.MoveForward)) {

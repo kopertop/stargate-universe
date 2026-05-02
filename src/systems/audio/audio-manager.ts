@@ -21,7 +21,12 @@ import {
 } from "three";
 
 import { resolveAssetUrl } from "../asset-resolver";
-import { SOUND_CATALOG, type SoundId } from "./sound-catalog";
+import { SOUND_CATALOG, type SoundCategory, type SoundId } from "./sound-catalog";
+
+type ActiveSoundMeta = {
+	readonly baseVolume: number;
+	readonly id: SoundId;
+};
 
 /**
  * Handles audio playback and management for the game environment.
@@ -33,6 +38,15 @@ export class AudioManager {
 	private readonly loader = new AudioLoader();
 	private readonly bufferCache = new Map<string, globalThis.AudioBuffer>();
 	private readonly activeSounds = new Map<string, Audio | PositionalAudio>();
+	private readonly activeSoundMeta = new Map<string, ActiveSoundMeta>();
+	private readonly categoryVolumes: Record<SoundCategory, number> = {
+		ambient: 1,
+		music: 1,
+		sfx: 1,
+		ui: 1,
+		voice: 1,
+	};
+	private masterVolume = 1;
 	private listenerParent: Camera | undefined;
 
 	private constructor() {}
@@ -128,16 +142,18 @@ export class AudioManager {
 		const volume = options?.volume ?? entry.volume;
 
 		sound.setBuffer(buffer);
-		sound.setVolume(volume);
+		sound.setVolume(this.resolveVolume(id, volume));
 		sound.setLoop(loop);
 		sound.play();
 
 		this.activeSounds.set(key, sound);
+		this.activeSoundMeta.set(key, { baseVolume: volume, id });
 
 		// Auto-cleanup non-looping sounds when finished
 		if (!loop) {
 			sound.onEnded = () => {
 				this.activeSounds.delete(key);
+				this.activeSoundMeta.delete(key);
 				if (sound instanceof PositionalAudio && parent) {
 					parent.remove(sound);
 				}
@@ -156,6 +172,7 @@ export class AudioManager {
 				parent.remove(sound);
 			}
 			this.activeSounds.delete(key);
+			this.activeSoundMeta.delete(key);
 		}
 	}
 
@@ -164,6 +181,7 @@ export class AudioManager {
 		for (const [key, sound] of this.activeSounds) {
 			if (sound.isPlaying) sound.stop();
 			this.activeSounds.delete(key);
+			this.activeSoundMeta.delete(key);
 		}
 	}
 
@@ -172,6 +190,16 @@ export class AudioManager {
 		const key = parent ? `${id}:${parent.uuid}` : id;
 		const sound = this.activeSounds.get(key);
 		return sound?.isPlaying ?? false;
+	}
+
+	setMasterVolume(volume: number): void {
+		this.masterVolume = clampVolume(volume);
+		this.updateActiveVolumes();
+	}
+
+	setCategoryVolume(category: SoundCategory, volume: number): void {
+		this.categoryVolumes[category] = clampVolume(volume);
+		this.updateActiveVolumes();
 	}
 
 	/** Dispose all resources. */
@@ -205,4 +233,21 @@ export class AudioManager {
 		parent.add(sound);
 		return sound;
 	}
+
+	private resolveVolume(id: SoundId, baseVolume: number): number {
+		const category = SOUND_CATALOG[id].category;
+		return clampVolume(baseVolume * this.masterVolume * this.categoryVolumes[category]);
+	}
+
+	private updateActiveVolumes(): void {
+		for (const [key, sound] of this.activeSounds) {
+			const meta = this.activeSoundMeta.get(key);
+			if (!meta) continue;
+			sound.setVolume(this.resolveVolume(meta.id, meta.baseVolume));
+		}
+	}
+}
+
+function clampVolume(value: number): number {
+	return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 1));
 }

@@ -15,20 +15,20 @@
  */
 
 import {
-  createGameplayRuntime,
-  createGameplayRuntimeSceneFromRuntimeScene,
-  type GameplayRuntime,
-  type GameplayRuntimeSystemRegistration
+	createGameplayRuntime,
+	createGameplayRuntimeSceneFromRuntimeScene,
+	type GameplayRuntime,
+	type GameplayRuntimeSystemRegistration
 } from "@ggez/gameplay-runtime";
 import {
-  createCrashcatPhysicsWorld,
-  ensureCrashcatRuntimePhysics,
-  stepCrashcatPhysicsWorld,
-  type CrashcatPhysicsWorld
+	createCrashcatPhysicsWorld,
+	ensureCrashcatRuntimePhysics,
+	stepCrashcatPhysicsWorld,
+	type CrashcatPhysicsWorld
 } from "@ggez/runtime-physics-crashcat";
 import { createThreeRuntimeSceneInstance, type ThreeRuntimeSceneInstance } from "@ggez/three-runtime";
 import * as THREE from "three";
-import { WebGPURenderer } from "three/webgpu";
+import { WebGLRenderer } from "three";
 import { createCameraController, frameCameraOnObject } from "./camera";
 import { AudioManager } from "../systems/audio";
 import { installDebugApi, toggleDebugOverlay } from "../systems/debug-api";
@@ -46,6 +46,67 @@ import type {
 } from "./scene";
 import { StarterPlayerController, VrmPlayerController } from "./player";
 import { VrmCharacterManager } from "../systems/vrm";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import type { SplatMesh } from "@sparkjsdev/spark";
+
+// ------------------------------------------------------------------
+// Splat World Loader
+
+async function loadSplatWorld(
+	config: { splatPath?: string; colliderPath?: string; position?: [number, number, number]; scale?: number },
+	scene: THREE.Scene
+): Promise<{ colliderMesh?: THREE.Group; splatMeshes: THREE.Object3D[] }> {
+	const splatMeshes: THREE.Object3D[] = [];
+	const promises: Promise<void>[] = [];
+
+	if (config.splatPath) {
+		promises.push((async () => {
+			const { SplatMesh: SplatClass } = await import("@sparkjsdev/spark");
+			const splat = new SplatClass({ url: config.splatPath! });
+			const scale = config.scale ?? 1.0;
+			const pos = config.position ?? [0, 0, 0];
+			splat.scale.setScalar(scale);
+			splat.position.set(pos[0], pos[1], pos[2]);
+			scene.add(splat);
+			if (splat.initialized) await splat.initialized;
+			splatMeshes.push(splat);
+		})());
+	}
+
+	let colliderMesh: THREE.Group | undefined;
+	if (config.colliderPath) {
+		promises.push((async () => {
+			const loader = new GLTFLoader();
+			const gltf = await loader.loadAsync(config.colliderPath!);
+			colliderMesh = gltf.scene;
+			colliderMesh.visible = false;
+			const scale = config.scale ?? 1.0;
+			const pos = config.position ?? [0, 0, 0];
+			colliderMesh.scale.setScalar(scale);
+			colliderMesh.position.set(pos[0], pos[1], pos[2]);
+			colliderMesh.traverse((c) => {
+				if ("isMesh" in c && c.isMesh) {
+					const mesh = c as THREE.Mesh;
+					if (Array.isArray(mesh.material)) {
+						mesh.material = mesh.material.map(m => {
+							const mat = m.clone();
+							mat.side = THREE.DoubleSide;
+							return mat;
+						});
+					} else {
+						mesh.material.side = THREE.DoubleSide;
+					}
+				}
+			});
+			colliderMesh.updateMatrixWorld(true);
+			scene.add(colliderMesh);
+			splatMeshes.push(colliderMesh);
+		})());
+	}
+
+	await Promise.all(promises);
+	return { colliderMesh, splatMeshes };
+}
 
 // ------------------------------------------------------------------
 // Types
@@ -57,13 +118,19 @@ type GameAppOptions = {
 };
 
 type SceneBundle = {
-  gameplayRuntime: GameplayRuntime;
-  id: string;
-  lifecycle: GameSceneLifecycle;
-  player: PlayerController | null;
-  physicsWorld: CrashcatPhysicsWorld;
-  runtimePhysics: RuntimePhysicsSession;
-  runtimeScene: ThreeRuntimeSceneInstance;
+	gameplayRuntime: GameplayRuntime;
+	id: string;
+	lifecycle: GameSceneLifecycle;
+	player: PlayerController | null;
+	physicsWorld: CrashcatPhysicsWorld;
+	runtimePhysics: RuntimePhysicsSession;
+	runtimeScene: ThreeRuntimeSceneInstance;
+	splatWorldAssets?: { colliderMesh?: THREE.Group; splatMeshes: THREE.Object3D[] };
+};
+
+type SplatWorldAssets = {
+	colliderMesh?: THREE.Group;
+	splatMeshes: THREE.Object3D[];
 };
 
 const DEFAULT_FIXED_STEP_SECONDS = 1 / 60;
@@ -102,24 +169,33 @@ export async function createGameApp(options: GameAppOptions) {
     throw new Error("Failed to initialise game shell.");
   }
 
-  // Allow ?webgl query param to force the WebGL backend — used by Playwright
-  // visual tests running in headless Chromium where WebGPU is unavailable.
-  const forceWebGL = new URLSearchParams(window.location.search).has("webgl");
-  const renderer = new WebGPURenderer({ antialias: true, forceWebGL });
-  await renderer.init();
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = true;
-  // WebGPU uses physically-based light units (candela/lux).
-  // ACESFilmic tone mapping + exposure compensates so legacy intensity values
-  // look correct without rewriting every scene's light intensities.
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 3.9;
+// SparkJS requires WebGL2 renderer — antialiasing disabled for performance
+// (SparkJS handles its own rendering, and WebGL AA doesn't improve splats).
+const renderer = new WebGLRenderer({ antialias: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 3.9;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   shell.append(renderer.domElement);
 
   // Shared Three.js objects
   const scene = new THREE.Scene();
+
+// SparkJS renderer — required for gaussian splat rendering.
+// Must be added to the scene BEFORE any SplatMesh objects.
+// Dynamic import to avoid top-level await issues and allow SparkJS to
+// be optionally used only when scenes request splat worlds.
+const { SparkRenderer } = await import("@sparkjsdev/spark");
+const spark = new SparkRenderer({
+	renderer,
+	maxPixelRadius: 512,
+	sortRadial: true,
+	enableLod: true,
+	lodSplatScale: 1.0
+});
+scene.add(spark);
   const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 4000);
 
   // Attach the shared audio listener to the camera once for the life of the
@@ -136,26 +212,27 @@ export async function createGameApp(options: GameAppOptions) {
   let activeBundle: SceneBundle | undefined;
   let loadToken = 0;
 
-  // Dev hook surface — exposes window.__sgu for Playwright/MCP/console
-  // automation and renders an on-screen dev overlay. Only live in dev;
-  // the overlay is hidden until the player double-taps Backquote (or
-  // clicks the "open dev tools" hook).
-  const hostHooks = {
-    getCurrentSceneId: () => activeBundle?.id,
-    getPlayerPosition: () => {
-      if (!activeBundle?.player) return undefined;
-      const p = activeBundle.player.object.position;
-      return { x: p.x, y: p.y, z: p.z };
-    },
-    setExternalMove: (forward: number, strafe: number) => {
-      activeBundle?.player?.setExternalMoveInput?.(forward, strafe);
-    },
-    gotoScene: (sceneId: string) => loadScene(sceneId),
-    getCanvas: () => renderer.domElement as unknown as HTMLCanvasElement,
-    getCamera: () => camera,
-    getRenderer: () => renderer,
-    getScene: () => scene,
-  };
+// Dev hook surface — exposes window.__sgu for Playwright/MCP/console
+// automation and renders an on-screen dev overlay. Only live in dev;
+// the overlay is hidden until the player double-taps Backquote (or
+// clicks the "open dev tools" hook).
+const hostHooks = {
+	getCurrentSceneId: () => activeBundle?.id,
+	getPlayerPosition: () => {
+		if (!activeBundle?.player) return undefined;
+		const p = activeBundle.player.object.position;
+		return { x: p.x, y: p.y, z: p.z };
+	},
+	setExternalMove: (forward: number, strafe: number) => {
+		activeBundle?.player?.setExternalMoveInput?.(forward, strafe);
+	},
+	gotoScene: (sceneId: string) => loadScene(sceneId),
+	getCanvas: () => renderer.domElement as unknown as HTMLCanvasElement,
+	getCamera: () => camera,
+	getRenderer: () => renderer,
+	getScene: () => scene,
+	getSpark: () => spark,
+};
   if (import.meta.env.DEV) {
     installDebugApi(hostHooks);
     const toggleDev = (e: KeyboardEvent) => {
@@ -212,21 +289,25 @@ export async function createGameApp(options: GameAppOptions) {
   });
 
   // ------------------------------------------------------------------
-  // Scene disposal helper — used both on navigation and on stale loads
+// Scene disposal helper — used both on navigation and on stale loads
 
-  const disposeBundle = async (bundle: SceneBundle) => {
-    scene.remove(bundle.runtimeScene.root);
+const disposeBundle = async (bundle: SceneBundle) => {
+	scene.remove(bundle.runtimeScene.root);
 
-    if (bundle.player) {
-      scene.remove(bundle.player.object);
-    }
+	if (bundle.splatWorldAssets) {
+		bundle.splatWorldAssets.splatMeshes.forEach((obj: THREE.Object3D) => scene.remove(obj));
+	}
 
-    await bundle.lifecycle.dispose?.();
-    bundle.player?.dispose();
-    bundle.gameplayRuntime.dispose();
-    bundle.runtimeScene.dispose();
-    bundle.runtimePhysics.dispose();
-  };
+	if (bundle.player) {
+		scene.remove(bundle.player.object);
+	}
+
+	await bundle.lifecycle.dispose?.();
+	bundle.player?.dispose();
+	bundle.gameplayRuntime.dispose();
+	bundle.runtimeScene.dispose();
+	bundle.runtimePhysics.dispose();
+};
 
   // ------------------------------------------------------------------
   // Scene navigation
@@ -261,6 +342,7 @@ export async function createGameApp(options: GameAppOptions) {
     let physicsWorld: CrashcatPhysicsWorld | undefined;
     let runtimePhysics: RuntimePhysicsSession | undefined;
     let mountResult: GameSceneLifecycle | undefined;
+    let splatWorldAssets: { colliderMesh?: THREE.Group; splatMeshes: THREE.Object3D[] } | undefined;
 
     try {
       await ensureCrashcatRuntimePhysics();
@@ -285,19 +367,21 @@ export async function createGameApp(options: GameAppOptions) {
       runtimePhysics = createRuntimePhysicsSession({ runtimeScene, world: physicsWorld });
       const gameplayHost = createStarterGameplayHost({ physicsWorld, runtimePhysics, runtimeScene });
 
-      // Build loader context (available to systems factory)
-      const loaderContext: GameSceneLoaderContext = {
-        camera,
-        gotoScene: loadScene,
-        physicsWorld,
-        preloadScene,
-        renderer,
-        runtimeScene,
-        scene,
-        sceneId,
-        sceneSettings: runtimeScene.scene.settings,
-        setStatus
-      };
+// Build loader context (available to systems factory)
+const loaderContext: GameSceneLoaderContext = {
+	camera,
+	gotoScene: loadScene,
+	physicsWorld,
+	preloadScene,
+	renderer,
+	runtimeScene,
+	scene,
+	sceneId,
+	sceneSettings: runtimeScene.scene.settings,
+	setStatus,
+	spark,
+	splatMeshes: []
+};
 
       const systems = resolveSceneSystems(definition, loaderContext);
       gameplayRuntime = createGameplayRuntime({
@@ -317,23 +401,34 @@ export async function createGameApp(options: GameAppOptions) {
 
       gameplayRuntime.start();
 
-      // Full context — available to mount()
-      const fullContext: GameSceneContext = {
-        ...loaderContext,
-        gameplayRuntime,
-        player,
-        runtimePhysics
-      };
+// Load splat world if configured for this scene
+let splatWorldAssets: SplatWorldAssets | undefined;
+if (definition.splatWorld) {
+	setStatus(`Loading world: ${definition.title}…`);
+	splatWorldAssets = await loadSplatWorld(definition.splatWorld, scene);
+}
+
+// Full context — available to mount()
+const fullContext: GameSceneContext = {
+	...loaderContext,
+	gameplayRuntime,
+	player,
+	runtimePhysics,
+	spark,
+	splatMeshes: splatWorldAssets?.splatMeshes ?? ([] as THREE.Object3D[])
+};
 
       // mount() is awaited before we commit the scene to activeBundle.
       // This prevents UI or actor setup from racing against scene teardown.
-      mountResult = await definition.mount?.(fullContext);
+      const mountResult = await definition.mount?.(fullContext);
 
       if (disposed || token !== loadToken) {
         // Another loadScene() won the race — clean up what we just built.
         scene.remove(runtimeScene.root);
         if (player) scene.remove(player.object);
-        await mountResult?.dispose?.();
+        if (mountResult && typeof mountResult === "object") {
+          await (mountResult as GameSceneLifecycle).dispose?.();
+        }
         player?.dispose();
         gameplayRuntime.dispose();
         runtimeScene.dispose();
@@ -352,7 +447,7 @@ export async function createGameApp(options: GameAppOptions) {
       return;
     }
 
-    const lifecycle: GameSceneLifecycle = mountResult ?? {};
+    const lifecycle: GameSceneLifecycle = mountResult && typeof mountResult === "object" ? mountResult as GameSceneLifecycle : {};
 
     // Tear down the previous scene only after the new one is fully ready.
     const previous = activeBundle;
@@ -367,7 +462,16 @@ export async function createGameApp(options: GameAppOptions) {
       frameCameraOnObject(camera, runtimeScene.root);
     }
 
-    activeBundle = { gameplayRuntime, id: sceneId, lifecycle, player, physicsWorld, runtimePhysics, runtimeScene };
+    activeBundle = {
+	gameplayRuntime,
+	id: sceneId,
+	lifecycle,
+	player,
+	physicsWorld,
+	runtimePhysics,
+	runtimeScene,
+	splatWorldAssets
+};
 
     if (previous) {
       await disposeBundle(previous);
@@ -398,17 +502,18 @@ export async function createGameApp(options: GameAppOptions) {
 
   window.addEventListener("resize", handleResize);
 
-  return {
-    camera,
-    dispose,
-    initialSceneId: options.initialSceneId,
-    loadScene,
-    preloadScene,
-    renderer,
-    scene,
-    start,
-    setStatus
-  };
+return {
+	camera,
+	dispose,
+	initialSceneId: options.initialSceneId,
+	loadScene,
+	preloadScene,
+	renderer,
+	scene,
+	spark,
+	start,
+	setStatus
+};
 }
 
 async function buildPlayer(options: {

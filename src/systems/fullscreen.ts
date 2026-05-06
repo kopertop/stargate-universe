@@ -55,6 +55,15 @@ const lockEscape = async (): Promise<void> => {
 	}
 };
 
+const onFirstGesture = () => {
+	void enterFullscreen();
+};
+
+const queueFullscreenGesture = (): void => {
+	window.addEventListener("pointerdown", onFirstGesture, { once: true });
+	window.addEventListener("keydown",     onFirstGesture, { once: true });
+};
+
 const unlockEscape = (): void => {
 	const keyboard = (navigator as unknown as {
 		keyboard?: { unlock: () => void };
@@ -71,13 +80,7 @@ export function installFullscreenBehavior(): void {
 	if (installed) return;
 	installed = true;
 
-	// First gesture unlocks both audio (handled elsewhere) and fullscreen.
-	const onFirstGesture = () => {
-		void enterFullscreen();
-	};
-	// Use capture so we run before scene UI click handlers.
-	window.addEventListener("pointerdown", onFirstGesture, { once: true });
-	window.addEventListener("keydown",     onFirstGesture, { once: true });
+	queueFullscreenGesture();
 
 	// If the user somehow leaves fullscreen (alt-tab, OS-level switcher,
 	// F11, focused DevTools), re-request on the next interaction instead
@@ -89,12 +92,22 @@ export function installFullscreenBehavior(): void {
 			unlockEscape();
 			if (enabled) {
 				// Queue a re-entry on the next user gesture.
-				window.addEventListener("pointerdown", onFirstGesture, { once: true });
-				window.addEventListener("keydown",     onFirstGesture, { once: true });
+				queueFullscreenGesture();
 			}
 		}
 	};
 	document.addEventListener("fullscreenchange", onFullscreenChange);
+}
+
+export function setFullscreenBehaviorEnabled(nextEnabled: boolean): void {
+	enabled = nextEnabled;
+
+	if (enabled) {
+		installFullscreenBehavior();
+		queueFullscreenGesture();
+	} else {
+		unlockEscape();
+	}
 }
 
 /**

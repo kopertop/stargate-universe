@@ -9,6 +9,7 @@ import { initialSceneId, scenes } from "./scenes";
 import { on, emit } from "./systems/event-bus";
 import { AudioManager } from "./systems/audio";
 import { installFullscreenBehavior } from "./systems/fullscreen";
+import { applyGameSettings, readGameSettings } from "./systems/settings";
 import { createInstallPrompt, registerServiceWorker } from "@kopertop/vibe-game-engine";
 
 // Chrome autoplay policy: audio contexts created before a user gesture
@@ -54,6 +55,7 @@ window.addEventListener("focus", handleVisibility);
 // Enter fullscreen on the first user gesture and capture Escape so the
 // browser doesn't steal it for "exit fullscreen". Escape is routed to
 // the in-game menu via InputManager's Action.Pause instead.
+applyGameSettings(readGameSettings());
 installFullscreenBehavior();
 
 // ─── PWA — service worker + installability ────────────────────────────────────
@@ -164,4 +166,8 @@ const app = await createGameApp({
 	scenes
 });
 
-void app.start();
+const startPromise = app.start();
+
+if (startSceneId === "start-screen") {
+	void startPromise.then(dismissLoading);
+}

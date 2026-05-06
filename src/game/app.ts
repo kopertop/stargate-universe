@@ -246,90 +246,109 @@ export async function createGameApp(options: GameAppOptions) {
   };
 
   const loadScene = async (sceneId: string) => {
-    const definition = options.scenes[sceneId];
+		const definition = options.scenes[sceneId];
 
-    if (!definition) {
-      throw new Error(`Unknown scene "${sceneId}".`);
-    }
+		if (!definition) {
+			throw new Error(`Unknown scene "${sceneId}".`);
+		}
 
-    const token = ++loadToken;
-    setStatus(`Loading ${definition.title}…`);
+		const token = ++loadToken;
+		setStatus(`Loading ${definition.title}…`);
 
-    await ensureCrashcatRuntimePhysics();
-    const runtimeManifest = await definition.source.load();
+    let runtimeScene: ThreeRuntimeSceneInstance | undefined;
+    let player: PlayerController | null = null;
+    let gameplayRuntime: GameplayRuntime | undefined;
+    let physicsWorld: CrashcatPhysicsWorld | undefined;
+    let runtimePhysics: RuntimePhysicsSession | undefined;
+    let mountResult: GameSceneLifecycle | undefined;
 
-    if (disposed || token !== loadToken) return;
+    try {
+      await ensureCrashcatRuntimePhysics();
+      const runtimeManifest = await definition.source.load();
 
-    // Build scene-level objects
-    const runtimeScene = await createThreeRuntimeSceneInstance(runtimeManifest, {
-      applyToScene: scene,
-      resolveAssetUrl: ({ path }) => path
-    });
+      if (disposed || token !== loadToken) return;
 
-    if (disposed || token !== loadToken) {
-      runtimeScene.dispose();
-      return;
-    }
+      // Build scene-level objects
+      runtimeScene = await createThreeRuntimeSceneInstance(runtimeManifest, {
+        applyToScene: scene,
+        resolveAssetUrl: ({ path }) => path
+      });
 
-    renderer.setClearColor(runtimeScene.scene.settings.world.fogColor || "#dfe8f2");
+      if (disposed || token !== loadToken) {
+        runtimeScene.dispose();
+        return;
+      }
 
-    const physicsWorld = createCrashcatPhysicsWorld(runtimeScene.scene.settings);
-    const runtimePhysics = createRuntimePhysicsSession({ runtimeScene, world: physicsWorld });
-    const gameplayHost = createStarterGameplayHost({ physicsWorld, runtimePhysics, runtimeScene });
+      renderer.setClearColor(runtimeScene.scene.settings.world.fogColor || "#dfe8f2");
 
-    // Build loader context (available to systems factory)
-    const loaderContext: GameSceneLoaderContext = {
-      camera,
-      gotoScene: loadScene,
-      physicsWorld,
-      preloadScene,
-      renderer,
-      runtimeScene,
-      scene,
-      sceneId,
-      sceneSettings: runtimeScene.scene.settings,
-      setStatus
-    };
+      physicsWorld = createCrashcatPhysicsWorld(runtimeScene.scene.settings);
+      runtimePhysics = createRuntimePhysicsSession({ runtimeScene, world: physicsWorld });
+      const gameplayHost = createStarterGameplayHost({ physicsWorld, runtimePhysics, runtimeScene });
 
-    const systems = resolveSceneSystems(definition, loaderContext);
-    const gameplayRuntime = createGameplayRuntime({
-      host: gameplayHost,
-      scene: createGameplayRuntimeSceneFromRuntimeScene(runtimeScene.scene),
-      systems
-    });
+      // Build loader context (available to systems factory)
+      const loaderContext: GameSceneLoaderContext = {
+        camera,
+        gotoScene: loadScene,
+        physicsWorld,
+        preloadScene,
+        renderer,
+        runtimeScene,
+        scene,
+        sceneId,
+        sceneSettings: runtimeScene.scene.settings,
+        setStatus
+      };
 
-    const player = await buildPlayer({
-      camera,
-      definition,
-      gameplayRuntime,
-      input,
-      physicsWorld,
-      runtimeScene
-    });
+      const systems = resolveSceneSystems(definition, loaderContext);
+      gameplayRuntime = createGameplayRuntime({
+        host: gameplayHost,
+        scene: createGameplayRuntimeSceneFromRuntimeScene(runtimeScene.scene),
+        systems
+      });
 
-    gameplayRuntime.start();
+      player = await buildPlayer({
+        camera,
+        definition,
+        gameplayRuntime,
+        input,
+        physicsWorld,
+        runtimeScene
+      });
 
-    // Full context — available to mount()
-    const fullContext: GameSceneContext = {
-      ...loaderContext,
-      gameplayRuntime,
-      player,
-      runtimePhysics
-    };
+      gameplayRuntime.start();
 
-    // mount() is awaited before we commit the scene to activeBundle.
-    // This prevents UI or actor setup from racing against scene teardown.
-    const mountResult = await definition.mount?.(fullContext);
+      // Full context — available to mount()
+      const fullContext: GameSceneContext = {
+        ...loaderContext,
+        gameplayRuntime,
+        player,
+        runtimePhysics
+      };
 
-    if (disposed || token !== loadToken) {
-      // Another loadScene() won the race — clean up what we just built.
-      scene.remove(runtimeScene.root);
+      // mount() is awaited before we commit the scene to activeBundle.
+      // This prevents UI or actor setup from racing against scene teardown.
+      mountResult = await definition.mount?.(fullContext);
+
+      if (disposed || token !== loadToken) {
+        // Another loadScene() won the race — clean up what we just built.
+        scene.remove(runtimeScene.root);
+        if (player) scene.remove(player.object);
+        await mountResult?.dispose?.();
+        player?.dispose();
+        gameplayRuntime.dispose();
+        runtimeScene.dispose();
+        runtimePhysics.dispose();
+        return;
+      }
+    } catch (err) {
+      // Scene load failed — clean up anything we managed to create.
+      console.error(`[App] Failed to load scene "${sceneId}":`, err);
       if (player) scene.remove(player.object);
-      await mountResult?.dispose?.();
       player?.dispose();
-      gameplayRuntime.dispose();
-      runtimeScene.dispose();
-      runtimePhysics.dispose();
+      gameplayRuntime?.dispose();
+      runtimeScene?.dispose();
+      runtimePhysics?.dispose();
+      setStatus(`Failed to load "${definition.title}"`);
       return;
     }
 
@@ -357,7 +376,10 @@ export async function createGameApp(options: GameAppOptions) {
     setStatus("");
   };
 
-  const start = () => loadScene(options.initialSceneId);
+  const start = () => {
+    loop.start();
+    return loadScene(options.initialSceneId);
+  };
 
   const dispose = async () => {
     disposed = true;

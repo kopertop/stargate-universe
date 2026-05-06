@@ -65,7 +65,7 @@ export const SOUND_CATALOG = {
 	"stone-door-close": { path: "/audio/sfx/stone-door-close.mp3", volume: 0.7, category: "sfx", loop: false, positional: true },
 
 	// ─── SFX — Stargate ──────────────────────────────────────────────────────
-	"chevron-lock": { path: "/audio/sfx/chevron-lock.mp3", volume: 0.8, category: "sfx", loop: false, positional: true },
+	"chevron-lock": { path: "/assets/audio/stargate_chevron_incom.mp3", volume: 0.8, category: "sfx", loop: false, positional: true },
 	"stargate-kawoosh": { path: "/audio/sfx/stargate-kawoosh.mp3", volume: 0.9, category: "sfx", loop: false, positional: true },
 	"energy-burst": { path: "/audio/sfx/energy-burst.mp3", volume: 0.9, category: "sfx", loop: false, positional: true },
 	"energy-charge": { path: "/audio/sfx/energy-charge.mp3", volume: 0.7, category: "sfx", loop: false, positional: true },
@@ -76,7 +76,7 @@ export const SOUND_CATALOG = {
 	"force-field-002": { path: "/audio/sfx/force-field-002.mp3", volume: 0.5, category: "sfx", loop: false, positional: true },
 	"wormhole-transit": { path: "/audio/sfx/wormhole-transit.mp3", volume: 0.8, category: "sfx", loop: false, positional: false },
 	"flt-jump": { path: "/audio/sfx/flt-jump.mp3", volume: 0.7, category: "sfx", loop: false, positional: false },
-	"flt-exit": { path: "/audio/sfx/flt-exit.mp3", volume: 0.7, category: "sfx", loop: false, positional: false },
+	"flt-exit": { path: "/assets/audio/sgu_ftl_dropout.mp3", volume: 0.7, category: "sfx", loop: false, positional: false },
 
 	// ─── SFX — Ship Systems ──────────────────────────────────────────────────
 	"power-up": { path: "/audio/sfx/power-up.mp3", volume: 0.6, category: "sfx", loop: false, positional: true },
@@ -162,8 +162,8 @@ export const SOUND_CATALOG = {
 	//                   Do NOT use on menus (too dramatic for background).
 	// "sgu-soundtrack": looping background score — use for main menu,
 	//                   exploration, ship-interior idle, and quiet story beats.
-	"sgu-theme-song": { path: "/audio/music/sgu-theme-song.mp3", volume: 0.8, category: "music", loop: false, positional: false },
-	"sgu-soundtrack": { path: "/audio/music/sgu-soundtrack.mp3", volume: 0.4, category: "music", loop: true, positional: false },
+	"sgu-theme-song": { path: "/assets/audio/sgu_main_theme.mp3", volume: 0.8, category: "music", loop: false, positional: false },
+	"sgu-soundtrack": { path: "/assets/audio/sgu_soundtrack.mp3", volume: 0.4, category: "music", loop: true, positional: false },
 
 	// ─── UI — Clicks & Selection ─────────────────────────────────────────────
 	"click-001": { path: "/audio/ui/click-001.mp3", volume: 0.3, category: "ui", loop: false, positional: false },

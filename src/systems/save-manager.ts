@@ -51,6 +51,24 @@ const INDEX_KEY = `${STORAGE_PREFIX}index`;
 
 const slotKey = (id: string): string => `${STORAGE_PREFIX}slot:${id}`;
 
+export const listStoredSaveSlots = (): SaveSlot[] => {
+	try {
+		const raw = localStorage.getItem(INDEX_KEY);
+		return raw ? (JSON.parse(raw) as SaveSlot[]) : [];
+	} catch {
+		return [];
+	}
+};
+
+export const hasStoredSaveGame = (): boolean =>
+	listStoredSaveSlots().some((slot) => {
+		try {
+			return localStorage.getItem(slotKey(slot.id)) !== null;
+		} catch {
+			return false;
+		}
+	});
+
 // ─── Context provider ─────────────────────────────────────────────────────────
 
 /** Snapshot of the runtime context captured at save time. */
@@ -98,14 +116,7 @@ export const createSaveManager = (options: SaveManagerOptions): SaveManager => {
 
 	// ─── Storage helpers ─────────────────────────────────────────────────────
 
-	const readIndex = (): SaveSlot[] => {
-		try {
-			const raw = localStorage.getItem(INDEX_KEY);
-			return raw ? (JSON.parse(raw) as SaveSlot[]) : [];
-		} catch {
-			return [];
-		}
-	};
+	const readIndex = (): SaveSlot[] => listStoredSaveSlots();
 
 	const writeIndex = (slots: SaveSlot[]): void => {
 		try {

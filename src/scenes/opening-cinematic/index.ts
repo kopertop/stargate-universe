@@ -289,14 +289,6 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	let disposed = false;
 	let finished = false;
 
-	const finish = (): void => {
-		if (finished) return;
-		finished = true;
-		// Signal gate-room to boot in arrival-cinematic mode
-		sessionStorage.setItem("sgu-new-game", "1");
-		void gotoScene("gate-room");
-	};
-
 	// Skip handled via InputManager — Action.MenuConfirm (Enter/Gamepad A)
 	// and Action.Pause (Escape/Gamepad Start) both end the cinematic.
 	const input = getInput();
@@ -304,6 +296,14 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	// Ship stationary at origin — camera orbits around it.
 	destiny.root.position.set(0, 0, 0);
 	destiny.root.rotation.y = 0;           // nose pointing −Z (ship forward)
+
+	const finish = (): void => {
+		if (finished) return;
+		finished = true;
+		// Signal gate-room to boot in arrival-cinematic mode
+		sessionStorage.setItem("sgu-new-game", "1");
+		void gotoScene("gate-room");
+	};
 
 	// ── Camera flight plan (parametric orbit) ─────────────────────────────
 	//
@@ -334,54 +334,47 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			stars.rotation.y += delta * 0.008;
 			stars.rotation.x  = Math.sin(elapsed * 0.03) * 0.02;
 
-			// Gentle ship roll / drift so it reads as "floating in space"
+			// Gentle ship roll / drift
 			destiny.root.rotation.z = Math.sin(elapsed * 0.12) * 0.015;
 			destiny.root.rotation.x = Math.sin(elapsed * 0.08 + 1) * 0.01;
 
 			// ── Camera orbit ─────────────────────────────────────────────
-			let camR: number;      // radial distance to ship center
-			let camTheta: number;  // horizontal orbit angle (π = behind, 0 = front)
-			let camY: number;      // camera elevation
+			let camR: number;
+			let camTheta: number;
+			let camY: number;
 
 			if (elapsed < 3) {
-				// Phase 1: pull-back reveal (close → far, rear-quarter view)
 				const t = elapsed / 3;
-				camR = 6 + smooth(t) * 44;          // 6 → 50 (zoomed out, stars dominant)
-				camTheta = Math.PI * 0.85;           // slightly off dead-astern
-				camY = 1 + smooth(t) * 3;            // low → mid elevation
+				camR = 6 + smooth(t) * 44;
+				camTheta = Math.PI * 0.85;
+				camY = 1 + smooth(t) * 3;
 			} else if (elapsed < 12) {
-				// Phase 2: orbit rear → front (θ goes π → 0)
 				const t = (elapsed - 3) / 9;
-				camR = 30 + Math.sin(t * Math.PI) * 5; // slight breathing 30±5
-				camTheta = Math.PI * (1 - smooth(t));   // π → 0 (rear → front)
-				camY = 4 - smooth(t) * 2;               // settle from 4 to 2
+				camR = 30 + Math.sin(t * Math.PI) * 5;
+				camTheta = Math.PI * (1 - smooth(t));
+				camY = 4 - smooth(t) * 2;
 			} else if (elapsed < 18) {
-				// Phase 3: push-in on nose
 				const t = (elapsed - 12) / 6;
-				camR = 30 - smooth(t) * 22;          // 30 → 8
-				camTheta = 0;                        // dead-ahead front view
-				camY = 2 - smooth(t) * 0.8;          // subtle drop 2 → 1.2
+				camR = 30 - smooth(t) * 22;
+				camTheta = 0;
+				camY = 2 - smooth(t) * 0.8;
 			} else {
-				// Phase 4: hold tight on hull, fade to black
 				const t = (elapsed - 18) / 2;
-				camR = 8 - smooth(Math.min(1, t)) * 3;  // 8 → 5 (extreme close)
+				camR = 8 - smooth(Math.min(1, t)) * 3;
 				camTheta = 0;
 				camY = 1.2 - smooth(Math.min(1, t)) * 0.4;
 			}
 
-			// Orbit in XZ plane. Ship faces −Z, so θ=0 → camera at −Z (front).
 			camera.position.set(
 				camR * Math.sin(camTheta),
 				camY,
-				-camR * Math.cos(camTheta),  // −cos so θ=0 → camera at −Z (nose view)
+				-camR * Math.cos(camTheta),
 			);
 			camera.lookAt(destiny.root.position);
 
-			// Update current credit beat
 			const activeBeat = BEATS.find((b) => elapsed >= b.start && elapsed < b.end) ?? null;
 			credits.setBeat(activeBeat);
 
-			// Auto-finish at TOTAL_DURATION
 			if (elapsed >= TOTAL_DURATION) {
 				finish();
 			}

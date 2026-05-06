@@ -15,11 +15,6 @@
 /sw.js
   Cache-Control: public, max-age=604800
 
-# Offline fallback pages — 1 day (may update independently)
-/offline.html
-/404.html
-  Cache-Control: public, max-age=86400
-
 # HTML — never cache
 /*
   Cache-Control: no-cache, must-revalidate

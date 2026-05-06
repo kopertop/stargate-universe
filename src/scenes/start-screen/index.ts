@@ -16,11 +16,23 @@ import {
 import type { GameSceneModuleContext, GameSceneLifecycle } from "../../game/scene-types";
 import { AudioManager } from "../../systems/audio";
 import { getInput } from "../../systems/input";
+import { hasStoredSaveGame } from "../../systems/save-manager";
+import {
+	DEFAULT_GAME_SETTINGS,
+	applyGameSettings,
+	readGameSettings,
+	writeGameSettings,
+	type GameSettings,
+} from "../../systems/settings";
+import packageJson from "../../../package.json";
+import startBackdropUrl from "./assets/destiny-restored-start.png?url";
 
 const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 	import: "default",
 	query: "?url",
 }) as Record<string, () => Promise<string>>;
+
+const BUILD_VERSION = packageJson.version;
 
 // ─── Star-field ───────────────────────────────────────────────────────────────
 
@@ -67,6 +79,7 @@ const buildStarField = (scene: THREE.Scene): THREE.Points => {
 
 interface StartUI {
 	root: HTMLDivElement;
+	isSettingsOpen: () => boolean;
 	/** Move focus indicator by ±1 (wraps). Plays hover SFX. */
 	moveFocus: (delta: number) => void;
 	/** Activate the currently focused button. Plays select SFX. */
@@ -83,112 +96,367 @@ const createStartUI = (
 	Object.assign(root.style, {
 		position:        "fixed",
 		inset:           "0",
-		display:         "flex",
-		flexDirection:   "column",
-		alignItems:      "center",
-		justifyContent:  "center",
+		display:         "grid",
+		gridTemplateRows: "1fr auto",
 		zIndex:          "100",
-		fontFamily:      "'Courier New', monospace",
-		pointerEvents:   "none",
+		fontFamily:      "'IBM Plex Sans', 'Segoe UI', sans-serif",
+		pointerEvents:   "auto",
 		userSelect:      "none",
+		overflow:        "hidden",
+		backgroundImage: `linear-gradient(90deg, rgba(0, 3, 8, 1) 0%, rgba(0, 4, 9, 1) 22%, rgba(0, 5, 10, 0.94) 34%, rgba(0, 6, 12, 0.28) 53%, rgba(0, 0, 0, 0.05) 100%), url(${startBackdropUrl})`,
+		backgroundPosition: "center",
+		backgroundSize:  "cover",
 	});
 
+	const vignette = document.createElement("div");
+	Object.assign(vignette.style, {
+		position: "absolute",
+		inset: "0",
+		background: "radial-gradient(circle at 78% 19%, rgba(180, 215, 255, 0.18), transparent 16%), linear-gradient(180deg, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.58))",
+		pointerEvents: "none",
+	});
+	root.appendChild(vignette);
+
+	const panel = document.createElement("div");
+	Object.assign(panel.style, {
+		position: "relative",
+		zIndex: "1",
+		alignSelf: "center",
+		marginLeft: "clamp(28px, 5.25vw, 82px)",
+		width: "min(410px, calc(100vw - 48px))",
+	});
+	root.appendChild(panel);
+
 	// ── Title ───────────────────────────────────────────────────────────────
+	const title = document.createElement("div");
+	Object.assign(title.style, {
+		marginBottom: "clamp(34px, 4vw, 48px)",
+	});
+	panel.appendChild(title);
+
 	const titleLine1 = document.createElement("div");
 	Object.assign(titleLine1.style, {
-		color:       "#a8d4ff",
-		fontSize:    "52px",
-		fontWeight:  "bold",
-		letterSpacing: "10px",
-		textShadow:  "0 0 28px #4488ff, 0 0 60px #2244aa66",
-		marginBottom: "4px",
-		textAlign:   "center",
+		color:       "rgba(255, 255, 255, 0.96)",
+		fontSize:    "clamp(40px, 4.2vw, 64px)",
+		fontWeight:  "300",
+		lineHeight:  "0.92",
+		letterSpacing: "0.24em",
+		textShadow:  "0 0 28px rgba(115, 169, 222, 0.22)",
+		textTransform: "uppercase",
 	});
 	titleLine1.textContent = "STARGATE";
-	root.appendChild(titleLine1);
+	title.appendChild(titleLine1);
 
 	const titleLine2 = document.createElement("div");
 	Object.assign(titleLine2.style, {
-		color:        "#4488ff",
-		fontSize:     "22px",
-		letterSpacing: "14px",
-		textShadow:   "0 0 18px #4488ff99",
-		marginBottom: "72px",
-		textAlign:    "center",
+		color:        "rgba(255, 255, 255, 0.96)",
+		fontSize:     "clamp(40px, 4.2vw, 64px)",
+		fontWeight:  "300",
+		lineHeight:  "0.92",
+		letterSpacing: "0.19em",
+		textShadow:   "0 0 28px rgba(115, 169, 222, 0.22)",
+		textTransform: "uppercase",
 	});
 	titleLine2.textContent = "UNIVERSE";
-	root.appendChild(titleLine2);
+	title.appendChild(titleLine2);
 
 	// Thin rule
 	const rule = document.createElement("div");
 	Object.assign(rule.style, {
-		width:        "280px",
+		width:        "min(360px, 100%)",
 		height:       "1px",
-		background:   "rgba(68, 136, 255, 0.25)",
-		marginBottom: "40px",
+		background:   "rgba(255, 255, 255, 0.44)",
+		marginTop: "22px",
+		marginBottom: "14px",
 	});
-	root.appendChild(rule);
+	title.appendChild(rule);
+
+	const subtitle = document.createElement("div");
+	Object.assign(subtitle.style, {
+		color: "rgba(255, 255, 255, 0.84)",
+		fontSize: "clamp(20px, 1.65vw, 25px)",
+		fontWeight: "300",
+		letterSpacing: "0.39em",
+		textTransform: "uppercase",
+	});
+	subtitle.textContent = "DESTINY RESTORED";
+	title.appendChild(subtitle);
+
+	const menu = document.createElement("div");
+	Object.assign(menu.style, {
+		width: "min(390px, 100%)",
+		borderTop: "1px solid rgba(120, 171, 215, 0.14)",
+	});
+	panel.appendChild(menu);
+
+	let settingsPanel: HTMLDivElement | undefined;
+	let settingsKeydown: ((event: KeyboardEvent) => void) | undefined;
+	let settings = readGameSettings();
+	applyGameSettings(settings);
+
+	const updateSettings = (patch: Partial<GameSettings>): void => {
+		settings = { ...settings, ...patch };
+		writeGameSettings(settings);
+	};
+
+	const closeSettings = (): void => {
+		settingsPanel?.remove();
+		settingsPanel = undefined;
+		if (settingsKeydown) {
+			window.removeEventListener("keydown", settingsKeydown);
+			settingsKeydown = undefined;
+		}
+		void AudioManager.getInstance().play("menu-close");
+	};
+
+	const openSettings = (): void => {
+		if (settingsPanel) return;
+		void AudioManager.getInstance().play("menu-open");
+
+		const overlay = document.createElement("div");
+		Object.assign(overlay.style, {
+			position: "absolute",
+			inset: "0",
+			zIndex: "3",
+			display: "flex",
+			alignItems: "center",
+			paddingLeft: "clamp(28px, 5.25vw, 82px)",
+			background: "linear-gradient(90deg, rgba(0, 3, 8, 0.86), rgba(0, 3, 8, 0.5), rgba(0, 3, 8, 0.18))",
+			backdropFilter: "blur(2px)",
+		});
+
+		const settingsBox = document.createElement("div");
+		Object.assign(settingsBox.style, {
+			width: "min(460px, calc(100vw - 48px))",
+			border: "1px solid rgba(140, 210, 255, 0.24)",
+			background: "rgba(1, 10, 17, 0.82)",
+			boxShadow: "0 22px 70px rgba(0, 0, 0, 0.48)",
+			padding: "28px",
+		});
+		overlay.appendChild(settingsBox);
+
+		const heading = document.createElement("div");
+		Object.assign(heading.style, {
+			color: "rgba(255, 255, 255, 0.96)",
+			fontSize: "24px",
+			fontWeight: "300",
+			letterSpacing: "0.18em",
+			marginBottom: "24px",
+			textTransform: "uppercase",
+		});
+		heading.textContent = "Settings";
+		settingsBox.appendChild(heading);
+
+		const createSlider = (
+			label: string,
+			value: number,
+			onInput: (value: number) => void,
+		): void => {
+			const row = document.createElement("label");
+			Object.assign(row.style, {
+				display: "grid",
+				gap: "10px",
+				marginBottom: "22px",
+			});
+
+			const rowHeader = document.createElement("div");
+			Object.assign(rowHeader.style, {
+				display: "flex",
+				justifyContent: "space-between",
+				color: "rgba(255, 255, 255, 0.78)",
+				fontSize: "13px",
+				letterSpacing: "0.1em",
+				textTransform: "uppercase",
+			});
+
+			const text = document.createElement("span");
+			text.textContent = label;
+			const readout = document.createElement("span");
+			readout.textContent = `${Math.round(value * 100)}%`;
+			rowHeader.append(text, readout);
+
+			const slider = document.createElement("input");
+			slider.type = "range";
+			slider.min = "0";
+			slider.max = "100";
+			slider.value = String(Math.round(value * 100));
+			Object.assign(slider.style, {
+				accentColor: "#8cd2ff",
+				width: "100%",
+			});
+			slider.addEventListener("input", () => {
+				const nextValue = Number(slider.value) / 100;
+				readout.textContent = `${slider.value}%`;
+				onInput(nextValue);
+			});
+
+			row.append(rowHeader, slider);
+			settingsBox.appendChild(row);
+		};
+
+		createSlider("Master volume", settings.masterVolume, (value) => updateSettings({ masterVolume: value }));
+		createSlider("Music volume", settings.musicVolume, (value) => updateSettings({ musicVolume: value }));
+		createSlider("Effects volume", settings.effectsVolume, (value) => updateSettings({ effectsVolume: value }));
+
+		const fullscreenRow = document.createElement("label");
+		Object.assign(fullscreenRow.style, {
+			display: "flex",
+			alignItems: "center",
+			gap: "12px",
+			color: "rgba(255, 255, 255, 0.78)",
+			fontSize: "13px",
+			letterSpacing: "0.1em",
+			marginBottom: "28px",
+			textTransform: "uppercase",
+		});
+		const fullscreenInput = document.createElement("input");
+		fullscreenInput.type = "checkbox";
+		fullscreenInput.checked = settings.fullscreen;
+		fullscreenInput.style.accentColor = "#8cd2ff";
+		fullscreenInput.addEventListener("change", () => updateSettings({ fullscreen: fullscreenInput.checked }));
+		const fullscreenText = document.createElement("span");
+		fullscreenText.textContent = "Enter fullscreen on launch";
+		fullscreenRow.append(fullscreenInput, fullscreenText);
+		settingsBox.appendChild(fullscreenRow);
+
+		const actions = document.createElement("div");
+		Object.assign(actions.style, {
+			display: "flex",
+			gap: "12px",
+		});
+
+		const makeSettingsButton = (label: string, onClick: () => void): HTMLButtonElement => {
+			const btn = document.createElement("button");
+			Object.assign(btn.style, {
+				background: "rgba(13, 46, 68, 0.72)",
+				border: "1px solid rgba(140, 210, 255, 0.42)",
+				color: "#ffffff",
+				cursor: "pointer",
+				font: "inherit",
+				fontSize: "13px",
+				letterSpacing: "0.08em",
+				padding: "12px 18px",
+				textTransform: "uppercase",
+			});
+			btn.textContent = label;
+			btn.addEventListener("click", onClick);
+			return btn;
+		};
+
+		actions.append(
+			makeSettingsButton("Reset", () => {
+				updateSettings(DEFAULT_GAME_SETTINGS);
+				closeSettings();
+				openSettings();
+			}),
+			makeSettingsButton("Back", closeSettings),
+		);
+		settingsBox.appendChild(actions);
+
+		settingsPanel = overlay;
+		settingsKeydown = (event: KeyboardEvent) => {
+			if (event.key !== "Escape") return;
+			event.preventDefault();
+			closeSettings();
+		};
+		window.addEventListener("keydown", settingsKeydown);
+		root.appendChild(overlay);
+	};
 
 	// ── Button factory ────────────────────────────────────────────────────
 	const makeButton = (label: string, onClick: () => void): HTMLButtonElement => {
 		const btn = document.createElement("button");
 		Object.assign(btn.style, {
-			pointerEvents:  "auto",
+			display: "block",
+			width: "100%",
+			height: "56px",
+			textAlign: "left",
 			cursor:         "pointer",
-			background:     "rgba(68, 136, 255, 0.07)",
-			border:         "1px solid rgba(68, 136, 255, 0.35)",
-			color:          "#88bbff",
-			padding:        "14px 52px",
-			fontSize:       "13px",
-			fontFamily:     "'Courier New', monospace",
-			letterSpacing:  "4px",
-			minWidth:       "240px",
-			marginBottom:   "16px",
-			transition:     "background 0.18s ease, color 0.18s ease, border-color 0.18s ease",
+			background:     "rgba(1, 10, 17, 0.44)",
+			border:         "0",
+			borderBottom:   "1px solid rgba(120, 171, 215, 0.14)",
+			color:          "rgba(255, 255, 255, 0.78)",
+			padding:        "0 28px",
+			fontSize:       "clamp(17px, 1.3vw, 21px)",
+			fontFamily:     "inherit",
+			fontWeight:     "300",
+			letterSpacing:  "0.07em",
+			textTransform:  "uppercase",
+			transition:     "background 0.18s ease, color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease",
 			outline:        "none",
 		});
 		btn.textContent = label;
 
 		btn.addEventListener("mouseenter", () => {
-			btn.style.background   = "rgba(68, 136, 255, 0.18)";
+			if (btn.disabled) return;
+			btn.style.background   = "linear-gradient(90deg, rgba(13, 46, 68, 0.82), rgba(3, 20, 34, 0.62))";
 			btn.style.color        = "#ffffff";
-			btn.style.borderColor  = "rgba(68, 136, 255, 0.7)";
+			btn.style.borderColor  = "rgba(140, 210, 255, 0.58)";
+			btn.style.boxShadow    = "inset 0 0 0 1px rgba(150, 216, 255, 0.72), 0 0 26px rgba(60, 145, 205, 0.18)";
 			void AudioManager.getInstance().play("hover");
 		});
 		btn.addEventListener("mouseleave", () => {
-			btn.style.background   = "rgba(68, 136, 255, 0.07)";
-			btn.style.color        = "#88bbff";
-			btn.style.borderColor  = "rgba(68, 136, 255, 0.35)";
+			if (btn.disabled) return;
+			btn.style.background   = "rgba(1, 10, 17, 0.44)";
+			btn.style.color        = "rgba(255, 255, 255, 0.78)";
+			btn.style.borderColor  = "rgba(120, 171, 215, 0.14)";
+			btn.style.boxShadow    = "none";
 		});
 		btn.addEventListener("click", () => {
+			if (btn.disabled) return;
 			void AudioManager.getInstance().play("select");
 			onClick();
 		});
 		return btn;
 	};
 
+	const canContinue = hasStoredSaveGame();
+	const continueBtn = makeButton("CONTINUE GAME", onContinue);
 	const newGameBtn = makeButton("NEW GAME", onNewGame);
-	const continueBtn = makeButton("CONTINUE", onContinue);
-	root.appendChild(newGameBtn);
-	root.appendChild(continueBtn);
+	const settingsBtn = makeButton("SETTINGS", openSettings);
+	const exitBtn = makeButton("EXIT", () => undefined);
+	continueBtn.disabled = !canContinue;
+	menu.appendChild(continueBtn);
+	menu.appendChild(newGameBtn);
+	menu.appendChild(settingsBtn);
+	menu.appendChild(exitBtn);
 
-	// Focus state for controller/keyboard nav — index 0 = NEW GAME, 1 = CONTINUE
-	const buttons: HTMLButtonElement[] = [newGameBtn, continueBtn];
-	const handlers: Array<() => void> = [onNewGame, onContinue];
-	let focusIndex = 0;
+	// Focus state for controller/keyboard nav.
+	const buttons: HTMLButtonElement[] = [continueBtn, newGameBtn, settingsBtn, exitBtn];
+	const handlers: Array<() => void> = [onContinue, onNewGame, () => undefined, () => undefined];
+	let focusIndex = canContinue ? 0 : 1;
 
 	const paintFocus = (): void => {
 		for (let i = 0; i < buttons.length; i++) {
+			if (buttons[i].disabled) {
+				buttons[i].style.background = "rgba(1, 10, 17, 0.24)";
+				buttons[i].style.color = "rgba(255, 255, 255, 0.32)";
+				buttons[i].style.borderColor = "rgba(120, 171, 215, 0.08)";
+				buttons[i].style.boxShadow = "none";
+				buttons[i].style.cursor = "not-allowed";
+				continue;
+			}
+
+			buttons[i].style.cursor = "pointer";
 			const focused = i === focusIndex;
-			buttons[i].style.background = focused ? "rgba(68, 136, 255, 0.18)" : "rgba(68, 136, 255, 0.07)";
-			buttons[i].style.color = focused ? "#ffffff" : "#88bbff";
-			buttons[i].style.borderColor = focused ? "rgba(68, 136, 255, 0.7)" : "rgba(68, 136, 255, 0.35)";
+			buttons[i].style.background = focused
+				? "linear-gradient(90deg, rgba(13, 46, 68, 0.82), rgba(3, 20, 34, 0.62))"
+				: "rgba(1, 10, 17, 0.44)";
+			buttons[i].style.color = focused ? "#ffffff" : "rgba(255, 255, 255, 0.78)";
+			buttons[i].style.borderColor = focused ? "rgba(140, 210, 255, 0.58)" : "rgba(120, 171, 215, 0.14)";
+			buttons[i].style.boxShadow = focused
+				? "inset 0 0 0 1px rgba(150, 216, 255, 0.72), 0 0 26px rgba(60, 145, 205, 0.18)"
+				: "none";
 		}
 	};
 	paintFocus();
 
 	const moveFocus = (delta: number): void => {
-		const next = (focusIndex + delta + buttons.length) % buttons.length;
+		let next = focusIndex;
+		for (let i = 0; i < buttons.length; i++) {
+			next = (next + delta + buttons.length) % buttons.length;
+			if (!buttons[next].disabled) break;
+		}
 		if (next === focusIndex) return;
 		focusIndex = next;
 		paintFocus();
@@ -196,6 +464,7 @@ const createStartUI = (
 	};
 
 	const confirm = (): void => {
+		if (buttons[focusIndex].disabled) return;
 		void AudioManager.getInstance().play("select");
 		handlers[focusIndex]();
 	};
@@ -204,6 +473,7 @@ const createStartUI = (
 	// matches whatever the player is pointing at.
 	buttons.forEach((btn, i) => {
 		btn.addEventListener("mouseenter", () => {
+			if (btn.disabled) return;
 			if (focusIndex !== i) {
 				focusIndex = i;
 				paintFocus();
@@ -212,24 +482,33 @@ const createStartUI = (
 	});
 
 	// ── Version / hint ───────────────────────────────────────────────────
-	const hint = document.createElement("div");
-	Object.assign(hint.style, {
-		marginTop:    "48px",
-		color:        "rgba(68, 136, 255, 0.3)",
-		fontSize:     "10px",
-		letterSpacing: "2px",
-		textAlign:    "center",
+	const footer = document.createElement("div");
+	Object.assign(footer.style, {
+		position: "relative",
+		zIndex: "1",
+		marginLeft: "clamp(28px, 5.25vw, 82px)",
+		marginBottom: "clamp(32px, 5vw, 78px)",
+		color:        "rgba(125, 143, 157, 0.62)",
+		fontSize:     "12px",
+		letterSpacing: "0.06em",
+		textTransform: "uppercase",
 	});
-	hint.textContent = "DESTINY  ·  ANCIENT VESSEL  ·  LOCATION UNKNOWN";
-	root.appendChild(hint);
+	footer.textContent = `BUILD ${BUILD_VERSION}`;
+	root.appendChild(footer);
 
 	document.body.appendChild(root);
 
 	return {
 		root,
+		isSettingsOpen: () => Boolean(settingsPanel),
 		moveFocus,
 		confirm,
-		dispose: () => root.remove(),
+		dispose: () => {
+			if (settingsKeydown) {
+				window.removeEventListener("keydown", settingsKeydown);
+			}
+			root.remove();
+		},
 	};
 };
 
@@ -284,7 +563,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			stars.rotation.y += delta * 0.015;
 			stars.rotation.x  = Math.sin(elapsed * 0.08) * 0.04;
 
-			if (transitioning) return;
+			if (transitioning || ui.isSettingsOpen()) return;
 
 			// D-pad / arrow-keys — edge-detected single step per press
 			if (input.isActionJustPressed(Action.DPadUp) || input.isActionJustPressed(Action.MoveForward)) {

@@ -52,9 +52,13 @@ const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 // cavernous Ancient chamber. Gate and characters are NOT scaled — only
 // the architectural envelope grows. The room needs to be large enough
 // for crew to be thrown 15-20m from the gate during the arrival cinematic.
-const ROOM_WIDTH = 100;
-const ROOM_DEPTH = 160;
-const ROOM_HEIGHT = 32;
+// Cathedral-scale gate room — concept art shows an enormous Ancient hall
+// where the player is dwarfed by the architecture. Width/height bumped to
+// emphasize verticality; depth kept reasonable so the back wall still
+// frames the gate instead of disappearing into the distance.
+const ROOM_WIDTH = 140;
+const ROOM_DEPTH = 180;
+const ROOM_HEIGHT = 52;
 // Gate scaled up to fill the frame like the reference — the SGU gate is
 // a massive structure. GATE_RADIUS=6 gives a 12-meter diameter ring.
 // Edge comparison showed the reference gate fills ~60% of the frame width
@@ -72,7 +76,7 @@ const COLOR_ANCIENT_METAL = 0x1e2030;  // dark blue-grey hull metal
 const COLOR_ANCIENT_GLOW = 0x4488ff;   // blue accent glow
 const COLOR_CHEVRON_OFF = 0x223355;  // visible dim blue even when unlit
 const COLOR_CHEVRON_ON = 0x44aaff;
-const COLOR_EVENT_HORIZON = 0x88bbff;
+const COLOR_EVENT_HORIZON = 0x4499dd;
 // Wall and ceiling — dark blue-grey to match the SGU reference. The room
 // should feel like a dimly-lit Ancient military chamber, not a bright hall.
 const COLOR_WALL = 0x1a1a2e;
@@ -80,6 +84,13 @@ const COLOR_CEILING = 0x141425;
 
 // Wall transparency — track wall meshes for camera occlusion
 const wallMeshes: THREE.Mesh[] = [];
+
+function setHorizonOpacity(eventHorizon: THREE.Mesh, value: number): void {
+	(eventHorizon.material as THREE.MeshBasicMaterial).opacity = value;
+}
+function getHorizonOpacity(eventHorizon: THREE.Mesh): number {
+	return (eventHorizon.material as THREE.MeshBasicMaterial).opacity;
+}
 
 // ─── Gate activation state ───────────────────────────────────────────────────
 
@@ -89,6 +100,7 @@ type GateRuntime = {
 	chevronMeshes: THREE.Mesh[];
 	dialElapsed: number;
 	eventHorizon: THREE.Mesh;
+	halo: THREE.Mesh;
 	innerRing: THREE.Mesh;
 	kawooshElapsed: number;
 	lockedChevrons: number;
@@ -130,7 +142,9 @@ function createGateControl(gate: GateRuntime): GateControl {
 			gate.kawooshElapsed = 0;
 			if (state === "kawoosh") {
 				gate.eventHorizon.visible = true;
-				(gate.eventHorizon.material as THREE.MeshStandardMaterial).opacity = 0;
+				setHorizonOpacity(gate.eventHorizon, 0);
+				gate.halo.visible = true;
+				(gate.halo.material as THREE.MeshBasicMaterial).opacity = 0;
 			}
 		},
 		getState: () => gate.state,
@@ -141,10 +155,14 @@ function createGateControl(gate: GateRuntime): GateControl {
 // ─── Room construction ───────────────────────────────────────────────────────
 
 function createWallMaterial(): THREE.MeshStandardMaterial {
+	// Brighter emissive *color* (cool indigo) at modest intensity rather than
+	// near-black emissive at high intensity — multiplying near-zero by intensity
+	// is still near-zero. Concept gate-room-dormant shows clear cool-blue cast
+	// across the walls, not pure black void. Memory: feedback_dark_surfaces_at_high_exposure.
 	return new THREE.MeshStandardMaterial({
 		color: 0x100e0a,
-		emissive: 0x040302,
-		emissiveIntensity: 0.15,
+		emissive: 0x1a2244,
+		emissiveIntensity: 0.5,
 		roughness: 0.75,
 		metalness: 0.5,
 		side: THREE.DoubleSide,
@@ -179,8 +197,14 @@ function buildRoom(scene: THREE.Scene): void {
 	scene.add(backWall);
 	wallMeshes.push(backWall);
 
-	// Front wall — split into two pieces with doorway gap (4m wide)
-	const doorwayWidth = 4;
+	// Front wall — split into two pieces with cathedral-scale doorway gap.
+	// Concept-art `gate-room-dormant.png` shows the room framed by a giant
+	// arched portal that fills the near plane; player POV looks through.
+	// Doorway widened from 4m → 16m and heightened from 3.5m → 26m so a
+	// camera positioned outside the front wall (z > ROOM_DEPTH/2) at
+	// head-height (y ≈ 16) actually frames the gate through the opening.
+	const doorwayWidth = 16;
+	const doorwayHeight = 26;
 	const frontPieceWidth = (ROOM_WIDTH - doorwayWidth) / 2;
 	for (const xSign of [-1, 1]) {
 		const piece = new THREE.Mesh(
@@ -195,12 +219,13 @@ function buildRoom(scene: THREE.Scene): void {
 		scene.add(piece);
 		wallMeshes.push(piece);
 	}
-	// Door frame top piece
+	// Door frame top piece — wall above the cathedral arch opening.
+	const doorTopHeight = ROOM_HEIGHT - doorwayHeight;
 	const doorTop = new THREE.Mesh(
-		new THREE.BoxGeometry(doorwayWidth + 0.5, ROOM_HEIGHT - 3.5, 0.5),
+		new THREE.BoxGeometry(doorwayWidth + 0.5, doorTopHeight, 0.5),
 		createWallMaterial()
 	);
-	doorTop.position.set(0, ROOM_HEIGHT - (ROOM_HEIGHT - 3.5) / 2, ROOM_DEPTH / 2);
+	doorTop.position.set(0, ROOM_HEIGHT - doorTopHeight / 2, ROOM_DEPTH / 2);
 	scene.add(doorTop);
 	wallMeshes.push(doorTop);
 
@@ -240,10 +265,10 @@ function buildRoom(scene: THREE.Scene): void {
 		metalness: 0.25,
 	});
 	const alcoveLightMat = new THREE.MeshStandardMaterial({
-		color: 0x556688,
-		emissive: 0x223344,
-		emissiveIntensity: 1.5,
-		roughness: 0.3,
+		color: 0x2a3a55,
+		emissive: 0x1a2a44,
+		emissiveIntensity: 0.7,
+		roughness: 0.4,
 		metalness: 0.2,
 	});
 	const archSpacing = 8;
@@ -259,12 +284,13 @@ function buildRoom(scene: THREE.Scene): void {
 			);
 			arch.position.set(xBase, ROOM_HEIGHT / 2, z);
 			scene.add(arch);
-			// Alcove warm light panel between buttresses (like the reference)
+			// Alcove vertical light slit between buttresses — narrow tall
+			// strip matching the concept's tall vertical wall apertures.
 			const alcove = new THREE.Mesh(
-				new THREE.BoxGeometry(0.1, 2.5, archSpacing - 1.5),
+				new THREE.BoxGeometry(0.1, 7.0, 0.6),
 				alcoveLightMat,
 			);
-			alcove.position.set(xBase + xSign * 0.1, 3.5, z + archSpacing / 2);
+			alcove.position.set(xBase + xSign * 0.1, ROOM_HEIGHT * 0.45, z + archSpacing / 2);
 			scene.add(alcove);
 		}
 	}
@@ -286,6 +312,139 @@ function buildRoom(scene: THREE.Scene): void {
 	);
 	topBeam.position.set(0, GATE_CENTER.y + GATE_RADIUS + 2, -ROOM_DEPTH / 2 + 0.8);
 	scene.add(topBeam);
+
+	// Triangular scaffold buttresses flanking the gate — concept
+	// gate-room-active.png shows two large triangular frames angled inward
+	// toward the ring, creating the iconic Destiny gate-room "the gate is
+	// held by an industrial cradle" silhouette. Heavier silhouette + a thin
+	// emissive accent strip on the inner edge so they read against the dark
+	// back wall at the cinematic exposure.
+	// Gate room overrides exposure to 1.15 (cinematic-dim), so dark
+	// MeshStandardMaterial at low emissive intensity vanishes. Use brighter
+	// base color + higher emissive to keep silhouette readable.
+	const strutMat = new THREE.MeshStandardMaterial({
+		color: 0x44485a,
+		roughness: 0.5,
+		metalness: 0.6,
+		emissive: 0x2a3044,
+		emissiveIntensity: 1.4,
+	});
+	const strutAccentMat = new THREE.MeshBasicMaterial({
+		color: 0x88b4ff,
+		fog: true,
+	});
+	const strutLength = Math.hypot(GATE_RADIUS * 2.2, GATE_RADIUS * 2.0);
+	for (const xSign of [-1, 1]) {
+		const strut = new THREE.Mesh(
+			new THREE.BoxGeometry(1.2, strutLength, 1.2),
+			strutMat,
+		);
+		const baseX = xSign * GATE_RADIUS * 2.6;
+		const baseY = 0.6;
+		const topX = xSign * GATE_RADIUS * 0.5;
+		const topY = GATE_CENTER.y + GATE_RADIUS * 0.95;
+		const midX = (baseX + topX) / 2;
+		const midY = (baseY + topY) / 2;
+		const angle = Math.atan2(topX - baseX, topY - baseY);
+		strut.position.set(midX, midY, -1.5);
+		strut.rotation.z = angle;
+		scene.add(strut);
+
+		// Inner-edge accent strip — sits on the gate-facing face of the strut
+		// so it reads as a glowing trim line in the silhouette.
+		const accent = new THREE.Mesh(
+			new THREE.BoxGeometry(0.08, strutLength * 0.92, 0.08),
+			strutAccentMat,
+		);
+		// Offset toward the gate (interior side) along the strut's local +X.
+		const accentOffset = -xSign * 0.65;
+		accent.position.set(midX + accentOffset * Math.cos(angle), midY + accentOffset * -Math.sin(angle), -ROOM_DEPTH / 2 + 0.6);
+		accent.rotation.z = angle;
+		scene.add(accent);
+
+		// Foot block — chunky base where the strut meets the floor. Darker
+		// material than the strut so it reads as a mounting point, not a
+		// glowing slab in the side-camera view.
+		const foot = new THREE.Mesh(
+			new THREE.BoxGeometry(1.6, 1.0, 1.4),
+			new THREE.MeshStandardMaterial({
+				color: 0x1a1a26,
+				roughness: 0.7,
+				metalness: 0.5,
+				emissive: 0x080812,
+				emissiveIntensity: 0.4,
+			}),
+		);
+		foot.position.set(baseX, 0.5, -1.5);
+		scene.add(foot);
+	}
+
+	// Cathedral ceiling trusses — running width-wise above the central aisle.
+	// Concept gate-room-dormant.png shows a dense lattice of structural beams
+	// up high; without these the ceiling reads as featureless black void.
+	const trussMat = new THREE.MeshStandardMaterial({
+		color: 0x0e0e18,
+		roughness: 0.7,
+		metalness: 0.5,
+		emissive: 0x040408,
+		emissiveIntensity: 0.2,
+	});
+	// Trusses sit at ~55% of ROOM_HEIGHT so they fall inside the front-camera
+	// frustum (camera y=14 looking at y=8 with FOV ~50° clips anything above
+	// ~y=40 at gate distance). Hanging them low also reads more "industrial
+	// rib-cage" than "distant ceiling lattice."
+	const trussY = ROOM_HEIGHT * 0.55;
+	const trussCount = 7;
+	const trussSpacing = (ROOM_DEPTH - 8) / (trussCount + 1);
+	const trussGlowMat = new THREE.MeshStandardMaterial({
+		color: 0x14141e,
+		roughness: 0.6,
+		metalness: 0.5,
+		emissive: 0x223344,
+		emissiveIntensity: 0.35,
+	});
+	// Cluster of downlight panels concentrated above the gate dais (z=0).
+	// Concept gate-room-dormant.png shows a chandelier-like cluster of multiple
+	// downlights centered on the gate; this approximates that read with cheap
+	// emissive panels rather than actual spotlights.
+	const downlightMat = new THREE.MeshBasicMaterial({ color: 0xa8b8d0, fog: true, toneMapped: false });
+	for (const [dx, dz, w, d] of [
+		[0, -2, 4.0, 1.2],
+		[0,  2, 4.0, 1.2],
+		[-3, 0, 1.0, 3.5],
+		[ 3, 0, 1.0, 3.5],
+	] as const) {
+		const panel = new THREE.Mesh(
+			new THREE.BoxGeometry(w, 0.2, d),
+			downlightMat,
+		);
+		panel.name = "downlight-cluster";
+		panel.position.set(dx, ROOM_HEIGHT - 0.3, dz);
+		scene.add(panel);
+	}
+	for (let i = 1; i <= trussCount; i++) {
+		const z = -ROOM_DEPTH / 2 + 4 + i * trussSpacing;
+		// Arched truss main beam — wide rectangular section
+		const truss = new THREE.Mesh(
+			new THREE.BoxGeometry(ROOM_WIDTH * 0.85, 1.2, 0.8),
+			trussGlowMat,
+		);
+		truss.position.set(0, trussY, z);
+		scene.add(truss);
+		// Vertical drops anchoring truss to ceiling
+		for (const xSign of [-1, 1]) {
+			const drop = new THREE.Mesh(
+				new THREE.BoxGeometry(0.6, ROOM_HEIGHT - trussY, 0.6),
+				trussMat,
+			);
+			drop.position.set(
+				xSign * ROOM_WIDTH * 0.42,
+				(ROOM_HEIGHT + trussY) / 2,
+				z,
+			);
+			scene.add(drop);
+		}
+	}
 	// Staircase structures flanking the gate — the SGU gate room has
 	// staircases on both sides leading up to a second-floor catwalk/balcony.
 	// These are the large angled structures visible in the reference image.
@@ -363,12 +522,9 @@ function buildRoom(scene: THREE.Scene): void {
 
 	// Aged metal floor grate panels — single InstancedMesh for all panels
 	// to keep draw calls at 1 instead of ~936 individual meshes.
-	const grateMat = new THREE.MeshStandardMaterial({
-		color: 0x181820,
-		roughness: 0.75,
-		metalness: 0.6,
-		emissive: 0x060608,
-		emissiveIntensity: 0.3,
+	const grateMat = new THREE.MeshBasicMaterial({
+		color: 0x05060a,
+		fog: true,
 	});
 	const grateSpacingX = 4;
 	const grateSpacingZ = 4;
@@ -388,6 +544,22 @@ function buildRoom(scene: THREE.Scene): void {
 	}
 	grateInstanced.instanceMatrix.needsUpdate = true;
 	scene.add(grateInstanced);
+
+	// Dark base floor plane — covers whatever bright tile floor the
+	// scene.runtime.json contributes. Pure black + max roughness + zero metal
+	// so the high (3.9) tone-map exposure doesn't push it back to mid-grey.
+	// Sits at y=0.005 (above the JSON floor at y=-0.5, just below grates at
+	// y=0.015) so it overdraws the bright JSON floor without z-fighting.
+	const baseFloor = new THREE.Mesh(
+		new THREE.PlaneGeometry(ROOM_WIDTH - 0.4, ROOM_DEPTH - 0.4),
+		new THREE.MeshBasicMaterial({
+			color: 0x040408,
+			fog: true,
+		}),
+	);
+	baseFloor.rotation.x = -Math.PI / 2;
+	baseFloor.position.y = 0.005;
+	scene.add(baseFloor);
 }
 
 // ─── Stargate construction ───────────────────────────────────────────────────
@@ -415,6 +587,114 @@ function createFlatRingGeometry(radius: number, width: number, depth: number, se
 }
 
 function buildStargate(scene: THREE.Scene): GateRuntime {
+	// ── Raised dais under the gate — concept shows gate sitting on a 2-step
+	// platform that the player ascends. Elevates the gate so it dominates the
+	// frame and gives the room a proper focal point.
+	const daisMat = new THREE.MeshBasicMaterial({
+		color: 0x16181e,
+		fog: true,
+	});
+	// Lower tier — wider, shorter
+	const daisLow = new THREE.Mesh(
+		new THREE.BoxGeometry(GATE_RADIUS * 3, 0.4, GATE_RADIUS * 2.6),
+		daisMat,
+	);
+	daisLow.position.set(0, 0.2, 0);
+	scene.add(daisLow);
+	// Upper tier — narrower, taller, sits on top
+	const daisHigh = new THREE.Mesh(
+		new THREE.BoxGeometry(GATE_RADIUS * 2.4, 0.4, GATE_RADIUS * 2.0),
+		daisMat,
+	);
+	daisHigh.position.set(0, 0.6, 0);
+	scene.add(daisHigh);
+
+	// Dais front-edge trim light — thin warm emissive strip along the
+	// upper tier's player-facing edge, mimicking the recessed accent
+	// lighting visible on Ancient platform edges in the concept art.
+	// MeshBasicMaterial + toneMapped:false so it survives gate-room
+	// exposure 2.2 as a crisp light line, not a dim grey strip.
+	const daisTrimMat = new THREE.MeshBasicMaterial({
+		color: 0xffd29c, fog: false, toneMapped: false,
+	});
+	const daisTrim = new THREE.Mesh(
+		new THREE.BoxGeometry(GATE_RADIUS * 2.36, 0.06, 0.06),
+		daisTrimMat,
+	);
+	// Sits flush with the front face of daisHigh (z = +GATE_RADIUS) at
+	// the top edge (y ≈ 0.78).
+	daisTrim.position.set(0, 0.78, GATE_RADIUS * 1.0 - 0.03);
+	scene.add(daisTrim);
+	// Lower-tier matching trim for the wider step profile.
+	const daisTrimLow = new THREE.Mesh(
+		new THREE.BoxGeometry(GATE_RADIUS * 2.96, 0.06, 0.06),
+		daisTrimMat,
+	);
+	daisTrimLow.position.set(0, 0.38, GATE_RADIUS * 1.3 - 0.03);
+	scene.add(daisTrimLow);
+
+	// ── Console row props along both side walls flanking the gate (per
+	// concept gate-room-active.png — banks of lit operator consoles extending
+	// from gate-mid toward the back wall). Procedural cluster: dark base box
+	// + warm-blue emissive panel top. Placed ~14m off centerline, raised on
+	// short bases. MeshBasic for the panels keeps them gate-room-exposure stable.
+	const consoleBaseMat = new THREE.MeshStandardMaterial({
+		color: 0x101522,
+		roughness: 0.6,
+		metalness: 0.5,
+		emissive: 0x05080f,
+		emissiveIntensity: 0.4,
+	});
+	const consolePanelMat = new THREE.MeshBasicMaterial({
+		color: 0x4d8fd9,
+		fog: false,
+		toneMapped: false,
+	});
+	const consoleCount = 5;
+	const consoleSpacing = 5.2;
+	const consoleZStart = -GATE_RADIUS - 2;
+	for (const sideX of [-14, 14] as const) {
+		for (let i = 0; i < consoleCount; i++) {
+			const z = consoleZStart - i * consoleSpacing;
+			const base = new THREE.Mesh(
+				new THREE.BoxGeometry(2.4, 1.1, 1.6),
+				consoleBaseMat,
+			);
+			base.position.set(sideX, 0.55, z);
+			scene.add(base);
+			const panel = new THREE.Mesh(
+				new THREE.BoxGeometry(2.0, 0.06, 1.0),
+				consolePanelMat,
+			);
+			// tilt panel toward gate centerline
+			panel.rotation.x = -0.25;
+			panel.rotation.y = sideX < 0 ? -0.18 : 0.18;
+			panel.position.set(sideX + (sideX < 0 ? 0.15 : -0.15), 1.18, z);
+			scene.add(panel);
+		}
+	}
+
+	// ── Front-facing stairs descending toward the player approach (+z side).
+	// Concept gate-room-dormant.png shows a shallow stepped ramp leading up to
+	// the gate dais. Five 0.16m steps spanning ~3m deep give a gentle climb that
+	// reads from the doorway-distance camera without dominating the floor plane.
+	const stepCount = 5;
+	const stepRise = 0.8 / stepCount; // climb top of dais (0.8) over 5 steps
+	const stepRun = 0.6;
+	const stepWidth = GATE_RADIUS * 2.8;
+	for (let i = 0; i < stepCount; i++) {
+		const step = new THREE.Mesh(
+			new THREE.BoxGeometry(stepWidth, stepRise, stepRun),
+			daisMat,
+		);
+		// step i sits in front of the dais, descending as i increases.
+		// y centerline = (stepCount - i - 0.5) * stepRise so top of step i = (stepCount - i) * stepRise
+		const stepY = (stepCount - i - 0.5) * stepRise;
+		const stepZ = GATE_RADIUS * 1.0 + (i + 0.5) * stepRun;
+		step.position.set(0, stepY, stepZ);
+		scene.add(step);
+	}
+
 	// ── Main ring — FLAT profile (rectangular cross-section), not a donut.
 	// The SGU gate is a wide, shallow ring — LatheGeometry with a rectangular
 	// profile matches the show's industrial look far better than TorusGeometry.
@@ -438,11 +718,11 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 	// with a slightly shallower depth so it reads as recessed. Darker and
 	// more metallic, matching the show's two-tier ring silhouette.
 	const innerRingMat = new THREE.MeshStandardMaterial({
-		color: 0x282832,
-		roughness: 0.4,
-		metalness: 0.95,
-		emissive: 0x0a1020,
-		emissiveIntensity: 0.8,
+		color: 0x141420,
+		roughness: 0.55,
+		metalness: 0.9,
+		emissive: 0x06090f,
+		emissiveIntensity: 0.05,
 		fog: false,
 	});
 	const innerRing = new THREE.Mesh(
@@ -506,18 +786,88 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 		chevronMeshes.push(chevron);
 	}
 
-	// Event horizon — the wormhole surface (hidden until active)
-	const horizonMat = new THREE.MeshStandardMaterial({
-		color: COLOR_EVENT_HORIZON,
-		emissive: COLOR_EVENT_HORIZON,
-		emissiveIntensity: 0.8,
+	// Event horizon — plasma vortex texture (hidden until active).
+	// Three's WebGPURenderer doesn't accept legacy ShaderMaterial, so we bake
+	// the swirl pattern into a CanvasTexture and animate via UV rotation +
+	// scale pulse on the mesh transform.
+	const HORIZON_TEX_SIZE = 512;
+	const horizonCanvas = document.createElement("canvas");
+	horizonCanvas.width = HORIZON_TEX_SIZE;
+	horizonCanvas.height = HORIZON_TEX_SIZE;
+	const hctx = horizonCanvas.getContext("2d");
+	if (hctx) {
+		const cx = HORIZON_TEX_SIZE / 2;
+		const cy = HORIZON_TEX_SIZE / 2;
+		// Background radial gradient — deep blue edge to bright cyan core.
+		const grad = hctx.createRadialGradient(cx, cy, 0, cx, cy, HORIZON_TEX_SIZE * 0.5);
+		grad.addColorStop(0.0, "#dff0ff");
+		grad.addColorStop(0.25, "#7cc8ff");
+		grad.addColorStop(0.6, "#1e6cb8");
+		grad.addColorStop(0.92, "#0a2a55");
+		grad.addColorStop(1.0, "rgba(10,20,40,0)");
+		hctx.fillStyle = grad;
+		hctx.fillRect(0, 0, HORIZON_TEX_SIZE, HORIZON_TEX_SIZE);
+
+		// Spiral wisps — many thin strokes with jittered radii so the swirl reads
+		// as turbulent flowing energy, not a clean logo-spiral. Concept shows
+		// organic churning wormhole, not 6 thick spiral arms.
+		hctx.globalCompositeOperation = "lighter";
+		const armCount = 16;
+		for (let arm = 0; arm < armCount; arm++) {
+			const baseAngle = (arm / armCount) * Math.PI * 2;
+			const armTwist = Math.PI * (3 + Math.sin(arm * 1.7) * 0.8);
+			hctx.beginPath();
+			for (let t = 0; t <= 1; t += 0.01) {
+				const jitter = Math.sin(t * 18 + arm * 2.3) * 6;
+				const r = t * HORIZON_TEX_SIZE * 0.48 + jitter;
+				const a = baseAngle + t * armTwist;
+				const x = cx + Math.cos(a) * r;
+				const y = cy + Math.sin(a) * r;
+				if (t === 0) hctx.moveTo(x, y); else hctx.lineTo(x, y);
+			}
+			const opacity = 0.25 + (arm % 3) * 0.08;
+			hctx.strokeStyle = `rgba(200, 230, 255, ${opacity})`;
+			hctx.lineWidth = 2 + (arm % 4) * 0.7;
+			hctx.lineCap = "round";
+			hctx.stroke();
+		}
+
+		// Speckle turbulence — small bright dots scattered through the disc.
+		hctx.globalCompositeOperation = "lighter";
+		for (let i = 0; i < 1600; i++) {
+			const r = Math.sqrt(Math.random()) * HORIZON_TEX_SIZE * 0.48;
+			const a = Math.random() * Math.PI * 2;
+			const x = cx + Math.cos(a) * r;
+			const y = cy + Math.sin(a) * r;
+			const sz = Math.random() * 2.5 + 0.5;
+			const alpha = (1 - r / (HORIZON_TEX_SIZE * 0.5)) * 0.6;
+			hctx.fillStyle = `rgba(220,240,255,${alpha})`;
+			hctx.beginPath();
+			hctx.arc(x, y, sz, 0, Math.PI * 2);
+			hctx.fill();
+		}
+
+		// Soft alpha falloff at edge — punch out beyond r=0.96.
+		hctx.globalCompositeOperation = "destination-in";
+		const alphaGrad = hctx.createRadialGradient(cx, cy, 0, cx, cy, HORIZON_TEX_SIZE * 0.5);
+		alphaGrad.addColorStop(0, "rgba(255,255,255,1)");
+		alphaGrad.addColorStop(0.85, "rgba(255,255,255,1)");
+		alphaGrad.addColorStop(1.0, "rgba(255,255,255,0)");
+		hctx.fillStyle = alphaGrad;
+		hctx.fillRect(0, 0, HORIZON_TEX_SIZE, HORIZON_TEX_SIZE);
+	}
+	const horizonTex = new THREE.CanvasTexture(horizonCanvas);
+	horizonTex.colorSpace = THREE.SRGBColorSpace;
+	const horizonMat = new THREE.MeshBasicMaterial({
+		map: horizonTex,
+		color: 0xffffff,
 		transparent: true,
 		opacity: 0,
 		side: THREE.DoubleSide,
-		roughness: 0.1,
-		metalness: 0.0
+		depthWrite: false,
+		fog: false,
+		blending: THREE.AdditiveBlending,
 	});
-	// Event horizon fills the gate opening — inner edge of the outer ring.
 	const eventHorizon = new THREE.Mesh(
 		new THREE.CircleGeometry(GATE_RADIUS - GATE_RING_WIDTH / 2 - 0.05, 64),
 		horizonMat
@@ -526,10 +876,55 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 	eventHorizon.visible = false;
 	scene.add(eventHorizon);
 
+	// Halo bloom — soft-edged radial gradient billboarded behind the gate so
+	// the active gate appears to spill cyan light outward rather than wear a
+	// hard donut sticker. CanvasTexture with annular alpha falloff (transparent
+	// at center hole AND outer edge, peak alpha just outside the gate radius).
+	const HALO_TEX_SIZE = 256;
+	const haloCanvas = document.createElement("canvas");
+	haloCanvas.width = HALO_TEX_SIZE;
+	haloCanvas.height = HALO_TEX_SIZE;
+	const haloCtx = haloCanvas.getContext("2d");
+	if (haloCtx) {
+		const hcx = HALO_TEX_SIZE / 2;
+		const hcy = HALO_TEX_SIZE / 2;
+		const grad = haloCtx.createRadialGradient(hcx, hcy, 0, hcx, hcy, HALO_TEX_SIZE * 0.5);
+		grad.addColorStop(0.00, "rgba(120, 200, 255, 0)");
+		grad.addColorStop(0.28, "rgba(120, 200, 255, 0)");
+		grad.addColorStop(0.40, "rgba(220, 245, 255, 0.95)");
+		grad.addColorStop(0.50, "rgba(160, 220, 255, 0.65)");
+		grad.addColorStop(0.65, "rgba(110, 180, 240, 0.32)");
+		grad.addColorStop(0.85, "rgba(70, 140, 220, 0.10)");
+		grad.addColorStop(1.00, "rgba(40, 80, 160, 0)");
+		haloCtx.fillStyle = grad;
+		haloCtx.fillRect(0, 0, HALO_TEX_SIZE, HALO_TEX_SIZE);
+	}
+	const haloTex = new THREE.CanvasTexture(haloCanvas);
+	haloTex.colorSpace = THREE.SRGBColorSpace;
+	const haloMat = new THREE.MeshBasicMaterial({
+		map: haloTex,
+		color: 0xffffff,
+		transparent: true,
+		opacity: 0,
+		blending: THREE.AdditiveBlending,
+		depthWrite: false,
+		side: THREE.DoubleSide,
+		fog: false,
+	});
+	const haloGeo = new THREE.PlaneGeometry(GATE_RADIUS * 4.6, GATE_RADIUS * 4.6);
+	const haloMesh = new THREE.Mesh(haloGeo, haloMat);
+	haloMesh.position.copy(GATE_CENTER);
+	haloMesh.position.z -= 0.12; // sit slightly behind ring face
+	haloMesh.visible = false;
+	scene.add(haloMesh);
+
+
+
 	return {
 		chevronMeshes,
 		dialElapsed: 0,
 		eventHorizon,
+		halo: haloMesh,
 		innerRing,
 		kawooshElapsed: 0,
 		lockedChevrons: 0,
@@ -553,56 +948,62 @@ function buildLighting(scene: THREE.Scene, debugObjects: THREE.Object3D[]): THRE
 	// then add point-light accents for local colour only.
 	// Moody ambient — the SGU gate room is VERY dark with isolated cool pools.
 	// Reference shows near-black walls with only gate glow and minimal fills.
-	const ambientLight = new THREE.AmbientLight(0x080812, 0.8);
+	// Concept ref shows near-black walls with only the gate ring + isolated
+	// pool lights visible. Ambient/hemisphere kept at the bare minimum so
+	// architecture reads but doesn't compete with the gate's blue glow.
+	const ambientLight = new THREE.AmbientLight(0x101830, 0.45);
 	scene.add(ambientLight);
-	const hemisphereLight = new THREE.HemisphereLight(0x0a0a1a, 0x050508, 0.6);
+	const hemisphereLight = new THREE.HemisphereLight(0x182238, 0x080810, 0.6);
 	scene.add(hemisphereLight);
 
 	// Directional from above — cold, dim fill to barely reveal ceiling geometry.
-	const dirLight = new THREE.DirectionalLight(0x334466, 0.3);
+	const dirLight = new THREE.DirectionalLight(0x334466, 0.25);
 	dirLight.position.set(0, 25, 10);
 	dirLight.target.position.set(0, 0, 0);
 	scene.add(dirLight);
 	scene.add(dirLight.target);
 
 	// ── Gate-area accent lights ──────────────────────────────────────────
-	// All decay:0 (infinite range) so the blue glow reads from the
-	// establishing shot 50+ units away.
+	// Idle defaults are deliberately tiny — the dormant concept shows the
+	// gate as a dark silhouette, not a glowing portal. The dial/active
+	// updates ramp these up via gate.pointLights when the gate engages.
+	// Use distance-based falloff (decay 1.5) and finite range so the wash
+	// stays local to the gate instead of bleeding across 80+ units of wall.
 
 	// Directly IN FRONT of the gate ring — cool blue wash on the ring face.
-	const gateRingLight = new THREE.PointLight(0x3366aa, 5, 0, 0);
+	const gateRingLight = new THREE.PointLight(0x3366aa, 0.6, 14, 1.6);
 	gateRingLight.position.set(0, GATE_CENTER.y, gateZ + 4);
 	scene.add(gateRingLight);
 	lights.push(gateRingLight);
 
 	// Wider gate-area blue glow — visible from distance
-	const gateFrontLight = new THREE.PointLight(0x2244aa, 3, 0, 0);
+	const gateFrontLight = new THREE.PointLight(0x2244aa, 0.3, 18, 1.6);
 	gateFrontLight.position.set(0, 4, gateZ + 10);
 	scene.add(gateFrontLight);
 	lights.push(gateFrontLight);
 
-	const gateBackLight = new THREE.PointLight(0x2244aa, 4, 0, 0);
+	const gateBackLight = new THREE.PointLight(0x2244aa, 0.4, 14, 1.6);
 	gateBackLight.position.set(0, 5, gateZ - 6);
 	scene.add(gateBackLight);
 	lights.push(gateBackLight);
 
-	const gateTopLight = new THREE.PointLight(0x2244aa, 4, 0, 0);
+	const gateTopLight = new THREE.PointLight(0x2244aa, 0.3, 16, 1.6);
 	gateTopLight.position.set(0, 12, gateZ);
 	scene.add(gateTopLight);
 	lights.push(gateTopLight);
 
 	// Overhead room light — cool dim fill, NOT warm.
-	const overheadLight = new THREE.PointLight(0x1a2233, 0.4, 0, 0);
+	const overheadLight = new THREE.PointLight(0x1a2233, 0.15, 22, 1.6);
 	overheadLight.position.set(0, ROOM_HEIGHT - 3, ROOM_DEPTH / 4);
 	scene.add(overheadLight);
 	lights.push(overheadLight);
 
-	// Side accents — very dim cool blue, just enough to hint at wall geometry.
-	// SGU reference shows isolated blue-grey pools, NOT warm amber washes.
+	// Side accents — isolated cool pools matching the dormant concept's
+	// scattered alcove glints. Finite range so each only paints its own wall.
 	const COLOR_COOL_ACCENT = 0x1a2244;
 	for (const zOff of [0, ROOM_DEPTH / 3, 2 * ROOM_DEPTH / 3]) {
 		for (const xSign of [-1, 1]) {
-			const side = new THREE.PointLight(COLOR_COOL_ACCENT, 0.5, 0, 0);
+			const side = new THREE.PointLight(COLOR_COOL_ACCENT, 0.18, 12, 1.8);
 			side.position.set(xSign * (ROOM_WIDTH / 3), 6, zOff);
 			scene.add(side);
 			lights.push(side);
@@ -622,7 +1023,7 @@ function buildLighting(scene: THREE.Scene, debugObjects: THREE.Object3D[]): THRE
 	const lensMat = new THREE.MeshStandardMaterial({ color: 0xccddff, emissive: 0xbbddff, emissiveIntensity: 1.5 });
 
 	for (const sp of spotPositions) {
-		const spot = new THREE.SpotLight(0xbbddff, 30, 20, Math.PI / 5, 0.5, 1.0);
+		const spot = new THREE.SpotLight(0xbbddff, 20, 20, Math.PI / 5, 0.5, 1.0);
 		spot.position.set(sp.pos[0], sp.pos[1], sp.pos[2]);
 		spot.target.position.set(sp.target[0], sp.target[1], sp.target[2]);
 		scene.add(spot);
@@ -829,7 +1230,9 @@ function updateDialing(gate: GateRuntime, delta: number): void {
 		gate.state = "kawoosh";
 		gate.kawooshElapsed = 0;
 		gate.eventHorizon.visible = true;
-		(gate.eventHorizon.material as THREE.MeshStandardMaterial).opacity = 0;
+		setHorizonOpacity(gate.eventHorizon, 0);
+		gate.halo.visible = true;
+		(gate.halo.material as THREE.MeshBasicMaterial).opacity = 0;
 	}
 }
 
@@ -844,27 +1247,24 @@ function lockChevron(gate: GateRuntime, index: number): void {
 function updateKawoosh(gate: GateRuntime, delta: number): void {
 	gate.kawooshElapsed += delta;
 	const progress = gate.kawooshElapsed / KAWOOSH_DURATION;
-	const horizonMat = gate.eventHorizon.material as THREE.MeshStandardMaterial;
 
 	if (progress < 0.3) {
 		// Phase 1: Burst outward (kawoosh!)
 		const burstProgress = progress / 0.3;
 		const scale = 0.1 + burstProgress * 1.4;
 		gate.eventHorizon.scale.set(scale, scale, 1);
-		horizonMat.opacity = burstProgress * 0.95;
-		horizonMat.emissiveIntensity = 1.5 + burstProgress * 3.0;
+		setHorizonOpacity(gate.eventHorizon, burstProgress * 0.95);
 	} else if (progress < 0.6) {
 		// Phase 2: Retract to stable size
 		const retractProgress = (progress - 0.3) / 0.3;
 		const scale = 1.5 - retractProgress * 0.5;
 		gate.eventHorizon.scale.set(scale, scale, 1);
-		horizonMat.emissiveIntensity = 4.5 - retractProgress * 3.5;
 	} else {
 		// Phase 3: Settle
 		gate.eventHorizon.scale.set(1, 1, 1);
-		horizonMat.opacity = 0.8;
-		horizonMat.emissiveIntensity = 1.0;
+		setHorizonOpacity(gate.eventHorizon, 0.9);
 	}
+	(gate.halo.material as THREE.MeshBasicMaterial).opacity = getHorizonOpacity(gate.eventHorizon) * 0.7;
 
 	// Stop inner ring spinning gradually
 	gate.innerRing.rotation.z += delta * (3.0 * (1 - progress));
@@ -873,8 +1273,8 @@ function updateKawoosh(gate: GateRuntime, delta: number): void {
 		gate.state = "active";
 		gate.dialElapsed = 0;
 		gate.eventHorizon.scale.set(1, 1, 1);
-		horizonMat.opacity = 0.8;
-		horizonMat.emissiveIntensity = 1.0;
+		setHorizonOpacity(gate.eventHorizon, 0.9);
+		(gate.halo.material as THREE.MeshBasicMaterial).opacity = 0.55;
 	}
 }
 
@@ -884,12 +1284,9 @@ function updateActiveWormhole(gate: GateRuntime, delta: number): void {
 	gate.dialElapsed += delta;
 	activeWormholeFrame++;
 
-	// Only update material every 3rd frame to reduce transparent re-sort cost
 	if (activeWormholeFrame % 3 === 0) {
-		const horizonMat = gate.eventHorizon.material as THREE.MeshStandardMaterial;
 		const pulse = Math.sin(gate.dialElapsed * 2.0) * 0.05;
-		horizonMat.opacity = 0.75 + pulse;
-		horizonMat.emissiveIntensity = 0.8 + pulse * 2;
+		setHorizonOpacity(gate.eventHorizon, 0.92 + pulse);
 	}
 
 	// Subtle rotation (cheap — just a transform, no material change)
@@ -902,17 +1299,18 @@ function updateActiveWormhole(gate: GateRuntime, delta: number): void {
 function updateShutdown(gate: GateRuntime, delta: number): void {
 	gate.kawooshElapsed += delta;
 	const progress = Math.min(gate.kawooshElapsed / SHUTDOWN_DURATION, 1);
-	const horizonMat = gate.eventHorizon.material as THREE.MeshStandardMaterial;
 
 	// Shrink and fade
 	const scale = 1 - progress;
 	gate.eventHorizon.scale.set(scale, scale, 1);
-	horizonMat.opacity = 0.8 * (1 - progress);
-	horizonMat.emissiveIntensity = 1.0 * (1 - progress);
+	setHorizonOpacity(gate.eventHorizon, 0.9 * (1 - progress));
+
+	(gate.halo.material as THREE.MeshBasicMaterial).opacity = 0.55 * (1 - progress);
 
 	if (progress >= 1) {
 		gate.state = "idle";
 		gate.eventHorizon.visible = false;
+		gate.halo.visible = false;
 		gate.lockedChevrons = 0;
 		gate.dialElapsed = 0;
 
@@ -1181,15 +1579,22 @@ const STORAGE_DEPTH = 8;
 const EXT_ROOM_HEIGHT = 5;
 const ANCIENT_GLOW_THRESHOLD = 0.6;
 
-// Shared materials for corridor/storage — reuse, don't recreate
-const extWallMat = new THREE.MeshStandardMaterial({
-	color: 0x222238, emissive: 0x141428, emissiveIntensity: 1.0,
-	roughness: 0.9, metalness: 0.1, side: THREE.DoubleSide
-});
-const extCeilingMat = new THREE.MeshStandardMaterial({
-	color: 0x181828, emissive: 0x0c0c20, emissiveIntensity: 1.0,
-	roughness: 0.95, metalness: 0.05
-});
+// Shared materials for corridor/storage — reused inside a single mount() pass.
+// `let` (not `const`) because dispose() disposes them; mount() must recreate
+// fresh instances on every remount or the second mount uses disposed materials.
+let extWallMat: THREE.MeshStandardMaterial;
+let extCeilingMat: THREE.MeshStandardMaterial;
+
+function createExtMaterials(): void {
+	extWallMat = new THREE.MeshStandardMaterial({
+		color: 0x222238, emissive: 0x141428, emissiveIntensity: 1.0,
+		roughness: 0.9, metalness: 0.1, side: THREE.DoubleSide
+	});
+	extCeilingMat = new THREE.MeshStandardMaterial({
+		color: 0x181828, emissive: 0x0c0c20, emissiveIntensity: 1.0,
+		roughness: 0.95, metalness: 0.05
+	});
+}
 
 function buildCorridor(scene: THREE.Scene): void {
 	const cz = CORRIDOR_Z_START + CORRIDOR_LENGTH / 2;
@@ -1623,9 +2028,30 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	camera.near = 0.1;
 	camera.far = 500;
 	camera.updateProjectionMatrix();
+
+	// Force a deep near-black backdrop + atmospheric fog for the gate room.
+	// Without this we inherit whatever scene.background the previous scene
+	// left set (or the renderer's lavender clear color) — breaking the
+	// SGU "very dark with isolated cool pools" look from the concept ref
+	// (design/concept-art/gate-room/gate-room-dormant.png).
+	scene.background = new THREE.Color(0x02030a);
+	scene.fog = new THREE.FogExp2(0x02030a, 0.018);
+	// Tone the renderer down for the interior — exposure 3.9 was tuned for
+	// the dark-space opening cinematic and over-blasts the closed gate room.
+	const origExposure = renderer.toneMappingExposure;
+	renderer.toneMappingExposure = 2.2;
 	const bus = scopedBus();
 
+	// Reset module-level mutable state — ES modules are singletons, so any value
+	// that survives across remounts (scene → other scene → back to gate-room)
+	// will leak stale frame counters / camera-distance smoothers / disposed
+	// material refs. Recreate or reset everything that mount() owns.
 	wallMeshes.length = 0;
+	occludableMeshes.length = 0;
+	smoothedCamDistance = -1;
+	lastHitDistance = Infinity;
+	activeWormholeFrame = 0;
+	createExtMaterials();
 	const debugObjects: THREE.Object3D[] = [];
 	let debugMode = false;
 	let cinematicDrivingGate = false;
@@ -1633,11 +2059,239 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	// ─── Build the gate room (existing prototype) ────────────────────────
 	buildRoom(scene);
 
+	// Hide the GLB stargate baked into scene.runtime.json — buildStargate()
+	// constructs a procedural ring that the cinematic + dial logic drives,
+	// and the GLB version was double-rendering with a galaxy-textured inner
+	// disc that doesn't match the dormant concept ref. Re-checked each
+	// frame (briefly) because the GLB resolves async after mount() runs.
+	const hideGlbStargate = () => {
+		// The runtime.json was authored as a stand-alone prototype gate room
+		// (8m-tall walls + GLB stargate). buildRoom + buildStargate now own
+		// the visible architecture, so suppress everything from the JSON to
+		// avoid double-stacking and the small-ceiling occluding the procedural
+		// ring at y≈12.
+		const hideNames = new Set<string>([
+			"Stargate", "Stargate:high",
+			"Floor", "Ancient Floor", "Ceiling",
+			"Back Wall", "Front Wall Left", "Front Wall Right", "Front Wall Top",
+			"Left Wall", "Right Wall",
+			"Frame Top", "Frame Left", "Frame Right",
+		]);
+		// Prefixes covering all sub-mesh variants (e.g. ":high", ":low", ":Ancient Wall").
+		// runtime.json is a giant prototype scene; hide all the back-room/storage/corridor
+		// extensions so only the procedural geometry plus arches + guide strips render.
+		// Only hide the prototype scaffolding that creates the cream-box and
+		// off-stage corridor extensions. Wall Strip, Fixture, Lens, Overhead
+		// are the architectural light accents we WANT visible (per concept art:
+		// vertical wall strips + glowing console rows are the key gate-room
+		// silhouette). They're now kept for atmosphere.
+		const hidePrefixes = [
+			"Chevron ",
+			"Storage ",
+			"Corridor ",
+		];
+		scene.traverse((obj) => {
+			if (hideNames.has(obj.name) || hidePrefixes.some((p) => obj.name.startsWith(p))) {
+				obj.visible = false;
+			}
+		});
+	};
+	hideGlbStargate();
+
+	// ─── runtime.json wall accent emissive lift ─────────────────────────
+	// The dominant gate-room architecture (Wall Strip, Fixture, Lens,
+	// Overhead nodes) comes from runtime.json prefabs, NOT the procedural
+	// buildRoom() walls. createWallMaterial() can only tint small back-fill
+	// geometry. To propagate the concept-art cool indigo cast across the
+	// dominant silhouette, traverse the runtime nodes after they resolve
+	// and lift their emissive directly. Idempotent via userData flag.
+	const accentPrefixes = ["Wall Strip", "Fixture", "Lens", "Overhead"];
+	const lensColor = new THREE.Color(0x4488cc);
+	const stripColor = new THREE.Color(0x223344);
+	// Guide Strips render as a bright floor grid below the dais that doesn't
+	// match concept gate-room-active (concept floor is mostly dark). They're
+	// many small brush instances — match by material .name, not mesh node name.
+	const guideColor = new THREE.Color(0x1a1208);
+	const patchAccentEmissive = () => {
+		scene.traverse((obj) => {
+			const mesh = obj as THREE.Mesh;
+			if (!mesh.isMesh) return;
+			const accentMatch = accentPrefixes.some((p) => obj.name.startsWith(p));
+			const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+			for (const m of mats) {
+				const mat = m as THREE.MeshStandardMaterial;
+				if (!mat || !("emissive" in mat)) continue;
+				if (mat.userData?.sguEmissivePatched) continue;
+				if (mat.name === "Guide Strip") {
+					mat.emissive.copy(guideColor);
+					mat.emissiveIntensity = 0.12;
+					mat.needsUpdate = true;
+					mat.userData = { ...(mat.userData ?? {}), sguEmissivePatched: true };
+					continue;
+				}
+				if (!accentMatch || obj.userData.sguEmissivePatched) continue;
+				if (obj.name.startsWith("Lens")) {
+					mat.emissive.copy(lensColor);
+					mat.emissiveIntensity = 1.2;
+				} else {
+					mat.emissive.copy(stripColor);
+					mat.emissiveIntensity = 0.6;
+				}
+				mat.needsUpdate = true;
+			}
+			if (accentMatch) obj.userData.sguEmissivePatched = true;
+		});
+	};
+	patchAccentEmissive();
+
+	// Retries — runtime.json GLB resolves async after mount(). The "Stargate"
+	// node mounts first, but its inner GLB hierarchy (Sketchfab_model →
+	// Root → Cylinder, Cube003..033) finishes loading later. Hide aggressively
+	// at 100ms cadence for 8s, then a slower safety net.
+	const fastInterval = setInterval(() => {
+		hideGlbStargate();
+		patchAccentEmissive();
+	}, 100);
+	const fastIntervalGuard = setTimeout(() => clearInterval(fastInterval), 8000);
+	const slowInterval = setInterval(() => {
+		hideGlbStargate();
+		patchAccentEmissive();
+	}, 1000);
+	const slowIntervalGuard = setTimeout(() => clearInterval(slowInterval), 30000);
+
 	// Floor is from the runtime JSON — kept dark. Visibility comes from
 	// player light, room lights, and the yellow runway strips.
 	const gate = buildStargate(scene);
 	const lights = buildLighting(scene, debugObjects);
 	gate.pointLights = lights;
+
+	// ─── Ancient running lights — pinpoint accent scatter ──────────────────
+	// Concept gate-room-dormant.png shows dozens of tiny warm pinpoint lights
+	// scattered across the upper architecture (panel indicators, distant
+	// alcove glints, ceiling fixture markers). They give the cavernous space
+	// scale and life without changing the cool cathedral mood. MeshBasicMaterial
+	// with toneMapped:false so each pinpoint reads at its authored brightness
+	// regardless of the gate-room's exposure-2.2 setting (memory:
+	// feedback_per_scene_exposure). fog:false so distant lights don't fade
+	// into the haze — they're light sources, not atmospheric particles.
+	const runningLightMat = new THREE.MeshBasicMaterial({
+		color: 0xffcc88, fog: false, toneMapped: false,
+	});
+	const coolLightMat = new THREE.MeshBasicMaterial({
+		color: 0x88aacc, fog: false, toneMapped: false,
+	});
+	const pinpointGeo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
+	// Deterministic-ish positions: row scatter on each side wall plus some
+	// rear-wall and front-arch placements. Heights cluster in 3 bands so the
+	// scatter reads as architectural levels (catwalk, gantry, ceiling).
+	const heightBands = [12, 22, 34];
+	for (let i = 0; i < 60; i++) {
+		const xSign = i % 2 === 0 ? -1 : 1;
+		const yBand = heightBands[i % heightBands.length];
+		const yJitter = (Math.sin(i * 13.7) * 0.5 + 0.5) * 4 - 2;
+		const z = (Math.sin(i * 7.3) * 0.5) * (ROOM_DEPTH * 0.85);
+		const xJitter = (Math.cos(i * 11.1) * 0.5 + 0.5) * 4 - 2;
+		const useCool = i % 7 === 0;
+		const pin = new THREE.Mesh(pinpointGeo, useCool ? coolLightMat : runningLightMat);
+		pin.position.set(
+			xSign * (ROOM_WIDTH / 2 - 1.5 + xJitter),
+			yBand + yJitter,
+			z,
+		);
+		scene.add(pin);
+	}
+	// Rear-wall scatter — visible from the front-camera framing as distant
+	// architectural lights behind the gate. Small cluster at upper third.
+	for (let i = 0; i < 18; i++) {
+		const x = (Math.sin(i * 5.1) * 0.5) * (ROOM_WIDTH * 0.55);
+		const y = 18 + (i % 4) * 6;
+		const useCool = i % 5 === 0;
+		const pin = new THREE.Mesh(pinpointGeo, useCool ? coolLightMat : runningLightMat);
+		pin.position.set(x, y, -ROOM_DEPTH / 2 + 1.0);
+		scene.add(pin);
+	}
+
+	// ─── Floor reflection pool — fakes wet-floor specular ────────────────
+	// concept gate-room-dormant.png + gate-room-active.png both show a
+	// reflective floor with the gate's image bleeding onto it. A real planar
+	// Reflector would unmask the runtime.json grid (memory:
+	// feedback_gate_room_wet_floor_attempt). Instead, lay a soft additive
+	// disc on the floor in front of the gate. Reads as the gate's bounced
+	// glow without needing a real reflection. Subtle when dormant, brighter
+	// during active (additive blending naturally responds to scene exposure).
+	const reflectionTexSize = 256;
+	const reflectionCanvas = document.createElement("canvas");
+	reflectionCanvas.width = reflectionCanvas.height = reflectionTexSize;
+	const rCtx = reflectionCanvas.getContext("2d");
+	if (rCtx) {
+		const cx = reflectionTexSize / 2;
+		// Vertical gradient — strongest near gate (top of canvas), fading
+		// toward camera. Authored so the disc plane (rotated to lie flat
+		// with V running away from gate) reads as bounced light bleeding
+		// out from under the gate.
+		const grad = rCtx.createLinearGradient(0, 0, 0, reflectionTexSize);
+		grad.addColorStop(0.00, "rgba(110, 170, 230, 0.45)");
+		grad.addColorStop(0.20, "rgba(80, 140, 210, 0.28)");
+		grad.addColorStop(0.55, "rgba(50, 100, 180, 0.10)");
+		grad.addColorStop(1.00, "rgba(30, 60, 130, 0)");
+		rCtx.fillStyle = grad;
+		rCtx.fillRect(0, 0, reflectionTexSize, reflectionTexSize);
+		// Horizontal alpha falloff — punch out left/right edges so the disc
+		// reads as a soft pool, not a hard rectangle.
+		rCtx.globalCompositeOperation = "destination-in";
+		const xGrad = rCtx.createLinearGradient(0, 0, reflectionTexSize, 0);
+		xGrad.addColorStop(0.0, "rgba(255,255,255,0)");
+		xGrad.addColorStop(0.2, "rgba(255,255,255,1)");
+		xGrad.addColorStop(0.8, "rgba(255,255,255,1)");
+		xGrad.addColorStop(1.0, "rgba(255,255,255,0)");
+		rCtx.fillStyle = xGrad;
+		rCtx.fillRect(0, 0, reflectionTexSize, reflectionTexSize);
+		void cx;
+	}
+	const reflectionTex = new THREE.CanvasTexture(reflectionCanvas);
+	reflectionTex.colorSpace = THREE.SRGBColorSpace;
+	const reflectionMat = new THREE.MeshBasicMaterial({
+		map: reflectionTex,
+		transparent: true,
+		opacity: 1.0,
+		blending: THREE.AdditiveBlending,
+		depthWrite: false,
+		fog: true,
+		toneMapped: true,
+		side: THREE.DoubleSide,
+	});
+	const reflectionMesh = new THREE.Mesh(
+		new THREE.PlaneGeometry(GATE_RADIUS * 2.2, GATE_RADIUS * 4.0),
+		reflectionMat,
+	);
+	reflectionMesh.rotation.x = -Math.PI / 2;
+	// Place in front of the gate (camera-facing direction, +Z), with the
+	// "near gate" edge of the gradient hugging the gate base.
+	reflectionMesh.position.set(0, 0.02, GATE_RADIUS * 2.0);
+	scene.add(reflectionMesh);
+
+	// ─── Floor runway runners — leads the eye from camera to gate ────────
+	// The vast dark floor between camera and gate has no scale cue. Two
+	// parallel rows of inset floor-level pinpoints at ~y=0.05 read as
+	// embedded Ancient runway lights, framing the approach to the gate.
+	// Tiny (0.18 cube) so they're points-of-light, not visible blocks.
+	const runwayLightGeo = new THREE.BoxGeometry(0.32, 0.10, 0.32);
+	const runwayLightMat = new THREE.MeshBasicMaterial({
+		color: 0xffe2b6, fog: false, toneMapped: false,
+	});
+	const runwayHalfWidth = 5.5;
+	const runwayStart = ROOM_DEPTH / 2 - 4;
+	const runwayEnd = -ROOM_DEPTH / 2 + 18;
+	const runwayCount = 14;
+	for (let i = 0; i < runwayCount; i++) {
+		const t = i / (runwayCount - 1);
+		const z = runwayStart + (runwayEnd - runwayStart) * t;
+		for (const xSign of [-1, 1] as const) {
+			const pin = new THREE.Mesh(runwayLightGeo, runwayLightMat);
+			pin.position.set(xSign * runwayHalfWidth, 0.05, z);
+			scene.add(pin);
+		}
+	}
 
 	// ─── Photo mode ─────────────────────────────────────────────────────
 	// ?photo=1 — disable player character, lock camera at specified position.
@@ -1659,9 +2313,9 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		gate.lockedChevrons = CHEVRON_COUNT;
 		gate.state = "active";
 		gate.eventHorizon.visible = true;
-		const horizonMat = gate.eventHorizon.material as THREE.MeshStandardMaterial;
-		horizonMat.opacity = 0.9;
-		horizonMat.emissiveIntensity = 1.8;
+		setHorizonOpacity(gate.eventHorizon, 0.95);
+		gate.halo.visible = true;
+		(gate.halo.material as THREE.MeshBasicMaterial).opacity = 0.6;
 	}
 
 	// ─── Player-attached ambient light (Eli's subtle glow) ──────────────
@@ -1818,6 +2472,8 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		color: 0x1a2a3a, emissive: 0x66aaff, emissiveIntensity: 0.9,
 		roughness: 0.15, metalness: 0.1,
 	});
+	// Left side (Rush's workstations) at x=-22; mirrored right side at x=+22 for
+	// symmetry — concept shows console banks flanking the dais on both sides.
 	for (const cz of [40, 48, 56]) {          // 3 consoles, flanking Rush at z=48
 		const base = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.9, 0.8), consoleBaseMat);
 		base.position.set(-22, 0.45, cz);
@@ -1828,6 +2484,19 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		const monitor = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.55, 0.04), consoleScreenMat);
 		monitor.position.set(-22.3, 1.25, cz);
 		monitor.rotation.z = -Math.PI / 2;
+		monitor.rotation.x = 0.3;
+		consoleRoot.add(monitor);
+	}
+	for (const cz of [40, 48, 56]) {
+		const base = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.9, 0.8), consoleBaseMat);
+		base.position.set(22, 0.45, cz);
+		consoleRoot.add(base);
+		const topPanel = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.05, 0.8), consolePanelMat);
+		topPanel.position.set(22, 0.92, cz);
+		consoleRoot.add(topPanel);
+		const monitor = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.55, 0.04), consoleScreenMat);
+		monitor.position.set(22.3, 1.25, cz);
+		monitor.rotation.z = Math.PI / 2;   // mirror so screen faces -x (toward gate)
 		monitor.rotation.x = 0.3;
 		consoleRoot.add(monitor);
 	}
@@ -2456,8 +3125,11 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			}
 
 			// ─── Camera pull-in + Player section tracking ───────────────
-			// Skip pull-in in photo mode so the preset camera stays put.
-			if (player && !photoMode) {
+			// Skip pull-in in photo mode AND during the opening cinematic so
+			// the cinematic camera shot isn't yanked toward the player every
+			// frame (player spawns at z=12, same place as the cinematic
+			// camera, which caused severe jitter and hid the gate).
+			if (player && !photoMode && !cinematicController) {
 				updateCameraPullIn(camera, player.object.position, delta);
 				const pz = player.object.position.z;
 				let newSection = "gate-room";
@@ -2645,6 +3317,14 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			}
 		},
 		dispose() {
+			// Clear runtime.json GLB-suppression intervals (and their auto-stop
+			// guards) — these can outlive the scene if the player exits the
+			// cinematic in <30s, otherwise they'd fire callbacks against a
+			// disposed scene graph.
+			clearInterval(fastInterval);
+			clearInterval(slowInterval);
+			clearTimeout(fastIntervalGuard);
+			clearTimeout(slowIntervalGuard);
 			limeBanner?.remove();
 			cancelRepair();
 			repairBar.dispose();
@@ -2702,6 +3382,8 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			camera.near = origNear;
 			camera.far = origFar;
 			camera.updateProjectionMatrix();
+			// Restore renderer exposure (we lowered it for the interior).
+			renderer.toneMappingExposure = origExposure;
 		}
 	};
 }

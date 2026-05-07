@@ -61,20 +61,85 @@ const REPAIR_RADIUS = 2.2;
 // ─── Room construction ────────────────────────────────────────────────────────
 
 function buildRoom(scene: THREE.Scene): void {
-	const floorMat = new THREE.MeshStandardMaterial({
-		color: COLOR_FLOOR,
-		roughness: 0.95,
-		metalness: 0.1,
-	});
+	// MeshBasicMaterial keeps walls/floor genuinely dark at exposure 3.9 —
+	// MeshStandardMaterial here baked out to saturated cyan/red as the
+	// hemisphere + emergency strobes were exposure-multiplied. Lighting still
+	// reads on the scrubbers, panels, and pipes which keep PBR.
+	// Industrial grated floor texture — orthogonal seam lines at half-meter
+	// scale catch the emergency light pools and read as a metal deck plate
+	// rather than a uniform painted slab.
+	const floorCanvas = document.createElement("canvas");
+	floorCanvas.width = 256; floorCanvas.height = 256;
+	const fctx = floorCanvas.getContext("2d")!;
+	fctx.fillStyle = "#0d0d1a";
+	fctx.fillRect(0, 0, 256, 256);
+	// Heavy grid seams (panel boundary)
+	fctx.strokeStyle = "rgba(28, 28, 44, 0.85)";
+	fctx.lineWidth = 2;
+	for (const t of [0, 128, 256]) {
+		fctx.beginPath(); fctx.moveTo(t, 0); fctx.lineTo(t, 256); fctx.stroke();
+		fctx.beginPath(); fctx.moveTo(0, t); fctx.lineTo(256, t); fctx.stroke();
+	}
+	// Inner cross-hatch ribs (smaller diamond plate pattern)
+	fctx.strokeStyle = "rgba(40, 40, 60, 0.5)";
+	fctx.lineWidth = 1;
+	for (let i = 32; i < 256; i += 32) {
+		if (i === 128) continue;
+		fctx.beginPath(); fctx.moveTo(i, 0); fctx.lineTo(i, 256); fctx.stroke();
+		fctx.beginPath(); fctx.moveTo(0, i); fctx.lineTo(256, i); fctx.stroke();
+	}
+	// Bolt corners on each large panel quadrant
+	fctx.fillStyle = "rgba(60, 60, 84, 0.7)";
+	for (const x of [12, 116, 140, 244]) {
+		for (const y of [12, 116, 140, 244]) {
+			fctx.fillRect(x, y, 3, 3);
+		}
+	}
+	const floorTex = new THREE.CanvasTexture(floorCanvas);
+	floorTex.wrapS = THREE.RepeatWrapping;
+	floorTex.wrapT = THREE.RepeatWrapping;
+	floorTex.repeat.set(ROOM_WIDTH / 4, ROOM_DEPTH / 4);
+	floorTex.colorSpace = THREE.SRGBColorSpace;
+	const floorMat = new THREE.MeshBasicMaterial({ map: floorTex, fog: true });
 	const floor = new THREE.Mesh(new THREE.BoxGeometry(ROOM_WIDTH, 0.3, ROOM_DEPTH), floorMat);
 	floor.position.set(0, -0.15, 0);
 	scene.add(floor);
 
-	const wallMat = new THREE.MeshStandardMaterial({
-		color: COLOR_WALL,
-		roughness: 0.9,
-		metalness: 0.15,
+	// Industrial wall texture — vertical ribs + horizontal seam, slightly
+	// red-tinted base so emergency light wash blends naturally rather than
+	// reading as flat color × red flood.
+	const wallCanvas = document.createElement("canvas");
+	wallCanvas.width = 256; wallCanvas.height = 256;
+	const wctx = wallCanvas.getContext("2d")!;
+	const wallGrad = wctx.createLinearGradient(0, 0, 0, 256);
+	wallGrad.addColorStop(0, "#15151f");
+	wallGrad.addColorStop(0.5, "#10101a");
+	wallGrad.addColorStop(1, "#0a0a14");
+	wctx.fillStyle = wallGrad;
+	wctx.fillRect(0, 0, 256, 256);
+	// Horizontal panel seam mid-height
+	wctx.strokeStyle = "rgba(30, 30, 46, 0.9)";
+	wctx.lineWidth = 1;
+	wctx.beginPath(); wctx.moveTo(0, 128); wctx.lineTo(256, 128); wctx.stroke();
+	// Rib columns
+	wctx.strokeStyle = "rgba(38, 38, 56, 0.7)";
+	for (const x of [42, 86, 170, 214]) {
+		wctx.beginPath(); wctx.moveTo(x, 0); wctx.lineTo(x, 256); wctx.stroke();
+	}
+	// Faint vertical recess shadows next to ribs
+	wctx.strokeStyle = "rgba(6, 6, 12, 0.5)";
+	for (const x of [43, 87, 171, 215]) {
+		wctx.beginPath(); wctx.moveTo(x, 0); wctx.lineTo(x, 256); wctx.stroke();
+	}
+	const wallTex = new THREE.CanvasTexture(wallCanvas);
+	wallTex.wrapS = THREE.RepeatWrapping;
+	wallTex.wrapT = THREE.RepeatWrapping;
+	wallTex.repeat.set(ROOM_WIDTH / 4, ROOM_HEIGHT / 4);
+	wallTex.colorSpace = THREE.SRGBColorSpace;
+	const wallMat = new THREE.MeshBasicMaterial({
+		map: wallTex,
 		side: THREE.DoubleSide,
+		fog: true,
 	});
 
 	// Back wall
@@ -211,21 +276,22 @@ function buildRepairPanel(scene: THREE.Scene, pos: THREE.Vector3): RepairPanel {
 	const glowMat = new THREE.MeshStandardMaterial({
 		color: 0x220000,
 		emissive: COLOR_EMERGENCY_RED,
-		emissiveIntensity: 0.7,
+		emissiveIntensity: 0.25,
 		roughness: 0.2,
 	});
 	const screen = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.2, 0.06), glowMat);
 	screen.position.set(pos.x, 1.25, pos.z + 0.11);
 	scene.add(screen);
 
-	// Amber "E" interaction indicator at floor level
+	// Amber "E" interaction indicator at floor level — small and dim so it reads
+	// as a glowing button, not a bright block (exposure 3.9 bleaches anything ≥0.5).
 	const eMat = new THREE.MeshStandardMaterial({
-		color: 0xffee00,
-		emissive: 0xffee00,
-		emissiveIntensity: 1.2,
+		color: 0x886600,
+		emissive: 0xffaa00,
+		emissiveIntensity: 0.4,
 		roughness: 0.2,
 	});
-	const eIndicator = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.28, 0.05), eMat);
+	const eIndicator = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, 0.05), eMat);
 	eIndicator.position.set(pos.x, 0.5, pos.z + 0.11);
 	scene.add(eIndicator);
 
@@ -235,11 +301,14 @@ function buildRepairPanel(scene: THREE.Scene, pos: THREE.Vector3): RepairPanel {
 // ─── Lighting ─────────────────────────────────────────────────────────────────
 
 function buildLighting(scene: THREE.Scene): THREE.PointLight[] {
-	// Hemisphere fill with emergency red tint — physical units, sky from above, dark ground bounce.
-	// Replaces dual AmbientLight(0.4/0.2) which were near-zero in WebGPU physical mode.
-	scene.add(new THREE.HemisphereLight(0x330000, 0x110000, 1.5));
+	// Cool Ancient base lighting — the room is *Ancient*, not "everything-on-fire".
+	// The red emergency tint flickers through this baseline, doesn't replace it.
+	scene.add(new THREE.HemisphereLight(0x4a6890, 0x101820, 0.45));
+	// Subtle red emergency wash — present but no longer the dominant tone.
+	scene.add(new THREE.HemisphereLight(0x2a0808, 0x080202, 0.2));
 
-	// Sporadic overhead emergency strip lights
+	// Sporadic overhead emergency strip lights — significantly toned down so
+	// they read as red strobes punching through cool ambient, not a saturated bath.
 	const positions: [number, number, number][] = [
 		[-4, 4.0, -8], [4, 4.0, -8],
 		[-4, 4.0, 0],  [4, 4.0, 0],
@@ -249,9 +318,7 @@ function buildLighting(scene: THREE.Scene): THREE.PointLight[] {
 	const lights: THREE.PointLight[] = [];
 	const housingMat = new THREE.MeshStandardMaterial({ color: 0x220000, roughness: 0.5 });
 	for (const [x, y, z] of positions) {
-		// Intensity 200 cd base — physical units; update loop scales with flicker factor.
-		// Previous value of 6.0 was near-zero energy in WebGPU physical mode.
-		const light = new THREE.PointLight(COLOR_EMERGENCY_RED, 200, 9, 1.8);
+		const light = new THREE.PointLight(COLOR_EMERGENCY_RED, 28, 6, 1.8);
 		light.position.set(x, y, z);
 		scene.add(light);
 		lights.push(light);
@@ -260,8 +327,20 @@ function buildLighting(scene: THREE.Scene): THREE.PointLight[] {
 		scene.add(housing);
 	}
 
-	// Thick reddish-purple volumetric haze
-	scene.fog = new THREE.FogExp2(0x0a0005, 0.07);
+	// Cool ancient floor accents — boost so they actually fight the red flicker.
+	const accentPositions: [number, number, number][] = [
+		[-5, 0.3, -8], [5, 0.3, -8],
+		[-5, 0.3, 6],  [5, 0.3, 6],
+		[0,  2.5, -2],
+	];
+	for (const [x, y, z] of accentPositions) {
+		const accent = new THREE.PointLight(0x4488cc, 22, 8, 1.8);
+		accent.position.set(x, y, z);
+		scene.add(accent);
+	}
+
+	// Thinner haze — let the back wall show, no fog-saturation eating the depth.
+	scene.fog = new THREE.FogExp2(0x06080c, 0.025);
 	return lights;
 }
 

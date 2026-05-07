@@ -167,7 +167,8 @@ const app = await createGameApp({
 });
 
 const startPromise = app.start();
+const startScene = (scenes as Record<string, { player?: unknown }>)[startSceneId];
 
-if (startSceneId === "start-screen") {
+if (startSceneId === "start-screen" || startScene?.player === false) {
 	void startPromise.then(dismissLoading);
 }

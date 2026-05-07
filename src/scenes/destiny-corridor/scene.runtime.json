@@ -24,7 +24,7 @@
   "nodes": [],
   "settings": {
     "player": {
-      "cameraMode": "first-person",
+      "cameraMode": "fps",
       "canCrouch": false,
       "canJump": true,
       "canRun": true,

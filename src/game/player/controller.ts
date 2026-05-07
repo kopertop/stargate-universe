@@ -337,6 +337,7 @@ export class StarterPlayerController implements PlayerController {
    * direction, and drives the camera controller for smooth motion at any refresh rate.
    */
   updateCamera(deltaSeconds: number): void {
+    if (!this.inputEnabled) return;
     const delta = this.input.consumeMouseDelta();
     this.yaw -= delta.x * MOUSE_SENSITIVITY_X;
     this.pitch = MathUtils.clamp(

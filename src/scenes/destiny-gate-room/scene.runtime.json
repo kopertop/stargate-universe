@@ -19455,8 +19455,8 @@
       "runningSpeed": 5.5
     },
     "world": {
-      "ambientColor": "#ffffff",
-      "ambientIntensity": 1.5,
+      "ambientColor": "#0a0e18",
+      "ambientIntensity": 0.18,
       "fogColor": "#050510",
       "fogFar": 50,
       "fogNear": 25,

@@ -27,8 +27,10 @@ export class ThirdPersonCameraController implements CameraController {
   }
 
   setStandingHeight(height: number): void {
-    this.followDistance = Math.max(3.2, height * 2.7);
-    this.eyeUpOffset = height * 0.24;
+    // Tighter follow distance for a more "grand" cinematic feel — the player
+    // takes up more of the frame and environments loom larger around them.
+    this.followDistance = Math.max(2.2, height * 1.9);
+    this.eyeUpOffset = height * 0.32;
   }
 
   update(eye: Readonly<Vector3>, viewDir: Readonly<Vector3>, deltaSeconds: number): void {

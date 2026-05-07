@@ -32,3 +32,6 @@ scripts/reports/
 
 # Python
 __pycache__
+
+# Codex CLI workspace (local agent state)
+.codex/

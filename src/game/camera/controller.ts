@@ -43,5 +43,10 @@ export function createCameraController(mode: CameraMode, camera: PerspectiveCame
       return new ThirdPersonCameraController(camera);
     case "top-down":
       return new TopDownCameraController(camera);
+    default:
+      throw new Error(
+        `[createCameraController] Unknown cameraMode "${String(mode)}". Valid: fps | third-person | top-down. ` +
+        `(Common mistake: scene.runtime.json using "first-person" instead of "fps".)`
+      );
   }
 }

@@ -148,23 +148,33 @@ export function installDebugApi(hooks: HostHooks): void {
 					return;
 				}
 
-				if (opts?.cameraPos) {
-					cam.position.set(opts.cameraPos.x, opts.cameraPos.y, opts.cameraPos.z);
-				}
-				if (opts?.cameraTarget) {
-					cam.lookAt(opts.cameraTarget.x, opts.cameraTarget.y, opts.cameraTarget.z);
-				}
-
 				const framesToWait = opts?.waitFrames ?? 3;
 				let waited = 0;
 
 				const captureOnFrame = () => {
 					waited++;
 					if (waited < framesToWait) {
+						// Re-apply camera every frame — the player's updateCamera
+						// in the game loop overwrites it otherwise, so a one-shot
+						// set-then-wait would render with the player-follow pose.
+						if (opts?.cameraPos) {
+							cam.position.set(opts.cameraPos.x, opts.cameraPos.y, opts.cameraPos.z);
+						}
+						if (opts?.cameraTarget) {
+							cam.lookAt(opts.cameraTarget.x, opts.cameraTarget.y, opts.cameraTarget.z);
+						}
 						requestAnimationFrame(captureOnFrame);
 						return;
 					}
 
+					// Final pose right before render — must come after the game
+					// loop's last updateCamera for this frame to actually stick.
+					if (opts?.cameraPos) {
+						cam.position.set(opts.cameraPos.x, opts.cameraPos.y, opts.cameraPos.z);
+					}
+					if (opts?.cameraTarget) {
+						cam.lookAt(opts.cameraTarget.x, opts.cameraTarget.y, opts.cameraTarget.z);
+					}
 					rndr.render(scn, cam);
 					try {
 						const dataUrl = canvas.toDataURL("image/png");

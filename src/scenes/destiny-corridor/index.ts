@@ -27,8 +27,9 @@ const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 const ROOM_HEIGHT = 5;
 const WALL_COLOR = 0x12121f;
 const CORRIDOR_WIDTH = 4;
-const ANCIENT_GLOW_COLOR = 0x44ddcc;
+const ANCIENT_GLOW_COLOR = 0xffaa55;
 const EMERGENCY_COLOR = 0xff2200;
+const EMERGENCY_BASE_COLOR = 0x180604;
 const ANCIENT_GLOW_THRESHOLD = 0.6;
 
 // ─── Room Layout ─────────────────────────────────────────────────────────────
@@ -59,24 +60,144 @@ interface RoomVisuals {
 	emergencyStrips: THREE.Mesh[];
 }
 
+// Build a panelled-metal wall texture once and reuse across all room walls.
+// Horizontal seam lines + a few vertical rib columns give the dark indigo
+// surface a sense of fabrication scale at grazing-angle corridor views.
+// MeshBasicMaterial keeps darks dark at exposure 3.9 (memory: feedback_large_flat_surfaces_basic_material).
+function buildCorridorWallTexture(): THREE.CanvasTexture {
+	const canvas = document.createElement("canvas");
+	canvas.width = 256;
+	canvas.height = 256;
+	const ctx = canvas.getContext("2d")!;
+	// Base — slightly varied dark indigo so it doesn't read as a flat fill
+	const base = ctx.createLinearGradient(0, 0, 0, 256);
+	base.addColorStop(0, "#16161f");
+	base.addColorStop(0.5, "#10101a");
+	base.addColorStop(1, "#0c0c14");
+	ctx.fillStyle = base;
+	ctx.fillRect(0, 0, 256, 256);
+	// Horizontal seam lines (panel divisions at human-scale heights)
+	ctx.strokeStyle = "rgba(28, 28, 44, 0.9)";
+	ctx.lineWidth = 1;
+	for (const y of [42, 128, 214]) {
+		ctx.beginPath();
+		ctx.moveTo(0, y);
+		ctx.lineTo(256, y);
+		ctx.stroke();
+	}
+	// Tiny lower-edge highlight on each seam to suggest a recess shadow + rim
+	ctx.strokeStyle = "rgba(60, 60, 84, 0.45)";
+	for (const y of [43, 129, 215]) {
+		ctx.beginPath();
+		ctx.moveTo(0, y);
+		ctx.lineTo(256, y);
+		ctx.stroke();
+	}
+	// Vertical rib columns at quarter intervals
+	ctx.strokeStyle = "rgba(36, 36, 52, 0.7)";
+	for (const x of [64, 128, 192]) {
+		ctx.beginPath();
+		ctx.moveTo(x, 0);
+		ctx.lineTo(x, 256);
+		ctx.stroke();
+	}
+	// Subtle warm horizontal strip across the panel midline (Ancient cabling
+	// glow) — very dim so it reads as ambient warmth, not a UI element
+	ctx.fillStyle = "rgba(120, 80, 40, 0.18)";
+	ctx.fillRect(0, 124, 256, 2);
+	const tex = new THREE.CanvasTexture(canvas);
+	tex.wrapS = THREE.RepeatWrapping;
+	tex.wrapT = THREE.RepeatWrapping;
+	tex.colorSpace = THREE.SRGBColorSpace;
+	return tex;
+}
+
 function buildRoomGeometry(room: RoomDef, scene: THREE.Scene): RoomVisuals {
 	const hw = room.width / 2;
 	const hd = room.depth / 2;
-	const wallMat = new THREE.MeshStandardMaterial({
-		color: WALL_COLOR, roughness: 0.95, metalness: 0.05, side: THREE.DoubleSide,
-		transparent: true, opacity: 1.0
+	const wallTex = buildCorridorWallTexture();
+	wallTex.repeat.set(room.width / 4, ROOM_HEIGHT / 4);
+	const wallMat = new THREE.MeshBasicMaterial({
+		map: wallTex, side: THREE.DoubleSide, fog: true,
 	});
 	const ceilingMat = new THREE.MeshStandardMaterial({
-		color: 0x0e0e18, roughness: 0.98, metalness: 0.02, side: THREE.DoubleSide
+		color: 0x0e0e18, roughness: 0.98, metalness: 0.02, side: THREE.DoubleSide,
+		emissive: 0x141422, emissiveIntensity: 0.5,
 	});
+	// Floor texture — dark navy with subtle panel grid so the floor doesn't
+	// read as a pitch-black void. Grid anchors the perspective vanishing
+	// point looking down the hallway. CanvasTexture (no ShaderMaterial under
+	// WebGPU per project memory).
+	const floorCanvas = document.createElement("canvas");
+	floorCanvas.width = 256; floorCanvas.height = 256;
+	const fctx = floorCanvas.getContext("2d")!;
+	fctx.fillStyle = "#12141c";
+	fctx.fillRect(0, 0, 256, 256);
+	fctx.strokeStyle = "rgba(40, 45, 65, 0.55)";
+	fctx.lineWidth = 1;
+	// Single panel seam — thin tile divider, not a Tron-style mesh grid.
+	for (const t of [0, 256]) {
+		fctx.beginPath(); fctx.moveTo(t, 0); fctx.lineTo(t, 256); fctx.stroke();
+		fctx.beginPath(); fctx.moveTo(0, t); fctx.lineTo(256, t); fctx.stroke();
+	}
+	// Sub-panel divider — quarter the panel into four quadrants so the
+	// vanishing-point grid reads at corridor walking distance, not just
+	// at the room edges.
+	fctx.strokeStyle = "rgba(35, 40, 58, 0.35)";
+	fctx.beginPath(); fctx.moveTo(128, 0); fctx.lineTo(128, 256); fctx.stroke();
+	fctx.beginPath(); fctx.moveTo(0, 128); fctx.lineTo(256, 128); fctx.stroke();
+	// Bolt corners at panel intersections — small dots at the four corners
+	// of each quadrant. Subtle industrial detail anchoring the grid.
+	fctx.fillStyle = "rgba(60, 68, 95, 0.6)";
+	for (const x of [4, 124, 132, 252]) {
+		for (const y of [4, 124, 132, 252]) {
+			fctx.fillRect(x, y, 2, 2);
+		}
+	}
+	const floorTex = new THREE.CanvasTexture(floorCanvas);
+	floorTex.wrapS = THREE.RepeatWrapping;
+	floorTex.wrapT = THREE.RepeatWrapping;
+	floorTex.repeat.set(room.width / 2, room.depth / 2);
+	floorTex.colorSpace = THREE.SRGBColorSpace;
+	const floorMat = new THREE.MeshBasicMaterial({ map: floorTex, fog: true });
 
 	const walls: THREE.Mesh[] = [];
 
-	// Back wall
-	const backWall = new THREE.Mesh(new THREE.BoxGeometry(room.width, ROOM_HEIGHT, 0.3), wallMat.clone());
-	backWall.position.set(room.x, ROOM_HEIGHT / 2, room.z - hd);
-	scene.add(backWall);
-	walls.push(backWall);
+	// Floor — flat dark plane (MeshBasicMaterial so exposure 3.9 doesn't bleach it)
+	const floor = new THREE.Mesh(
+		new THREE.PlaneGeometry(room.width, room.depth),
+		floorMat,
+	);
+	floor.rotation.x = -Math.PI / 2;
+	floor.position.set(room.x, 0, room.z);
+	scene.add(floor);
+
+	// Back wall — split with doorway gap if another room is directly south
+	// of this one, otherwise solid (terminus of the corridor chain).
+	const hasSouthNeighbor = ROOMS.some(
+		(r) => r.id !== room.id && Math.abs((r.z + r.depth / 2) - (room.z - hd)) < 0.01,
+	);
+	if (hasSouthNeighbor) {
+		for (const side of [-1, 1]) {
+			const sideWidth = (room.width - CORRIDOR_WIDTH) / 2;
+			if (sideWidth <= 0) continue;
+			const wallPiece = new THREE.Mesh(
+				new THREE.BoxGeometry(sideWidth, ROOM_HEIGHT, 0.3), wallMat.clone()
+			);
+			wallPiece.position.set(
+				room.x + side * (CORRIDOR_WIDTH / 2 + sideWidth / 2),
+				ROOM_HEIGHT / 2,
+				room.z - hd
+			);
+			scene.add(wallPiece);
+			walls.push(wallPiece);
+		}
+	} else {
+		const backWall = new THREE.Mesh(new THREE.BoxGeometry(room.width, ROOM_HEIGHT, 0.3), wallMat.clone());
+		backWall.position.set(room.x, ROOM_HEIGHT / 2, room.z - hd);
+		scene.add(backWall);
+		walls.push(backWall);
+	}
 
 	// Front wall (with doorway gap in center)
 	for (const side of [-1, 1]) {
@@ -111,6 +232,46 @@ function buildRoomGeometry(room: RoomDef, scene: THREE.Scene): RoomVisuals {
 	ceiling.position.set(room.x, ROOM_HEIGHT, room.z);
 	scene.add(ceiling);
 
+	// Ceiling light fixtures — small emissive panels providing visible depth
+	// markers down the corridor. MeshBasicMaterial so they read the same at
+	// grazing angles regardless of dynamic lighting state.
+	// Smaller fixture footprint and slightly desaturated colour. Big bright
+	// rectangles dominated the silhouette at corridor entry; per the
+	// "bright accents vs silhouette" rule, area determines presence —
+	// shrink the area, not the brightness, so the fixtures read as ceiling
+	// lights rather than overhead windows.
+	const fixtureMat = new THREE.MeshBasicMaterial({ color: 0xb89968, fog: true });
+	const fixtureCount = Math.max(2, Math.floor(room.depth / 2.5));
+	for (let i = 0; i < fixtureCount; i++) {
+		const t = (i + 0.5) / fixtureCount;
+		const fz = room.z - hd + t * room.depth;
+		const fixture = new THREE.Mesh(
+			new THREE.BoxGeometry(0.35, 0.05, 0.7),
+			fixtureMat,
+		);
+		fixture.position.set(room.x, ROOM_HEIGHT - 0.18, fz);
+		scene.add(fixture);
+	}
+
+	// Wall accent strips — thin vertical emissive bars on side walls at
+	// regular intervals. At grazing-angle corridor views these read as a
+	// rhythmic line of bright dots receding to the vanishing point, giving
+	// the empty hallway a sense of depth and human-scale architecture.
+	const accentMat = new THREE.MeshBasicMaterial({ color: 0xa07840, fog: true });
+	const accentCount = Math.max(2, Math.floor(room.depth / 2));
+	for (let i = 0; i < accentCount; i++) {
+		const t = (i + 0.5) / accentCount;
+		const az = room.z - hd + t * room.depth;
+		for (const side of [-1, 1]) {
+			const accent = new THREE.Mesh(
+				new THREE.BoxGeometry(0.05, ROOM_HEIGHT * 0.5, 0.15),
+				accentMat,
+			);
+			accent.position.set(room.x + side * (hw - 0.18), ROOM_HEIGHT * 0.45, az);
+			scene.add(accent);
+		}
+	}
+
 	// Overhead light (dynamic — intensity driven by ship state)
 	const overheadLight = new THREE.PointLight(0xffeedd, 1.0, room.width * 2, 2);
 	overheadLight.position.set(room.x, ROOM_HEIGHT - 0.5, room.z);
@@ -118,14 +279,17 @@ function buildRoomGeometry(room: RoomDef, scene: THREE.Scene): RoomVisuals {
 
 	// Ancient glow panels on walls (emissive — driven by power level)
 	const ancientGlowPanels: THREE.Mesh[] = [];
+	// Base colour kept dark; emissive drives the visible glow when ship has power.
+	// Bright cyan base saturated to white-cyan blobs at exposure 3.9, dominating
+	// the corridor silhouette even when emissive is 0 (off).
 	const glowMat = new THREE.MeshStandardMaterial({
-		color: ANCIENT_GLOW_COLOR,
+		color: 0x101622,
 		emissive: ANCIENT_GLOW_COLOR,
 		emissiveIntensity: 0,
 	});
 	for (const side of [-1, 1]) {
 		const panel = new THREE.Mesh(
-			new THREE.BoxGeometry(0.05, 0.8, room.depth * 0.6),
+			new THREE.BoxGeometry(0.05, 0.18, room.depth * 0.5),
 			glowMat.clone()
 		);
 		panel.position.set(room.x + side * (hw - 0.2), ROOM_HEIGHT * 0.6, room.z);
@@ -136,7 +300,7 @@ function buildRoomGeometry(room: RoomDef, scene: THREE.Scene): RoomVisuals {
 	// Emergency floor strips (always present, intensity driven by state)
 	const emergencyStrips: THREE.Mesh[] = [];
 	const emergencyMat = new THREE.MeshStandardMaterial({
-		color: EMERGENCY_COLOR,
+		color: EMERGENCY_BASE_COLOR,
 		emissive: EMERGENCY_COLOR,
 		emissiveIntensity: 0,
 	});
@@ -165,9 +329,18 @@ function createSubsystemVisual(
 	sub: Subsystem, scene: THREE.Scene, position: THREE.Vector3
 ): SubsystemVisual {
 	// Box representing the subsystem (conduit, console, etc.)
-	const bodyColor = sub.condition > 0.5 ? 0x333348 : sub.condition > 0 ? 0x442222 : 0x220000;
+	// Degraded state was reading as flat plywood brown (0x442222) — re-tune
+	// to industrial dark gray (matching healthy panels) with the *condition*
+	// signaled exclusively by the emissive tint on the warning strip below.
+	const bodyColor = sub.condition > 0 ? 0x2a2e3c : 0x1a1620;
+	// Faint emissive lift so the panel body reads at the corridor's high
+	// exposure even without a direct PointLight on it. Without this, the
+	// MeshStandardMaterial body collapses to pure black against the unlit
+	// MeshBasicMaterial walls. (memory: feedback_dark_surfaces_at_high_exposure)
+	const emissiveColor = sub.condition > 0.5 ? 0x1a1a26 : sub.condition > 0 ? 0x261313 : 0x140404;
 	const bodyMat = new THREE.MeshStandardMaterial({
-		color: bodyColor, roughness: 0.5, metalness: 0.6
+		color: bodyColor, roughness: 0.5, metalness: 0.6,
+		emissive: emissiveColor, emissiveIntensity: 0.6,
 	});
 	const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.8, 0.3), bodyMat);
 	mesh.position.copy(position);
@@ -233,7 +406,7 @@ function updateRoomAtmosphere(room: RoomDef, visuals: RoomVisuals, section: Sect
 
 	// Ancient glow panels — activate above threshold
 	const glowIntensity = power > ANCIENT_GLOW_THRESHOLD
-		? ((power - ANCIENT_GLOW_THRESHOLD) / (1.0 - ANCIENT_GLOW_THRESHOLD)) * 0.8
+		? ((power - ANCIENT_GLOW_THRESHOLD) / (1.0 - ANCIENT_GLOW_THRESHOLD)) * 0.35
 		: 0;
 	for (const panel of visuals.ancientGlowPanels) {
 		const mat = panel.material as THREE.MeshStandardMaterial;
@@ -416,15 +589,21 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	const shipState = new ShipState();
 	shipState.init();
 
+	// Photo-mode override: when capturing screenshots for visual audit,
+	// force full power so emergency lighting wash clears and architecture
+	// is visible. URL flag ?photo=1 is set by scripts/capture-screenshots.ts.
+	const photoMode = typeof window !== "undefined"
+		&& new URLSearchParams(window.location.search).get("photo") === "1";
+
 	// Register sections
 	const sectionDefs: Section[] = ROOMS.map(room => ({
 		id: room.id,
 		discovered: room.id === "gate-room", // start in gate room
 		accessible: true,
 		atmosphere: 0.8,
-		powerLevel: 0.4,
+		powerLevel: photoMode ? 1.0 : 0.4,
 		structuralIntegrity: 0.9,
-		accessState: room.id === "gate-room" ? "explored" as const : "unexplored" as const,
+		accessState: photoMode || room.id === "gate-room" ? "explored" as const : "unexplored" as const,
 		subsystems: [],
 	}));
 
@@ -466,6 +645,21 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 
 	// Set initial power — the corridor conduit affects storage bay power
 	shipState.distributePower();
+
+	// Photo-mode override: force all sections to full power AFTER distribution,
+	// since distributePower recomputes from subsystem condition (which is
+	// intentionally degraded for E1 emergency-state gameplay).
+	if (photoMode) {
+		for (const sec of shipState.getAllSections()) {
+			sec.powerLevel = 1.0;
+			sec.atmosphere = 1.0;
+		}
+		// Cool, restrained fill so the SGU corridor mood reads (dim Ancient ship
+		// metal, not bright daylit office). Point lights still drive the
+		// dramatic ceiling-fixture pools; ambient just keeps walls from black-out.
+		scene.add(new THREE.AmbientLight(0x202838, 0.55));
+		scene.add(new THREE.HemisphereLight(0x303848, 0x080810, 0.35));
+	}
 
 	// Build room geometry
 	const roomVisualsMap = new Map<string, RoomVisuals>();
@@ -531,6 +725,9 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 
 	// Track which section the player is in
 	let currentSection = "gate-room";
+
+	// Capture/test hook — signals that the scene is fully mounted and visible.
+	(window as unknown as { __sceneReady?: boolean }).__sceneReady = true;
 
 	return {
 		update(delta: number) {

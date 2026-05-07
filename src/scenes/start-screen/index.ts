@@ -555,6 +555,12 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	let elapsed = 0;
 	let disposed = false;
 
+	// Signal scene-ready so screenshot capture (scripts/capture-screenshots.ts)
+	// can grab the menu after one frame of star-field rendering.
+	if (typeof window !== "undefined") {
+		(window as unknown as { __sceneReady?: boolean }).__sceneReady = true;
+	}
+
 	return {
 		update(delta: number): void {
 			if (disposed) return;

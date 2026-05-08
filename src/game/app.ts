@@ -35,6 +35,11 @@ import { installDebugApi, toggleDebugOverlay } from "../systems/debug-api";
 import { pollInput, getInput } from "../systems/input";
 import { mountTouchControls } from "../ui/touch-controls";
 import { mountHud, type HudHandle } from "../ui/hud";
+import { mountPauseMenu, type PauseMenuHandle } from "../ui/pause-menu";
+import {
+	onEscapeRequested,
+	requestFullscreenAndPointerLock,
+} from "../systems/fullscreen";
 import { createDefaultGameplaySystems, createStarterGameplayHost, mergeGameplaySystems } from "./gameplay";
 import { GameLoop, FIXED_STEP_SECONDS } from "./loop";
 import { InputManager } from "./input";
@@ -185,7 +190,38 @@ export async function createGameApp(options: GameAppOptions) {
   // scene definition. Refreshed on every scene transition so the quest
   // panel reflects the newly-active quest manager.
   let hud: HudHandle | null = null;
+  let pauseMenu: PauseMenuHandle | null = null;
   let disposed = false;
+
+  const resumeGame = () => {
+    if (!pauseMenu?.isVisible()) return;
+    pauseMenu.hide();
+    loop.resume();
+    // Restore the immersive presentation that was interrupted.
+    void requestFullscreenAndPointerLock(renderer.domElement as unknown as HTMLElement);
+  };
+
+  const pauseGame = () => {
+    if (pauseMenu?.isVisible()) return;
+    // Only pause + show menu on gameplay scenes. Menu/cinematic scenes
+    // (hud === false) shouldn't trap the player in a pause overlay.
+    if (!hud) return;
+    loop.pause();
+    pauseMenu?.show();
+  };
+
+  pauseMenu = mountPauseMenu({
+    onResume: () => resumeGame(),
+    onQuit: () => {
+      if (pauseMenu?.isVisible()) pauseMenu.hide();
+      loop.resume();
+      void loadScene("start-screen");
+    },
+  });
+
+  const unsubscribeEscape = onEscapeRequested(() => {
+    pauseGame();
+  });
 
   // Adaptive physics state
   let adaptiveStepSeconds = DEFAULT_FIXED_STEP_SECONDS;
@@ -429,6 +465,9 @@ export async function createGameApp(options: GameAppOptions) {
     touchControls?.dispose();
     hud?.dispose();
     hud = null;
+    pauseMenu?.dispose();
+    pauseMenu = null;
+    unsubscribeEscape();
     if (activeBundle) {
       await disposeBundle(activeBundle);
     }

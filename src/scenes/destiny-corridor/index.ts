@@ -780,7 +780,6 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		roomVisualsMap.set(room.id, visuals);
 	}
 	const roomColliders = buildRoomColliders(context.physicsWorld);
-
 	// Batch repeating fixture+accent furniture into two InstancedMesh draws.
 	buildInstancedFurniture(scene);
 

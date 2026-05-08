@@ -2,7 +2,7 @@
  * Service Worker — auto-generated from @kopertop/vibe-game-engine template.
  * Customize CACHE_VERSION + PRECACHE_URLS per build.
  */
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const CACHE_RUNTIME = `runtime-${CACHE_VERSION}`;
 const CACHE_PRECACHE = `precache-${CACHE_VERSION}`;
 
@@ -11,6 +11,8 @@ const PRECACHE_URLS = [
 	'/',
 	'/index.html',
 	'/manifest.webmanifest',
+	'/offline.html',
+	'/404.html',
 ];
 
 self.addEventListener('install', (event) => {
@@ -47,7 +49,7 @@ const networkFirst = async (request) => {
 		if (cached) return cached;
 		// Fallback for navigations — serve the cached shell.
 		if (request.mode === 'navigate') {
-			return caches.match('/index.html');
+			return caches.match('/offline.html');
 		}
 		throw new Error('offline and not cached');
 	}

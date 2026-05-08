@@ -19,9 +19,15 @@ jobs:
 
       - name: Install dependencies
         run: bun install
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
       - name: TypeScript typecheck
         run: bun run typecheck
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
       - name: Run tests
         run: bun run test
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"

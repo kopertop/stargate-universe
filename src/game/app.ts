@@ -32,10 +32,18 @@ import { WebGPURenderer } from "three/webgpu";
 import { createCameraController, frameCameraOnObject } from "./camera";
 import { AudioManager } from "../systems/audio";
 import { installDebugApi, toggleDebugOverlay } from "../systems/debug-api";
-import { pollInput } from "../systems/input";
+import { pollInput, getInput } from "../systems/input";
+import { mountTouchControls } from "../ui/touch-controls";
+import { mountHud, type HudHandle } from "../ui/hud";
+import { mountPauseMenu, type PauseMenuHandle } from "../ui/pause-menu";
+import {
+	onEscapeRequested,
+	requestFullscreenAndPointerLock,
+} from "../systems/fullscreen";
 import { createDefaultGameplaySystems, createStarterGameplayHost, mergeGameplaySystems } from "./gameplay";
 import { GameLoop, FIXED_STEP_SECONDS } from "./loop";
 import { InputManager } from "./input";
+import { installAssetDecoders } from "./loaders/install-decoders";
 import { createRuntimePhysicsSession, type RuntimePhysicsSession } from "./physics";
 import type {
   GameSceneContext,
@@ -107,6 +115,10 @@ export async function createGameApp(options: GameAppOptions) {
   const forceWebGL = new URLSearchParams(window.location.search).has("webgl");
   const renderer = new WebGPURenderer({ antialias: true, forceWebGL });
   await renderer.init();
+  // Install DRACO + KTX2 + Meshopt decoders globally so every GLTFLoader
+  // (ours, ggez's, VRM's) auto-handles compressed assets. Must run after
+  // renderer.init() — KTX2 transcoder format selection reads capabilities.
+  installAssetDecoders(renderer);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
@@ -160,12 +172,56 @@ export async function createGameApp(options: GameAppOptions) {
   };
   if (import.meta.env.DEV) {
     installDebugApi(hostHooks);
+    (window as unknown as { __sguRenderer?: unknown }).__sguRenderer = renderer;
+    (window as unknown as { __sguSceneRoot?: THREE.Scene }).__sguSceneRoot = scene;
     const toggleDev = (e: KeyboardEvent) => {
       if (e.code === "Backquote") toggleDebugOverlay(hostHooks);
     };
     window.addEventListener("keydown", toggleDev);
+    // S4-07 dev panel — bound live to renderer tone mapping/exposure.
+    // Dynamic import so the lil-gui dep stays out of prod bundles.
+    void import("../post/dev-panel").then(({ mountDevPanel }) => mountDevPanel({ renderer }));
   }
+  // S4-09 — touch controls mount only on coarse pointers (returns null on
+  // desktop, keeping the DOM clean and avoiding stray pointer captures).
+  const touchControls = mountTouchControls(getInput());
+  // Player HUD — mounted once at app boot, hidden on scenes that opt out
+  // (start-screen, opening cinematic) by setting `hud: false` in the
+  // scene definition. Refreshed on every scene transition so the quest
+  // panel reflects the newly-active quest manager.
+  let hud: HudHandle | null = null;
+  let pauseMenu: PauseMenuHandle | null = null;
   let disposed = false;
+
+  const resumeGame = () => {
+    if (!pauseMenu?.isVisible()) return;
+    pauseMenu.hide();
+    loop.resume();
+    // Restore the immersive presentation that was interrupted.
+    void requestFullscreenAndPointerLock(renderer.domElement as unknown as HTMLElement);
+  };
+
+  const pauseGame = () => {
+    if (pauseMenu?.isVisible()) return;
+    // Only pause + show menu on gameplay scenes. Menu/cinematic scenes
+    // (hud === false) shouldn't trap the player in a pause overlay.
+    if (!hud) return;
+    loop.pause();
+    pauseMenu?.show();
+  };
+
+  pauseMenu = mountPauseMenu({
+    onResume: () => resumeGame(),
+    onQuit: () => {
+      if (pauseMenu?.isVisible()) pauseMenu.hide();
+      loop.resume();
+      void loadScene("start-screen");
+    },
+  });
+
+  const unsubscribeEscape = onEscapeRequested(() => {
+    pauseGame();
+  });
 
   // Adaptive physics state
   let adaptiveStepSeconds = DEFAULT_FIXED_STEP_SECONDS;
@@ -200,6 +256,9 @@ export async function createGameApp(options: GameAppOptions) {
       runFixedStep();
     },
     onUpdate: (dt) => {
+      // Push touch joystick axis into InputManager *before* polling — pollInput
+      // snapshots the merged keyboard+gamepad+touch movement for this frame.
+      touchControls?.tickAxis();
       // Controller + keyboard snapshot (edge-detection for just-pressed actions)
       pollInput();
 
@@ -380,6 +439,18 @@ export async function createGameApp(options: GameAppOptions) {
       await disposeBundle(previous);
     }
 
+    // HUD lifecycle — mount/unmount based on scene's `hud` flag (default
+    // true). Refresh after every successful mount so the quest panel
+    // picks up the freshly-registered quest manager.
+    const showHud = definition.hud !== false;
+    if (showHud && !hud) {
+      hud = mountHud();
+    } else if (!showHud && hud) {
+      hud.dispose();
+      hud = null;
+    }
+    hud?.refresh();
+
     setStatus("");
   };
 
@@ -391,6 +462,12 @@ export async function createGameApp(options: GameAppOptions) {
   const dispose = async () => {
     disposed = true;
     window.removeEventListener("resize", handleResize);
+    touchControls?.dispose();
+    hud?.dispose();
+    hud = null;
+    pauseMenu?.dispose();
+    pauseMenu = null;
+    unsubscribeEscape();
     if (activeBundle) {
       await disposeBundle(activeBundle);
     }

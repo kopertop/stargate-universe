@@ -54,6 +54,8 @@ declare module "@kopertop/vibe-game-engine" {
 		bind(): () => void;
 		setKeyBindings(bindings: Record<string, number>): void;
 		setGamepadBindings(bindings: Partial<Record<number, number[]>>): void;
+		/** Inject virtual touch joystick movement. Call once per frame. */
+		setTouchMovement(x: number, z: number): void;
 		poll(): void;
 		isAction(action: number): boolean;
 		isActionJustPressed(action: number): boolean;

@@ -613,5 +613,6 @@ export const startScreenScene = defineGameScene({
 	}),
 	title:  "Start Screen",
 	player: false,
+	hud:    false,
 	mount,
 });

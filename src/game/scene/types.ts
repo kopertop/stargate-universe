@@ -141,6 +141,12 @@ export type GameSceneDefinition = {
    */
   player?: false | PlayerConfig;
   /**
+   * Show the player HUD (quests, resources, hotbar, keybind hints) on
+   * this scene. Defaults to `true`. Cinematics, the start screen, and
+   * other non-gameplay scenes should set `hud: false` to keep them clean.
+   */
+  hud?: boolean;
+  /**
    * Gameplay systems to register. These are merged with (and can override) the
    * default starter systems; later entries with the same id win.
    *

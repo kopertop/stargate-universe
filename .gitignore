@@ -35,3 +35,8 @@ __pycache__
 
 # Codex CLI workspace (local agent state)
 .codex/
+
+# Uncompressed asset originals (kept outside asset roots so Vite doesn't ship them)
+.asset-originals/
+*.glb.orig
+*.vrm.orig

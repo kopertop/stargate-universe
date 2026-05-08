@@ -1094,5 +1094,6 @@ export const openingCinematicScene = defineGameScene({
 	}),
 	title: "Opening Cinematic",
 	player: false,
+	hud: false,
 	mount,
 });

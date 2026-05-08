@@ -994,50 +994,58 @@ function buildLighting(scene: THREE.Scene, debugObjects: THREE.Object3D[]): THRE
 	scene.add(gateTopLight);
 	lights.push(gateTopLight);
 
-	// Overhead room light — cool dim fill, NOT warm.
-	const overheadLight = new THREE.PointLight(0x1a2233, 0.15, 22, 1.6);
-	overheadLight.position.set(0, ROOM_HEIGHT - 3, ROOM_DEPTH / 4);
-	scene.add(overheadLight);
-	lights.push(overheadLight);
-
-	// Side accents — isolated cool pools matching the dormant concept's
-	// scattered alcove glints. Finite range so each only paints its own wall.
+	// PERF: removed overhead PointLight (0.15 intensity — invisible against
+	// hemisphere fill) and 6 cool side accent PointLights (0.18 each, barely
+	// reading). Wall alcove pools are now provided by emissive strip materials
+	// elsewhere; the AmbientLight + HemisphereLight + DirectionalLight trio
+	// covers the room base lighting at zero per-pixel cost compared to
+	// dynamic point lights.
 	const COLOR_COOL_ACCENT = 0x1a2244;
+	const sideAccentMat = new THREE.MeshStandardMaterial({
+		color: COLOR_COOL_ACCENT,
+		emissive: COLOR_COOL_ACCENT,
+		emissiveIntensity: 1.4,
+	});
 	for (const zOff of [0, ROOM_DEPTH / 3, 2 * ROOM_DEPTH / 3]) {
 		for (const xSign of [-1, 1]) {
-			const side = new THREE.PointLight(COLOR_COOL_ACCENT, 0.18, 12, 1.8);
-			side.position.set(xSign * (ROOM_WIDTH / 3), 6, zOff);
-			scene.add(side);
-			lights.push(side);
+			const sconce = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.6, 0.12), sideAccentMat);
+			sconce.position.set(xSign * (ROOM_WIDTH / 2 - 0.1), 6, zOff);
+			scene.add(sconce);
 		}
 	}
 
-	// 7-10. Floor spotlights aimed at gate faces — restored from working prototype
+	// 7-10. Floor spot fixtures aimed at gate faces. Only the front pair is a
+	// real SpotLight — the rear pair becomes emissive lens fixtures only,
+	// since their cast light is mostly absorbed by the gate ring anyway and
+	// each SpotLight is the most expensive light type in three.js's WebGPU
+	// forward path.
 	const gateY = GATE_CENTER.y;
 	const spotPositions = [
-		{ pos: [-2.5, 0.1, gateZ + 3.5], target: [-GATE_RADIUS * 0.5, gateY, gateZ + 0.15], zDir: -1 },
-		{ pos: [2.5, 0.1, gateZ + 3.5], target: [GATE_RADIUS * 0.5, gateY, gateZ + 0.15], zDir: -1 },
-		{ pos: [-2.5, 0.1, gateZ - 3.5], target: [-GATE_RADIUS * 0.5, gateY, gateZ - 0.15], zDir: 1 },
-		{ pos: [2.5, 0.1, gateZ - 3.5], target: [GATE_RADIUS * 0.5, gateY, gateZ - 0.15], zDir: 1 },
+		{ pos: [-2.5, 0.1, gateZ + 3.5], target: [-GATE_RADIUS * 0.5, gateY, gateZ + 0.15], zDir: -1, real: true },
+		{ pos: [2.5, 0.1, gateZ + 3.5], target: [GATE_RADIUS * 0.5, gateY, gateZ + 0.15], zDir: -1, real: true },
+		{ pos: [-2.5, 0.1, gateZ - 3.5], target: [-GATE_RADIUS * 0.5, gateY, gateZ - 0.15], zDir: 1, real: false },
+		{ pos: [2.5, 0.1, gateZ - 3.5], target: [GATE_RADIUS * 0.5, gateY, gateZ - 0.15], zDir: 1, real: false },
 	];
 
 	const housingMat = new THREE.MeshStandardMaterial({ color: 0x222233, roughness: 0.6, metalness: 0.4 });
 	const lensMat = new THREE.MeshStandardMaterial({ color: 0xccddff, emissive: 0xbbddff, emissiveIntensity: 1.5 });
 
 	for (const sp of spotPositions) {
-		const spot = new THREE.SpotLight(0xbbddff, 20, 20, Math.PI / 5, 0.5, 1.0);
-		spot.position.set(sp.pos[0], sp.pos[1], sp.pos[2]);
-		spot.target.position.set(sp.target[0], sp.target[1], sp.target[2]);
-		scene.add(spot);
-		scene.add(spot.target);
+		if (sp.real) {
+			const spot = new THREE.SpotLight(0xbbddff, 20, 20, Math.PI / 5, 0.5, 1.0);
+			spot.position.set(sp.pos[0], sp.pos[1], sp.pos[2]);
+			spot.target.position.set(sp.target[0], sp.target[1], sp.target[2]);
+			scene.add(spot);
+			scene.add(spot.target);
 
-		const helper = new THREE.SpotLightHelper(spot, 0xffff00);
-		helper.visible = false;
-		scene.add(helper);
-		// BUG-006: call update() synchronously — the old RAF fired on a potentially
-		// disposed scene if a rapid scene transition happened before the frame ran.
-		helper.update();
-		debugObjects.push(helper);
+			const helper = new THREE.SpotLightHelper(spot, 0xffff00);
+			helper.visible = false;
+			scene.add(helper);
+			// BUG-006: call update() synchronously — the old RAF fired on a potentially
+			// disposed scene if a rapid scene transition happened before the frame ran.
+			helper.update();
+			debugObjects.push(helper);
+		}
 
 		const fixtureGroup = new THREE.Group();
 		fixtureGroup.position.set(sp.pos[0], 0.18, sp.pos[2]);

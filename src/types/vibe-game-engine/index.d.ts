@@ -66,6 +66,15 @@ declare module "@kopertop/vibe-game-engine" {
 		getAxis(index: number): number;
 		getMovement(): { x: number; z: number };
 		getLook(): { x: number; y: number };
+		beginCalibration(name: string): { finish(): GamepadProfile; waitForButton(logical: GamepadButton): Promise<void>; cancel(): void; } | null;
+		saveProfile(profile: GamepadProfile): void;
+		onUnknownController(callback: ((id: string) => void) | null): void;
+	}
+
+	export interface GamepadProfile {
+		id: string;
+		name: string;
+		mappings: Record<string, number>;
 	}
 
 	// ── Cross-cutting event bus ────────────────────────────────────────────
@@ -154,12 +163,22 @@ declare module "@kopertop/vibe-game-engine" {
 	export interface DialoguePanelOptions {
 		style?: string;
 		optionHints?: string[];
+		navigation?: 'select' | 'none';
+		confirmHint?: string;
+	}
+
+	export interface DialoguePanelElement extends HTMLElement {
+		dispose(): void;
+		isOpen(): boolean;
+		selectPrev(): void;
+		selectNext(): void;
+		confirmSelection(): void;
 	}
 
 	export function createDialoguePanel(
 		bus: DialoguePanelEventBus,
 		options?: DialoguePanelOptions,
-	): HTMLElement & { dispose(): void };
+	): DialoguePanelElement;
 
 	// ── HUD ─────────────────────────────────────────────────────────────────
 

@@ -260,7 +260,7 @@ export async function createGameApp(options: GameAppOptions) {
     let gameplayRuntime: GameplayRuntime | undefined;
     let physicsWorld: CrashcatPhysicsWorld | undefined;
     let runtimePhysics: RuntimePhysicsSession | undefined;
-    let mountResult: GameSceneLifecycle | undefined;
+    let mountResult: GameSceneLifecycle | void;
 
     try {
       await ensureCrashcatRuntimePhysics();

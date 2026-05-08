@@ -12,26 +12,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: stargate-universe
-
-      - uses: actions/checkout@v4
-        with:
-          repository: kopertop/vibe-game-engine
-          path: vibe-game-engine
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
       - name: Install dependencies
-        working-directory: stargate-universe
         run: bun install
 
       - name: TypeScript typecheck
-        working-directory: stargate-universe
         run: bun run typecheck
 
       - name: Run tests
-        working-directory: stargate-universe
         run: bun run test

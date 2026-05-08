@@ -141,6 +141,7 @@ export const mountPauseMenu = (options: PauseMenuOptions): PauseMenuHandle => {
 		show: () => {
 			visible = true;
 			overlay.classList.add("is-visible");
+			if (document.pointerLockElement) document.exitPointerLock();
 			resumeBtn.focus();
 		},
 		hide: () => {

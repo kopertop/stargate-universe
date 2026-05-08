@@ -26,6 +26,7 @@ import { VrmExpressionController } from "./vrm-expression-controller";
 import { VrmLookAtController } from "./vrm-lookat-controller";
 import { loadVrm, type VrmLoadResult } from "./vrm-asset-loader";
 import { convertMToonToPBR } from "./vrm-mtoon-converter";
+import { emit } from "../event-bus";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -52,6 +53,8 @@ export type VrmCharacterInstance = {
 	loading: boolean;
 	failed: boolean;
 	readonly fallbackMesh: Mesh;
+	/** Resolves when the VRM finishes loading, rejects if it fails. */
+	readonly whenLoaded: Promise<VRM>;
 };
 
 // ─── Manager ────────────────────────────────────────────────────────────────
@@ -86,6 +89,13 @@ export class VrmCharacterManager {
 		fallbackMesh.visible = false; // Hidden until load fails — prevents capsule flash
 		root.add(fallbackMesh);
 
+		let resolveLoaded!: (vrm: VRM) => void;
+		let rejectLoaded!: (err: unknown) => void;
+		const whenLoaded = new Promise<VRM>((resolve, reject) => {
+			resolveLoaded = resolve;
+			rejectLoaded = reject;
+		});
+
 		const instance: VrmCharacterInstance = {
 			id: options.id,
 			vrmUrl: options.vrmUrl,
@@ -100,13 +110,20 @@ export class VrmCharacterManager {
 			loading: true,
 			failed: false,
 			fallbackMesh,
+			whenLoaded,
 		};
 
 		this.characters.set(options.id, instance);
 
 		loadVrm(options.vrmUrl, options.priority ?? (options.isPlayer ? 0 : 1))
-			.then((result) => this.onVrmLoaded(instance, result))
-			.catch((error) => this.onVrmFailed(instance, error));
+			.then((result) => {
+				this.onVrmLoaded(instance, result);
+				resolveLoaded(result.vrm);
+			})
+			.catch((error) => {
+				this.onVrmFailed(instance, error);
+				rejectLoaded(error);
+			});
 
 		return instance;
 	}
@@ -216,7 +233,7 @@ export class VrmCharacterManager {
 		instance.root.add(result.vrm.scene);
 		instance.fallbackMesh.visible = false;
 
-		// Character loaded successfully.
+		emit("character:model:loaded", { characterId: instance.id });
 	}
 
 	private onVrmFailed(instance: VrmCharacterInstance, error: unknown): void {
@@ -224,7 +241,9 @@ export class VrmCharacterManager {
 		instance.failed = true;
 		instance.fallbackMesh.visible = true;
 
+		const message = error instanceof Error ? error.message : String(error);
 		console.error(`[VrmCharacterManager] Failed "${instance.id}":`, error);
+		emit("character:model:failed", { characterId: instance.id, error: message });
 	}
 
 	// ─── Internal: Per-Frame Updates ────────────────────────────────────────
@@ -281,13 +300,14 @@ export class VrmCharacterManager {
 	private updateVrm(instance: VrmCharacterInstance, delta: number, config: VrmConfig): void {
 		if (!instance.vrm) return;
 
+		// Always call vrm.update() — this drives humanoid normalization
+		// (normalized → raw bone copy) which the AnimationMixer depends on.
+		// Gating this on springBonesActive previously left non-near-LOD
+		// characters frozen at bind pose (T-pose) even when their mixer was
+		// running. Spring-bone CPU cost is negligible vs. skinning, so the
+		// LOD gate does not need to skip the whole update.
 		const clampedDelta = Math.min(delta, config.springBone.maxDeltaSeconds);
-
-		if (instance.springBonesActive) {
-			instance.vrm.update(clampedDelta);
-		} else {
-			instance.vrm.expressionManager?.update();
-		}
+		instance.vrm.update(clampedDelta);
 	}
 
 	private updateFirstPersonFade(delta: number): void {

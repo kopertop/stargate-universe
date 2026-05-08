@@ -15,10 +15,10 @@ const resources = new Map<ResourceType, number>();
  * Initialize with starting amounts for the crew's shared resource pool.
  */
 export function initResources(): void {
-	resources.set("ship-parts", 10);
-	resources.set("water", 50);
-	resources.set("food", 40);
-	resources.set("lime", 20);
+	if (!resources.has("ship-parts")) resources.set("ship-parts", 10);
+	if (!resources.has("water")) resources.set("water", 50);
+	if (!resources.has("food")) resources.set("food", 40);
+	if (!resources.has("lime")) resources.set("lime", 20);
 }
 
 /**

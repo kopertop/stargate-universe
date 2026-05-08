@@ -18,7 +18,6 @@ import {
 } from "../../game/runtime-scene-sources";
 import type { GameSceneModuleContext, GameSceneLifecycle } from "../../game/scene-types";
 import { AudioManager } from "../../systems/audio";
-import { Action, getInput } from "../../systems/input";
 import destinyShipModelUrl from "./assets/destiny-ship.glb?url";
 
 const assetUrlLoaders = import.meta.glob("./assets/**/*", {
@@ -677,17 +676,33 @@ function createTunnelOverlay(): TunnelOverlay {
 
 // ─── Skip hint overlay ────────────────────────────────────────────────────────
 
-function createSkipHint(): { dispose: () => void } {
+function createSkipHint(): { setProgress: (p: number) => void; dispose: () => void } {
 	const el = document.createElement("div");
 	el.style.cssText = [
-		"position:fixed;top:2rem;right:2rem;z-index:80;",
-		"color:rgba(255,255,255,0.45);font-size:0.75rem;",
-		"letter-spacing:0.12em;pointer-events:none;",
-		"font-family:'Segoe UI',sans-serif;text-transform:uppercase;",
+		"position:fixed;bottom:2rem;right:2rem;z-index:80;",
+		"color:rgba(255,255,255,0.65);font-size:0.85rem;letter-spacing:0.08em;",
+		"font-family:'Segoe UI',sans-serif;pointer-events:none;text-align:right;",
 	].join("");
-	el.textContent = "Press ESC to skip";
+
+	const label = document.createElement("div");
+	label.textContent = "Hold SPACE to skip";
+	el.appendChild(label);
+
+	const bar = document.createElement("div");
+	bar.style.cssText = "height:2px;background:#ffffff22;margin-top:4px;overflow:hidden;";
+	const fill = document.createElement("div");
+	fill.style.cssText = "height:100%;background:#d4b96a;width:0%;transition:width 0.05s linear;";
+	bar.appendChild(fill);
+	el.appendChild(bar);
+
 	document.body.appendChild(el);
-	return { dispose: () => el.remove() };
+	return {
+		setProgress(p: number) {
+			fill.style.width = `${Math.min(100, p * 100)}%`;
+			el.style.color = p > 0 ? "#d4b96aee" : "rgba(255,255,255,0.65)";
+		},
+		dispose: () => el.remove(),
+	};
 }
 
 // ─── Scene mount ──────────────────────────────────────────────────────────────
@@ -950,9 +965,21 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	let disposed = false;
 	let finished = false;
 
-	// Skip handled via InputManager — Action.MenuConfirm (Enter/Gamepad A)
-	// and Action.Pause (Escape/Gamepad Start) both end the cinematic.
-	const input = getInput();
+	// Hold-SPACE skip via direct keyboard listener. The engine's
+	// InputManager is a Vite-aliased no-op stub, so isAction() never fires
+	// at runtime. We track Space-held state manually here.
+	const SKIP_HOLD_MS = 1500;
+	let spaceHeld = false;
+	let skipHoldStart: number | null = null;
+	let skipTriggered = false;
+	const onSkipKeyDown = (event: KeyboardEvent) => {
+		if (event.code === "Space") spaceHeld = true;
+	};
+	const onSkipKeyUp = (event: KeyboardEvent) => {
+		if (event.code === "Space") spaceHeld = false;
+	};
+	window.addEventListener("keydown", onSkipKeyDown);
+	window.addEventListener("keyup", onSkipKeyUp);
 
 	// Ship stationary at origin — camera orbits around it.
 	destiny.root.position.set(0, 0, 0);
@@ -992,9 +1019,22 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			const step = frozen ? 0 : delta;
 			elapsed += step;
 
-			// Skip on any confirm/pause press
-			if (input.isActionJustPressed(Action.MenuConfirm) || input.isActionJustPressed(Action.Pause)) {
-				finish();
+			// Hold-SPACE skip with progress bar
+			if (!skipTriggered) {
+				if (spaceHeld && skipHoldStart === null) {
+					skipHoldStart = performance.now();
+				} else if (!spaceHeld && skipHoldStart !== null) {
+					skipHoldStart = null;
+					skipHint.setProgress(0);
+				}
+				if (skipHoldStart !== null) {
+					const heldFor = performance.now() - skipHoldStart;
+					skipHint.setProgress(Math.min(1, heldFor / SKIP_HOLD_MS));
+					if (heldFor >= SKIP_HOLD_MS) {
+						skipTriggered = true;
+						finish();
+					}
+				}
 			}
 
 			// Star drift (additional warp acceleration applied below)
@@ -1066,6 +1106,8 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 
 		dispose(): void {
 			disposed = true;
+			window.removeEventListener("keydown", onSkipKeyDown);
+			window.removeEventListener("keyup", onSkipKeyUp);
 			// DO NOT stop sgu-theme-song here — the gate-room arrival
 			// cinematic is the continuation of the same 60-second musical
 			// beat. Music is stopped when the gate-room cinematic ends

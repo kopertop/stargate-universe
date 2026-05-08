@@ -14,8 +14,18 @@ import {
 } from "../../game/runtime-scene-sources";
 import type { GameSceneModuleContext, GameSceneLifecycle } from "../../game/scene-types";
 import { ShipState, type Section, type Subsystem, SHIP_STATE_CONFIG } from "../../systems/ship-state";
-import { emit, on, scopedBus } from "../../systems/event-bus";
+import { emit, scopedBus } from "../../systems/event-bus";
 import { Action, SguAction, getInput } from "../../systems/input";
+import { addResource, consumeResource, getResource, hasResource, initResources } from "../../systems/resources";
+import { createSupplyCrate, markSupplyCrateLooted, type SupplyCrate } from "../../systems/supply-crates";
+import { box } from "crashcat";
+import {
+	CRASHCAT_OBJECT_LAYER_STATIC,
+	MotionType,
+	rigidBody,
+	type CrashcatPhysicsWorld,
+	type CrashcatRigidBody,
+} from "@ggez/runtime-physics-crashcat";
 
 const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 	import: "default",
@@ -59,6 +69,8 @@ interface RoomVisuals {
 	ancientGlowPanels: THREE.Mesh[];
 	emergencyStrips: THREE.Mesh[];
 }
+
+type StaticCollider = CrashcatRigidBody;
 
 // Build a panelled-metal wall texture once and reuse across all room walls.
 // Horizontal seam lines + a few vertical rib columns give the dark indigo
@@ -281,6 +293,68 @@ function buildRoomGeometry(room: RoomDef, scene: THREE.Scene): RoomVisuals {
 	return { walls, ceiling, lights: [overheadLight], ancientGlowPanels, emergencyStrips };
 }
 
+function buildRoomColliders(world: CrashcatPhysicsWorld): StaticCollider[] {
+	const wallThickness = 0.3;
+	const colliders: StaticCollider[] = [];
+	const addStaticBox = (
+		halfExtents: [number, number, number],
+		position: [number, number, number],
+	) => {
+		colliders.push(rigidBody.create(world, {
+			motionType: MotionType.STATIC,
+			objectLayer: CRASHCAT_OBJECT_LAYER_STATIC,
+			shape: box.create({ halfExtents }),
+			position,
+		}));
+	};
+
+	for (const room of ROOMS) {
+		const hw = room.width / 2;
+		const hd = room.depth / 2;
+		const sideWidth = (room.width - CORRIDOR_WIDTH) / 2;
+
+		addStaticBox([hw, wallThickness / 2, hd], [room.x, -wallThickness / 2, room.z]);
+		addStaticBox([hw, wallThickness / 2, hd], [room.x, ROOM_HEIGHT + wallThickness / 2, room.z]);
+		addStaticBox(
+			[wallThickness / 2, ROOM_HEIGHT / 2, hd],
+			[room.x - hw - wallThickness / 2, ROOM_HEIGHT / 2, room.z],
+		);
+		addStaticBox(
+			[wallThickness / 2, ROOM_HEIGHT / 2, hd],
+			[room.x + hw + wallThickness / 2, ROOM_HEIGHT / 2, room.z],
+		);
+
+		const hasNorthNeighbor = ROOMS.some(
+			(r) => r.id !== room.id && Math.abs((r.z + r.depth / 2) - (room.z - hd)) < 0.01,
+		);
+		const addSplitWall = (z: number) => {
+			if (sideWidth <= 0) return;
+			for (const side of [-1, 1] as const) {
+				addStaticBox(
+					[sideWidth / 2, ROOM_HEIGHT / 2, wallThickness / 2],
+					[
+						room.x + side * (CORRIDOR_WIDTH / 2 + sideWidth / 2),
+						ROOM_HEIGHT / 2,
+						z,
+					],
+				);
+			}
+		};
+
+		if (hasNorthNeighbor) {
+			addSplitWall(room.z - hd - wallThickness / 2);
+		} else {
+			addStaticBox(
+				[hw, ROOM_HEIGHT / 2, wallThickness / 2],
+				[room.x, ROOM_HEIGHT / 2, room.z - hd - wallThickness / 2],
+			);
+		}
+
+		addSplitWall(room.z + hd + wallThickness / 2);
+	}
+
+	return colliders;
+}
 // ─── Instanced furniture (S4-05) ─────────────────────────────────────────────
 // Ceiling light fixtures and wall accent strips repeat across every room with
 // identical geometry and material. Each room previously spawned ~10 individual
@@ -508,6 +582,7 @@ const SECONDS_PER_REPAIR_PART = 1.0;
 
 interface InteractionState {
 	nearestSubsystem: SubsystemVisual | null;
+	nearestCrate: SupplyCrate | null;
 	promptElement: HTMLDivElement;
 	/** Subsystem currently being repaired (null if not repairing). */
 	repairingSubsystemId: string | null;
@@ -519,7 +594,7 @@ interface InteractionState {
 
 function createInteractionPrompt(): HTMLDivElement {
 	const el = document.createElement("div");
-	el.id = "interaction-prompt";
+	el.id = "interact-prompt";
 	Object.assign(el.style, {
 		position: "fixed",
 		bottom: "120px",
@@ -541,22 +616,36 @@ function createInteractionPrompt(): HTMLDivElement {
 function updateInteraction(
 	state: InteractionState,
 	subsystemVisuals: SubsystemVisual[],
+	crates: SupplyCrate[],
 	playerPos: THREE.Vector3,
 	shipState: ShipState
 ): void {
 	const INTERACT_RANGE = 2.5;
-	let nearest: SubsystemVisual | null = null;
+	let nearestSubsystem: SubsystemVisual | null = null;
+	let nearestCrate: SupplyCrate | null = null;
 	let nearestDist = Infinity;
 
-	for (const sv of subsystemVisuals) {
-		const dist = sv.mesh.position.distanceTo(playerPos);
+	for (const crate of crates) {
+		if (crate.looted) continue;
+		const dist = crate.position.distanceTo(playerPos);
 		if (dist < INTERACT_RANGE && dist < nearestDist) {
-			nearest = sv;
+			nearestCrate = crate;
+			nearestSubsystem = null;
 			nearestDist = dist;
 		}
 	}
 
-	state.nearestSubsystem = nearest;
+	for (const sv of subsystemVisuals) {
+		const dist = sv.mesh.position.distanceTo(playerPos);
+		if (dist < INTERACT_RANGE && dist < nearestDist) {
+			nearestSubsystem = sv;
+			nearestCrate = null;
+			nearestDist = dist;
+		}
+	}
+
+	state.nearestSubsystem = nearestSubsystem;
+	state.nearestCrate = nearestCrate;
 
 	if (state.repairingSubsystemId) {
 		// Segmented progress bar — one segment per repair part
@@ -580,11 +669,17 @@ function updateInteraction(
 
 		state.promptElement.style.display = "block";
 		state.promptElement.textContent = `Repairing... [ ${bar} ] ${filledParts}/${parts} parts`;
-	} else if (nearest) {
-		const sub = shipState.getSubsystem(nearest.subsystemId);
+	} else if (nearestCrate) {
+		state.promptElement.style.display = "block";
+		state.promptElement.textContent = `[E] Open crate (+${nearestCrate.contents} Ship Parts)`;
+	} else if (nearestSubsystem) {
+		const sub = shipState.getSubsystem(nearestSubsystem.subsystemId);
 		if (sub && sub.condition < 1.0) {
+			const parts = getResource("ship-parts");
 			state.promptElement.style.display = "block";
-			state.promptElement.textContent = `[Hold E] Repair ${sub.type} — ${sub.repairCost} parts (${(sub.condition * 100).toFixed(0)}%)`;
+			state.promptElement.textContent = parts >= sub.repairCost
+				? `[Hold E] Repair ${sub.type} — ${sub.repairCost} Ship Parts (${(sub.condition * 100).toFixed(0)}%)`
+				: `Repair ${sub.type} — Need ${sub.repairCost} Ship Parts (have ${parts})`;
 		} else if (sub) {
 			state.promptElement.style.display = "block";
 			state.promptElement.textContent = `${sub.type} — Optimal condition`;
@@ -684,6 +779,8 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		const visuals = buildRoomGeometry(room, scene);
 		roomVisualsMap.set(room.id, visuals);
 	}
+	const roomColliders = buildRoomColliders(context.physicsWorld);
+
 	// Batch repeating fixture+accent furniture into two InstancedMesh draws.
 	buildInstancedFurniture(scene);
 
@@ -694,6 +791,13 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		subsystemVisuals.push(visual);
 	}
 
+	initResources();
+	const crates: SupplyCrate[] = [
+		createSupplyCrate(scene, new THREE.Vector3(-2.6, 0, -6.6), 6),
+		createSupplyCrate(scene, new THREE.Vector3(2.6, 0, -8.4), 8),
+		createSupplyCrate(scene, new THREE.Vector3(-1.0, 0, -10.2), 5),
+	];
+
 	// Debug overlay
 	const debug = createShipStateDebugOverlay(shipState);
 	let debugMode = false;
@@ -702,6 +806,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	// Interaction state
 	const interaction: InteractionState = {
 		nearestSubsystem: null,
+		nearestCrate: null,
 		promptElement: createInteractionPrompt(),
 		repairingSubsystemId: null,
 		repairDuration: 0,
@@ -722,9 +827,18 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		}
 	};
 	const tryInteract = () => {
-		if (!interaction.nearestSubsystem || interaction.repairingSubsystemId) return;
+		if (interaction.repairingSubsystemId) return;
+
+		if (interaction.nearestCrate && !interaction.nearestCrate.looted) {
+			addResource("ship-parts", interaction.nearestCrate.contents);
+			markSupplyCrateLooted(interaction.nearestCrate);
+			return;
+		}
+
+		if (!interaction.nearestSubsystem) return;
+
 		const sub = shipState.getSubsystem(interaction.nearestSubsystem.subsystemId);
-		if (sub && sub.condition < 1.0) {
+		if (sub && sub.condition < 1.0 && hasResource("ship-parts", sub.repairCost)) {
 			interaction.repairingSubsystemId = sub.id;
 			interaction.repairDuration = sub.repairCost * SECONDS_PER_REPAIR_PART;
 			interaction.repairElapsed = 0;
@@ -782,7 +896,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 				}
 
 				// Update interaction prompt
-				updateInteraction(interaction, subsystemVisuals, player.object.position, shipState);
+				updateInteraction(interaction, subsystemVisuals, crates, player.object.position, shipState);
 
 				// Cancel repair if player moved away from the target subsystem
 				if (interaction.repairingSubsystemId && !interaction.nearestSubsystem) {
@@ -793,9 +907,10 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 				if (interaction.repairingSubsystemId) {
 					interaction.repairElapsed += delta;
 					if (interaction.repairElapsed >= interaction.repairDuration) {
-						const result = shipState.repairSubsystem(interaction.repairingSubsystemId);
-						if (result.success) {
-							const sub = shipState.getSubsystem(interaction.repairingSubsystemId);
+						const sub = shipState.getSubsystem(interaction.repairingSubsystemId);
+						if (sub && consumeResource("ship-parts", sub.repairCost)) {
+							shipState.repairSubsystem(sub.id);
+							shipState.distributePower();
 						}
 						cancelRepair();
 					}
@@ -809,6 +924,8 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			cancelRepair();
 			debug.element.remove();
 			interaction.promptElement.remove();
+			for (const body of roomColliders) rigidBody.remove(context.physicsWorld, body);
+			roomColliders.length = 0;
 			shipState.dispose();
 			bus.cleanup();
 			// Dispose GPU geometry + material objects to prevent VRAM leaks
@@ -840,7 +957,7 @@ export const destinyCorridorScene = defineGameScene({
 	}),
 	title: "Destiny Corridor",
 	player: {
-		vrmUrl: "https://pub-c642ba55d4f641de916d72786545c520.r2.dev/characters/eli.vrm",
+		vrmUrl: "/assets/characters/eli-wallace/eli-wallace.vrm",
 	},
 	mount
 });

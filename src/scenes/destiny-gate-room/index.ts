@@ -20,6 +20,7 @@ import { registerAirCrisis, QUEST_ID as AIR_CRISIS_QUEST_ID } from "../../quests
 import type { NpcInstance } from "../../types/npc";
 import { setSceneManagers } from "./context";
 import { initResources, getResource, addResource, consumeResource, hasResource, getAllResources } from "../../systems/resources";
+import { createSupplyCrate, markSupplyCrateLooted, type SupplyCrate } from "../../systems/supply-crates";
 import { isLimeCollected, setLimeCollected } from "../../systems/scene-transition-state";
 import { createHud, createDialoguePanel } from "@kopertop/vibe-game-engine";
 import { applyPostProfile } from "../../post/profiles";
@@ -1450,135 +1451,6 @@ function createDebugOverlay(): { element: HTMLDivElement; update: () => void } {
 	return { element: el, update };
 }
 
-// ─── Escape menu ─────────────────────────────────────────────────────────────
-
-type EscapeMenu = {
-	element: HTMLDivElement;
-	visible: boolean;
-	show: () => void;
-	hide: () => void;
-	dispose: () => void;
-};
-
-function createEscapeMenu(domElement: HTMLCanvasElement): EscapeMenu {
-	const overlay = document.createElement("div");
-	overlay.id = "escape-menu";
-	Object.assign(overlay.style, {
-		position: "fixed",
-		inset: "0",
-		background: "rgba(0, 0, 0, 0.85)",
-		display: "none",
-		alignItems: "center",
-		justifyContent: "center",
-		flexDirection: "column",
-		gap: "16px",
-		zIndex: "1000",
-		fontFamily: "'Courier New', monospace"
-	});
-
-	const title = document.createElement("div");
-	Object.assign(title.style, {
-		color: "#4488ff",
-		fontSize: "28px",
-		fontWeight: "bold",
-		textShadow: "0 0 20px #4488ff66",
-		marginBottom: "24px"
-	});
-	title.textContent = "STARGATE UNIVERSE";
-	overlay.appendChild(title);
-
-	const buttonStyle = {
-		background: "rgba(68, 136, 255, 0.1)",
-		border: "1px solid #4488ff44",
-		color: "#88bbff",
-		padding: "12px 32px",
-		fontSize: "16px",
-		fontFamily: "'Courier New', monospace",
-		cursor: "pointer",
-		minWidth: "220px",
-		textAlign: "center"
-	};
-
-	const resumeBtn = document.createElement("button");
-	Object.assign(resumeBtn.style, buttonStyle);
-	resumeBtn.textContent = "Resume";
-	resumeBtn.addEventListener("click", () => {
-		menu.hide();
-		void domElement.requestPointerLock();
-	});
-	overlay.appendChild(resumeBtn);
-
-	const fullscreenBtn = document.createElement("button");
-	Object.assign(fullscreenBtn.style, buttonStyle);
-	fullscreenBtn.textContent = "Toggle Fullscreen";
-	fullscreenBtn.addEventListener("click", () => {
-		if (document.fullscreenElement) {
-			void document.exitFullscreen();
-			fullscreenBtn.textContent = "Enter Fullscreen";
-		} else {
-			void document.documentElement.requestFullscreen();
-			fullscreenBtn.textContent = "Exit Fullscreen";
-		}
-	});
-	overlay.appendChild(fullscreenBtn);
-
-	const hintEl = document.createElement("div");
-	Object.assign(hintEl.style, {
-		color: "#4488ff66",
-		fontSize: "12px",
-		marginTop: "24px"
-	});
-	hintEl.textContent = "Click anywhere or press Resume to continue";
-	overlay.appendChild(hintEl);
-
-	document.body.appendChild(overlay);
-
-	const menu: EscapeMenu = {
-		element: overlay,
-		visible: false,
-		show() {
-			menu.visible = true;
-			overlay.style.display = "flex";
-			fullscreenBtn.textContent = document.fullscreenElement
-				? "Exit Fullscreen" : "Enter Fullscreen";
-		},
-		hide() {
-			menu.visible = false;
-			overlay.style.display = "none";
-		},
-		dispose() {
-			overlay.remove();
-		}
-	};
-
-	return menu;
-}
-
-// ─── Fullscreen + pointer lock integration ───────────────────────────────────
-
-function setupFullscreen(domElement: HTMLCanvasElement, menu: EscapeMenu): () => void {
-	const handlePointerLockChange = () => {
-		if (document.pointerLockElement === domElement) {
-			// Pointer lock acquired — go fullscreen if not already
-			if (!document.fullscreenElement) {
-				void document.documentElement.requestFullscreen().catch(() => {
-					// Fullscreen may fail (user gesture required) — that's okay
-				});
-			}
-			menu.hide();
-		} else {
-			// Pointer lock lost (ESC pressed) — show escape menu
-			menu.show();
-		}
-	};
-
-	document.addEventListener("pointerlockchange", handlePointerLockChange);
-
-	return () => {
-		document.removeEventListener("pointerlockchange", handlePointerLockChange);
-	};
-}
-
 // ─── Corridor & Storage Room extension ───────────────────────────────────────
 
 const CORRIDOR_Z_START = ROOM_DEPTH / 2;     // starts at the front wall of gate room
@@ -1813,68 +1685,6 @@ function updateSubsystemVisual(sv: SubsystemVisual, sub: Subsystem): void {
 		mat.color.set(0xffaa44); mat.emissive.set(0xffaa44); mat.emissiveIntensity = 0.6;
 	} else {
 		mat.color.set(0xff2200); mat.emissive.set(0xff2200); mat.emissiveIntensity = 0.3;
-	}
-}
-
-// ─── Supply crates ───────────────────────────────────────────────────────────
-
-interface SupplyCrate {
-	mesh: THREE.Group;
-	position: THREE.Vector3;
-	contents: number;
-	looted: boolean;
-}
-
-function createSupplyCrate(scene: THREE.Scene, pos: THREE.Vector3, contents: number): SupplyCrate {
-	const group = new THREE.Group();
-	group.position.copy(pos);
-
-	// Crate body — brighter with emissive so visible in dark rooms
-	const crateMat = new THREE.MeshStandardMaterial({
-		color: 0x776644, emissive: 0x221100, emissiveIntensity: 1.0,
-		roughness: 0.85, metalness: 0.1
-	});
-	const body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.5), crateMat);
-	body.position.y = 0.25;
-	group.add(body);
-
-	// Lid (slightly lighter)
-	const lidMat = new THREE.MeshStandardMaterial({
-		color: 0x887755, emissive: 0x221100, emissiveIntensity: 1.0,
-		roughness: 0.8, metalness: 0.1
-	});
-	const lid = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.08, 0.55), lidMat);
-	lid.position.y = 0.54;
-	group.add(lid);
-
-	// Glowing indicator strip on front — shows it's lootable
-	const glowMat = new THREE.MeshStandardMaterial({
-		color: 0xffaa22, emissive: 0xffaa22, emissiveIntensity: 0.6
-	});
-	const glow = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.04, 0.02), glowMat);
-	glow.position.set(0, 0.35, 0.26);
-	group.add(glow);
-
-	scene.add(group);
-
-	return { mesh: group, position: pos, contents, looted: false };
-}
-
-function markCrateLooted(crate: SupplyCrate): void {
-	crate.looted = true;
-	// Dim the glow strip
-	const glow = crate.mesh.children[2] as THREE.Mesh;
-	if (glow) {
-		const mat = glow.material as THREE.MeshStandardMaterial;
-		mat.emissive.set(0x222211);
-		mat.emissiveIntensity = 0.1;
-	}
-	// Open the lid slightly
-	const lid = crate.mesh.children[1];
-	if (lid) {
-		lid.rotation.x = -0.4;
-		lid.position.z = -0.1;
-		lid.position.y = 0.58;
 	}
 }
 
@@ -2748,6 +2558,43 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		position: [GATE_CENTER.x, GATE_CENTER.y, GATE_CENTER.z],
 	});
 
+	// ── Gate-room static colliders ────────────────────────────────────────────
+	// Visual room is ROOM_WIDTH × ROOM_HEIGHT × ROOM_DEPTH, but runtime.json
+	// has zero physics nodes and the procedural walls above are pure visuals.
+	// Without these the player can walk through walls or fall through the
+	// floor. Front wall is left open so the corridor doorway is passable.
+	const wallThickness = 0.5;
+	const wallColliders: CrashcatRigidBody[] = [];
+	const addStaticBox = (halfExtents: [number, number, number], position: [number, number, number]) => {
+		wallColliders.push(rigidBody.create(context.physicsWorld, {
+			motionType: MotionType.STATIC,
+			objectLayer: CRASHCAT_OBJECT_LAYER_STATIC,
+			shape: box.create({ halfExtents }),
+			position,
+		}));
+	};
+	// Floor + ceiling
+	addStaticBox([ROOM_WIDTH / 2, wallThickness / 2, ROOM_DEPTH / 2], [0, -wallThickness / 2, 0]);
+	addStaticBox([ROOM_WIDTH / 2, wallThickness / 2, ROOM_DEPTH / 2], [0, ROOM_HEIGHT + wallThickness / 2, 0]);
+	// Back wall (−Z)
+	addStaticBox([ROOM_WIDTH / 2, ROOM_HEIGHT / 2, wallThickness / 2], [0, ROOM_HEIGHT / 2, -ROOM_DEPTH / 2 - wallThickness / 2]);
+	// Left + right walls (full depth)
+	addStaticBox([wallThickness / 2, ROOM_HEIGHT / 2, ROOM_DEPTH / 2], [-ROOM_WIDTH / 2 - wallThickness / 2, ROOM_HEIGHT / 2, 0]);
+	addStaticBox([wallThickness / 2, ROOM_HEIGHT / 2, ROOM_DEPTH / 2], [ROOM_WIDTH / 2 + wallThickness / 2, ROOM_HEIGHT / 2, 0]);
+	// Front wall flanking pieces (leave doorway gap of `doorwayWidth` centered on x=0)
+	const doorwayWidthCol = 6;
+	const doorwayHeightCol = 8;
+	const frontPieceHalf = (ROOM_WIDTH - doorwayWidthCol) / 4;
+	addStaticBox([frontPieceHalf, ROOM_HEIGHT / 2, wallThickness / 2], [-(doorwayWidthCol / 2 + frontPieceHalf), ROOM_HEIGHT / 2, ROOM_DEPTH / 2 + wallThickness / 2]);
+	addStaticBox([frontPieceHalf, ROOM_HEIGHT / 2, wallThickness / 2], [(doorwayWidthCol / 2 + frontPieceHalf), ROOM_HEIGHT / 2, ROOM_DEPTH / 2 + wallThickness / 2]);
+	// Door header (above doorway)
+	const doorTopHalfH = (ROOM_HEIGHT - doorwayHeightCol) / 2;
+	addStaticBox([doorwayWidthCol / 2, doorTopHalfH, wallThickness / 2], [0, ROOM_HEIGHT - doorTopHalfH, ROOM_DEPTH / 2 + wallThickness / 2]);
+	gateRoomExtraDisposables.push(() => {
+		for (const body of wallColliders) rigidBody.remove(context.physicsWorld, body);
+		wallColliders.length = 0;
+	});
+
 	// Dev / test support: ?lime=1 URL param pre-sets the lime carry state so that
 	// tests can load gate-room with the banner visible without going through the
 	// full desert-planet flow. Safe in production — the param is simply ignored.
@@ -2799,8 +2646,10 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	compassHud.mount(dialoguePanel);
 	const debug = createDebugOverlay();
 	debug.element.style.display = "none";
-	const menu = createEscapeMenu(renderer.domElement);
-	const cleanupFullscreen = setupFullscreen(renderer.domElement, menu);
+	// NOTE: pause menu and Escape handling are owned by the global pause
+	// menu in src/game/app.ts. This scene used to mount its own
+	// `createEscapeMenu` + pointer-lock-based fullscreen handler, which
+	// caused duplicate overlays on Escape. Per-scene logic is removed.
 	const interactPrompt = createInteractionPrompt();
 	cinematicHide.push(interactPrompt);
 	// CO₂ scrubber status belongs to Episode 2 ("Air") — it shouldn't appear
@@ -2877,13 +2726,12 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 
 	/** Handle the "interact" trigger — keyboard E and gamepad A both fire this. */
 	const tryInteract = (): void => {
-		if (menu.visible) return;
 		if (interactTarget === "gate" && gate.state === "active") {
 			questManager.advanceObjective(AIR_CRISIS_QUEST_ID, "gate-to-planet");
 			void context.gotoScene("desert-planet");
 		} else if (interactTarget === "crate" && nearestCrate && !nearestCrate.looted) {
 			addResource("ship-parts", nearestCrate.contents);
-			markCrateLooted(nearestCrate);
+			markSupplyCrateLooted(nearestCrate);
 		} else if (interactTarget === "subsystem" && nearestSub && !repairingSubsystemId) {
 			const sub = shipState.getSubsystem(nearestSub.id);
 			if (sub && sub.condition < 1.0 && hasResource("ship-parts", sub.repairCost)) {
@@ -3338,7 +3186,6 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			limeBanner?.remove();
 			cancelRepair();
 			repairBar.dispose();
-			cleanupFullscreen();
 			hud.remove();
 			compassHud.unmount(dialoguePanel);
 			dialoguePanel.dispose();
@@ -3347,7 +3194,6 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			shipDebugEl.remove();
 			interactPrompt.remove();
 			co2Display?.remove();
-			menu.dispose();
 			// Rush and player character cleanup
 			rushCharacter?.dispose();
 						scene.remove(rushDot);
@@ -3409,6 +3255,6 @@ export const gateRoomScene = defineGameScene({
 		manifestLoader: () => import("./scene.runtime.json?raw").then((module) => module.default)
 	}),
 	title: "Gate Room",
-	player: { vrmUrl: "https://pub-c642ba55d4f641de916d72786545c520.r2.dev/characters/eli.vrm" },
+	player: { vrmUrl: "/assets/characters/eli-wallace/eli-wallace.vrm" },
 	mount
 });

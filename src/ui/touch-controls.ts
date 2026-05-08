@@ -21,7 +21,7 @@ const PAD_RADIUS = 60;     // px — thumb travel radius
 const ACTION_KEY = "KeyE"; // mirrors keyboard Interact binding
 
 interface TouchControlsHandle {
-	tickAxis: () => void;
+	tickAxis: () => { forward: number; strafe: number };
 	dispose: () => void;
 }
 
@@ -182,7 +182,10 @@ export const mountTouchControls = (input: InputManager): TouchControlsHandle | n
 	const tickAxis = () => {
 		// Engine convention: x = strafe (right positive), z = forward (UP positive).
 		// Joystick screen-y down is positive, so invert for forward motion.
-		input.setTouchMovement(state.dx / PAD_RADIUS, -state.dy / PAD_RADIUS);
+		const strafe = state.dx / PAD_RADIUS;
+		const forward = -state.dy / PAD_RADIUS;
+		input.setTouchMovement(strafe, forward);
+		return { forward, strafe };
 	};
 	const dispose = () => {
 		pad.remove();

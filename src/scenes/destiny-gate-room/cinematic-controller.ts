@@ -19,7 +19,6 @@ import { loadCrewMember, loadVRMCharacter } from "../../characters/character-loa
 import type { CharacterLoadResult } from "../../characters/character-loader";
 import { AudioManager } from "../../systems/audio";
 import { CinematicCamera } from "../../systems/cinematic-camera";
-import { Action, getInput } from "../../systems/input";
 
 // ─── Beat definitions ─────────────────────────────────────────────────────────
 
@@ -352,14 +351,14 @@ function createSubtitle(): { show: (text: string, duration: number) => void; dis
 function createSkipHint(): { setProgress: (p: number) => void; dispose: () => void } {
 	const el = document.createElement("div");
 	el.style.cssText = [
-		"position:fixed;top:2rem;right:2rem;",
+		"position:fixed;bottom:2rem;right:2rem;",
 		"color:#ffffffaa;font-size:0.85rem;letter-spacing:0.08em;",
 		"font-family:'Segoe UI',sans-serif;pointer-events:none;",
 		"z-index:60;text-align:right;",
 	].join("");
 
 	const label = document.createElement("div");
-	label.textContent = "Hold ESC to skip";
+	label.textContent = "Hold SPACE to skip";
 	el.appendChild(label);
 
 	const bar = document.createElement("div");
@@ -401,12 +400,20 @@ export class GateRoomCinematicController {
 	private scene: THREE.Scene;
 	private readonly onComplete: () => void;
 
-	// Skip mechanism (InputManager: Action.Pause = Escape / Gamepad Start)
+	// Skip mechanism — hold SPACE (keyboard) or gamepad Start. Escape is
+	// reserved for the pause menu, so we read SPACE directly via isKeyDown.
 	private skipHint = createSkipHint();
 	private skipHoldStart: number | null = null;
 	private readonly SKIP_HOLD_MS = 1500;
 	private skipFadeOverlay: HTMLDivElement | undefined;
 	private skipTriggered = false;
+	private spaceHeld = false;
+	private readonly onSkipKeyDown = (event: KeyboardEvent) => {
+		if (event.code === "Space") this.spaceHeld = true;
+	};
+	private readonly onSkipKeyUp = (event: KeyboardEvent) => {
+		if (event.code === "Space") this.spaceHeld = false;
+	};
 
 	// Player visual hide/restore
 	private playerObject: THREE.Object3D | undefined;
@@ -456,6 +463,16 @@ export class GateRoomCinematicController {
 		this.initAudio();
 		this.hidePlayerVisual();
 
+		// Direct keyboard listeners for SPACE-hold skip. We can't rely on
+		// getInput().isAction(Action.Jump) because the engine's InputManager
+		// is a Vite-aliased no-op stub.
+		window.addEventListener("keydown", this.onSkipKeyDown);
+		window.addEventListener("keyup", this.onSkipKeyUp);
+		this.registerDisposable(() => {
+			window.removeEventListener("keydown", this.onSkipKeyDown);
+			window.removeEventListener("keyup", this.onSkipKeyUp);
+		});
+
 		// If the theme song isn't already playing (e.g. player landed
 		// directly on this scene with ?scene=gate-room without going
 		// through opening-cinematic), kick it off now so the arrival
@@ -471,19 +488,22 @@ export class GateRoomCinematicController {
 
 	private hidePlayerVisual() {
 		if (!this.playerObject) return;
-		this.playerObject.traverse(obj => {
-			if (obj.name !== "physics") obj.visible = false;
-		});
+		// Hide the entire player Group via root .visible — Three.js cascades
+		// visibility, so meshes added later (e.g. the VRM scene that streams
+		// in async after this is called) inherit hidden state automatically.
+		this.playerObject.visible = false;
 	}
 
 	private restorePlayerVisual() {
 		if (!this.playerObject) return;
-		// Restore VRM visibility but NOT the capsule-fallback — the player
-		// controller hides it once the VRM loads (line 420). Re-enabling it
-		// here would flash a "pill shadow" for one frame before the
-		// controller's next update hides it again.
+		this.playerObject.visible = true;
+		// Make sure the capsule fallback stays hidden — the VRM itself is
+		// the visual; the white capsule below the model is the fallback
+		// and should never appear once the VRM has loaded.
 		this.playerObject.traverse(obj => {
-			if (obj.name !== "capsule-fallback") obj.visible = true;
+			if (obj.name === "vrm-fallback-capsule" || obj.name === "capsule-fallback") {
+				obj.visible = false;
+			}
 		});
 	}
 
@@ -914,9 +934,9 @@ export class GateRoomCinematicController {
 	private updateSkip() {
 		if (this.skipTriggered) return;
 
-		// Action.Pause is bound to Escape (keyboard) + Start (gamepad) by
-		// default — hold either for SKIP_HOLD_MS to skip.
-		const held = getInput().isAction(Action.Pause);
+		// SPACE held — bypass the engine InputManager (which is a stub) and
+		// read directly via our keydown/keyup listeners.
+		const held = this.spaceHeld;
 
 		if (held && this.skipHoldStart === null) {
 			this.skipHoldStart = performance.now();

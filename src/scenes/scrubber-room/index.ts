@@ -631,7 +631,7 @@ export const scrubberRoomScene = defineGameScene({
 	}),
 	title: "CO\u2082 Scrubber Room",
 	player: {
-		vrmUrl: "https://pub-c642ba55d4f641de916d72786545c520.r2.dev/characters/eli.vrm",
+		vrmUrl: "/assets/characters/eli-wallace/eli-wallace.vrm",
 	},
 	mount,
 });

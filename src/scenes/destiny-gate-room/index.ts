@@ -11,6 +11,7 @@ import { Action, SguAction, getInput } from "../../systems/input";
 import { createDialogueManager } from "../../systems/dialogue-manager";
 import { createNpcManager } from "../../systems/npc-manager";
 import { createQuestManager } from "../../systems/quest-manager";
+import { setActiveQuestManager } from "../../systems/active-quest-manager";
 import { createSaveManager } from "../../systems/save-manager";
 import { drRushNpc } from "../../npcs/dr-rush";
 import { drRushDialogue } from "../../dialogues/dr-rush";
@@ -21,6 +22,7 @@ import { setSceneManagers } from "./context";
 import { initResources, getResource, addResource, consumeResource, hasResource, getAllResources } from "../../systems/resources";
 import { isLimeCollected, setLimeCollected } from "../../systems/scene-transition-state";
 import { createHud, createDialoguePanel } from "@kopertop/vibe-game-engine";
+import { applyPostProfile } from "../../post/profiles";
 import {
 	NeuralLocomotionController,
 	encodeInput,
@@ -2036,10 +2038,9 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	// (design/concept-art/gate-room/gate-room-dormant.png).
 	scene.background = new THREE.Color(0x02030a);
 	scene.fog = new THREE.FogExp2(0x02030a, 0.018);
-	// Tone the renderer down for the interior — exposure 3.9 was tuned for
-	// the dark-space opening cinematic and over-blasts the closed gate room.
-	const origExposure = renderer.toneMappingExposure;
-	renderer.toneMappingExposure = 2.2;
+	// Interior tone mapping — exposure 3.9 (cinematic) over-blasts the closed
+	// gate room. Profile sets toneMapping + exposure and returns a restore.
+	const restorePostProfile = applyPostProfile(renderer, "interior");
 	const bus = scopedBus();
 
 	// Reset module-level mutable state — ES modules are singletons, so any value
@@ -2438,6 +2439,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	registerDestinyPowerCrisis(questManager);
 	registerAirCrisis(questManager);
 	questManager.startQuest(AIR_CRISIS_QUEST_ID);
+	setActiveQuestManager(questManager);
 
 	// ─── Dr. Rush real character model ──────────────────────────────────
 	// Loads VRM (with GLB fallback) via the unified character loader.
@@ -3348,6 +3350,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			gateRoomExtraDisposables.length = 0;
 			dialogueManager.dispose();
 			npcManager.dispose();
+			setActiveQuestManager(null);
 			questManager.dispose();
 			saveManager.dispose();
 			if (cinematicController) {
@@ -3382,8 +3385,9 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			camera.near = origNear;
 			camera.far = origFar;
 			camera.updateProjectionMatrix();
-			// Restore renderer exposure (we lowered it for the interior).
-			renderer.toneMappingExposure = origExposure;
+			// Restore renderer tone mapping + exposure to whatever was active
+			// before this scene's interior profile took over.
+			restorePostProfile();
 		}
 	};
 }

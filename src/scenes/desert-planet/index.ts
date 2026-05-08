@@ -23,6 +23,7 @@ import type { GameSceneModuleContext, GameSceneLifecycle } from "../../game/scen
 import { emit, scopedBus } from "../../systems/event-bus";
 import { Action, getInput } from "../../systems/input";
 import { createQuestManager } from "../../systems/quest-manager";
+import { setActiveQuestManager } from "../../systems/active-quest-manager";
 import { registerAirCrisis, QUEST_ID as AIR_CRISIS_QUEST_ID } from "../../quests/air-crisis";
 import { createHud, createCompass, createDialoguePanel } from "@kopertop/vibe-game-engine";
 import { setLimeCollected } from "../../systems/scene-transition-state";
@@ -620,6 +621,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	questManager.advanceObjective(AIR_CRISIS_QUEST_ID, "speak-to-rush");
 	questManager.advanceObjective(AIR_CRISIS_QUEST_ID, "locate-planet");
 	questManager.advanceObjective(AIR_CRISIS_QUEST_ID, "gate-to-planet");
+	setActiveQuestManager(questManager);
 
 	// ─── World ─────────────────────────────────────────────────────────
 	buildLighting(scene);
@@ -848,6 +850,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			collectionHUD.element.remove();
 			compassHud.unmount(compass);
 			compassHud.dispose();
+			setActiveQuestManager(null);
 			questManager.dispose();
 			bus.cleanup();
 			// BUG-003: dispose all GPU geometry + material objects to prevent VRAM leaks.

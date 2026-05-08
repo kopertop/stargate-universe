@@ -1,27 +1,20 @@
 /**
- * Fullscreen + Escape-key capture.
+ * Fullscreen + Escape behavior.
  *
- * Goal: the game behaves like a native app — always fullscreen, with
- * Escape routed to the in-game menu instead of exiting fullscreen.
+ * Goal: the game enters fullscreen on first user gesture for an
+ * immersive presentation, but Escape always works the way the player
+ * expects in a browser game — release pointer lock, then exit
+ * fullscreen — instead of being trapped by the in-game pause menu.
  *
  * Browser constraints:
  *  - `document.documentElement.requestFullscreen()` requires a user
- *    gesture. It cannot be called from main-module code at load time —
- *    the browser rejects it. We wait for the first pointerdown / key
- *    press and enter fullscreen from that handler.
- *  - Chrome's Keyboard Lock API (`navigator.keyboard.lock(["Escape"])`)
- *    prevents Escape from exiting fullscreen and instead delivers it as
- *    a normal keydown event — which our InputManager picks up as
- *    Action.Pause, routing it to the in-game menu or cinematic skip.
+ *    gesture, so we wait for the first pointerdown / keydown.
+ *  - We previously used Chrome's Keyboard Lock API to capture Escape
+ *    so the game stayed fullscreen. That broke devtools / cursor
+ *    recovery and confused playtesters — Escape is the universal
+ *    "let me out" key. We no longer call `navigator.keyboard.lock`.
  *
- * Both APIs are available in Chrome / Edge / Electron; Firefox + Safari
- * don't support keyboard lock (Escape exits fullscreen there). The app
- * targets Chrome + eventual Electron wrapper, so this is a non-issue
- * for our shipping platform.
- *
- * Disable the whole thing by calling `disableFullscreenBehavior()` —
- * useful for dev (sometimes you want Escape to drop fullscreen so you
- * can see DevTools).
+ * Disable auto-fullscreen entirely with `disableFullscreenBehavior()`.
  */
 
 let enabled = true;
@@ -37,21 +30,20 @@ const enterFullscreen = async (): Promise<void> => {
 		// Fullscreen requires a trusted gesture. If the call was made
 		// from the wrong context we silently retry on the next gesture.
 	}
-	await lockEscape();
 };
 
-const lockEscape = async (): Promise<void> => {
-	// Keyboard Lock API — only present in Chrome/Edge/Electron. Ignored
-	// elsewhere. With Escape locked, pressing it fires a normal keydown
-	// event; without it, Escape exits fullscreen and consumes the event.
-	const keyboard = (navigator as unknown as {
-		keyboard?: { lock: (keys: string[]) => Promise<void> };
-	}).keyboard;
-	if (!keyboard) return;
+const exitFullscreen = async (): Promise<void> => {
+	if (!isFullscreen()) return;
 	try {
-		await keyboard.lock(["Escape"]);
+		await document.exitFullscreen();
 	} catch {
-		// User agent can refuse (e.g. not in fullscreen yet); safe to ignore.
+		// Some embeds (iframes without `allow="fullscreen"`) reject this.
+	}
+};
+
+const releasePointerLock = (): void => {
+	if (document.pointerLockElement) {
+		document.exitPointerLock?.();
 	}
 };
 
@@ -64,39 +56,37 @@ const queueFullscreenGesture = (): void => {
 	window.addEventListener("keydown",     onFirstGesture, { once: true });
 };
 
-const unlockEscape = (): void => {
-	const keyboard = (navigator as unknown as {
-		keyboard?: { unlock: () => void };
-	}).keyboard;
-	keyboard?.unlock?.();
+/**
+ * Escape key handler — always release the pointer lock first, then
+ * exit fullscreen. Listening in the *capture* phase so we run before
+ * any in-scene pause-menu handler that might call `preventDefault()`
+ * — the player's expectation that Escape "lets me out of the game"
+ * outranks any in-game pause UI.
+ *
+ * We also clear the queued first-gesture listeners so pressing Escape
+ * before any other key doesn't immediately re-enter fullscreen.
+ */
+const onEscape = (e: KeyboardEvent) => {
+	if (e.code !== "Escape" && e.key !== "Escape") return;
+	releasePointerLock();
+	void exitFullscreen();
+	// Don't re-enter fullscreen on the very next gesture — only on a
+	// new dedicated user action (mountFullscreenGesture call site).
+	window.removeEventListener("pointerdown", onFirstGesture);
+	window.removeEventListener("keydown",     onFirstGesture);
 };
 
 /**
  * Install fullscreen behavior. After the first user gesture, the game
- * enters fullscreen and locks the Escape key so the browser doesn't
- * consume it for fullscreen exit.
+ * enters fullscreen. Pressing Escape exits both pointer lock and
+ * fullscreen and does NOT auto re-enter.
  */
 export function installFullscreenBehavior(): void {
 	if (installed) return;
 	installed = true;
 
 	queueFullscreenGesture();
-
-	// If the user somehow leaves fullscreen (alt-tab, OS-level switcher,
-	// F11, focused DevTools), re-request on the next interaction instead
-	// of fighting the user mid-flight.
-	const onFullscreenChange = () => {
-		if (isFullscreen()) {
-			void lockEscape();
-		} else {
-			unlockEscape();
-			if (enabled) {
-				// Queue a re-entry on the next user gesture.
-				queueFullscreenGesture();
-			}
-		}
-	};
-	document.addEventListener("fullscreenchange", onFullscreenChange);
+	window.addEventListener("keydown", onEscape, { capture: true });
 }
 
 export function setFullscreenBehaviorEnabled(nextEnabled: boolean): void {
@@ -105,8 +95,6 @@ export function setFullscreenBehaviorEnabled(nextEnabled: boolean): void {
 	if (enabled) {
 		installFullscreenBehavior();
 		queueFullscreenGesture();
-	} else {
-		unlockEscape();
 	}
 }
 
@@ -117,5 +105,4 @@ export function setFullscreenBehaviorEnabled(nextEnabled: boolean): void {
  */
 export function disableFullscreenBehavior(): void {
 	enabled = false;
-	unlockEscape();
 }

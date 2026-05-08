@@ -25,6 +25,7 @@ import { registerAirCrisis, QUEST_ID as AIR_CRISIS_QUEST_ID } from "../../quests
 import { isLimeCollected, setLimeCollected } from "../../systems/scene-transition-state";
 import { createHud } from "@kopertop/vibe-game-engine";
 import { createHorizontalCompass } from "../../ui/horizontal-compass";
+import { formatInteractPrompt } from "../../ui/interact-prompt-text";
 
 const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 	import: "default",
@@ -348,7 +349,7 @@ function createReturnPrompt(): HTMLDivElement {
 		border: "1px solid #44aaff66", textShadow: "0 0 8px #44aaff44",
 		pointerEvents: "none", userSelect: "none", display: "none",
 	});
-	el.textContent = "[E] Return to the Gate Room";
+	el.textContent = formatInteractPrompt("Return to the Gate Room");
 	document.body.appendChild(el);
 	return el;
 }
@@ -503,11 +504,11 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			if (nearPanel && !repaired) {
 				interactPrompt.style.display = "block";
 				interactPrompt.textContent = isLimeCollected()
-					? "[E] Apply calcium compound to scrubber system"
+					? formatInteractPrompt("Apply calcium compound to scrubber system")
 					: "You need to find a calcium source first.";
 			} else if (returnReady) {
 				interactPrompt.style.display = "block";
-				interactPrompt.textContent = "[E] Return to the Gate Room";
+				interactPrompt.textContent = formatInteractPrompt("Return to the Gate Room");
 			} else {
 				interactPrompt.style.display = "none";
 			}

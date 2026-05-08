@@ -22,6 +22,7 @@ import type { VRM } from "@pixiv/three-vrm";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
+import { convertMToonToPBR, flattenVrmMaterials } from "../systems/vrm/vrm-mtoon-converter";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -72,6 +73,45 @@ const setupShadows = (root: THREE.Object3D): void => {
 	});
 };
 
+const R2_CHARACTER_FALLBACKS: Record<string, string> = {
+	"/characters/rush.vrm": "/assets/characters/nicholas-rush/nicholas-rush.vrm",
+	"/characters/young.vrm": "/assets/characters/everett-young/everett-young.vrm",
+	"/characters/scott.vrm": "/assets/characters/matthew-scott/matthew-scott.vrm",
+	"/characters/eli.vrm": "/assets/characters/eli-wallace/eli-wallace.vrm",
+	"/characters/chloe.vrm": "/assets/characters/chloe-armstrong/chloe-armstrong.vrm",
+	"/characters/greer.vrm": "/assets/characters/ronald-greer/ronald-greer.vrm",
+	"/characters/tj.vrm": "/assets/characters/tamara-johansen/tamara-johansen.vrm",
+};
+
+function getCharacterFallbackPath(path: string): string | undefined {
+	try {
+		if (/^https?:\/\//i.test(path)) {
+			return R2_CHARACTER_FALLBACKS[new URL(path).pathname];
+		}
+	} catch {
+		return undefined;
+	}
+	return undefined;
+}
+
+async function loadCharacterGltf(loader: GLTFLoader, path: string) {
+	const fallbackPath = getCharacterFallbackPath(path);
+	if (fallbackPath && import.meta.env.DEV) {
+		return loader.loadAsync(fallbackPath);
+	}
+
+	try {
+		return await loader.loadAsync(path);
+	} catch (error) {
+		if (!fallbackPath) throw error;
+		console.warn(
+			`[CharacterLoader] Failed to load ${path}; trying local fallback ${fallbackPath}`,
+			error,
+		);
+		return loader.loadAsync(fallbackPath);
+	}
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
@@ -88,7 +128,7 @@ export const loadVRMCharacter = async (
 	const isVRM = path.toLowerCase().endsWith(".vrm");
 	const loader = getSharedLoader();
 
-	const gltf = await loader.loadAsync(path);
+	const gltf = await loadCharacterGltf(loader, path);
 
 	const root = new THREE.Group();
 	root.name = isVRM ? "vrm-character" : "glb-character";
@@ -107,6 +147,10 @@ export const loadVRMCharacter = async (
 		// Optimise VRM scene graph. combineSkeletons supersedes the deprecated
 		// removeUnnecessaryJoints and handles the joint pruning + skeleton
 		// merge in a single pass.
+		const mutableMaterials = vrm.materials ? [...vrm.materials] : undefined;
+		convertMToonToPBR(vrm.scene, mutableMaterials);
+		flattenVrmMaterials(vrm.scene);
+
 		VRMUtils.removeUnnecessaryVertices(vrm.scene);
 		VRMUtils.combineSkeletons(vrm.scene);
 

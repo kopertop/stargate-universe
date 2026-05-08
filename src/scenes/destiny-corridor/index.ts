@@ -16,6 +16,7 @@ import type { GameSceneModuleContext, GameSceneLifecycle } from "../../game/scen
 import { ShipState, type Section, type Subsystem, SHIP_STATE_CONFIG } from "../../systems/ship-state";
 import { emit, on, scopedBus } from "../../systems/event-bus";
 import { Action, SguAction, getInput } from "../../systems/input";
+import { formatInteractPrompt } from "../../ui/interact-prompt-text";
 
 const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 	import: "default",
@@ -394,7 +395,10 @@ function updateInteraction(
 		const sub = shipState.getSubsystem(nearest.subsystemId);
 		if (sub && sub.condition < 1.0) {
 			state.promptElement.style.display = "block";
-			state.promptElement.textContent = `[Hold E] Repair ${sub.type} — ${sub.repairCost} parts (${(sub.condition * 100).toFixed(0)}%)`;
+			state.promptElement.textContent = formatInteractPrompt(
+				`Repair ${sub.type} — ${sub.repairCost} parts (${(sub.condition * 100).toFixed(0)}%)`,
+				"hold",
+			);
 		} else if (sub) {
 			state.promptElement.style.display = "block";
 			state.promptElement.textContent = `${sub.type} — Optimal condition`;

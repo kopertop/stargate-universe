@@ -20,6 +20,9 @@ import type { CharacterLoadResult } from "../../characters/character-loader";
 import { AudioManager } from "../../systems/audio";
 import { CinematicCamera } from "../../systems/cinematic-camera";
 import { Action, getInput } from "../../systems/input";
+import { BodyPart, createRagdoll, type RagdollInstance } from "../../systems/ragdoll";
+import { CRASHCAT_OBJECT_LAYER_MOVING, type CrashcatPhysicsWorld } from "@ggez/runtime-physics-crashcat";
+import { applyKneelingPose, createStandupSequence, type StandupSequence } from "../../systems/vrm/vrm-standup-sequence";
 
 // ─── Beat definitions ─────────────────────────────────────────────────────────
 
@@ -154,9 +157,10 @@ function countMeshes(root: THREE.Object3D): number {
 	return n;
 }
 
-// Standard VRoid used for all crew when their own model is missing or a
-// placeholder. Rush's VRM is 10 MB and known-good; Eli has his own.
-const STANDARD_VROID_PATH = "/assets/characters/nicholas-rush/nicholas-rush.vrm";
+// Standard VRoid used for anonymous extras when we don't have a
+// per-character VRM. Points to the R2-hosted Rush model (known-good)
+// so both dev and prod load the same high-quality geometry.
+const STANDARD_VROID_PATH = "https://pub-c642ba55d4f641de916d72786545c520.r2.dev/characters/rush.vrm";
 
 /**
  * Wrap loadCrewMember so cinematic actors always render with a real VRoid
@@ -184,14 +188,20 @@ interface ThrownActor {
 	char: CharacterLoadResult;
 	startPos: THREE.Vector3;
 	velocity: THREE.Vector3;
+	angularVelocity: THREE.Vector3;
 	t0: number;           // delay before throw starts (within beat window)
-	flightTime: number;   // seconds of parabolic arc
+	flightTime: number;   // seconds until cinematic forces landing at landPos
 	landPos: THREE.Vector3;
 	landed: boolean;
 	landedAt: number;     // beatElapsed when landing occurred
-	standUpDelay: number; // seconds after landing before standing up starts
-	standUpDur: number;   // seconds to lerp from prone to upright
+	standUpDelay: number; // seconds after landing before standing up starts (procedural sequence's prone-hold derives from this)
+	standUpDur: number;   // uniform pacing factor for the sequence (lower = faster recovery)
 	staysDown: boolean;   // true = unconscious (Young), never stands up
+	// Ragdoll-driven flight
+	ragdoll: RagdollInstance | null;
+	launched: boolean;
+	// Procedural "natural" stand-up — built once the actor lands.
+	standup: StandupSequence | null;
 }
 
 function createThrownActor(
@@ -204,17 +214,37 @@ function createThrownActor(
 	standUpDelay = 1.5,
 	standUpDur = 2.0,
 	staysDown = false,
+	angularVelocity = new THREE.Vector3(5 + Math.random() * 3, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 2),
 ): ThrownActor {
 	char.root.position.copy(startPos);
 	char.root.visible = false;
 	return {
 		char, startPos: startPos.clone(), velocity: velocity.clone(),
+		angularVelocity: angularVelocity.clone(),
 		t0, flightTime, landPos: landPos.clone(), landed: false,
 		landedAt: 0, standUpDelay, standUpDur, staysDown,
+		ragdoll: null, launched: false, standup: null,
 	};
 }
 
-function updateThrown(actor: ThrownActor, beatElapsed: number) {
+// ── Ragdoll-driven flight helpers ────────────────────────────────────────────
+// The ragdoll's pelvis lives 1.1m above the "feet origin" at scale=1.0 (see
+// buildPartConfigs in ragdoll.ts: lowerLeg 0.5 + upperLeg 0.5 + pelvisLen/2 0.1).
+// To keep the VRM's feet co-located with the ragdoll's feet region we offset
+// the VRM root by −1.1m in the pelvis's LOCAL frame — that way when the ragdoll
+// rolls/tumbles in flight the VRM appears to tumble with it instead of orbiting
+// at a fixed world-Y offset.
+const RAGDOLL_PELVIS_TO_FEET = 1.1;
+const _tmpVec = new THREE.Vector3();
+const _tmpQuat = new THREE.Quaternion();
+const _feetOffset = new THREE.Vector3();
+
+function updateThrown(
+	actor: ThrownActor,
+	beatElapsed: number,
+	_physicsWorld: CrashcatPhysicsWorld,
+	deltaSeconds: number,
+) {
 	const t = beatElapsed - actor.t0;
 	if (t < 0) return;
 
@@ -227,17 +257,21 @@ function updateThrown(actor: ThrownActor, beatElapsed: number) {
 			actor.char.root.rotation.x = -Math.PI / 2;
 			return;
 		}
-		const sinceL = beatElapsed - actor.landedAt;
-		if (sinceL < actor.standUpDelay) {
-			// Still on the ground recovering
-			actor.char.root.rotation.x = -Math.PI / 2;
-		} else {
-			// Standing up — lerp from prone (-π/2) to upright (0)
-			const standT = Math.min(1, (sinceL - actor.standUpDelay) / actor.standUpDur);
-			const eased = standT * standT * (3 - 2 * standT); // smoothstep
-			actor.char.root.rotation.x = -Math.PI / 2 * (1 - eased);
-			actor.char.root.rotation.z = 0;
+
+		// Build the natural-recovery sequence on the first post-landing
+		// frame.
+		//   standUpDelay  → proneHold (seconds face-down before push-up)
+		//   standUpDur    → inverse pacing knob; old hand-tuned values
+		//                   (1.5-3.0s) map to pacing 0.67-1.33 so faster
+		//                   recoverers still finish sooner. Default
+		//                   sequence runs ~6.8s at pacing 1.0.
+		if (!actor.standup) {
+			actor.standup = createStandupSequence(actor.char, {
+				proneHold: actor.standUpDelay,
+				pacing: 2.0 / Math.max(0.5, actor.standUpDur),
+			});
 		}
+		actor.standup.update(deltaSeconds);
 		return;
 	}
 
@@ -246,76 +280,27 @@ function updateThrown(actor: ThrownActor, beatElapsed: number) {
 		actor.landed = true;
 		actor.landedAt = beatElapsed;
 		actor.char.root.position.copy(actor.landPos);
-		actor.char.root.rotation.x = -Math.PI / 2;
+		actor.char.root.rotation.set(-Math.PI / 2, 0, 0);
+		actor.char.root.quaternion.setFromEuler(actor.char.root.rotation);
 		return;
 	}
 
-	// ── In-flight parabolic arc ──────────────────────────────────────
+	// ── In-flight parabolic arc (ragdoll disabled in cinematic) ──────
+	// Ragdoll physics via Crashcat requires a broadphase listener to
+	// disable collisions between constraint-linked bodies — @ggez's
+	// runtime-physics-crashcat currently calls updateWorld without a
+	// listener, so limb self-collision explodes the simulation. We keep
+	// the ragdoll primitive for the character-viewer sandbox and use
+	// authored parabolic motion + the procedural stand-up sequence for
+	// the cinematic. `actor.ragdoll` / `.launched` stay on the type for
+	// the day the engine grows listener support.
 	actor.char.root.position.set(
 		actor.startPos.x + actor.velocity.x * t,
 		actor.startPos.y + actor.velocity.y * t - 4.9 * t * t,
 		actor.startPos.z + actor.velocity.z * t,
 	);
-	// Tumble during flight — rapid rotation simulates ragdoll chaos.
 	actor.char.root.rotation.x = -t * 6;
 	actor.char.root.rotation.z = Math.sin(t * 8) * 0.8;
-}
-
-// ─── Chaos actor (Beat 4 — anonymous capsule crew) ───────────────────────────
-
-interface ChaosActor {
-	mesh: THREE.Mesh;
-	startPos: THREE.Vector3;
-	velocity: THREE.Vector3;
-	t0: number;
-	flightTime: number;
-	landPos: THREE.Vector3;
-	landed: boolean;
-}
-
-function createChaosActor(
-	scene: THREE.Scene,
-	startPos: THREE.Vector3,
-	velocity: THREE.Vector3,
-	t0: number,
-	flightTime: number,
-	landPos: THREE.Vector3,
-	color: number,
-): ChaosActor {
-	const geo = new THREE.CapsuleGeometry(0.25, 1.0, 4, 8);
-	const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.8 });
-	const mesh = new THREE.Mesh(geo, mat);
-	mesh.position.copy(startPos);
-	mesh.visible = false;
-	scene.add(mesh);
-	return { mesh, startPos: startPos.clone(), velocity: velocity.clone(), t0, flightTime, landPos: landPos.clone(), landed: false };
-}
-
-function updateChaos(actor: ChaosActor, beatElapsed: number) {
-	const t = beatElapsed - actor.t0;
-	if (t < 0) return;
-
-	actor.mesh.visible = true;
-
-	if (actor.landed) {
-		actor.mesh.rotation.x += 0.01; // subtle tumble after landing
-		return;
-	}
-
-	if (t >= actor.flightTime) {
-		actor.landed = true;
-		actor.mesh.position.copy(actor.landPos);
-		return;
-	}
-
-	actor.mesh.position.set(
-		actor.startPos.x + actor.velocity.x * t,
-		actor.startPos.y + actor.velocity.y * t - 4.9 * t * t,
-		actor.startPos.z + actor.velocity.z * t,
-	);
-	// Spin in flight for visual chaos
-	actor.mesh.rotation.x += 0.15;
-	actor.mesh.rotation.z += 0.08;
 }
 
 // ─── Subtitle overlay ─────────────────────────────────────────────────────────
@@ -390,13 +375,14 @@ export class GateRoomCinematicController {
 	private subtitle = createSubtitle();
 	private subtitleShown = new Set<string>();
 	private thrownActors: ThrownActor[] = [];
-	private chaosActors: ChaosActor[] = [];
 	private crewLoaded = false;
 	private rushNpc: CharacterLoadResult | undefined;
 	private scottNpc: CharacterLoadResult | undefined;
 	private youngNpc: CharacterLoadResult | undefined;
 	private tjNpc: CharacterLoadResult | undefined;
 	private eliNpc: CharacterLoadResult | undefined;
+	/** Anonymous crew extras — no speaking lines, used for Beat-4 chaos */
+	private anonymousExtras: CharacterLoadResult[] = [];
 	private camera: THREE.PerspectiveCamera;
 	private scene: THREE.Scene;
 	private readonly onComplete: () => void;
@@ -418,6 +404,7 @@ export class GateRoomCinematicController {
 
 	private readonly gateControl: import("./index").GateControl;
 	private readonly registerDisposable: (cleanup: () => void) => void;
+	private readonly physicsWorld: CrashcatPhysicsWorld;
 
 	constructor(
 		scene: THREE.Scene,
@@ -425,6 +412,7 @@ export class GateRoomCinematicController {
 		gateControl: import("./index").GateControl,
 		onComplete: () => void,
 		registerDisposable: (cleanup: () => void) => void,
+		physicsWorld: CrashcatPhysicsWorld,
 		playerObject?: THREE.Object3D,
 	) {
 		this.scene = scene;
@@ -434,6 +422,7 @@ export class GateRoomCinematicController {
 		this.registerDisposable = registerDisposable;
 		this.onComplete = onComplete;
 		this.playerObject = playerObject;
+		this.physicsWorld = physicsWorld;
 
 		// ?cinstep=N — jump to elapsed = N seconds for testing. Pair with
 		// the same param on opening-cinematic to step through the whole
@@ -478,12 +467,11 @@ export class GateRoomCinematicController {
 
 	private restorePlayerVisual() {
 		if (!this.playerObject) return;
-		// Restore VRM visibility but NOT the capsule-fallback — the player
-		// controller hides it once the VRM loads (line 420). Re-enabling it
-		// here would flash a "pill shadow" for one frame before the
-		// controller's next update hides it again.
+		// Blanket-restore all children. Fallback capsules no longer exist —
+		// the player's visual is VRM-only, and the VRM loader hides itself
+		// via parent-remove if anything unexpected shows up.
 		this.playerObject.traverse(obj => {
-			if (obj.name !== "capsule-fallback") obj.visible = true;
+			obj.visible = true;
 		});
 	}
 
@@ -602,73 +590,36 @@ export class GateRoomCinematicController {
 		}
 	}
 
-	// ── Beat 4 chaos actors (anonymous crew, capsule meshes) ──────────────────
-
-	private buildChaosActors() {
-		// 4 anonymous crew flung through the gate during Beat 4 (t=11-16)
-		// Staggered t0 so they don't all come through at once
-		const configs = [
-			{
-				startPos: new THREE.Vector3( 0.6, 3.2, 0.3),
-				vel:      new THREE.Vector3( 1.5, 1.2, -9),
-				t0: 0.0, flightTime: 0.9,
-				landPos:  new THREE.Vector3( 2.0, 0.1, -10),
-				color:    0x8888aa,
-			},
-			{
-				startPos: new THREE.Vector3(-0.8, 3.2, 0.3),
-				vel:      new THREE.Vector3(-2.0, 2.5, -7),
-				t0: 0.8, flightTime: 1.1,
-				landPos:  new THREE.Vector3(-2.5, 0.1,  -8),
-				color:    0x7a8a99,
-			},
-			{
-				startPos: new THREE.Vector3( 0.2, 3.2, 0.3),
-				vel:      new THREE.Vector3( 0.5, 3.5,-11),
-				t0: 1.5, flightTime: 0.8,
-				landPos:  new THREE.Vector3( 0.8, 0.1, -12),
-				color:    0x998877,
-			},
-			{
-				startPos: new THREE.Vector3(-0.3, 3.2, 0.3),
-				vel:      new THREE.Vector3(-1.0, 1.8, -8),
-				t0: 2.2, flightTime: 1.0,
-				landPos:  new THREE.Vector3(-1.5, 0.1,  -9),
-				color:    0x6a7a88,
-			},
-		];
-
-		this.chaosActors = configs.map(cfg =>
-			createChaosActor(
-				this.scene,
-				cfg.startPos, cfg.vel, cfg.t0, cfg.flightTime, cfg.landPos,
-				cfg.color,
-			),
-		);
-	}
-
 	// ── Crew loading ──────────────────────────────────────────────────────────
+	// NOTE: anonymous "chaos" capsule actors were removed — all cinematic
+	// cast are now VRMs (named crew via loadCrewOrFallback, which falls back
+	// to the standard VRoid when a crew member's model is a placeholder).
+	// See src/systems/ragdoll.ts for the physics-driven ragdoll primitive
+	// that will eventually drive thrown-character arcs in a follow-up pass.
 
 	private async loadCrew() {
-		// Use fallback-wrapped loader so missing VRM placeholders don't leave
-		// the cinematic empty. Colors chosen to visually differentiate the crew
-		// in wide/overhead shots when the real models are unavailable.
-		// Scott/Young/TJ use the standard VRoid fallback (their own VRMs are
-		// placeholders). Rush loads his own (real 10 MB VRM). Eli loads his
-		// own VRM directly — he's the player character with a unique model.
-		const [scott, rush, young, tj, eli] = await Promise.allSettled([
+		// Load named crew via loadCrewOrFallback so any missing / placeholder
+		// VRM falls back to the standard VRoid. Eli is direct-loaded (player
+		// model — guaranteed real asset). In addition to the 5 named roles,
+		// we stream in 3 anonymous extras (Greer, Chloe, and one VRoid-fallback
+		// "crewman") so the overhead shot in Beat 4 shows a real crowd of
+		// crew getting flung through the gate instead of just the speaking cast.
+		const [scott, rush, young, tj, eli, greer, chloe, extra] = await Promise.allSettled([
 			loadCrewOrFallback("scott", 0x4466aa),
 			loadCrewOrFallback("rush",  0x444444),
 			loadCrewOrFallback("young", 0x556677),
 			loadCrewOrFallback("tj",    0x88aabb),
-			loadVRMCharacter("/assets/characters/eli-wallace/eli-wallace.vrm"),
+			loadVRMCharacter("https://pub-c642ba55d4f641de916d72786545c520.r2.dev/characters/eli.vrm"),
+			loadCrewOrFallback("greer", 0x5a4a3a),
+			loadCrewOrFallback("chloe", 0x7a6a88),
+			loadVRMCharacter(STANDARD_VROID_PATH), // "unknown crewman" — falls back to Rush model
 		]);
 
 		// If the cinematic was disposed while crew was loading (e.g. player
 		// skipped, or the scene was torn down), discard loaded VRM resources
 		// instead of attaching them to a dead scene.
 		if (this.disposed) {
-			for (const result of [scott, rush, young, tj, eli]) {
+			for (const result of [scott, rush, young, tj, eli, greer, chloe, extra]) {
 				if (result.status === "fulfilled") {
 					result.value.dispose?.();
 				}
@@ -710,6 +661,16 @@ export class GateRoomCinematicController {
 			this.eliNpc.root.visible = false;
 		}
 
+		// Anonymous extras — registered here for lifecycle. They get their
+		// own thrown-actor entries below; no field needed on the class.
+		for (const extraResult of [greer, chloe, extra]) {
+			if (extraResult.status === "fulfilled") {
+				this.scene.add(extraResult.value.root);
+				extraResult.value.root.visible = false;
+				this.anonymousExtras.push(extraResult.value);
+			}
+		}
+
 		// Set up thrown actors once crew is loaded
 		const actors: ThrownActor[] = [];
 
@@ -724,7 +685,8 @@ export class GateRoomCinematicController {
 		//
 		// IMPORTANT GEOMETRY RULES:
 		//   - startPos.y ≈ 0.1 (FLOOR level at gate base). Characters walk
-		//     through the gate on the FLOOR, not through the center (y=2.72).
+		//     through the gate on the FLOOR; the portal is now sunk 0.2m below
+		//     floor so there's no ledge. Portal center is at y≈2.35.
 		//   - startPos.z ≈ 0.8 (+Z = player side of gate = just emerged).
 		//   - velocity.z  >0 = thrown INTO the room (+Z toward player spawn).
 		//   - All land positions at +Z, further from the gate for chaos.
@@ -802,6 +764,31 @@ export class GateRoomCinematicController {
 			));
 		}
 
+		// ── Anonymous extras — fill out the Beat-4 chaos sequence ────────────
+		// These get staggered spawns in T_CHAOS_START's time window so the
+		// overhead wide shot reads as a real crowd of crew getting flung.
+		// Spawn offsets / landings are scattered around the gate mouth to
+		// spread the tumble visually. Fast stand-up (no one is significant
+		// enough to dwell on) so they're upright and out of frame quickly.
+		const extraConfigs = [
+			{ side: -1, t0: 0.1, flightTime: 1.0, land: [-3.5, 0.1, 11] as const, sd: 2.5, sdu: 1.8 },
+			{ side:  1, t0: 0.6, flightTime: 0.9, land: [ 3.2, 0.1,  9] as const, sd: 2.0, sdu: 1.8 },
+			{ side: -1, t0: 1.3, flightTime: 1.1, land: [-4.5, 0.1, 14] as const, sd: 3.2, sdu: 2.2 },
+		];
+		for (let i = 0; i < this.anonymousExtras.length && i < extraConfigs.length; i++) {
+			const extra = this.anonymousExtras[i];
+			const cfg = extraConfigs[i];
+			actors.push(createThrownActor(
+				extra,
+				new THREE.Vector3(cfg.side * 0.4, 0.1, 0.8),
+				new THREE.Vector3(cfg.side * 2.5, 1.0 + Math.random() * 1.5, 11 + Math.random() * 4),
+				cfg.t0, cfg.flightTime,
+				new THREE.Vector3(cfg.land[0], cfg.land[1], cfg.land[2]),
+				cfg.sd, cfg.sdu,
+				false,
+			));
+		}
+
 		this.thrownActors = actors;
 		this.crewLoaded = true;
 	}
@@ -868,7 +855,7 @@ export class GateRoomCinematicController {
 
 	// ── Beat-triggered crew visibility ────────────────────────────────────────
 
-	private updateCrew(elapsed: number) {
+	private updateCrew(elapsed: number, deltaSeconds: number) {
 		if (!this.crewLoaded) return;
 
 		// Crew are invisible during beats 1-3 (wide/dial/kawoosh). Scott
@@ -890,13 +877,35 @@ export class GateRoomCinematicController {
 		// t < 0. Clamping to 0 made actors ghost-appear at the gate mouth
 		// the moment the first crew throw began.
 		this.thrownActors.forEach((actor, idx) => {
+			// Named crew indices 0-4 are fixed by the loadCrew() push order:
+			// 0=scott, 1=rush, 2=tj, 3=eli, 4=young. Indices 5+ are anonymous
+			// Beat-4 extras (greer / chloe / vroid-fallback) that all fire
+			// during the chaos window.
 			const beatE =
 				idx === 0 ? elapsed - T_SCOTT_EMERGE :
 				idx === 1 ? elapsed - T_RUSH :
 				idx === 2 || idx === 3 ? elapsed - T_TJ_ELI :
-				elapsed - T_YOUNG_IMPACT;
-			updateThrown(actor, beatE);
+				idx === 4 ? elapsed - T_YOUNG_IMPACT :
+				elapsed - T_CHAOS_START;
+			updateThrown(actor, beatE, this.physicsWorld, deltaSeconds);
 		});
+
+		// ── TJ kneels next to Young during the "descent" beat ─────────────
+		// Once TJ has finished her own stand-up sequence (she wraps ~31s),
+		// move her next to the unconscious Young and force a kneeling pose
+		// so the camera zoom reveals her tending to him rather than standing
+		// idle across the room. Runs every frame so spring-bone updates
+		// don't drift the pose back.
+		if (elapsed >= T_GATE_SHUTDOWN && this.tjNpc && this.youngNpc) {
+			const young = this.youngNpc.root.position;
+			this.tjNpc.root.position.set(young.x + 1.0, 0.1, young.z - 0.4);
+			// Face Young — atan2 on the XZ delta from TJ → Young
+			const dx = young.x - this.tjNpc.root.position.x;
+			const dz = young.z - this.tjNpc.root.position.z;
+			this.tjNpc.root.rotation.set(0, Math.atan2(dx, dz) + Math.PI, 0);
+			applyKneelingPose(this.tjNpc);
+			this.tjNpc.root.visible = true;
+		}
 
 		// Chaos actors removed — nothing to update here.
 
@@ -970,7 +979,7 @@ export class GateRoomCinematicController {
 		}
 		this.applyCamera(this.elapsed);
 		this.updateGateFlicker(this.elapsed);
-		this.updateCrew(this.elapsed);
+		this.updateCrew(this.elapsed, delta);
 		this.updateSubtitles(this.elapsed);
 		this.updateAudio(this.elapsed);
 		this.updateSkip();
@@ -1018,10 +1027,19 @@ export class GateRoomCinematicController {
 
 		// Crew NPCs — KEEP in scene as gameplay NPCs (except cinematic Eli
 		// copy which would duplicate the player). Stand them upright at their
-		// landing positions so they're visible in the gameplay world.
+		// landing positions so they're visible in the gameplay world. Any
+		// in-flight ragdoll bodies are released back to the physics world
+		// so they don't keep simulating after the cinematic ends. Any in-
+		// progress stand-up sequences are cleaned up so the VRM bones return
+		// to rest pose for normal gameplay idle animations.
 		for (const actor of this.thrownActors) {
+			actor.ragdoll?.dispose();
+			actor.ragdoll = null;
+			actor.standup?.dispose();
+			actor.standup = null;
 			actor.char.root.visible = true;
 			actor.char.root.rotation.set(0, 0, 0); // upright
+			actor.char.root.quaternion.setFromEuler(actor.char.root.rotation);
 		}
 		// Remove cinematic Eli (player takes over)
 		if (this.eliNpc) {
@@ -1041,17 +1059,17 @@ export class GateRoomCinematicController {
 				this.registerDisposable(() => npc.dispose());
 			}
 		}
+		// Anonymous extras are truly transient — dispose immediately rather
+		// than keeping them around as gameplay NPCs (no one talks to them).
+		for (const extra of this.anonymousExtras) {
+			this.scene.remove(extra.root);
+			extra.dispose?.();
+		}
+		this.anonymousExtras = [];
 		this.scottNpc = undefined;
 		this.rushNpc = undefined;
 		this.youngNpc = undefined;
 		this.tjNpc = undefined;
 		this.thrownActors = [];
-
-		for (const a of this.chaosActors) {
-			this.scene.remove(a.mesh);
-			a.mesh.geometry.dispose();
-			(a.mesh.material as THREE.Material).dispose();
-		}
-		this.chaosActors = [];
 	}
 }

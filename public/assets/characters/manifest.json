@@ -1,11 +1,11 @@
 {
 	"version": "1.0",
-	"description": "SGU core crew character roster — maps character IDs to VRM assets and metadata",
+	"description": "SGU core crew character roster. VRM paths point to the R2 bucket so the canonical high-quality models are served in both dev and prod regardless of whether the local `public/` tree has placeholder stubs.",
 	"crew": [
 		{
 			"id": "rush",
 			"name": "Dr. Nicholas Rush",
-			"path": "/assets/characters/nicholas-rush/nicholas-rush.vrm",
+			"path": "https://pub-c642ba55d4f641de916d72786545c520.r2.dev/characters/rush.vrm",
 			"role": "scientist",
 			"gender": "male",
 			"expressionIntensity": 0.6,
@@ -14,7 +14,7 @@
 		{
 			"id": "young",
 			"name": "Colonel Everett Young",
-			"path": "/assets/characters/everett-young/everett-young.vrm",
+			"path": "https://pub-c642ba55d4f641de916d72786545c520.r2.dev/characters/young.vrm",
 			"role": "commander",
 			"gender": "male",
 			"expressionIntensity": 0.5,
@@ -23,7 +23,7 @@
 		{
 			"id": "scott",
 			"name": "Lt. Matthew Scott",
-			"path": "/assets/characters/matthew-scott/matthew-scott.vrm",
+			"path": "https://pub-c642ba55d4f641de916d72786545c520.r2.dev/characters/scott.vrm",
 			"role": "military",
 			"gender": "male",
 			"expressionIntensity": 0.7,
@@ -32,7 +32,7 @@
 		{
 			"id": "eli",
 			"name": "Eli Wallace",
-			"path": "/assets/characters/eli-wallace/eli-wallace.vrm",
+			"path": "https://pub-c642ba55d4f641de916d72786545c520.r2.dev/characters/eli.vrm",
 			"role": "engineer",
 			"gender": "male",
 			"isPlayer": true,
@@ -42,7 +42,7 @@
 		{
 			"id": "chloe",
 			"name": "Chloe Armstrong",
-			"path": "/assets/characters/chloe-armstrong/chloe-armstrong.vrm",
+			"path": "https://pub-c642ba55d4f641de916d72786545c520.r2.dev/characters/chloe.vrm",
 			"role": "civilian",
 			"gender": "female",
 			"expressionIntensity": 0.85,
@@ -51,7 +51,7 @@
 		{
 			"id": "greer",
 			"name": "MSgt. Ronald Greer",
-			"path": "/assets/characters/ronald-greer/ronald-greer.vrm",
+			"path": "https://pub-c642ba55d4f641de916d72786545c520.r2.dev/characters/greer.vrm",
 			"role": "military",
 			"gender": "male",
 			"expressionIntensity": 0.5,
@@ -60,7 +60,7 @@
 		{
 			"id": "tj",
 			"name": "TJ (Tamara Johansen)",
-			"path": "/assets/characters/tamara-johansen/tamara-johansen.vrm",
+			"path": "https://pub-c642ba55d4f641de916d72786545c520.r2.dev/characters/tj.vrm",
 			"role": "medic",
 			"gender": "female",
 			"expressionIntensity": 0.75,

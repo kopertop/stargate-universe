@@ -1,0 +1,54 @@
+{
+	"assets": [],
+	"entities": [],
+	"layers": [],
+	"materials": [],
+	"metadata": {
+		"exportedAt": "2026-04-15T00:00:00.000Z",
+		"format": "web-hammer-engine",
+		"version": 6
+	},
+	"nodes": [],
+	"settings": {
+		"player": {
+			"cameraMode": "third-person",
+			"canCrouch": false,
+			"canJump": false,
+			"canRun": false,
+			"crouchHeight": 1.2,
+			"height": 1.8,
+			"jumpHeight": 1.6,
+			"movementSpeed": 0,
+			"runningSpeed": 0
+		},
+		"world": {
+			"ambientColor": "#222233",
+			"ambientIntensity": 0.6,
+			"fogColor": "#0a0a12",
+			"fogFar": 100,
+			"fogNear": 60,
+			"gravity": {
+				"x": 0,
+				"y": -9.81,
+				"z": 0
+			},
+			"lod": {
+				"bakedAt": "",
+				"enabled": false,
+				"lowDetailRatio": 0.2,
+				"midDetailRatio": 0.5
+			},
+			"physicsEnabled": true,
+			"skybox": {
+				"affectsLighting": false,
+				"blur": 0,
+				"enabled": false,
+				"format": "image",
+				"intensity": 1,
+				"lightingIntensity": 1,
+				"name": "",
+				"source": ""
+			}
+		}
+	}
+}

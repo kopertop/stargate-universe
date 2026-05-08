@@ -21,26 +21,138 @@ export function registerServiceWorker() {
 // Manifest generation — returns empty string (gen-manifest.ts generates real manifest)
 export function generateManifest() { return ""; }
 
-// Input — no-ops since this is a type stub; InputManager is provided by the real engine
-export const DEFAULT_KEY_BINDINGS = {};
-export const DEFAULT_GAMEPAD_BINDINGS = {};
+// Input
+export const Action = {
+	Jump: 1, Interact: 2, Shoot: 3, Inventory: 4, Map: 5,
+	Pause: 6, Menu: 7, Sprint: 8, MenuConfirm: 9, MenuBack: 10,
+	DPadUp: 11, DPadDown: 12, MoveForward: 13, MoveBackward: 14,
+};
+
+export const GamepadButton = { A: 0, B: 1, X: 2, Y: 3 };
+
+export const DEFAULT_KEY_BINDINGS = {
+	Space: Action.Jump,
+	KeyE: Action.Interact,
+	KeyR: Action.Inventory,
+	KeyM: Action.Map,
+	Escape: Action.MenuBack,
+	Enter: Action.MenuConfirm,
+	ShiftLeft: Action.Sprint,
+	ShiftRight: Action.Sprint,
+	ArrowUp: Action.DPadUp,
+	ArrowDown: Action.DPadDown,
+	KeyW: Action.MoveForward,
+	KeyS: Action.MoveBackward,
+};
+
+export const DEFAULT_GAMEPAD_BINDINGS = {
+	[GamepadButton.A]: [Action.Jump, Action.MenuConfirm],
+	[GamepadButton.B]: [Action.MenuBack],
+	[GamepadButton.X]: [Action.Interact],
+};
 
 export class InputManager {
-	bind() { return () => {}; }
-	setKeyBindings() {}
-	setGamepadBindings() {}
-	poll() {}
-	isAction() { return false; }
-	isActionJustPressed() { return false; }
-	isActionJustReleased() { return false; }
-	get gamepad() {
-		return {
-			get isConnected() { return false; },
-			getAxis() { return 0; },
-			getMovement() { return { x: 0, z: 0 }; },
-			getLook() { return { x: 0, y: 0 }; },
+	#keyBindings = { ...DEFAULT_KEY_BINDINGS };
+	#gamepadBindings = { ...DEFAULT_GAMEPAD_BINDINGS };
+	#keys = new Set();
+	#actions = new Set();
+	#previousActions = new Set();
+	#touchMovement = { x: 0, z: 0 };
+	#bound = false;
+	#onKeyDown = (event) => {
+		if (isTextInputTarget(event.target)) return;
+		this.#keys.add(event.code);
+		if (event.code === "Space") event.preventDefault();
+	};
+	#onKeyUp = (event) => {
+		this.#keys.delete(event.code);
+	};
+	#onBlur = () => {
+		this.#keys.clear();
+		this.#touchMovement = { x: 0, z: 0 };
+	};
+
+	bind() {
+		if (this.#bound) return () => {};
+		if (typeof window === "undefined") return () => {};
+		this.#bound = true;
+		window.addEventListener("keydown", this.#onKeyDown);
+		window.addEventListener("keyup", this.#onKeyUp);
+		window.addEventListener("blur", this.#onBlur);
+		return () => {
+			if (!this.#bound) return;
+			this.#bound = false;
+			window.removeEventListener("keydown", this.#onKeyDown);
+			window.removeEventListener("keyup", this.#onKeyUp);
+			window.removeEventListener("blur", this.#onBlur);
+			this.#keys.clear();
+			this.#actions.clear();
+			this.#previousActions.clear();
 		};
 	}
+	setKeyBindings(bindings) {
+		this.#keyBindings = { ...bindings };
+	}
+	setGamepadBindings(bindings) {
+		this.#gamepadBindings = { ...bindings };
+	}
+	setTouchMovement(x, z) {
+		this.#touchMovement = {
+			x: Math.max(-1, Math.min(1, x)),
+			z: Math.max(-1, Math.min(1, z)),
+		};
+	}
+	poll() {
+		this.#previousActions = new Set(this.#actions);
+		this.#actions.clear();
+
+		for (const key of this.#keys) {
+			const action = this.#keyBindings[key];
+			if (action !== undefined) this.#actions.add(action);
+		}
+
+		for (const gamepad of getGamepads()) {
+			if (!gamepad) continue;
+			gamepad.buttons.forEach((button, index) => {
+				if (!button.pressed) return;
+				for (const action of this.#gamepadBindings[index] ?? []) {
+					this.#actions.add(action);
+				}
+			});
+		}
+	}
+	isAction(action) { return this.#actions.has(action); }
+	isActionJustPressed(action) { return this.#actions.has(action) && !this.#previousActions.has(action); }
+	isActionJustReleased(action) { return !this.#actions.has(action) && this.#previousActions.has(action); }
+	get gamepad() {
+		const first = getGamepads().find(Boolean);
+		const axis = (index) => first?.axes[index] ?? 0;
+		const touch = this.#touchMovement;
+		return {
+			get isConnected() { return first !== undefined || Math.abs(touch.x) > 0 || Math.abs(touch.z) > 0; },
+			getAxis(index) { return axis(index); },
+			getMovement() {
+				return {
+					x: Math.abs(touch.x) > 0 ? touch.x : axis(0),
+					z: Math.abs(touch.z) > 0 ? touch.z : -axis(1),
+				};
+			},
+			getLook() { return { x: axis(2), y: axis(3) }; },
+		};
+	}
+}
+
+function isTextInputTarget(target) {
+	return (
+		typeof HTMLElement !== "undefined" &&
+		target instanceof HTMLElement &&
+		(target.isContentEditable || target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT")
+	);
+}
+
+function getGamepads() {
+	if (typeof navigator === "undefined") return [];
+	return Array.from(navigator.getGamepads?.() ?? []);
 }
 
 // Cross-cutting event bus
@@ -139,12 +251,3 @@ export class NeuralLocomotionController {
 	predict() { return { rootDelta: [0,0,0], rotations: new Float32Array(0) }; }
 	sampleAt() { return { rootDelta: [0,0,0], rotations: new Float32Array(0) }; }
 }
-
-// Input enums
-export const Action = {
-	Jump: 1, Interact: 2, Shoot: 3, Inventory: 4, Map: 5,
-	Pause: 6, Menu: 7, Sprint: 8, MenuConfirm: 9, MenuBack: 10,
-	DPadUp: 11, DPadDown: 12, MoveForward: 13, MoveBackward: 14,
-};
-
-export const GamepadButton = { A: 0, B: 1, X: 2, Y: 3 };

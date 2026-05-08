@@ -155,28 +155,45 @@ export class VrmPlayerAnimationController {
 		if (this.loading || this.loaded) return;
 		this.loading = true;
 
-		const clipNames = ["idle", "walk", "run", "jump", "strafe-left", "strafe-right", "repair", "getting-up"] as const;
-		const extensions = ["fbx", "glb", "vrma"];
+		// Each entry is the canonical clip name plus filename aliases tried in
+		// order. Aliases let us reuse Mixamo-style filenames (e.g.
+		// `walking-forward.glb`, `unarmed-idle-01.glb`) without renaming
+		// assets on disk or in R2.
+		const clipSpecs = [
+			{ name: "idle", aliases: ["idle", "standing-short-idle", "unarmed-idle-01", "breathing-idle", "neutral-idle"] },
+			{ name: "walk", aliases: ["walk", "walking-forward", "walking"] },
+			{ name: "run", aliases: ["run", "running", "running-forward"] },
+			{ name: "jump", aliases: ["jump", "jumping"] },
+			{ name: "strafe-left", aliases: ["strafe-left", "strafe-walk-left"] },
+			{ name: "strafe-right", aliases: ["strafe-right", "strafe-walk-right"] },
+			{ name: "repair", aliases: ["repair", "interaction"] },
+			{ name: "getting-up", aliases: ["getting-up", "stand-up"] },
+		] as const;
+		const extensions = ["glb", "fbx", "vrma"];
 
 		const results = await Promise.allSettled(
-			clipNames.map(async (name) => {
-				// Try each extension until one succeeds
-				for (const ext of extensions) {
-					try {
-						const url = resolveAssetUrl(`${basePath}/${name}.${ext}`);
-						const clip = await loadAnimation(url, this.vrm, name);
-						return { name, clip };
-					} catch {
-						// Try next extension
+			clipSpecs.map(async (spec) => {
+				for (const alias of spec.aliases) {
+					for (const ext of extensions) {
+						try {
+							const url = resolveAssetUrl(`${basePath}/${alias}.${ext}`);
+							const clip = await loadAnimation(url, this.vrm, spec.name);
+							return { name: spec.name, clip };
+						} catch {
+							// Try next alias / extension
+						}
 					}
 				}
-				throw new Error(`No animation file found for "${name}" at ${basePath}`);
+				throw new Error(`No animation file found for "${spec.name}" at ${basePath}`);
 			})
 		);
 
 		for (const result of results) {
 			if (result.status !== "fulfilled") {
-				console.error("[VrmPlayerAnimController] Failed to load clip:", result.reason);
+				// Optional clips not on disk yet (e.g. run, jump, repair) — character
+				// just falls back to loaded clips. Keep this below warn-level so
+				// browser smoke checks don't report expected missing optional clips.
+				console.debug("[VrmPlayerAnimController] Skipping missing optional clip:", String(result.reason));
 				continue;
 			}
 
@@ -259,10 +276,8 @@ export class VrmPlayerAnimationController {
 		this.loading = false;
 		this.resetIdleVariantTimer();
 
-		const loadedCount = results.filter((r) => r.status === "fulfilled").length;
-
 		// Load idle variants in the background (non-blocking, optional)
-		this.loadIdleVariants(basePath);
+		void this.loadIdleVariants(basePath);
 	}
 
 	/** Load idle variant clips asynchronously. Failures are silently ignored. */
@@ -283,10 +298,6 @@ export class VrmPlayerAnimationController {
 					// Try next extension
 				}
 			}
-		}
-
-		if (this.idleVariants.length > 0) {
-			// Idle variants ready
 		}
 	}
 

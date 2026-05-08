@@ -148,6 +148,12 @@ export function installDebugApi(hooks: HostHooks): void {
 					return;
 				}
 
+				// Save / enable-all layers so debug screenshots can see the
+				// player VRM (which lives on thirdPersonOnlyLayer in FPS mode
+				// and is otherwise hidden from the player's own camera).
+				const savedLayerMask = cam.layers.mask;
+				cam.layers.enableAll();
+
 				const framesToWait = opts?.waitFrames ?? 3;
 				let waited = 0;
 
@@ -178,8 +184,10 @@ export function installDebugApi(hooks: HostHooks): void {
 					rndr.render(scn, cam);
 					try {
 						const dataUrl = canvas.toDataURL("image/png");
+						cam.layers.mask = savedLayerMask;
 						resolve(dataUrl);
 					} catch (err) {
+						cam.layers.mask = savedLayerMask;
 						reject(err);
 					}
 				};

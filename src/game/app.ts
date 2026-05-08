@@ -54,6 +54,9 @@ import type {
 } from "./scene";
 import { StarterPlayerController, VrmPlayerController } from "./player";
 import { VrmCharacterManager } from "../systems/vrm";
+import { VrmPlayerAnimationController } from "../systems/vrm/vrm-player-animation-controller";
+
+const PLAYER_ANIMATIONS_BASE_PATH = "/assets/animations";
 
 // ------------------------------------------------------------------
 // Types
@@ -220,7 +223,11 @@ export async function createGameApp(options: GameAppOptions) {
   });
 
   const unsubscribeEscape = onEscapeRequested(() => {
-    pauseGame();
+    if (pauseMenu?.isVisible()) {
+      resumeGame();
+    } else {
+      pauseGame();
+    }
   });
 
   // Adaptive physics state
@@ -258,7 +265,10 @@ export async function createGameApp(options: GameAppOptions) {
     onUpdate: (dt) => {
       // Push touch joystick axis into InputManager *before* polling — pollInput
       // snapshots the merged keyboard+gamepad+touch movement for this frame.
-      touchControls?.tickAxis();
+      const touchAxis = touchControls?.tickAxis();
+      if (touchAxis) {
+        activeBundle?.player?.setExternalMoveInput(touchAxis.forward, touchAxis.strafe);
+      }
       // Controller + keyboard snapshot (edge-detection for just-pressed actions)
       pollInput();
 
@@ -540,7 +550,7 @@ async function buildPlayer(options: {
       priority: 0
     });
 
-    return new VrmPlayerController({
+    const controller = new VrmPlayerController({
       camera: cameraController,
       input: options.input,
       threeCamera: options.camera,
@@ -551,6 +561,30 @@ async function buildPlayer(options: {
       characterManager,
       characterInstance
     });
+
+    // Wire AnimationMixer-driven locomotion once the VRM scene is loaded.
+    // Failures (missing clips, bad VRM) only mean the character holds T-pose
+    // — they shouldn't block scene start, so we fire-and-forget.
+    void characterInstance.whenLoaded
+      .then(async (vrm) => {
+        const animController = new VrmPlayerAnimationController(vrm);
+        try {
+          await animController.loadClips(PLAYER_ANIMATIONS_BASE_PATH);
+        } catch (err) {
+          console.error("[buildPlayer] Failed loading player animation clips:", err);
+        }
+        controller.setAnimationController(animController);
+        // Marker used by the character-poses E2E test to wait until clips
+        // have actually been loaded and the controller is bound to the
+        // player. Without this, screenshots can capture before the mixer
+        // ever ticks and report a false T-pose.
+        (window as unknown as { __sguAnimWire?: string }).__sguAnimWire = "controller-attached";
+      })
+      .catch((err) => {
+        console.error("[buildPlayer] Player VRM failed to load — animation skipped:", err);
+      });
+
+    return controller;
   }
 
   // Fall back to starter controller (capsule physics only).

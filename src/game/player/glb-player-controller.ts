@@ -203,11 +203,11 @@ export class GlbPlayerController implements PlayerController {
 		this.pitch = MathUtils.clamp(this.pitch, this.camera.pitchMin, this.camera.pitchMax);
 	}
 
-  releasePointerLock(): void {
-    this.input.releasePointerLock();
-  }
+	releasePointerLock(): void {
+		this.input.releasePointerLock();
+	}
 
-  dispose(): void {
+	dispose(): void {
 		this.gameplayRuntime.removeActor("player");
 		rigidBody.remove(this.world, this.body);
 		this.mixer?.stopAllAction();
@@ -326,13 +326,11 @@ export class GlbPlayerController implements PlayerController {
 					// Scale animation speed with movement speed
 					this.walkAction.timeScale = MathUtils.clamp(horizontalSpeed / 4.5, 0.5, 2.0);
 				} else {
-					if (this.walkAction.isRunning()) {
+					if (this.walkAction.isRunning() && this.walkAction.getEffectiveWeight() > 0.01) {
 						this.walkAction.fadeOut(0.2);
-						// Reset so it can fade back in
-						setTimeout(() => {
-							this.walkAction?.reset();
-							this.walkAction?.stop();
-						}, 200);
+					} else if (this.walkAction.isRunning()) {
+						// Weight has faded to zero — safe to stop without visual pop.
+						this.walkAction.stop();
 					}
 				}
 			}
@@ -351,6 +349,7 @@ export class GlbPlayerController implements PlayerController {
 	}
 
 	updateCamera(deltaSeconds: number): void {
+		if (!this.inputEnabled) return;
 		const delta = this.input.consumeMouseDelta();
 		this.yaw -= delta.x * MOUSE_SENSITIVITY_X;
 		this.pitch = MathUtils.clamp(

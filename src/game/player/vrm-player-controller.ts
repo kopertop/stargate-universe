@@ -345,6 +345,11 @@ export class VrmPlayerController implements PlayerController {
 
 	/** Variable-rate update — camera. */
 	updateCamera(deltaSeconds: number): void {
+		// When input is disabled (photo mode, opening cinematic, dialogue
+		// camera takeover) we yield camera control to whatever set it
+		// externally — running our follow update would clobber that pose
+		// every frame and produce jitter / wrong framing in screenshots.
+		if (!this.inputEnabled) return;
 		const delta = this.input.consumeMouseDelta();
 		this.yaw -= delta.x * MOUSE_SENSITIVITY_X;
 		this.pitch = MathUtils.clamp(

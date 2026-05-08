@@ -120,7 +120,9 @@ export async function createGameApp(options: GameAppOptions) {
 
   // Shared Three.js objects
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 4000);
+  // FOV 50° = telephoto-ish, more cinematic compression. Wider FOVs flatten
+  // scale and make even huge rooms feel small; 50 makes the ship feel grand.
+  const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 4000);
 
   // Attach the shared audio listener to the camera once for the life of the
   // app. Scenes just call `AudioManager.getInstance().play(id)` to play
@@ -327,7 +329,7 @@ export async function createGameApp(options: GameAppOptions) {
 
       // mount() is awaited before we commit the scene to activeBundle.
       // This prevents UI or actor setup from racing against scene teardown.
-      mountResult = await definition.mount?.(fullContext);
+      mountResult = (await definition.mount?.(fullContext)) || undefined;
 
       if (disposed || token !== loadToken) {
         // Another loadScene() won the race — clean up what we just built.
@@ -363,6 +365,11 @@ export async function createGameApp(options: GameAppOptions) {
     if (player) {
       scene.add(player.object);
       player.updateAfterStep(FIXED_STEP_SECONDS);
+      // ?photo=1 — capture/screenshot mode: hide the player so it doesn't
+      // appear in cinematic camera shots driven by __sgu.setCamera.
+      if (new URLSearchParams(window.location.search).has("photo")) {
+        player.object.visible = false;
+      }
     } else {
       frameCameraOnObject(camera, runtimeScene.root);
     }

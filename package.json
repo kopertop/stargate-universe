@@ -19,7 +19,9 @@
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"test:visual": "playwright test tests/visual/",
-		"test:visual:update": "playwright test tests/visual/ --update-snapshots"
+		"test:visual:update": "playwright test tests/visual/ --update-snapshots",
+		"clean": "rm -rf dist .wrangler test-results test-reports gameplay-capture scripts/screenshots scripts/reports tests/screenshots tests/results",
+		"clean:all": "bun run clean && rm -rf node_modules bun.lock"
 	},
 	"dependencies": {
 		"@ggez/anim-core": "^0.1.11",

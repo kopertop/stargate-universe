@@ -35,18 +35,18 @@ interface Beat {
 	easing: "linear" | "ease-in" | "ease-out" | "smooth";
 }
 
-// Camera look-at target — intentionally lower than the actual gate center
-// (y=4.2) to frame the crew landing area on the floor. Do NOT change to
-// match CAMERA_LOOK_TARGET in index.ts — this is a camera framing target.
-const CAMERA_LOOK_TARGET = new THREE.Vector3(0, 2.72, 0);
+// Camera look-at target — aimed at the GATE CENTER (y≈6.2) so the
+// establishing shot looks UP at the ring like a worshipful approach,
+// making the gate and the room above it feel monumental.
+const CAMERA_LOOK_TARGET = new THREE.Vector3(0, 5.5, 0);
 const GATE_BACK = new THREE.Vector3(0, 2.72, 0.5);
 // Overhead shot — high angle from behind the landing zone, looking back
 // TOWARD the gate. Gate at z=0, crew land at z=8-18, player at z=50.
-const OVERHEAD    = new THREE.Vector3(0, 24, 20);
-// Establishing shot — LOW and CLOSE like the SGU reference image. Camera
-// at roughly human eye-height (y=1.5) about 12 meters from the gate so
-// the ring fills most of the frame and the room architecture looms above.
-const ESTABLISH   = new THREE.Vector3(0, 1.5, 12);
+const OVERHEAD    = new THREE.Vector3(0, 32, 26);
+// Establishing shot — VERY low (camera near the floor) and pulled WAY
+// back so the gate and the cathedral-tall room loom above. Combined with
+// FOV 50° this gives the SGU "tiny human in a vast Ancient hall" feel.
+const ESTABLISH   = new THREE.Vector3(0, 0.9, 22);
 
 // ─── 40-second gate-room arrival ────────────────────────────────────────────
 //
@@ -84,7 +84,7 @@ const BEATS: Beat[] = [
 	{
 		start: 12, end: 15,
 		camFrom: ESTABLISH.clone(),
-		camTo:   new THREE.Vector3(0, 4, 14),
+		camTo:   new THREE.Vector3(0, 3.5, 18),
 		lookAt:  CAMERA_LOOK_TARGET,
 		easing:  "ease-out",
 	},

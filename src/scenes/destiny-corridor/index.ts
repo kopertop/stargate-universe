@@ -232,45 +232,9 @@ function buildRoomGeometry(room: RoomDef, scene: THREE.Scene): RoomVisuals {
 	ceiling.position.set(room.x, ROOM_HEIGHT, room.z);
 	scene.add(ceiling);
 
-	// Ceiling light fixtures — small emissive panels providing visible depth
-	// markers down the corridor. MeshBasicMaterial so they read the same at
-	// grazing angles regardless of dynamic lighting state.
-	// Smaller fixture footprint and slightly desaturated colour. Big bright
-	// rectangles dominated the silhouette at corridor entry; per the
-	// "bright accents vs silhouette" rule, area determines presence —
-	// shrink the area, not the brightness, so the fixtures read as ceiling
-	// lights rather than overhead windows.
-	const fixtureMat = new THREE.MeshBasicMaterial({ color: 0xb89968, fog: true });
-	const fixtureCount = Math.max(2, Math.floor(room.depth / 2.5));
-	for (let i = 0; i < fixtureCount; i++) {
-		const t = (i + 0.5) / fixtureCount;
-		const fz = room.z - hd + t * room.depth;
-		const fixture = new THREE.Mesh(
-			new THREE.BoxGeometry(0.35, 0.05, 0.7),
-			fixtureMat,
-		);
-		fixture.position.set(room.x, ROOM_HEIGHT - 0.18, fz);
-		scene.add(fixture);
-	}
-
-	// Wall accent strips — thin vertical emissive bars on side walls at
-	// regular intervals. At grazing-angle corridor views these read as a
-	// rhythmic line of bright dots receding to the vanishing point, giving
-	// the empty hallway a sense of depth and human-scale architecture.
-	const accentMat = new THREE.MeshBasicMaterial({ color: 0xa07840, fog: true });
-	const accentCount = Math.max(2, Math.floor(room.depth / 2));
-	for (let i = 0; i < accentCount; i++) {
-		const t = (i + 0.5) / accentCount;
-		const az = room.z - hd + t * room.depth;
-		for (const side of [-1, 1]) {
-			const accent = new THREE.Mesh(
-				new THREE.BoxGeometry(0.05, ROOM_HEIGHT * 0.5, 0.15),
-				accentMat,
-			);
-			accent.position.set(room.x + side * (hw - 0.18), ROOM_HEIGHT * 0.45, az);
-			scene.add(accent);
-		}
-	}
+	// Ceiling fixtures + wall accents are emitted as InstancedMeshes in
+	// buildInstancedFurniture() instead of per-room Meshes — collapses ~32
+	// draw calls into 2.
 
 	// Overhead light (dynamic — intensity driven by ship state)
 	const overheadLight = new THREE.PointLight(0xffeedd, 1.0, room.width * 2, 2);
@@ -315,6 +279,59 @@ function buildRoomGeometry(room: RoomDef, scene: THREE.Scene): RoomVisuals {
 	}
 
 	return { walls, ceiling, lights: [overheadLight], ancientGlowPanels, emergencyStrips };
+}
+
+// ─── Instanced furniture (S4-05) ─────────────────────────────────────────────
+// Ceiling light fixtures and wall accent strips repeat across every room with
+// identical geometry and material. Each room previously spawned ~10 individual
+// Meshes for these — multiplied by 3 rooms that's ~32 extra draw calls every
+// frame. One InstancedMesh per type collapses that to two draw calls regardless
+// of room count.
+
+function buildInstancedFurniture(scene: THREE.Scene): THREE.InstancedMesh[] {
+	const fixtureMat = new THREE.MeshBasicMaterial({ color: 0xb89968, fog: true });
+	const accentMat = new THREE.MeshBasicMaterial({ color: 0xa07840, fog: true });
+	const fixtureGeo = new THREE.BoxGeometry(0.35, 0.05, 0.7);
+	const accentGeo = new THREE.BoxGeometry(0.05, ROOM_HEIGHT * 0.5, 0.15);
+
+	const fixtureXforms: THREE.Matrix4[] = [];
+	const accentXforms: THREE.Matrix4[] = [];
+	const tmp = new THREE.Matrix4();
+
+	for (const room of ROOMS) {
+		const hw = room.width / 2;
+		const hd = room.depth / 2;
+		const fixtureCount = Math.max(2, Math.floor(room.depth / 2.5));
+		for (let i = 0; i < fixtureCount; i++) {
+			const t = (i + 0.5) / fixtureCount;
+			const fz = room.z - hd + t * room.depth;
+			fixtureXforms.push(tmp.clone().setPosition(room.x, ROOM_HEIGHT - 0.18, fz));
+		}
+		const accentCount = Math.max(2, Math.floor(room.depth / 2));
+		for (let i = 0; i < accentCount; i++) {
+			const t = (i + 0.5) / accentCount;
+			const az = room.z - hd + t * room.depth;
+			for (const side of [-1, 1]) {
+				accentXforms.push(
+					tmp.clone().setPosition(room.x + side * (hw - 0.18), ROOM_HEIGHT * 0.45, az),
+				);
+			}
+		}
+	}
+
+	const fixtures = new THREE.InstancedMesh(fixtureGeo, fixtureMat, fixtureXforms.length);
+	fixtures.frustumCulled = false; // tiny meshes scattered across the level — bbox test cost > savings
+	for (let i = 0; i < fixtureXforms.length; i++) fixtures.setMatrixAt(i, fixtureXforms[i]);
+	fixtures.instanceMatrix.needsUpdate = true;
+	scene.add(fixtures);
+
+	const accents = new THREE.InstancedMesh(accentGeo, accentMat, accentXforms.length);
+	accents.frustumCulled = false;
+	for (let i = 0; i < accentXforms.length; i++) accents.setMatrixAt(i, accentXforms[i]);
+	accents.instanceMatrix.needsUpdate = true;
+	scene.add(accents);
+
+	return [fixtures, accents];
 }
 
 // ─── Subsystem visual markers ────────────────────────────────────────────────
@@ -667,6 +684,8 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		const visuals = buildRoomGeometry(room, scene);
 		roomVisualsMap.set(room.id, visuals);
 	}
+	// Batch repeating fixture+accent furniture into two InstancedMesh draws.
+	buildInstancedFurniture(scene);
 
 	// Build subsystem visuals
 	const subsystemVisuals: SubsystemVisual[] = [];
@@ -795,6 +814,9 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			// Dispose GPU geometry + material objects to prevent VRAM leaks
 			// across scene transitions (matches BUG-003 pattern from other scenes).
 			scene.traverse((obj) => {
+				if (obj instanceof THREE.InstancedMesh) {
+					obj.dispose(); // releases instanceMatrix / instanceColor buffer attributes
+				}
 				if (obj instanceof THREE.Mesh) {
 					obj.geometry.dispose();
 					if (Array.isArray(obj.material)) {

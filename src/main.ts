@@ -74,12 +74,12 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 				// after a short delay so returning players get fresh content
 				// without a "Reload?" prompt. Swap to a UI prompt when we have
 				// a HUD toast system.
-				console.info("[SW] New version ready — applying in 5s");
+				// Service worker update ready — silently apply after a short delay
 				setTimeout(() => {
 					registration.waiting?.postMessage({ type: "SKIP_WAITING" });
 				}, 5000);
 			},
-			onError: (err: any) => console.warn("[SW] registration failed:", err.message),
+			onError: () => { /* SW registration failure is non-critical; PWA features are optional */ },
 		});
 }
 

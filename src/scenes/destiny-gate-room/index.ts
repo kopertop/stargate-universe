@@ -2604,6 +2604,43 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		wallColliders.length = 0;
 	});
 
+	// ── Gate-room static colliders ────────────────────────────────────────────
+	// Visual room is ROOM_WIDTH × ROOM_HEIGHT × ROOM_DEPTH, but runtime.json
+	// has zero physics nodes and the procedural walls above are pure visuals.
+	// Without these the player can walk through walls or fall through the
+	// floor. Front wall is left open so the corridor doorway is passable.
+	const wallThickness = 0.5;
+	const wallColliders: CrashcatRigidBody[] = [];
+	const addStaticBox = (halfExtents: [number, number, number], position: [number, number, number]) => {
+		wallColliders.push(rigidBody.create(context.physicsWorld, {
+			motionType: MotionType.STATIC,
+			objectLayer: CRASHCAT_OBJECT_LAYER_STATIC,
+			shape: box.create({ halfExtents }),
+			position,
+		}));
+	};
+	// Floor + ceiling
+	addStaticBox([ROOM_WIDTH / 2, wallThickness / 2, ROOM_DEPTH / 2], [0, -wallThickness / 2, 0]);
+	addStaticBox([ROOM_WIDTH / 2, wallThickness / 2, ROOM_DEPTH / 2], [0, ROOM_HEIGHT + wallThickness / 2, 0]);
+	// Back wall (−Z)
+	addStaticBox([ROOM_WIDTH / 2, ROOM_HEIGHT / 2, wallThickness / 2], [0, ROOM_HEIGHT / 2, -ROOM_DEPTH / 2 - wallThickness / 2]);
+	// Left + right walls (full depth)
+	addStaticBox([wallThickness / 2, ROOM_HEIGHT / 2, ROOM_DEPTH / 2], [-ROOM_WIDTH / 2 - wallThickness / 2, ROOM_HEIGHT / 2, 0]);
+	addStaticBox([wallThickness / 2, ROOM_HEIGHT / 2, ROOM_DEPTH / 2], [ROOM_WIDTH / 2 + wallThickness / 2, ROOM_HEIGHT / 2, 0]);
+	// Front wall flanking pieces (leave doorway gap of `doorwayWidth` centered on x=0)
+	const doorwayWidthCol = 6;
+	const doorwayHeightCol = 8;
+	const frontPieceHalf = (ROOM_WIDTH - doorwayWidthCol) / 4;
+	addStaticBox([frontPieceHalf, ROOM_HEIGHT / 2, wallThickness / 2], [-(doorwayWidthCol / 2 + frontPieceHalf), ROOM_HEIGHT / 2, ROOM_DEPTH / 2 + wallThickness / 2]);
+	addStaticBox([frontPieceHalf, ROOM_HEIGHT / 2, wallThickness / 2], [(doorwayWidthCol / 2 + frontPieceHalf), ROOM_HEIGHT / 2, ROOM_DEPTH / 2 + wallThickness / 2]);
+	// Door header (above doorway)
+	const doorTopHalfH = (ROOM_HEIGHT - doorwayHeightCol) / 2;
+	addStaticBox([doorwayWidthCol / 2, doorTopHalfH, wallThickness / 2], [0, ROOM_HEIGHT - doorTopHalfH, ROOM_DEPTH / 2 + wallThickness / 2]);
+	gateRoomExtraDisposables.push(() => {
+		for (const body of wallColliders) rigidBody.remove(context.physicsWorld, body);
+		wallColliders.length = 0;
+	});
+
 	// Dev / test support: ?lime=1 URL param pre-sets the lime carry state so that
 	// tests can load gate-room with the banner visible without going through the
 	// full desert-planet flow. Safe in production — the param is simply ignored.

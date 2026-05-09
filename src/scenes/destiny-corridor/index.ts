@@ -13,11 +13,13 @@ import {
 	defineGameScene
 } from "../../game/runtime-scene-sources";
 import type { GameSceneModuleContext, GameSceneLifecycle } from "../../game/scene-types";
-import { ShipState, type Section, type Subsystem, SHIP_STATE_CONFIG } from "../../systems/ship-state";
+import { type Section, type ShipState, type Subsystem, SHIP_STATE_CONFIG } from "../../systems/ship-state";
 import { emit, scopedBus } from "../../systems/event-bus";
 import { Action, SguAction, getInput } from "../../systems/input";
-import { addResource, consumeResource, getResource, hasResource, initResources } from "../../systems/resources";
+import { consumeResource, getResource, hasResource } from "../../systems/resources";
 import { createSupplyCrate, markSupplyCrateLooted, type SupplyCrate } from "../../systems/supply-crates";
+import { getGameSession } from "../../systems/game-session";
+import { isLootContainerOpened, openLootContainer } from "../../systems/loot-state";
 import { box } from "crashcat";
 import {
 	CRASHCAT_OBJECT_LAYER_STATIC,
@@ -698,9 +700,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	const { scene, camera, player, renderer } = context;
 	const bus = scopedBus();
 
-	// Initialize Ship State with our 3 rooms
-	const shipState = new ShipState();
-	shipState.init();
+	const { shipState } = getGameSession();
 
 	// Photo-mode override: when capturing screenshots for visual audit,
 	// force full power so emergency lighting wash clears and architecture
@@ -721,7 +721,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	}));
 
 	for (const sec of sectionDefs) {
-		shipState.addSection(sec);
+		if (!shipState.getSection(sec.id)) shipState.addSection(sec);
 	}
 
 	// Register subsystems
@@ -753,7 +753,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	];
 
 	for (const sub of subsystemDefs) {
-		shipState.addSubsystem(sub);
+		if (!shipState.getSubsystem(sub.id)) shipState.addSubsystem(sub);
 	}
 
 	// Set initial power — the corridor conduit affects storage bay power
@@ -791,12 +791,14 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		subsystemVisuals.push(visual);
 	}
 
-	initResources();
 	const crates: SupplyCrate[] = [
-		createSupplyCrate(scene, new THREE.Vector3(-2.6, 0, -6.6), 6),
-		createSupplyCrate(scene, new THREE.Vector3(2.6, 0, -8.4), 8),
-		createSupplyCrate(scene, new THREE.Vector3(-1.0, 0, -10.2), 5),
+		createSupplyCrate(scene, new THREE.Vector3(-2.6, 0, -6.6), 6, "corridor:storage-crate-1"),
+		createSupplyCrate(scene, new THREE.Vector3(2.6, 0, -8.4), 8, "corridor:storage-crate-2"),
+		createSupplyCrate(scene, new THREE.Vector3(-1.0, 0, -10.2), 5, "corridor:storage-crate-3"),
 	];
+	for (const crate of crates) {
+		if (isLootContainerOpened(crate.id)) markSupplyCrateLooted(crate);
+	}
 
 	// Debug overlay
 	const debug = createShipStateDebugOverlay(shipState);
@@ -830,8 +832,13 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		if (interaction.repairingSubsystemId) return;
 
 		if (interaction.nearestCrate && !interaction.nearestCrate.looted) {
-			addResource("ship-parts", interaction.nearestCrate.contents);
-			markSupplyCrateLooted(interaction.nearestCrate);
+			const result = openLootContainer({
+				id: interaction.nearestCrate.id,
+				source: "corridor",
+				label: "Supply crate",
+				contents: { "ship-parts": interaction.nearestCrate.contents },
+			});
+			if (result.status === "opened") markSupplyCrateLooted(interaction.nearestCrate);
 			return;
 		}
 
@@ -926,7 +933,6 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			interaction.promptElement.remove();
 			for (const body of roomColliders) rigidBody.remove(context.physicsWorld, body);
 			roomColliders.length = 0;
-			shipState.dispose();
 			bus.cleanup();
 			// Dispose GPU geometry + material objects to prevent VRAM leaks
 			// across scene transitions (matches BUG-003 pattern from other scenes).

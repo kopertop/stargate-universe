@@ -316,7 +316,7 @@ export async function createGameApp(options: GameAppOptions) {
     }
   };
 
-  const loadScene = async (sceneId: string) => {
+	const loadScene = async (sceneId: string) => {
 		const definition = options.scenes[sceneId];
 
 		if (!definition) {
@@ -324,6 +324,8 @@ export async function createGameApp(options: GameAppOptions) {
 		}
 
 		const token = ++loadToken;
+		(window as unknown as { __sguVisualReady?: boolean; __sguActiveSceneId?: string }).__sguVisualReady = false;
+		(window as unknown as { __sguVisualReady?: boolean; __sguActiveSceneId?: string }).__sguActiveSceneId = sceneId;
 		setStatus(`Loading ${definition.title}…`);
 
     let runtimeScene: ThreeRuntimeSceneInstance | undefined;
@@ -462,6 +464,7 @@ export async function createGameApp(options: GameAppOptions) {
     hud?.refresh();
 
     setStatus("");
+    (window as unknown as { __sguVisualReady?: boolean }).__sguVisualReady = true;
   };
 
   const start = () => {
@@ -541,6 +544,8 @@ async function buildPlayer(options: {
   const vrmUrl = playerConfig.vrmUrl;
 
   if (vrmUrl) {
+    (window as unknown as { __sguHasPlayerVrm?: boolean; __sguAnimWire?: string }).__sguHasPlayerVrm = true;
+    (window as unknown as { __sguHasPlayerVrm?: boolean; __sguAnimWire?: string }).__sguAnimWire = "pending";
     // Create VRM character manager and register the player character.
     const characterManager = new VrmCharacterManager(options.camera);
     const characterInstance = characterManager.addCharacter({
@@ -565,7 +570,7 @@ async function buildPlayer(options: {
     // Wire AnimationMixer-driven locomotion once the VRM scene is loaded.
     // Failures (missing clips, bad VRM) only mean the character holds T-pose
     // — they shouldn't block scene start, so we fire-and-forget.
-    void characterInstance.whenLoaded
+    const animationReady = characterInstance.whenLoaded
       .then(async (vrm) => {
         const animController = new VrmPlayerAnimationController(vrm);
         try {
@@ -582,12 +587,20 @@ async function buildPlayer(options: {
       })
       .catch((err) => {
         console.error("[buildPlayer] Player VRM failed to load — animation skipped:", err);
+        (window as unknown as { __sguAnimWire?: string }).__sguAnimWire = "failed";
       });
+
+    await Promise.race([
+      animationReady,
+      new Promise<void>((resolve) => window.setTimeout(resolve, 6_000)),
+    ]);
 
     return controller;
   }
 
   // Fall back to starter controller (capsule physics only).
+  (window as unknown as { __sguHasPlayerVrm?: boolean; __sguAnimWire?: string }).__sguHasPlayerVrm = false;
+  (window as unknown as { __sguHasPlayerVrm?: boolean; __sguAnimWire?: string }).__sguAnimWire = "none";
   return new StarterPlayerController({
     camera: cameraController,
     input: options.input,

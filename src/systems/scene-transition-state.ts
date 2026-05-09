@@ -21,3 +21,21 @@ export const setLimeCollected = (value: boolean): void => {
 
 /** True when the player is currently carrying lime from the desert planet. */
 export const isLimeCollected = (): boolean => _limeCollected;
+
+export interface SceneTransitionStateSnapshot {
+	version: 1;
+	limeCollected: boolean;
+}
+
+export const serializeSceneTransitionState = (): SceneTransitionStateSnapshot => ({
+	version: 1,
+	limeCollected: _limeCollected,
+});
+
+export const deserializeSceneTransitionState = (snapshot?: Partial<SceneTransitionStateSnapshot>): void => {
+	_limeCollected = Boolean(snapshot?.limeCollected);
+};
+
+export const resetSceneTransitionState = (): void => {
+	_limeCollected = false;
+};

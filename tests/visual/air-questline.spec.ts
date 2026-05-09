@@ -26,13 +26,27 @@ import { test, expect, type Page } from "@playwright/test";
 
 const sceneUrl = (sceneId: string) => `/?scene=${sceneId}&webgl=1`;
 
-/** Navigate to a scene and wait for __sceneReady. */
-const gotoScene = async (page: Page, sceneId: string) => {
-	await page.goto(sceneUrl(sceneId));
+const waitForGameReady = async (page: Page) => {
 	await page.waitForFunction(() => (window as any).__sceneReady === true, {
 		timeout: 30_000,
 	});
+	await page.waitForFunction(() => (window as any).__sguVisualReady === true, {
+		timeout: 30_000,
+	});
+	await page.waitForFunction(() => {
+		const loading = document.querySelector(".loading-screen");
+		const status = document.querySelector("[data-game-status]");
+		const playerReady = (window as any).__sguHasPlayerVrm !== true
+			|| ["controller-attached", "failed"].includes((window as any).__sguAnimWire);
+		return !loading && (!status || status.hasAttribute("hidden")) && playerReady;
+	}, { timeout: 30_000 });
 	await page.waitForTimeout(500);
+};
+
+/** Navigate to a scene and wait for visual readiness, not just mount readiness. */
+const gotoScene = async (page: Page, sceneId: string) => {
+	await page.goto(sceneUrl(sceneId));
+	await waitForGameReady(page);
 };
 
 /** Emit via the global bus (wired in main.ts). */
@@ -130,10 +144,7 @@ test.describe("Gate Room", () => {
 		// before creating the banner. This tests the REAL banner element created by
 		// the game — the old test injected fake DOM and proved nothing (BUG-004 fix).
 		await page.goto(`/?scene=gate-room&lime=1&webgl=1`);
-		await page.waitForFunction(() => (window as any).__sceneReady === true, {
-			timeout: 30_000,
-		});
-		await page.waitForTimeout(400);
+		await waitForGameReady(page);
 		// Assert the real game banner (id added to gate-room mount alongside this fix)
 		await expect(page.locator("#lime-delivery-banner")).toBeVisible();
 		await screenshot(page, "05-gate-room-lime-banner");

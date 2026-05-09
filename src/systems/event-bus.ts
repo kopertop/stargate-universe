@@ -36,6 +36,12 @@ type ResourceEvents = {
 	"inventory:story-item:acquired": { itemId: string; itemName: string };
 };
 
+/** Loot/container events */
+type LootEvents = {
+	"loot:container:opened": { id: string; source: string; contents: Record<string, number> };
+	"loot:container:already-opened": { id: string; source: string };
+};
+
 /** Quest events */
 type QuestEvents = {
 	"quest:started": { questId: string };
@@ -130,6 +136,7 @@ export type GameEventMap =
 	ShipEvents &
 	GateEvents &
 	ResourceEvents &
+	LootEvents &
 	CrewEvents &
 	QuestEvents &
 	CharacterEvents &

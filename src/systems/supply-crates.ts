@@ -1,16 +1,21 @@
 import * as THREE from "three";
 
 export interface SupplyCrate {
+	id: string;
 	mesh: THREE.Group;
 	position: THREE.Vector3;
 	contents: number;
 	looted: boolean;
 }
 
+const crateIdFromPosition = (position: THREE.Vector3): string =>
+	`crate:${position.x.toFixed(2)}:${position.y.toFixed(2)}:${position.z.toFixed(2)}`;
+
 export function createSupplyCrate(
 	scene: THREE.Scene,
 	position: THREE.Vector3,
 	contents: number,
+	id = crateIdFromPosition(position),
 ): SupplyCrate {
 	const group = new THREE.Group();
 	group.position.copy(position);
@@ -54,7 +59,7 @@ export function createSupplyCrate(
 
 	scene.add(group);
 
-	return { mesh: group, position: position.clone(), contents, looted: false };
+	return { id, mesh: group, position: position.clone(), contents, looted: false };
 }
 
 export function disposeSupplyCrate(crate: SupplyCrate): void {

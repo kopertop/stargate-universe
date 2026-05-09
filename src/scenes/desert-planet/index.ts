@@ -22,11 +22,12 @@ import {
 import type { GameSceneModuleContext, GameSceneLifecycle } from "../../game/scene-types";
 import { emit, scopedBus } from "../../systems/event-bus";
 import { Action, getInput } from "../../systems/input";
-import { createQuestManager } from "../../systems/quest-manager";
 import { setActiveQuestManager } from "../../systems/active-quest-manager";
-import { registerAirCrisis, QUEST_ID as AIR_CRISIS_QUEST_ID } from "../../quests/air-crisis";
-import { createHud, createCompass, createDialoguePanel } from "@kopertop/vibe-game-engine";
+import { QUEST_ID as AIR_CRISIS_QUEST_ID } from "../../quests/air-crisis";
+import { createHud, createCompass } from "@kopertop/vibe-game-engine";
 import { setLimeCollected } from "../../systems/scene-transition-state";
+import { getGameSession } from "../../systems/game-session";
+import { addResource } from "../../systems/resources";
 
 const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 	import: "default",
@@ -405,7 +406,7 @@ function markDepositCollected(deposit: CalciumDeposit): void {
 
 // ─── HUD elements ─────────────────────────────────────────────────────────────
 
-function createCO2Timer(startSeconds: number): {
+function createCO2Timer(startSeconds: number, readRemaining?: () => number): {
 	element: HTMLDivElement;
 	update: (delta: number) => void;
 	getRemaining: () => number;
@@ -434,7 +435,7 @@ function createCO2Timer(startSeconds: number): {
 	document.body.appendChild(el);
 
 	const update = (delta: number): void => {
-		remaining = Math.max(0, remaining - delta);
+		remaining = readRemaining ? readRemaining() : Math.max(0, remaining - delta);
 		const minutes = Math.floor(remaining / 60);
 		const seconds = Math.floor(remaining % 60);
 		const pad = (n: number): string => String(n).padStart(2, "0");
@@ -609,19 +610,27 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	camera.rotation.order = "YXZ";
 	const bus = scopedBus();
 
-	// ─── Quest manager ─────────────────────────────────────────────────
-	// Deserialise is not wired yet — create a fresh manager scoped to this scene.
-	// The gate-room scene owns the canonical QuestManager; here we only need
-	// to emit the resource:collected events that the canonical manager handles.
-	// Scene-local manager is used purely to track find-lime progress display.
-	const questManager = createQuestManager();
-	registerAirCrisis(questManager);
+	// ─── Shared gameplay state ─────────────────────────────────────────
+	const { questManager, timers } = getGameSession();
 	questManager.startQuest(AIR_CRISIS_QUEST_ID);
 	// Pre-advance objectives already done in gate-room (speak, locate, gate-to)
 	questManager.advanceObjective(AIR_CRISIS_QUEST_ID, "speak-to-rush");
 	questManager.advanceObjective(AIR_CRISIS_QUEST_ID, "locate-planet");
 	questManager.advanceObjective(AIR_CRISIS_QUEST_ID, "gate-to-planet");
 	setActiveQuestManager(questManager);
+	if (!timers.getTimer("air-crisis:co2")) {
+		timers.createTimer({
+			id: "air-crisis:co2",
+			durationSeconds: 8 * 60 * 60,
+			tags: ["air-crisis", "life-support"],
+			visible: true,
+			completionEvent: "timer:planet:expired",
+			warnings: [
+				{ thresholdSeconds: 10 * 60, event: "timer:planet:warning" },
+				{ thresholdSeconds: 2 * 60, event: "timer:planet:warning" },
+			],
+		});
+	}
 
 	// ─── World ─────────────────────────────────────────────────────────
 	buildLighting(scene);
@@ -736,7 +745,9 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 
 	// ─── HUD ───────────────────────────────────────────────────────────
 	// 8 hours remaining (cosmetic — not enforced, adds atmosphere)
-	const co2Timer = createCO2Timer(8 * 60 * 60);
+	const co2Timer = createCO2Timer(8 * 60 * 60, () =>
+		timers.getTimer("air-crisis:co2")?.remainingSeconds ?? 0,
+	);
 	const interactPrompt = createInteractionPrompt();
 	const collectionHUD = createCollectionHUD(totalDeposits);
 
@@ -770,6 +781,11 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 				return;
 			}
 			setLimeCollected(true);
+			addResource("lime", totalDeposits, "desert-planet");
+			emit("inventory:story-item:acquired", {
+				itemId: "air-crisis-lime",
+				itemName: "Calcium deposits",
+			});
 			questManager.advanceObjective(AIR_CRISIS_QUEST_ID, "return-to-destiny");
 			void context.gotoScene("gate-room");
 		}
@@ -782,6 +798,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	return {
 		update(delta: number) {
 			gateElapsed += delta;
+			timers.tick(delta);
 
 			if (input.isActionJustPressed(Action.Interact)) tryInteract();
 
@@ -851,7 +868,6 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			compassHud.unmount(compass);
 			compassHud.dispose();
 			setActiveQuestManager(null);
-			questManager.dispose();
 			bus.cleanup();
 			// BUG-003: dispose all GPU geometry + material objects to prevent VRAM leaks.
 			// Traversing the scene is safer than maintaining a manual list because it

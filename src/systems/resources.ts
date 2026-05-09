@@ -46,14 +46,15 @@ export function getAllResources(): Record<ResourceType, number> {
  * Add specified amount of a resource to the shared pool.
  * @param type   The resource type being added.
  * @param amount The quantity to add.
+ * @param source Optional gameplay source for quest/HUD/debug feedback.
  * @returns The new total amount of the resource.
  */
-export function addResource(type: ResourceType, amount: number): number {
+export function addResource(type: ResourceType, amount: number, source = "pickup"): number {
 	const current = resources.get(type) ?? 0;
 	const newAmount = current + amount;
 	resources.set(type, newAmount);
 
-	emit("resource:collected", { type, amount, source: "pickup" });
+	emit("resource:collected", { type, amount, source });
 	return newAmount;
 }
 

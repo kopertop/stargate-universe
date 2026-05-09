@@ -32,9 +32,16 @@ import { emit, on } from './event-bus.js';
 import type { ShipState } from './ship-state.js';
 import type { QuestManager } from './quest-manager.js';
 import type { DialogueManager } from './dialogue-manager.js';
+import type { TimerSystem } from './timer-system.js';
 import type { DialogueSaveData } from '@kopertop/vibe-game-engine';
 import { deserialize as deserializeResources, serialize as serializeResources } from './resources.js';
-import { isLimeCollected, setLimeCollected } from './scene-transition-state.js';
+import {
+	deserializeSceneTransitionState,
+	isLimeCollected,
+	serializeSceneTransitionState,
+	setLimeCollected,
+} from './scene-transition-state.js';
+import { deserializeLootState, serializeLootState } from './loot-state.js';
 import {
 	AUTOSAVE_SLOT_ID,
 	SAVE_VERSION,
@@ -102,6 +109,7 @@ export type SaveManagerOptions = {
 	shipState: ShipState;
 	questManager: QuestManager;
 	dialogueManager: DialogueManager;
+	timers?: TimerSystem;
 	/** Called at save time to capture scene/player context from the host. */
 	getContext: () => SaveContext;
 	/** Transition the game to the given scene ID (async, matches app.loadScene). */
@@ -111,7 +119,7 @@ export type SaveManagerOptions = {
 // ─── Factory ──────────────────────────────────────────────────────────────────
 
 export const createSaveManager = (options: SaveManagerOptions): SaveManager => {
-	const { shipState, questManager, dialogueManager, getContext, gotoScene } = options;
+	const { shipState, questManager, dialogueManager, timers, getContext, gotoScene } = options;
 	const unsubscribers: Array<() => void> = [];
 
 	// ─── Storage helpers ─────────────────────────────────────────────────────
@@ -165,6 +173,9 @@ export const createSaveManager = (options: SaveManagerOptions): SaveManager => {
 				dialogueState: dialogueManager.serialize() as DialogueSaveData,
 				unlockedScenes: [...ctx.unlockedScenes],
 				limeCollected: isLimeCollected(),
+				sceneTransitionState: serializeSceneTransitionState(),
+				timers: timers?.serialize(),
+				lootState: serializeLootState(),
 			};
 
 			writeSlotData(slotId, data);
@@ -211,6 +222,12 @@ export const createSaveManager = (options: SaveManagerOptions): SaveManager => {
 			dialogueManager.deserialize(data.dialogueState);
 			// Restore scene-transition flags (BUG-001: lime flag was lost on reload)
 			setLimeCollected(data.limeCollected ?? false);
+			deserializeSceneTransitionState(data.sceneTransitionState ?? {
+				version: 1,
+				limeCollected: data.limeCollected ?? false,
+			});
+			timers?.deserialize(data.timers);
+			deserializeLootState(data.lootState);
 
 			emit('save:loaded', { slotId });
 		} catch (error) {

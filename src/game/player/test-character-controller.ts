@@ -1,15 +1,13 @@
 /**
- * VrmPlayerController
+ * TestAnimatedCharacterController
  *
- * Extends the StarterPlayerController's physics and movement logic with a
- * VRM character model visual instead of the capsule mesh. The invisible
- * physics capsule still provides collision; the VRM model root is a child
- * of `this.object` and follows the capsule position.
+ * Debug controller that replaces the VRM with a simple box character animated
+ * via AnimationMixer. Used to isolate whether the character-disappears-on-
+ * animation bug is WebGPU+Mixer-specific vs. VRM/MToon-specific.
  *
- * Owns a VrmAnimatorBridge that is updated each frame, driving Mixamo-sourced
- * animation clips from the ggez animation editor on the VRM skeleton.
- *
- * @see design/gdd/vrm-model-integration.md
+ * Builds a simple humanoid from box geometries, creates an idle animation
+ * clip, and plays it through Three.js AnimationMixer — zero VRM, zero
+ * MToon, zero file loading.
  */
 import type { GameplayRuntime } from "@ggez/gameplay-runtime";
 import { vec3, type SceneSettings, type Vec3 } from "@ggez/shared";
@@ -29,19 +27,22 @@ import {
 	type CrashcatRigidBody,
 } from "@ggez/runtime-physics-crashcat";
 import {
+	AnimationClip,
+	AnimationMixer,
+	BoxGeometry,
 	Group,
 	MathUtils,
+	Mesh,
+	MeshStandardMaterial,
 	PerspectiveCamera,
+	QuaternionKeyframeTrack,
+	VectorKeyframeTrack,
+	LoopRepeat,
 	Vector3,
 } from "three";
 import { createCameraController, type CameraController, type CameraMode } from "../camera";
 import type { InputManager } from "../input";
 import type { PlayerController } from "../scene";
-import type { VrmCharacterManager, VrmCharacterInstance } from "../../systems/vrm/vrm-character-instance";
-import type { VrmAnimatorBridge } from "../../systems/vrm/vrm-retarget-bridge";
-import type { VrmPlayerAnimationController } from "../../systems/vrm/vrm-player-animation-controller";
-
-// ─── Constants ──────────────────────────────────────────────────────────────
 
 const GROUND_MIN_NORMAL_Y = 0.45;
 const GROUND_PROBE_DISTANCE = 0.2;
@@ -50,73 +51,89 @@ const JUMP_GROUND_LOCK_SECONDS = 0.12;
 const MOUSE_SENSITIVITY_X = 0.0024;
 const MOUSE_SENSITIVITY_Y = 0.0018;
 
-// ─── Types ──────────────────────────────────────────────────────────────────
+type KinematicBody = NonNullable<ReturnType<typeof rigidBody.get>>;
 
-type VrmPlayerSpawn = {
+type TestSpawn = {
 	position: Vec3;
 	rotationY: number;
 };
 
-export type VrmPlayerControllerOptions = {
+type TestControllerOptions = {
 	input: InputManager;
 	camera: CameraController;
 	threeCamera: PerspectiveCamera;
 	gameplayRuntime: GameplayRuntime;
 	sceneSettings: Pick<SceneSettings, "player" | "world">;
-	spawn: VrmPlayerSpawn;
+	spawn: TestSpawn;
 	world: CrashcatPhysicsWorld;
-	/** VRM character manager instance for this scene. */
-	characterManager: VrmCharacterManager;
-	/** The VRM character instance (already registered with the manager). */
-	characterInstance: VrmCharacterInstance;
-	/** Animation bridge — may be undefined if no animation bundle is configured. */
-	animatorBridge?: VrmAnimatorBridge;
 };
 
-type KinematicBody = NonNullable<ReturnType<typeof rigidBody.get>>;
+// ─── Helpers ─────────────────────────────────────────────────────────────
 
-// ─── Controller ─────────────────────────────────────────────────────────────
+function makePart(
+	width: number,
+	height: number,
+	depth: number,
+	color: number,
+	x: number,
+	y: number,
+	z: number,
+): Mesh {
+	const geo = new BoxGeometry(width, height, depth);
+	const mat = new MeshStandardMaterial({ color });
+	const mesh = new Mesh(geo, mat);
+	mesh.position.set(x, y, z);
+	mesh.castShadow = true;
+	mesh.receiveShadow = true;
+	return mesh;
+}
 
-export class VrmPlayerController implements PlayerController {
+function defaultPitchForCameraMode(mode: CameraMode): number {
+	if (mode === "fps") return 0;
+	if (mode === "third-person") return -0.22;
+	return -0.78;
+}
+
+function resolveViewDirection(yaw: number, pitch: number, target: Vector3): Vector3 {
+	return target.set(
+		-Math.sin(yaw) * Math.cos(pitch),
+		Math.sin(pitch),
+		-Math.cos(yaw) * Math.cos(pitch),
+	);
+}
+
+const DOWN_DIRECTION: [number, number, number] = [0, -1, 0];
+
+// ─── Controller ──────────────────────────────────────────────────────────
+
+export class TestAnimatedCharacterController implements PlayerController {
 	readonly object = new Group();
 	inputEnabled = true;
 
-	private readonly body: CrashcatRigidBody;
-	private camera: CameraController;
 	private readonly threeCamera: PerspectiveCamera;
+	private camera: CameraController;
 	private readonly input: InputManager;
 	private readonly gameplayRuntime: GameplayRuntime;
 	private readonly sceneSettings: Pick<SceneSettings, "player" | "world">;
 	private readonly world: CrashcatPhysicsWorld;
-	private readonly characterManager: VrmCharacterManager;
-	private readonly characterInstance: VrmCharacterInstance;
-	private readonly animatorBridge?: VrmAnimatorBridge;
-	private playerAnimController: VrmPlayerAnimationController | undefined;
-	private isRepairing = false;
-	private lastForwardInput = 0;
-	private lastStrafeInput = 0;
-	private externalForwardInput = 0;
-	private externalStrafeInput = 0;
-	private sprintOverride = false;
-	private jumpTriggeredFrame = false;
 
-	// Capsule dimensions (physics only — no visible capsule)
+	private readonly body: CrashcatRigidBody;
 	private readonly standingHeight: number;
 	private readonly radius: number;
 	private readonly halfHeight: number;
 	private readonly footOffset: number;
 
-	// Look state
 	private yaw: number;
 	private pitch: number;
-
-	// Jump state
 	private jumpQueued = false;
 	private spaceWasDown = false;
 	private jumpGroundLockRemaining = 0;
+	private externalForwardInput = 0;
+	private externalStrafeInput = 0;
+	private sprintOverride = false;
+	private grounded = false;
 
 	// Ground tracking
-	private grounded = false;
 	private readonly groundProbeCollector = createClosestCastRayCollector();
 	private readonly groundProbeFilter: ReturnType<typeof filter.create>;
 	private readonly groundProbeSettings = createDefaultCastRaySettings();
@@ -126,16 +143,20 @@ export class VrmPlayerController implements PlayerController {
 	private readonly _eyePosition = new Vector3();
 	private readonly _viewDirection = new Vector3();
 
-	constructor(options: VrmPlayerControllerOptions) {
+	// Animated character parts
+	private readonly characterRoot = new Group();
+	private readonly torso: Mesh;
+
+	// Mixer
+	private readonly mixer: AnimationMixer;
+
+	constructor(options: TestControllerOptions) {
 		this.input = options.input;
 		this.camera = options.camera;
 		this.threeCamera = options.threeCamera;
 		this.gameplayRuntime = options.gameplayRuntime;
 		this.sceneSettings = options.sceneSettings;
 		this.world = options.world;
-		this.characterManager = options.characterManager;
-		this.characterInstance = options.characterInstance;
-		this.animatorBridge = options.animatorBridge;
 
 		this.standingHeight = Math.max(1.2, options.sceneSettings.player.height);
 		this.radius = MathUtils.clamp(this.standingHeight * 0.18, 0.24, 0.42);
@@ -150,10 +171,51 @@ export class VrmPlayerController implements PlayerController {
 		this.groundProbeSettings.collideWithBackfaces = true;
 		this.groundProbeSettings.treatConvexAsSolid = false;
 
-		// Add VRM character root as the visual (no capsule mesh)
-		this.object.add(this.characterInstance.root);
+		// ── Build box character ──────────────────────────────────────────
+		const bodyColor = 0x4488ff;
+		const skinColor = 0xffcc99;
+		const pantsColor = 0x335599;
+		const shoeColor = 0x333333;
 
-		// Physics body — invisible capsule for collision
+		this.torso = makePart(0.5, 0.55, 0.28, bodyColor, 0, 0.95, 0);
+		this.characterRoot.add(this.torso);
+
+		this.characterRoot.add(makePart(0.22, 0.22, 0.22, skinColor, 0, 1.35, 0));
+		this.characterRoot.add(makePart(0.12, 0.35, 0.12, bodyColor, 0.32, 1.0, 0));
+		this.characterRoot.add(makePart(0.12, 0.35, 0.12, bodyColor, -0.32, 1.0, 0));
+		this.characterRoot.add(makePart(0.10, 0.3, 0.10, skinColor, 0.32, 0.65, 0));
+		this.characterRoot.add(makePart(0.10, 0.3, 0.10, skinColor, -0.32, 0.65, 0));
+		this.characterRoot.add(makePart(0.18, 0.35, 0.18, pantsColor, 0.13, 0.5, 0));
+		this.characterRoot.add(makePart(0.18, 0.35, 0.18, pantsColor, -0.13, 0.5, 0));
+		this.characterRoot.add(makePart(0.14, 0.35, 0.14, shoeColor, 0.13, 0.15, 0));
+		this.characterRoot.add(makePart(0.14, 0.35, 0.14, shoeColor, -0.13, 0.15, 0));
+
+		this.characterRoot.position.y = -this.footOffset;
+		this.object.add(this.characterRoot);
+
+		// ── Set up animation mixer ───────────────────────────────────────
+		this.mixer = new AnimationMixer(this.torso);
+
+		const times = [0, 0.5, 1.0, 1.5, 2.0];
+		const quats = [
+			0, 0, 0, 1,
+			0, 0, 0.05, 0.999,
+			0, 0, 0, 1,
+			0, 0, -0.05, 0.999,
+			0, 0, 0, 1,
+		];
+		const swayTrack = new QuaternionKeyframeTrack(".quaternion", times, quats);
+
+		const bobTimes = [0, 1.0, 2.0];
+		const bobVals = [0, 0.03, 0];
+		const bobTrack = new VectorKeyframeTrack(".position", bobTimes, bobVals);
+
+		const clip = new AnimationClip("idle", 2, [swayTrack, bobTrack]);
+		const action = this.mixer.clipAction(clip);
+		action.setLoop(LoopRepeat, Infinity);
+		action.play();
+
+		// ── Physics body ─────────────────────────────────────────────────
 		const spawnPos = {
 			x: options.spawn.position.x,
 			y: options.spawn.position.y + this.standingHeight * 0.5 + 0.04,
@@ -172,44 +234,27 @@ export class VrmPlayerController implements PlayerController {
 			shape: capsule.create({ halfHeightOfCylinder: this.halfHeight, radius: this.radius }),
 		});
 
-		this.groundProbeFilter.bodyFilter = (candidate) => candidate.id !== this.body.id;
 		this.object.position.set(spawnPos.x, spawnPos.y, spawnPos.z);
-	}
-
-	// ─── Public ─────────────────────────────────────────────────────────────
-
-	/** Attach the AnimationMixer-driven player animation controller. */
-	setAnimationController(controller: VrmPlayerAnimationController): void {
-		this.playerAnimController = controller;
 	}
 
 	setCameraMode(mode: CameraMode): void {
 		this.camera = createCameraController(mode, this.threeCamera);
 		this.camera.setStandingHeight(this.standingHeight);
 		this.pitch = MathUtils.clamp(this.pitch, this.camera.pitchMin, this.camera.pitchMax);
-
-		// Toggle first-person head hiding
-		this.characterManager.setFirstPersonMode(mode === "fps");
 	}
 
-  releasePointerLock(): void {
-    this.input.releasePointerLock();
-  }
+	releasePointerLock(): void {
+		this.input.releasePointerLock();
+	}
 
-  dispose(): void {
+	dispose(): void {
 		this.gameplayRuntime.removeActor("player");
 		rigidBody.remove(this.world, this.body);
-		this.animatorBridge?.dispose();
-		this.playerAnimController?.dispose();
-		this.characterManager.dispose();
+		this.mixer.stopAllAction();
 	}
 
-	// ─── Update Hooks ───────────────────────────────────────────────────────
+	// ─── Update ──────────────────────────────────────────────────────────
 
-	/**
-	 * Fixed-rate update (60 Hz). Apply movement and jump forces.
-	 * Identical physics to StarterPlayerController.
-	 */
 	updateBeforeStep(deltaSeconds: number): void {
 		this.jumpGroundLockRemaining = Math.max(0, this.jumpGroundLockRemaining - deltaSeconds);
 
@@ -248,9 +293,6 @@ export class VrmPlayerController implements PlayerController {
 			1,
 		);
 
-		this.lastStrafeInput = MathUtils.clamp(moveX, -1, 1);
-		this.lastForwardInput = MathUtils.clamp(moveZ, -1, 1);
-
 		let wishX = rx * moveX + fx * moveZ;
 		let wishZ = rz * moveX + fz * moveZ;
 		const wishLen = Math.hypot(wishX, wishZ);
@@ -275,7 +317,6 @@ export class VrmPlayerController implements PlayerController {
 			wishZ + this.supportVelocity.z,
 		]);
 
-		// Jump
 		const spaceDown = this.input.isKeyDown("Space");
 
 		if (spaceDown && !this.spaceWasDown) {
@@ -286,7 +327,6 @@ export class VrmPlayerController implements PlayerController {
 
 		if (this.jumpQueued) {
 			if (this.sceneSettings.player.canJump && this.grounded) {
-				this.jumpTriggeredFrame = true;
 				const gravityMagnitude = Math.max(
 					0.001,
 					Math.hypot(
@@ -309,112 +349,22 @@ export class VrmPlayerController implements PlayerController {
 		}
 	}
 
-  /** Fixed-rate update — sync visual to physics, update animator. */
-  updateAfterStep(deltaSeconds: number): void {
-    const t = this.body.position;
-    this.object.position.set(t[0], t[1], t[2]);
+	updateAfterStep(deltaSeconds: number): void {
+		const t = this.body.position;
+		this.object.position.set(t[0], t[1], t[2]);
 
-    // Rotate VRM model root to face movement direction
-    this.characterInstance.root.rotation.set(0, this.yaw + Math.PI, 0);
+		this.mixer.update(deltaSeconds);
 
-    // Offset VRM model so feet align with capsule bottom
-    this.characterInstance.root.position.set(0, -this.footOffset, 0);
+		this.gameplayRuntime.updateActor({
+			height: this.standingHeight,
+			id: "player",
+			position: vec3(t[0], t[1], t[2]),
+			radius: this.radius,
+			tags: ["player"],
+		});
+	}
 
-    // Show/hide based on camera mode
-    this.characterInstance.root.visible = this.camera.showPlayerBody;
-
-    // Drive animation parameters from movement state
-    const velocity = this.body.motionProperties.linearVelocity;
-    const horizontalSpeed = Math.hypot(velocity[0], velocity[2]);
-
-    if (this.animatorBridge) {
-      this.animatorBridge.animator.setFloat("speed", horizontalSpeed);
-      this.animatorBridge.animator.setBool("isGrounded", this.grounded);
-      this.animatorBridge.animator.setBool("isRunning", this.isRunning());
-      this.animatorBridge.animator.setBool("isJumping", !this.grounded && velocity[1] > 0.5);
-      this.animatorBridge.update(deltaSeconds);
-    }
-
-    if (this.playerAnimController) {
-      this.playerAnimController.update(deltaSeconds, {
-        speed: horizontalSpeed,
-        walkSpeed: this.sceneSettings.player.movementSpeed,
-        runSpeed: this.sceneSettings.player.runningSpeed,
-        isGrounded: this.grounded,
-        jumpTriggered: this.jumpTriggeredFrame,
-        strafeInput: this.lastStrafeInput,
-        forwardInput: this.lastForwardInput,
-        isRepairing: this.isRepairing,
-      });
-    }
-    this.jumpTriggeredFrame = false;
-
-    // Animate the raw bones — our Mixamo clips are retargeted to the VRM's
-    // specific skeleton so we apply directly to raw bones. We must then
-    // manually update the skinned-mesh skeleton's world matrices since the
-    // WebGPU renderer won't pick up bare quaternion changes.
-    // Note: DO NOT call vrm.humanoid.update() — it copies normalized (bind)
-    // pose over the mixer's work AND causes WebGPU to lose the skinned mesh.
-    if (this.characterInstance.vrm) {
-      this.characterInstance.vrm.scene.updateMatrixWorld(true);
-      this.characterInstance.vrm.scene.traverse((child) => {
-        const sk = child as import("three").SkinnedMesh;
-        if (sk.isSkinnedMesh && sk.skeleton) {
-          sk.skeleton.update();
-        }
-      });
-    }
-
-    // Report actor to gameplay runtime
-    this.gameplayRuntime.updateActor({
-      height: this.standingHeight,
-      id: "player",
-      position: vec3(t[0], t[1], t[2]),
-      radius: this.radius,
-      tags: ["player"]
-    });
-  }
-
-  /** Called when player starts/stops repairing a subsystem. */
-  setRepairing(isRepairing: boolean): void {
-    this.isRepairing = isRepairing;
-    if (this.animatorBridge) {
-      this.animatorBridge.animator.setBool("isRepairing", isRepairing);
-    }
-  }
-
-  /** Set external movement axes (e.g. gamepad) in [-1, 1]. */
-  setExternalMoveInput(forward: number, strafe: number): void {
-    this.externalForwardInput = MathUtils.clamp(forward, -1, 1);
-    this.externalStrafeInput = MathUtils.clamp(strafe, -1, 1);
-  }
-
-  /** Override sprint state (e.g. gamepad trigger held). */
-  setSprintOverride(sprinting: boolean): void {
-    this.sprintOverride = sprinting;
-  }
-
-  /** Apply an orbit delta to the camera directly (e.g. gamepad right stick). */
-  applyOrbitDelta(dx: number, dy: number): void {
-    this.yaw -= dx * MOUSE_SENSITIVITY_X;
-    this.pitch = MathUtils.clamp(
-      this.pitch - dy * MOUSE_SENSITIVITY_Y,
-      this.camera.pitchMin,
-      this.camera.pitchMax,
-    );
-  }
-
-  /** Set the player prone state (e.g. entering a crawl space). */
-  setProne(prone: boolean): void {
-    // Not yet implemented for VRM controller
-  }
-
-	/** Variable-rate update — camera. */
 	updateCamera(deltaSeconds: number): void {
-		// When input is disabled (photo mode, opening cinematic, dialogue
-		// camera takeover) we yield camera control to whatever set it
-		// externally — running our follow update would clobber that pose
-		// every frame and produce jitter / wrong framing in screenshots.
 		if (!this.inputEnabled) return;
 		const delta = this.input.consumeMouseDelta();
 		this.yaw -= delta.x * MOUSE_SENSITIVITY_X;
@@ -431,7 +381,25 @@ export class VrmPlayerController implements PlayerController {
 		this.camera.update(this._eyePosition, this._viewDirection, deltaSeconds);
 	}
 
-	// ─── Private ────────────────────────────────────────────────────────────
+	setRepairing(_isRepairing: boolean): void {}
+	setExternalMoveInput(forward: number, strafe: number): void {
+		this.externalForwardInput = forward;
+		this.externalStrafeInput = strafe;
+	}
+	setSprintOverride(sprinting: boolean): void {
+		this.sprintOverride = sprinting;
+	}
+	applyOrbitDelta(dx: number, dy: number): void {
+		this.yaw -= dx * MOUSE_SENSITIVITY_X;
+		this.pitch = MathUtils.clamp(
+			this.pitch - dy * MOUSE_SENSITIVITY_Y,
+			this.camera.pitchMin,
+			this.camera.pitchMax,
+		);
+	}
+	setProne(_prone: boolean): void {}
+
+	// ─── Private ─────────────────────────────────────────────────────────
 
 	private isRunning(): boolean {
 		return this.sprintOverride || this.input.isKeyDown("ShiftLeft") || this.input.isKeyDown("ShiftRight");
@@ -440,7 +408,6 @@ export class VrmPlayerController implements PlayerController {
 	private resolveGroundHit(
 		translation: CrashcatRigidBody["position"],
 	): { body: KinematicBody; fraction: number; normal: [number, number, number] } | undefined {
-		// Pass 1 — contacts in manifold
 		for (const contact of this.world.contacts.contacts) {
 			if (contact.contactIndex < 0 || contact.numContactPoints === 0) continue;
 			if (contact.bodyIdA !== this.body.id && contact.bodyIdB !== this.body.id) continue;
@@ -458,7 +425,6 @@ export class VrmPlayerController implements PlayerController {
 			return { body: supportBody, fraction: 0, normal: [0, normalY, 0] };
 		}
 
-		// Pass 2 — ray probes
 		const probeOriginY = translation[1] - this.footOffset + GROUND_PROBE_HEIGHT;
 		const probeOffset = this.radius + 0.05;
 
@@ -508,21 +474,3 @@ export class VrmPlayerController implements PlayerController {
 		return undefined;
 	}
 }
-
-// ─── Module Helpers ─────────────────────────────────────────────────────────
-
-function defaultPitchForCameraMode(mode: CameraMode): number {
-	if (mode === "fps") return 0;
-	if (mode === "third-person") return -0.22;
-	return -0.78;
-}
-
-function resolveViewDirection(yaw: number, pitch: number, target: Vector3): Vector3 {
-	return target.set(
-		-Math.sin(yaw) * Math.cos(pitch),
-		Math.sin(pitch),
-		-Math.cos(yaw) * Math.cos(pitch),
-	);
-}
-
-const DOWN_DIRECTION: [number, number, number] = [0, -1, 0];

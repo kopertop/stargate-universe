@@ -218,7 +218,12 @@ export class VrmCharacterManager {
 		instance.loading = false;
 
 		const mutableMaterials = result.vrm.materials ? [...result.vrm.materials] : undefined;
-		convertMToonToPBR(result.vrm.scene, mutableMaterials);
+		const conversionResult = convertMToonToPBR(result.vrm.scene, mutableMaterials);
+		console.log(
+			`[VrmCharacterManager] "${instance.id}" material conversion:`,
+			`${conversionResult.converted} converted, ${conversionResult.skipped} skipped, ${conversionResult.errors.length} errors`,
+			conversionResult,
+		);
 
 		result.vrm.scene.traverse((child) => {
 			if ((child as Mesh).isMesh) {

@@ -113,7 +113,9 @@ async function drainQueue(): Promise<void> {
 		}
 
 		activeLoads++;
+		console.log(`[VrmAssetLoader] Loading: ${entry.url} (priority ${entry.priority})`);
 		loadVrmInternal(entry).finally(() => {
+			console.log(`[VrmAssetLoader] Finished: ${entry.url}`);
 			activeLoads--;
 			drainQueue();
 		});

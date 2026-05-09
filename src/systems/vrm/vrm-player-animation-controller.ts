@@ -193,7 +193,9 @@ export class VrmPlayerAnimationController {
 				// Optional clips not on disk yet (e.g. run, jump, repair) — character
 				// just falls back to loaded clips. Keep this below warn-level so
 				// browser smoke checks don't report expected missing optional clips.
-				console.debug("[VrmPlayerAnimController] Skipping missing optional clip:", String(result.reason));
+				if (import.meta.env.DEV) {
+					console.debug("[VrmPlayerAnimController] Skipping missing optional clip:", String(result.reason));
+				}
 				continue;
 			}
 

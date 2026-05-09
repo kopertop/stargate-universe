@@ -88,10 +88,12 @@ export function convertMToonToPBR(
 	}
 
 	if (result.converted > 0 || result.errors.length > 0) {
-		console.debug(
-			`[MToonConverter] ${result.converted} converted, ${result.skipped} skipped, ${result.errors.length} errors`,
-			result.errors.length > 0 ? result.errors : "",
-		);
+		if (import.meta.env.DEV) {
+			console.debug(
+				`[MToonConverter] ${result.converted} converted, ${result.skipped} skipped, ${result.errors.length} errors`,
+				result.errors.length > 0 ? result.errors : "",
+			);
+		}
 	}
 
 	return result;

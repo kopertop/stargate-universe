@@ -74,7 +74,9 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 				// after a short delay so returning players get fresh content
 				// without a "Reload?" prompt. Swap to a UI prompt when we have
 				// a HUD toast system.
-				console.info("[SW] New version ready — applying in 5s");
+				if (import.meta.env.DEV) {
+					console.info("[SW] New version ready — applying in 5s");
+				}
 				setTimeout(() => {
 					registration.waiting?.postMessage({ type: "SKIP_WAITING" });
 				}, 5000);

@@ -219,11 +219,13 @@ export class VrmCharacterManager {
 
 		const mutableMaterials = result.vrm.materials ? [...result.vrm.materials] : undefined;
 		const conversionResult = convertMToonToPBR(result.vrm.scene, mutableMaterials);
-		console.log(
-			`[VrmCharacterManager] "${instance.id}" material conversion:`,
-			`${conversionResult.converted} converted, ${conversionResult.skipped} skipped, ${conversionResult.errors.length} errors`,
-			conversionResult,
-		);
+		if (import.meta.env.DEV) {
+			console.log(
+				`[VrmCharacterManager] "${instance.id}" material conversion:`,
+				`${conversionResult.converted} converted, ${conversionResult.skipped} skipped, ${conversionResult.errors.length} errors`,
+				conversionResult,
+			);
+		}
 
 		result.vrm.scene.traverse((child) => {
 			if ((child as Mesh).isMesh) {

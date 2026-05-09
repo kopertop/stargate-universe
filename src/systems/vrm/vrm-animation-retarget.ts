@@ -262,11 +262,6 @@ export async function loadMixamoAnimation(
 		);
 	}
 
-	console.info(
-		`[VrmAnimRetarget] ${clipName}: matched ${matchedTracks} tracks ` +
-		`(${unmatchedBones} unmatched) from ${url.split("/").pop()}`,
-	);
-
 	return new AnimationClip(clipName, clip.duration, tracks);
 }
 

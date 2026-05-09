@@ -21,6 +21,11 @@ export function initResources(): void {
 	if (!resources.has("lime")) resources.set("lime", 20);
 }
 
+export function resetResources(): void {
+	resources.clear();
+	initResources();
+}
+
 /**
  * Get the current amount of a specific resource.
  * @param type The resource type to query.

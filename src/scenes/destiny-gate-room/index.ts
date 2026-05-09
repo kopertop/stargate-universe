@@ -3,6 +3,7 @@ import {
 	createColocatedRuntimeSceneSource,
 	defineGameScene
 } from "../../game/runtime-scene-sources";
+import { getRuntimePhysicsDescriptors, type RuntimeScene } from "@ggez/runtime-format";
 import type { GameSceneModuleContext, GameSceneLifecycle } from "../../game/scene-types";
 import { perfMetrics } from "../../game/app";
 import { SHIP_STATE_CONFIG, type Section, type Subsystem } from "../../systems/ship-state";
@@ -48,6 +49,30 @@ const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 	import: "default",
 	query: "?url"
 }) as Record<string, () => Promise<string>>;
+
+const createGateRoomRuntimeSource = () => {
+	const source = createColocatedRuntimeSceneSource({
+		assetUrlLoaders,
+		manifestLoader: () => import("./scene.runtime.json?raw").then((module) => module.default)
+	});
+
+	return {
+		async load() {
+			return stripPrototypePhysics(await source.load());
+		},
+		async preload() {
+			await source.preload?.();
+		}
+	};
+};
+
+function stripPrototypePhysics(scene: RuntimeScene): RuntimeScene {
+	for (const { physics } of getRuntimePhysicsDescriptors(scene)) {
+		physics.enabled = false;
+	}
+
+	return scene;
+}
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -1107,72 +1132,14 @@ function buildLighting(scene: THREE.Scene, debugObjects: THREE.Object3D[]): THRE
 function createHUD(): HTMLDivElement {
 	const hud = document.createElement("div");
 	hud.id = "gate-hud";
-
-	const container = document.createElement("div");
-	Object.assign(container.style, {
-		position: "fixed",
-		bottom: "40px",
-		left: "50%",
-		transform: "translateX(-50%)",
-		color: "#4488ff",
-		fontFamily: "'Courier New', monospace",
-		fontSize: "16px",
-		textAlign: "center",
-		textShadow: "0 0 10px #4488ff44",
-		pointerEvents: "none",
-		userSelect: "none"
-	});
-
-	const statusEl = document.createElement("div");
-	statusEl.id = "gate-status";
-	// Status text is driven by quest progress / cinematic state — no static
-	// debug prompt here. Left empty so the HUD strip starts hidden until
-	// something meaningful to say.
-	statusEl.textContent = "";
-
-	const chevronsEl = document.createElement("div");
-	chevronsEl.id = "gate-chevrons";
-	Object.assign(chevronsEl.style, {
-		marginTop: "8px",
-		fontSize: "20px",
-		letterSpacing: "4px"
-	});
-
-	container.appendChild(statusEl);
-	container.appendChild(chevronsEl);
-	hud.appendChild(container);
+	hud.hidden = true;
 	document.body.appendChild(hud);
 	return hud;
 }
 
-function updateHUD(gate: GateRuntime): void {
-	const status = document.getElementById("gate-status");
-	const chevrons = document.getElementById("gate-chevrons");
-	if (!status || !chevrons) return;
-
-	let chevronDisplay = "";
-	for (let i = 0; i < CHEVRON_COUNT; i++) {
-		chevronDisplay += i < gate.lockedChevrons ? "\u25C6" : "\u25C7";
-	}
-	chevrons.textContent = chevronDisplay;
-
-	switch (gate.state) {
-		case "idle":
-			status.textContent = "";
-			break;
-		case "dialing":
-			status.textContent = `Dialing... Chevron ${gate.lockedChevrons} of ${CHEVRON_COUNT}`;
-			break;
-		case "kawoosh":
-			status.textContent = "Chevron 9 locked!";
-			break;
-		case "active":
-			status.textContent = "Wormhole established";
-			break;
-		case "shutdown":
-			status.textContent = "Wormhole disengaged";
-			break;
-	}
+function updateHUD(_gate: GateRuntime): void {
+	// Gate state is communicated through the gate visuals, audio, objectives,
+	// and interaction prompts. The old bottom chevron/status strip is retired.
 }
 
 // ─── Gate activation logic ───────────────────────────────────────────────────
@@ -1856,8 +1823,8 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	// (design/concept-art/gate-room/gate-room-dormant.png).
 	scene.background = new THREE.Color(0x02030a);
 	scene.fog = new THREE.FogExp2(0x02030a, 0.018);
-	// Interior tone mapping — exposure 3.9 (cinematic) over-blasts the closed
-	// gate room. Profile sets toneMapping + exposure and returns a restore.
+	// Renderer profile is currently neutral: tone mapping and post controls are
+	// disabled globally while the scene lighting is rebuilt directly.
 	const restorePostProfile = applyPostProfile(renderer, "interior");
 	const bus = scopedBus();
 
@@ -2568,10 +2535,10 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	}
 
 	// ── Gate-room static colliders ────────────────────────────────────────────
-	// Visual room is ROOM_WIDTH × ROOM_HEIGHT × ROOM_DEPTH, but runtime.json
-	// has zero physics nodes and the procedural walls above are pure visuals.
-	// Without these the player can walk through walls or fall through the
-	// floor. Front wall is left open so the corridor doorway is passable.
+	// Visual room is ROOM_WIDTH × ROOM_HEIGHT × ROOM_DEPTH. The colocated
+	// runtime manifest still contains prototype physics for the old small room,
+	// so createGateRoomRuntimeSource() strips those and these colliders become
+	// the single source of truth. Front wall is split so the doorway is passable.
 	const wallThickness = 0.5;
 	const wallColliders: CrashcatRigidBody[] = [];
 	const addStaticBox = (halfExtents: [number, number, number], position: [number, number, number]) => {
@@ -2593,43 +2560,6 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	// Front wall flanking pieces (leave doorway gap of `doorwayWidth` centered on x=0)
 	const doorwayWidthCol = 16;
 	const doorwayHeightCol = 26;
-	const frontPieceHalf = (ROOM_WIDTH - doorwayWidthCol) / 4;
-	addStaticBox([frontPieceHalf, ROOM_HEIGHT / 2, wallThickness / 2], [-(doorwayWidthCol / 2 + frontPieceHalf), ROOM_HEIGHT / 2, ROOM_DEPTH / 2 + wallThickness / 2]);
-	addStaticBox([frontPieceHalf, ROOM_HEIGHT / 2, wallThickness / 2], [(doorwayWidthCol / 2 + frontPieceHalf), ROOM_HEIGHT / 2, ROOM_DEPTH / 2 + wallThickness / 2]);
-	// Door header (above doorway)
-	const doorTopHalfH = (ROOM_HEIGHT - doorwayHeightCol) / 2;
-	addStaticBox([doorwayWidthCol / 2, doorTopHalfH, wallThickness / 2], [0, ROOM_HEIGHT - doorTopHalfH, ROOM_DEPTH / 2 + wallThickness / 2]);
-	gateRoomExtraDisposables.push(() => {
-		for (const body of wallColliders) rigidBody.remove(context.physicsWorld, body);
-		wallColliders.length = 0;
-	});
-
-	// ── Gate-room static colliders ────────────────────────────────────────────
-	// Visual room is ROOM_WIDTH × ROOM_HEIGHT × ROOM_DEPTH, but runtime.json
-	// has zero physics nodes and the procedural walls above are pure visuals.
-	// Without these the player can walk through walls or fall through the
-	// floor. Front wall is left open so the corridor doorway is passable.
-	const wallThickness = 0.5;
-	const wallColliders: CrashcatRigidBody[] = [];
-	const addStaticBox = (halfExtents: [number, number, number], position: [number, number, number]) => {
-		wallColliders.push(rigidBody.create(context.physicsWorld, {
-			motionType: MotionType.STATIC,
-			objectLayer: CRASHCAT_OBJECT_LAYER_STATIC,
-			shape: box.create({ halfExtents }),
-			position,
-		}));
-	};
-	// Floor + ceiling
-	addStaticBox([ROOM_WIDTH / 2, wallThickness / 2, ROOM_DEPTH / 2], [0, -wallThickness / 2, 0]);
-	addStaticBox([ROOM_WIDTH / 2, wallThickness / 2, ROOM_DEPTH / 2], [0, ROOM_HEIGHT + wallThickness / 2, 0]);
-	// Back wall (−Z)
-	addStaticBox([ROOM_WIDTH / 2, ROOM_HEIGHT / 2, wallThickness / 2], [0, ROOM_HEIGHT / 2, -ROOM_DEPTH / 2 - wallThickness / 2]);
-	// Left + right walls (full depth)
-	addStaticBox([wallThickness / 2, ROOM_HEIGHT / 2, ROOM_DEPTH / 2], [-ROOM_WIDTH / 2 - wallThickness / 2, ROOM_HEIGHT / 2, 0]);
-	addStaticBox([wallThickness / 2, ROOM_HEIGHT / 2, ROOM_DEPTH / 2], [ROOM_WIDTH / 2 + wallThickness / 2, ROOM_HEIGHT / 2, 0]);
-	// Front wall flanking pieces (leave doorway gap of `doorwayWidth` centered on x=0)
-	const doorwayWidthCol = 6;
-	const doorwayHeightCol = 8;
 	const frontPieceHalf = (ROOM_WIDTH - doorwayWidthCol) / 4;
 	addStaticBox([frontPieceHalf, ROOM_HEIGHT / 2, wallThickness / 2], [-(doorwayWidthCol / 2 + frontPieceHalf), ROOM_HEIGHT / 2, ROOM_DEPTH / 2 + wallThickness / 2]);
 	addStaticBox([frontPieceHalf, ROOM_HEIGHT / 2, wallThickness / 2], [(doorwayWidthCol / 2 + frontPieceHalf), ROOM_HEIGHT / 2, ROOM_DEPTH / 2 + wallThickness / 2]);
@@ -3300,10 +3230,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 
 export const gateRoomScene = defineGameScene({
 	id: "gate-room",
-	source: createColocatedRuntimeSceneSource({
-		assetUrlLoaders,
-		manifestLoader: () => import("./scene.runtime.json?raw").then((module) => module.default)
-	}),
+	source: createGateRoomRuntimeSource(),
 	title: "Gate Room",
 	player: { vrmUrl: "/assets/characters/eli-wallace/eli-wallace.vrm" },
 	mount

@@ -1,7 +1,7 @@
 import { registerAirCrisis, QUEST_ID as AIR_CRISIS_QUEST_ID } from "../quests/air-crisis";
 import { registerDestinyPowerCrisis } from "../quests/destiny-power-crisis";
 import { createQuestManager, type QuestManager } from "./quest-manager";
-import { initResources } from "./resources";
+import { initResources, resetResources } from "./resources";
 import { resetSceneTransitionState } from "./scene-transition-state";
 import { ShipState } from "./ship-state";
 import { resetLootState } from "./loot-state";
@@ -44,5 +44,6 @@ export const resetGameSessionForTests = (): void => {
 	activeSession?.timers.clear();
 	activeSession = undefined;
 	resetLootState();
+	resetResources();
 	resetSceneTransitionState();
 };

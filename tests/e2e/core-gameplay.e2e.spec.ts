@@ -13,7 +13,7 @@ import {
 
 test.describe("Core Gameplay", () => {
 	test.beforeEach(async ({ page }) => {
-		await page.goto("/");
+		await page.goto("/?scene=gate-room&webgl=1");
 		await waitForGameLoad(page);
 		await screenshot(page, "01-initial-load");
 	});
@@ -23,9 +23,12 @@ test.describe("Core Gameplay", () => {
 		const canvas = page.locator("canvas");
 		await expect(canvas).toBeVisible();
 
-		// HUD should show gate prompt
-		const hud = page.locator("#gate-status");
-		await expect(hud).toContainText("Press G to dial the Stargate");
+		// Gameplay HUD should use the player frame, tool slots, and bag
+		// instead of the retired bottom gate-status strip.
+		await expect(page.locator(".sgu-hud-player")).toContainText("Eli Wallace");
+		await expect(page.locator(".sgu-hud-action-slot")).toHaveCount(4);
+		await expect(page.locator(".sgu-hud-bag")).toBeVisible();
+		await expect(page.locator("#gate-status")).toHaveCount(0);
 
 		await screenshot(page, "02-gate-room-spawn");
 	});
@@ -43,6 +46,25 @@ test.describe("Core Gameplay", () => {
 		// Walk backward
 		await holdKey(page, "s", 500);
 		await screenshot(page, "05-walk-backward");
+	});
+
+	test("gate-room approach is passable past the old prototype wall", async ({ page }) => {
+		test.setTimeout(60_000);
+		await capturePointer(page);
+
+		const startZ = await page.evaluate(() =>
+			(window as unknown as { __sgu?: { state: () => { player?: { z: number } } } }).__sgu
+				?.state().player?.z ?? 0
+		);
+		await holdKey(page, "w", 20_000);
+		await page.waitForTimeout(300);
+		const endZ = await page.evaluate(() =>
+			(window as unknown as { __sgu?: { state: () => { player?: { z: number } } } }).__sgu
+				?.state().player?.z ?? 0
+		);
+
+		expect(startZ).toBeLessThan(14);
+		expect(endZ).toBeGreaterThan(30);
 	});
 
 	test("gate dial sequence", async ({ page }) => {
@@ -164,4 +186,3 @@ test.describe("Core Gameplay", () => {
 		await screenshot(page, "walkthrough-05-storage-bay");
 	});
 });
-

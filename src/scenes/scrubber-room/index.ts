@@ -443,7 +443,9 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 
 	// ─── Shared gameplay state ────────────────────────────────────────
 	const { questManager, timers } = getGameSession();
-	questManager.startQuest(AIR_CRISIS_QUEST_ID);
+	if (!questManager.isActive(AIR_CRISIS_QUEST_ID) && !questManager.isCompleted(AIR_CRISIS_QUEST_ID)) {
+		questManager.startQuest(AIR_CRISIS_QUEST_ID);
+	}
 	questManager.advanceObjective(AIR_CRISIS_QUEST_ID, "speak-to-rush");
 	questManager.advanceObjective(AIR_CRISIS_QUEST_ID, "locate-planet");
 	questManager.advanceObjective(AIR_CRISIS_QUEST_ID, "gate-to-planet");

@@ -135,22 +135,30 @@ export async function loadMixamoAnimation(
 	// Detect VRM version for coordinate system handling
 	const isVrm0 = (vrm.meta as any)?.metaVersion === "0";
 
-	// Debug: log track names from the FBX to check bone naming
-	const trackBoneNames = new Set(clip.tracks.map((t) => t.name.split(".")[0]));
 	// Animation retarget in progress — silent on success.
-	// Calculate hip height ratio for position scaling
-	const mixamoHips = asset.getObjectByName("mixamorigHips");
+	// Detect hip height for position scaling. Try both naming
+	// conventions: GLB preserves "mixamorig:Hips", FBX normalizes to
+	// "mixamorigHips".
+	const mixamoHips = asset.getObjectByName("mixamorig:Hips") ?? asset.getObjectByName("mixamorigHips");
+	// Scale animation Y positions to match VRM's normalized skeleton.
+	// Used below when retargeting VectorKeyframeTrack on the hips bone.
 	const vrmHipsY = vrm.humanoid.normalizedRestPose.hips?.position?.[1] ?? 1.0;
 	const motionHipsY = mixamoHips?.position?.y ?? 1.0;
 	const hipsPositionScale = vrmHipsY / motionHipsY;
-	void trackBoneNames; void mixamoHips; void hipsPositionScale;
+	void mixamoHips;
 
 	const tracks: (QuaternionKeyframeTrack | VectorKeyframeTrack)[] = [];
 	let matchedTracks = 0;
 	let unmatchedBones = 0;
 
 	for (const track of clip.tracks) {
-		const [mixamoRigName, propertyName] = track.name.split(".");
+		const [rawRigName, propertyName] = track.name.split(".");
+		// GLB exports preserve the original Mixamo node name (e.g.
+		// "mixamorig:Hips"), while FBXLoader normalizes punctuation away
+		// ("mixamorigHips"). Strip non-alphanumerics so one bone map serves
+		// both formats. Without this, every GLB track is unmatched and the
+		// resulting clip has zero tracks → mixer plays bind pose = T-pose.
+		const mixamoRigName = rawRigName.replace(/[^A-Za-z0-9]/g, "");
 		const vrmBoneName = MIXAMO_TO_VRM[mixamoRigName];
 
 		if (!vrmBoneName) {
@@ -162,7 +170,10 @@ export async function loadMixamoAnimation(
 		if (!vrmNode) continue;
 
 		const vrmNodeName = vrmNode.name;
-		const mixamoRigNode = asset.getObjectByName(mixamoRigName);
+		// Lookup uses the ORIGINAL node name from the source asset, since
+		// the asset's getObjectByName needs the unnormalized name (GLB) or
+		// normalized name (FBX) — whichever the loader produced.
+		const mixamoRigNode = asset.getObjectByName(rawRigName);
 		if (!mixamoRigNode) continue;
 
 		matchedTracks++;
@@ -244,6 +255,17 @@ export async function loadMixamoAnimation(
 	}
 
 	// Animation retarget complete.
+	if (matchedTracks === 0) {
+		throw new Error(
+			`[VrmAnimRetarget] Zero Mixamo tracks matched in ${url} ` +
+			`(${unmatchedBones} unmatched bones). Source likely uses non-Mixamo bone names.`,
+		);
+	}
+
+	console.info(
+		`[VrmAnimRetarget] ${clipName}: matched ${matchedTracks} tracks ` +
+		`(${unmatchedBones} unmatched) from ${url.split("/").pop()}`,
+	);
 
 	return new AnimationClip(clipName, clip.duration, tracks);
 }

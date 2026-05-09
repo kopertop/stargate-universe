@@ -39,6 +39,7 @@ import type { InputManager } from "../input";
 import type { PlayerController } from "../scene";
 import type { VrmCharacterManager, VrmCharacterInstance } from "../../systems/vrm/vrm-character-instance";
 import type { VrmAnimatorBridge } from "../../systems/vrm/vrm-retarget-bridge";
+import type { VrmPlayerAnimationController } from "../../systems/vrm/vrm-player-animation-controller";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -90,6 +91,14 @@ export class VrmPlayerController implements PlayerController {
 	private readonly characterManager: VrmCharacterManager;
 	private readonly characterInstance: VrmCharacterInstance;
 	private readonly animatorBridge?: VrmAnimatorBridge;
+	private playerAnimController: VrmPlayerAnimationController | undefined;
+	private isRepairing = false;
+	private lastForwardInput = 0;
+	private lastStrafeInput = 0;
+	private externalForwardInput = 0;
+	private externalStrafeInput = 0;
+	private sprintOverride = false;
+	private jumpTriggeredFrame = false;
 
 	// Capsule dimensions (physics only — no visible capsule)
 	private readonly standingHeight: number;
@@ -169,6 +178,11 @@ export class VrmPlayerController implements PlayerController {
 
 	// ─── Public ─────────────────────────────────────────────────────────────
 
+	/** Attach the AnimationMixer-driven player animation controller. */
+	setAnimationController(controller: VrmPlayerAnimationController): void {
+		this.playerAnimController = controller;
+	}
+
 	setCameraMode(mode: CameraMode): void {
 		this.camera = createCameraController(mode, this.threeCamera);
 		this.camera.setStandingHeight(this.standingHeight);
@@ -186,6 +200,8 @@ export class VrmPlayerController implements PlayerController {
 		this.gameplayRuntime.removeActor("player");
 		rigidBody.remove(this.world, this.body);
 		this.animatorBridge?.dispose();
+		this.playerAnimController?.dispose();
+		this.characterManager.dispose();
 	}
 
 	// ─── Update Hooks ───────────────────────────────────────────────────────
@@ -217,10 +233,23 @@ export class VrmPlayerController implements PlayerController {
 		const rx = -fz;
 		const rz = fx;
 
-		const moveX =
-			this.input.axis("KeyD", "KeyA") + this.input.axis("ArrowRight", "ArrowLeft");
-		const moveZ =
-			this.input.axis("KeyW", "KeyS") + this.input.axis("ArrowUp", "ArrowDown");
+		const moveX = MathUtils.clamp(
+			this.input.axis("KeyD", "KeyA") +
+				this.input.axis("ArrowRight", "ArrowLeft") +
+				this.externalStrafeInput,
+			-1,
+			1,
+		);
+		const moveZ = MathUtils.clamp(
+			this.input.axis("KeyW", "KeyS") +
+				this.input.axis("ArrowUp", "ArrowDown") +
+				this.externalForwardInput,
+			-1,
+			1,
+		);
+
+		this.lastStrafeInput = MathUtils.clamp(moveX, -1, 1);
+		this.lastForwardInput = MathUtils.clamp(moveZ, -1, 1);
 
 		let wishX = rx * moveX + fx * moveZ;
 		let wishZ = rz * moveX + fz * moveZ;
@@ -257,6 +286,7 @@ export class VrmPlayerController implements PlayerController {
 
 		if (this.jumpQueued) {
 			if (this.sceneSettings.player.canJump && this.grounded) {
+				this.jumpTriggeredFrame = true;
 				const gravityMagnitude = Math.max(
 					0.001,
 					Math.hypot(
@@ -294,15 +324,37 @@ export class VrmPlayerController implements PlayerController {
     this.characterInstance.root.visible = this.camera.showPlayerBody;
 
     // Drive animation parameters from movement state
-    if (this.animatorBridge) {
-      const velocity = this.body.motionProperties.linearVelocity;
-      const horizontalSpeed = Math.hypot(velocity[0], velocity[2]);
+    const velocity = this.body.motionProperties.linearVelocity;
+    const horizontalSpeed = Math.hypot(velocity[0], velocity[2]);
 
+    if (this.animatorBridge) {
       this.animatorBridge.animator.setFloat("speed", horizontalSpeed);
       this.animatorBridge.animator.setBool("isGrounded", this.grounded);
       this.animatorBridge.animator.setBool("isRunning", this.isRunning());
       this.animatorBridge.animator.setBool("isJumping", !this.grounded && velocity[1] > 0.5);
       this.animatorBridge.update(deltaSeconds);
+    }
+
+    if (this.playerAnimController) {
+      this.playerAnimController.update(deltaSeconds, {
+        speed: horizontalSpeed,
+        walkSpeed: this.sceneSettings.player.movementSpeed,
+        runSpeed: this.sceneSettings.player.runningSpeed,
+        isGrounded: this.grounded,
+        jumpTriggered: this.jumpTriggeredFrame,
+        strafeInput: this.lastStrafeInput,
+        forwardInput: this.lastForwardInput,
+        isRepairing: this.isRepairing,
+      });
+    }
+    this.jumpTriggeredFrame = false;
+
+    // Drive vrm.update() directly so the AnimationMixer-driven normalized rig
+    // pose is copied onto the skinned-mesh skeleton. Going through the manager
+    // here also runs LOD / first-person-fade side effects every frame which
+    // can collapse opacity to 0 mid-flight; we only need humanoid normalization.
+    if (this.characterInstance.vrm) {
+      this.characterInstance.vrm.update(Math.min(deltaSeconds, 0.1));
     }
 
     // Report actor to gameplay runtime
@@ -317,7 +369,7 @@ export class VrmPlayerController implements PlayerController {
 
   /** Called when player starts/stops repairing a subsystem. */
   setRepairing(isRepairing: boolean): void {
-    // Drive animation parameters for repair state
+    this.isRepairing = isRepairing;
     if (this.animatorBridge) {
       this.animatorBridge.animator.setBool("isRepairing", isRepairing);
     }
@@ -325,17 +377,23 @@ export class VrmPlayerController implements PlayerController {
 
   /** Set external movement axes (e.g. gamepad) in [-1, 1]. */
   setExternalMoveInput(forward: number, strafe: number): void {
-    // Not yet implemented for VRM controller
+    this.externalForwardInput = MathUtils.clamp(forward, -1, 1);
+    this.externalStrafeInput = MathUtils.clamp(strafe, -1, 1);
   }
 
   /** Override sprint state (e.g. gamepad trigger held). */
   setSprintOverride(sprinting: boolean): void {
-    // Not yet implemented for VRM controller
+    this.sprintOverride = sprinting;
   }
 
   /** Apply an orbit delta to the camera directly (e.g. gamepad right stick). */
   applyOrbitDelta(dx: number, dy: number): void {
-    // Not yet implemented for VRM controller
+    this.yaw -= dx * MOUSE_SENSITIVITY_X;
+    this.pitch = MathUtils.clamp(
+      this.pitch - dy * MOUSE_SENSITIVITY_Y,
+      this.camera.pitchMin,
+      this.camera.pitchMax,
+    );
   }
 
   /** Set the player prone state (e.g. entering a crawl space). */
@@ -368,7 +426,7 @@ export class VrmPlayerController implements PlayerController {
 	// ─── Private ────────────────────────────────────────────────────────────
 
 	private isRunning(): boolean {
-		return this.input.isKeyDown("ShiftLeft") || this.input.isKeyDown("ShiftRight");
+		return this.sprintOverride || this.input.isKeyDown("ShiftLeft") || this.input.isKeyDown("ShiftRight");
 	}
 
 	private resolveGroundHit(

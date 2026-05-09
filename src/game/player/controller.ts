@@ -100,6 +100,9 @@ export class StarterPlayerController implements PlayerController {
   // Look state — updated at variable rate in updateCamera()
   private yaw: number;
   private pitch: number;
+  private externalForwardInput = 0;
+  private externalStrafeInput = 0;
+  private sprintOverride = false;
 
   // Jump state
   private jumpQueued = false;
@@ -197,15 +200,21 @@ export class StarterPlayerController implements PlayerController {
   }
 
   setExternalMoveInput(_forward: number, _strafe: number): void {
-    // not implemented
+    this.externalForwardInput = MathUtils.clamp(_forward, -1, 1);
+    this.externalStrafeInput = MathUtils.clamp(_strafe, -1, 1);
   }
 
   setSprintOverride(_sprinting: boolean): void {
-    // not implemented
+    this.sprintOverride = _sprinting;
   }
 
   applyOrbitDelta(_dx: number, _dy: number): void {
-    // not implemented
+    this.yaw -= _dx * MOUSE_SENSITIVITY_X;
+    this.pitch = MathUtils.clamp(
+      this.pitch - _dy * MOUSE_SENSITIVITY_Y,
+      this.camera.pitchMin,
+      this.camera.pitchMax
+    );
   }
 
   setProne(_prone: boolean): void {
@@ -247,10 +256,20 @@ export class StarterPlayerController implements PlayerController {
     const rx = -fz;
     const rz = fx;
 
-    const moveX =
-      this.input.axis("KeyD", "KeyA") + this.input.axis("ArrowRight", "ArrowLeft");
-    const moveZ =
-      this.input.axis("KeyW", "KeyS") + this.input.axis("ArrowUp", "ArrowDown");
+    const moveX = MathUtils.clamp(
+      this.input.axis("KeyD", "KeyA") +
+        this.input.axis("ArrowRight", "ArrowLeft") +
+        this.externalStrafeInput,
+      -1,
+      1
+    );
+    const moveZ = MathUtils.clamp(
+      this.input.axis("KeyW", "KeyS") +
+        this.input.axis("ArrowUp", "ArrowDown") +
+        this.externalForwardInput,
+      -1,
+      1
+    );
 
     let wishX = rx * moveX + fx * moveZ;
     let wishZ = rz * moveX + fz * moveZ;
@@ -356,7 +375,7 @@ export class StarterPlayerController implements PlayerController {
   // ----------------------------------------------------------------- private
 
   private isRunning(): boolean {
-    return this.input.isKeyDown("ShiftLeft") || this.input.isKeyDown("ShiftRight");
+    return this.sprintOverride || this.input.isKeyDown("ShiftLeft") || this.input.isKeyDown("ShiftRight");
   }
 
   private resolveGroundHit(

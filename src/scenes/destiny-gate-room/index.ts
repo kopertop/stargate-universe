@@ -3,25 +3,26 @@ import {
 	createColocatedRuntimeSceneSource,
 	defineGameScene
 } from "../../game/runtime-scene-sources";
+import { getRuntimePhysicsDescriptors, type RuntimeScene } from "@ggez/runtime-format";
 import type { GameSceneModuleContext, GameSceneLifecycle } from "../../game/scene-types";
 import { perfMetrics } from "../../game/app";
-import { ShipState, SHIP_STATE_CONFIG, type Section, type Subsystem } from "../../systems/ship-state";
+import { SHIP_STATE_CONFIG, type Section, type Subsystem } from "../../systems/ship-state";
 import { emit, scopedBus } from "../../systems/event-bus";
 import { Action, SguAction, getInput } from "../../systems/input";
 import { createDialogueManager } from "../../systems/dialogue-manager";
 import { createNpcManager } from "../../systems/npc-manager";
-import { createQuestManager } from "../../systems/quest-manager";
 import { setActiveQuestManager } from "../../systems/active-quest-manager";
 import { createSaveManager } from "../../systems/save-manager";
 import { drRushNpc } from "../../npcs/dr-rush";
 import { drRushDialogue } from "../../dialogues/dr-rush";
-import { registerDestinyPowerCrisis } from "../../quests/destiny-power-crisis";
-import { registerAirCrisis, QUEST_ID as AIR_CRISIS_QUEST_ID } from "../../quests/air-crisis";
+import { QUEST_ID as AIR_CRISIS_QUEST_ID } from "../../quests/air-crisis";
 import type { NpcInstance } from "../../types/npc";
 import { setSceneManagers } from "./context";
-import { initResources, getResource, addResource, consumeResource, hasResource, getAllResources } from "../../systems/resources";
+import { getResource, consumeResource, hasResource, getAllResources } from "../../systems/resources";
 import { createSupplyCrate, markSupplyCrateLooted, type SupplyCrate } from "../../systems/supply-crates";
 import { isLimeCollected, setLimeCollected } from "../../systems/scene-transition-state";
+import { getGameSession } from "../../systems/game-session";
+import { isLootContainerOpened, openLootContainer } from "../../systems/loot-state";
 import { createHud, createDialoguePanel } from "@kopertop/vibe-game-engine";
 import { applyPostProfile } from "../../post/profiles";
 import {
@@ -48,6 +49,30 @@ const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 	import: "default",
 	query: "?url"
 }) as Record<string, () => Promise<string>>;
+
+const createGateRoomRuntimeSource = () => {
+	const source = createColocatedRuntimeSceneSource({
+		assetUrlLoaders,
+		manifestLoader: () => import("./scene.runtime.json?raw").then((module) => module.default)
+	});
+
+	return {
+		async load() {
+			return stripPrototypePhysics(await source.load());
+		},
+		async preload() {
+			await source.preload?.();
+		}
+	};
+};
+
+function stripPrototypePhysics(scene: RuntimeScene): RuntimeScene {
+	for (const { physics } of getRuntimePhysicsDescriptors(scene)) {
+		physics.enabled = false;
+	}
+
+	return scene;
+}
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -1107,72 +1132,14 @@ function buildLighting(scene: THREE.Scene, debugObjects: THREE.Object3D[]): THRE
 function createHUD(): HTMLDivElement {
 	const hud = document.createElement("div");
 	hud.id = "gate-hud";
-
-	const container = document.createElement("div");
-	Object.assign(container.style, {
-		position: "fixed",
-		bottom: "40px",
-		left: "50%",
-		transform: "translateX(-50%)",
-		color: "#4488ff",
-		fontFamily: "'Courier New', monospace",
-		fontSize: "16px",
-		textAlign: "center",
-		textShadow: "0 0 10px #4488ff44",
-		pointerEvents: "none",
-		userSelect: "none"
-	});
-
-	const statusEl = document.createElement("div");
-	statusEl.id = "gate-status";
-	// Status text is driven by quest progress / cinematic state — no static
-	// debug prompt here. Left empty so the HUD strip starts hidden until
-	// something meaningful to say.
-	statusEl.textContent = "";
-
-	const chevronsEl = document.createElement("div");
-	chevronsEl.id = "gate-chevrons";
-	Object.assign(chevronsEl.style, {
-		marginTop: "8px",
-		fontSize: "20px",
-		letterSpacing: "4px"
-	});
-
-	container.appendChild(statusEl);
-	container.appendChild(chevronsEl);
-	hud.appendChild(container);
+	hud.hidden = true;
 	document.body.appendChild(hud);
 	return hud;
 }
 
-function updateHUD(gate: GateRuntime): void {
-	const status = document.getElementById("gate-status");
-	const chevrons = document.getElementById("gate-chevrons");
-	if (!status || !chevrons) return;
-
-	let chevronDisplay = "";
-	for (let i = 0; i < CHEVRON_COUNT; i++) {
-		chevronDisplay += i < gate.lockedChevrons ? "\u25C6" : "\u25C7";
-	}
-	chevrons.textContent = chevronDisplay;
-
-	switch (gate.state) {
-		case "idle":
-			status.textContent = "";
-			break;
-		case "dialing":
-			status.textContent = `Dialing... Chevron ${gate.lockedChevrons} of ${CHEVRON_COUNT}`;
-			break;
-		case "kawoosh":
-			status.textContent = "Chevron 9 locked!";
-			break;
-		case "active":
-			status.textContent = "Wormhole established";
-			break;
-		case "shutdown":
-			status.textContent = "Wormhole disengaged";
-			break;
-	}
+function updateHUD(_gate: GateRuntime): void {
+	// Gate state is communicated through the gate visuals, audio, objectives,
+	// and interaction prompts. The old bottom chevron/status strip is retired.
 }
 
 // ─── Gate activation logic ───────────────────────────────────────────────────
@@ -1856,8 +1823,8 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	// (design/concept-art/gate-room/gate-room-dormant.png).
 	scene.background = new THREE.Color(0x02030a);
 	scene.fog = new THREE.FogExp2(0x02030a, 0.018);
-	// Interior tone mapping — exposure 3.9 (cinematic) over-blasts the closed
-	// gate room. Profile sets toneMapping + exposure and returns a restore.
+	// Renderer profile is currently neutral: tone mapping and post controls are
+	// disabled globally while the scene lighting is rebuilt directly.
 	const restorePostProfile = applyPostProfile(renderer, "interior");
 	const bus = scopedBus();
 
@@ -2193,9 +2160,8 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	const corridorCZ = CORRIDOR_Z_START + CORRIDOR_LENGTH / 2;
 	const storageCZ = CORRIDOR_Z_START + CORRIDOR_LENGTH + STORAGE_DEPTH / 2;
 
-	// ─── Initialize Ship State ───────────────────────────────────────────
-	const shipState = new ShipState();
-	shipState.init();
+	// ─── Shared Game Session ────────────────────────────────────────────
+	const { shipState, questManager, timers } = getGameSession();
 
 	// Register sections
 	const sections: Section[] = [
@@ -2215,7 +2181,9 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			accessState: "unexplored", subsystems: []
 		},
 	];
-	for (const sec of sections) shipState.addSection(sec);
+	for (const sec of sections) {
+		if (!shipState.getSection(sec.id)) shipState.addSection(sec);
+	}
 
 	// Register subsystems
 	const subsystemDefs: Array<{ sub: Subsystem; pos: THREE.Vector3; wall: "left" | "right" | "back" }> = [
@@ -2241,7 +2209,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 
 	const subsystemVisuals: SubsystemVisual[] = [];
 	for (const { sub, pos, wall } of subsystemDefs) {
-		shipState.addSubsystem(sub);
+		if (!shipState.getSubsystem(sub.id)) shipState.addSubsystem(sub);
 		subsystemVisuals.push(createSubsystemVisual(scene, sub, pos, wall));
 	}
 
@@ -2250,13 +2218,12 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	// ─── NPC / Dialogue / Quest / Save Managers ───────────────────────────
 	const dialogueManager = createDialogueManager();
 	const npcManager = createNpcManager(dialogueManager);
-	const questManager = createQuestManager();
 
 	npcManager.registerNpc(drRushNpc);
 	dialogueManager.registerTree(drRushDialogue);
-	registerDestinyPowerCrisis(questManager);
-	registerAirCrisis(questManager);
-	questManager.startQuest(AIR_CRISIS_QUEST_ID);
+	if (!questManager.isActive(AIR_CRISIS_QUEST_ID) && !questManager.isCompleted(AIR_CRISIS_QUEST_ID)) {
+		questManager.startQuest(AIR_CRISIS_QUEST_ID);
+	}
 	setActiveQuestManager(questManager);
 
 	// ─── Dr. Rush real character model ──────────────────────────────────
@@ -2502,6 +2469,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		shipState,
 		questManager,
 		dialogueManager,
+		timers,
 		getContext: () => ({
 			currentSceneId: "gate-room",
 			playerPosition: player
@@ -2516,13 +2484,14 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	setSceneManagers({ dialogue: dialogueManager, npc: npcManager, quest: questManager, save: saveManager });
 
 	// ─── Resources + Supply Crates ───────────────────────────────────────
-	initResources();
-
 	const crates: SupplyCrate[] = [
-		createSupplyCrate(scene, new THREE.Vector3(-2, 0, storageCZ - 1.5), 8),
-		createSupplyCrate(scene, new THREE.Vector3(-1, 0, storageCZ + 2.5), 6),
-		createSupplyCrate(scene, new THREE.Vector3(2.5, 0, storageCZ + 1), 8),
+		createSupplyCrate(scene, new THREE.Vector3(-2, 0, storageCZ - 1.5), 8, "gate-room:storage-crate-1"),
+		createSupplyCrate(scene, new THREE.Vector3(-1, 0, storageCZ + 2.5), 6, "gate-room:storage-crate-2"),
+		createSupplyCrate(scene, new THREE.Vector3(2.5, 0, storageCZ + 1), 8, "gate-room:storage-crate-3"),
 	];
+	for (const crate of crates) {
+		if (isLootContainerOpened(crate.id)) markSupplyCrateLooted(crate);
+	}
 
 	// ─── Room lighting (Ship State driven) ───────────────────────────────
 	const roomLights: RoomLighting[] = [
@@ -2544,25 +2513,32 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	if (compassRoot) cinematicHide.push(compassRoot);
 
 	// ── Gate blocker ───────────────────────────────────────────────────────────
-	// Invisible static box covering the Stargate opening. Physically prevents the
-	// player walking through before the air crisis is resolved. The blocker is
-	// removed in the quest:completed handler above when AIR_CRISIS_QUEST_ID fires.
-	// halfExtents slightly larger than GATE_RADIUS so a box covers the circular gap.
-	gateBlocker = rigidBody.create(context.physicsWorld, {
-		motionType: MotionType.STATIC,
-		objectLayer: CRASHCAT_OBJECT_LAYER_STATIC,
-		shape: box.create({
-			// Vec3 in mathcat is a labeled tuple [x, y, z], not { x, y, z }
-			halfExtents: [GATE_RADIUS + 0.3, GATE_RADIUS + 0.3, 0.2],
-		}),
-		position: [GATE_CENTER.x, GATE_CENTER.y, GATE_CENTER.z],
-	});
+	// The Air Crisis starts immediately and needs the active wormhole to be
+	// physically passable. Keep the blocker available for future locked-gate
+	// beats, but only spawn it once the Air Crisis route is no longer active.
+	if (!questManager.isActive(AIR_CRISIS_QUEST_ID) && !questManager.isCompleted(AIR_CRISIS_QUEST_ID)) {
+		gateBlocker = rigidBody.create(context.physicsWorld, {
+			motionType: MotionType.STATIC,
+			objectLayer: CRASHCAT_OBJECT_LAYER_STATIC,
+			shape: box.create({
+				// Vec3 in mathcat is a labeled tuple [x, y, z], not { x, y, z }
+				halfExtents: [GATE_RADIUS + 0.3, GATE_RADIUS + 0.3, 0.2],
+			}),
+			position: [GATE_CENTER.x, GATE_CENTER.y, GATE_CENTER.z],
+		});
+		gateRoomExtraDisposables.push(() => {
+			if (gateBlocker !== null) {
+				rigidBody.remove(context.physicsWorld, gateBlocker);
+				gateBlocker = null;
+			}
+		});
+	}
 
 	// ── Gate-room static colliders ────────────────────────────────────────────
-	// Visual room is ROOM_WIDTH × ROOM_HEIGHT × ROOM_DEPTH, but runtime.json
-	// has zero physics nodes and the procedural walls above are pure visuals.
-	// Without these the player can walk through walls or fall through the
-	// floor. Front wall is left open so the corridor doorway is passable.
+	// Visual room is ROOM_WIDTH × ROOM_HEIGHT × ROOM_DEPTH. The colocated
+	// runtime manifest still contains prototype physics for the old small room,
+	// so createGateRoomRuntimeSource() strips those and these colliders become
+	// the single source of truth. Front wall is split so the doorway is passable.
 	const wallThickness = 0.5;
 	const wallColliders: CrashcatRigidBody[] = [];
 	const addStaticBox = (halfExtents: [number, number, number], position: [number, number, number]) => {
@@ -2582,8 +2558,8 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	addStaticBox([wallThickness / 2, ROOM_HEIGHT / 2, ROOM_DEPTH / 2], [-ROOM_WIDTH / 2 - wallThickness / 2, ROOM_HEIGHT / 2, 0]);
 	addStaticBox([wallThickness / 2, ROOM_HEIGHT / 2, ROOM_DEPTH / 2], [ROOM_WIDTH / 2 + wallThickness / 2, ROOM_HEIGHT / 2, 0]);
 	// Front wall flanking pieces (leave doorway gap of `doorwayWidth` centered on x=0)
-	const doorwayWidthCol = 6;
-	const doorwayHeightCol = 8;
+	const doorwayWidthCol = 16;
+	const doorwayHeightCol = 26;
 	const frontPieceHalf = (ROOM_WIDTH - doorwayWidthCol) / 4;
 	addStaticBox([frontPieceHalf, ROOM_HEIGHT / 2, wallThickness / 2], [-(doorwayWidthCol / 2 + frontPieceHalf), ROOM_HEIGHT / 2, ROOM_DEPTH / 2 + wallThickness / 2]);
 	addStaticBox([frontPieceHalf, ROOM_HEIGHT / 2, wallThickness / 2], [(doorwayWidthCol / 2 + frontPieceHalf), ROOM_HEIGHT / 2, ROOM_DEPTH / 2 + wallThickness / 2]);
@@ -2730,8 +2706,13 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			questManager.advanceObjective(AIR_CRISIS_QUEST_ID, "gate-to-planet");
 			void context.gotoScene("desert-planet");
 		} else if (interactTarget === "crate" && nearestCrate && !nearestCrate.looted) {
-			addResource("ship-parts", nearestCrate.contents);
-			markSupplyCrateLooted(nearestCrate);
+			const result = openLootContainer({
+				id: nearestCrate.id,
+				source: "gate-room",
+				label: "Supply crate",
+				contents: { "ship-parts": nearestCrate.contents },
+			});
+			if (result.status === "opened") markSupplyCrateLooted(nearestCrate);
 		} else if (interactTarget === "subsystem" && nearestSub && !repairingSubsystemId) {
 			const sub = shipState.getSubsystem(nearestSub.id);
 			if (sub && sub.condition < 1.0 && hasResource("ship-parts", sub.repairCost)) {
@@ -2809,6 +2790,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	return {
 		update(delta: number) {
 			playtimeMs += delta * 1000;
+			timers.tick(delta);
 
 			// ─── Input (unified: keyboard + gamepad via InputManager) ───────
 			// InputManager is polled once per frame in app.ts. We only read
@@ -3205,7 +3187,6 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			dialogueManager.dispose();
 			npcManager.dispose();
 			setActiveQuestManager(null);
-			questManager.dispose();
 			saveManager.dispose();
 			if (cinematicController) {
 				cinematicController.dispose();
@@ -3213,8 +3194,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 				// Restore player input if scene is torn down mid-cinematic
 				if (player) player.inputEnabled = true;
 			}
-		setSceneManagers(null);
-			shipState.dispose();
+			setSceneManagers(null);
 			bus.cleanup();
 			wallMeshes.length = 0;
 			// BUG-003: dispose all GPU geometry + material objects created during mount()
@@ -3250,10 +3230,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 
 export const gateRoomScene = defineGameScene({
 	id: "gate-room",
-	source: createColocatedRuntimeSceneSource({
-		assetUrlLoaders,
-		manifestLoader: () => import("./scene.runtime.json?raw").then((module) => module.default)
-	}),
+	source: createGateRoomRuntimeSource(),
 	title: "Gate Room",
 	player: { vrmUrl: "/assets/characters/eli-wallace/eli-wallace.vrm" },
 	mount

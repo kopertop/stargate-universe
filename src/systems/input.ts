@@ -42,6 +42,8 @@ export const SguAction = {
 	Dialogue1: 111,
 	Dialogue2: 112,
 	Dialogue3: 113,
+	/** Tab — toggle the Restoration Console overlay. */
+	RestorationConsole: 120,
 } as const;
 
 const SGU_KEY_BINDINGS: Record<string, number> = {
@@ -49,6 +51,7 @@ const SGU_KEY_BINDINGS: Record<string, number> = {
 	KeyG:      SguAction.DialGate,
 	F5:        SguAction.ManualSave,
 	Backquote: SguAction.DebugToggle,
+	Tab:       SguAction.RestorationConsole,
 	// Number keys 1-4 double as dialogue option shortcuts. Keep the engine
 	// default bindings for MenuConfirm/Back on Enter/Escape — dialogue
 	// shortcuts are additional, not replacements.

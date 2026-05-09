@@ -1,26 +1,18 @@
 /**
- * Player HUD — Hollowlands-inspired overlay layout.
+ * Player HUD — concept-facing exploration overlay.
  *
- *   ┌──────────────────────────────────────────────────────┐
- *   │ resources                                       clock│
- *   │ quests                                               │
- *   │                                                      │
- *   │                                                      │
- *   │ keybinds         hotbar                       brand  │
- *   └──────────────────────────────────────────────────────┘
+ * The HUD is display-only. Shared gameplay systems own resources, quests,
+ * ship state, and loot; this renderer turns those snapshots into the
+ * persistent third-person exploration layer shown in the Destiny Restored
+ * concept: compass/location, compact objectives, a WoW-like unit frame, tool
+ * slots, bag inventory, and pickup feedback.
  *
- * Pure DOM overlay — no game state mutation. The HUD subscribes to
- * the event bus for live data and reads from the resource pool / quest
- * manager on demand. Disposed cleanly on app dispose so no zombie
- * listeners survive across hot-module reloads.
- *
- * Display-only: HUD never owns inventory or quest state, just renders
- * snapshots and re-renders on event triggers.
+ * Ship telemetry stays on physical consoles until the Kino remote is unlocked.
  */
 import type { QuestObjective } from "@kopertop/vibe-game-engine";
+import { getActiveQuestManager } from "../systems/active-quest-manager";
 import { scopedBus } from "../systems/event-bus";
 import { getAllResources, type ResourceType } from "../systems/resources";
-import { getActiveQuestManager } from "../systems/active-quest-manager";
 
 export interface HudHandle {
 	dispose: () => void;
@@ -28,27 +20,36 @@ export interface HudHandle {
 	refresh: () => void;
 }
 
-// ─── Resource icons ────────────────────────────────────────────────────────
-// Pictogram glyphs for the four player-pool resources. Using emoji here is
-// intentional: the HUD is small, scales cleanly with text-size, and avoids
-// shipping additional sprite atlases for what is essentially debug-grade UI
-// until the art team delivers final iconography. Swap to <img> elements
-// pointing at /assets/icons/* when the icons land.
-const RESOURCE_ICON: Record<ResourceType, string> = {
-	"ship-parts": "🛠",
-	"water":      "💧",
-	"food":       "🥖",
-	"lime":       "🪨",
-};
-
 const RESOURCE_LABEL: Record<ResourceType, string> = {
 	"ship-parts": "Parts",
-	"water":      "Water",
-	"food":       "Food",
-	"lime":       "Lime",
+	water: "Water",
+	food: "Rations",
+	lime: "Lime",
 };
 
-// ─── DOM helpers ───────────────────────────────────────────────────────────
+const BAG_SLOTS: ReadonlyArray<{
+	type?: ResourceType;
+	code: string;
+	label: string;
+}> = [
+	{ type: "ship-parts", code: "SP", label: "Ship Parts" },
+	{ type: "lime", code: "Ca", label: "Lime" },
+	{ code: "", label: "Empty Slot" },
+	{ code: "", label: "Empty Slot" },
+	{ code: "", label: "Empty Slot" },
+	{ code: "", label: "Empty Slot" },
+];
+
+const ACTION_SLOTS: ReadonlyArray<{
+	key: string;
+	code: string;
+	label: string;
+}> = [
+	{ key: "1", code: "AC", label: "Arc Cutter" },
+	{ key: "2", code: "SC", label: "Scanner" },
+	{ key: "3", code: "RP", label: "Repair" },
+	{ key: "4", code: "--", label: "Locked" },
+];
 
 const el = <K extends keyof HTMLElementTagNameMap>(
 	tag: K,
@@ -61,10 +62,6 @@ const el = <K extends keyof HTMLElementTagNameMap>(
 	return node;
 };
 
-// ─── Stylesheet ────────────────────────────────────────────────────────────
-// Injected once, on first mount. Keeps all HUD CSS in one place rather than
-// inlining styles on every node. Deduped via id check.
-
 const STYLE_ID = "sgu-hud-style";
 
 const STYLE = `
@@ -73,190 +70,356 @@ const STYLE = `
 	inset: 0;
 	pointer-events: none;
 	z-index: 100;
-	font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-	color: #f4f4f4;
-	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+	font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+	color: #e8f2ff;
+	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
 	user-select: none;
 }
-.sgu-hud * { pointer-events: auto; }
-
-/* Top-left cluster: resources strip + quest list */
-.sgu-hud-top-left {
+.sgu-hud * {
+	box-sizing: border-box;
+	pointer-events: none;
+	letter-spacing: 0;
+}
+.sgu-hud-panel {
+	background: linear-gradient(180deg, rgba(10, 16, 24, 0.82), rgba(5, 9, 14, 0.66));
+	border: 1px solid rgba(138, 174, 205, 0.26);
+	box-shadow: 0 14px 36px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+	backdrop-filter: blur(8px);
+	border-radius: 4px;
+}
+.sgu-hud-kicker {
+	color: #c9d9ea;
+	font-size: 10px;
+	font-weight: 700;
+	text-transform: uppercase;
+}
+.sgu-hud-compass {
 	position: absolute;
 	top: 16px;
-	left: 16px;
-	display: flex;
-	flex-direction: column;
-	gap: 12px;
-	max-width: 320px;
-}
-.sgu-hud-resources {
-	display: flex;
-	gap: 14px;
-	flex-wrap: wrap;
-	font-size: 18px;
-	font-weight: 600;
-}
-.sgu-hud-resource {
-	display: flex;
-	align-items: center;
-	gap: 4px;
-	background: rgba(0, 0, 0, 0.35);
-	border-radius: 6px;
-	padding: 3px 8px;
-}
-.sgu-hud-resource-icon { font-size: 18px; line-height: 1; }
-.sgu-hud-resource-count { font-variant-numeric: tabular-nums; }
-
-.sgu-hud-quests {
-	display: flex;
-	flex-direction: column;
-	gap: 6px;
-	font-size: 15px;
-	line-height: 1.3;
-}
-.sgu-hud-quest {
-	display: flex;
-	align-items: flex-start;
-	gap: 8px;
-}
-.sgu-hud-quest-box {
-	flex: 0 0 14px;
-	width: 14px;
-	height: 14px;
-	border: 1.5px solid #d8d8d8;
-	border-radius: 2px;
-	margin-top: 2px;
-	background: rgba(0, 0, 0, 0.3);
-}
-.sgu-hud-quest.is-complete .sgu-hud-quest-box {
-	background: #6cd06c;
-	border-color: #4eb84e;
-}
-.sgu-hud-quest.is-complete .sgu-hud-quest-box::after {
-	content: "✓";
-	display: block;
-	color: #062;
-	font-size: 12px;
-	font-weight: 700;
-	line-height: 11px;
+	left: 50%;
+	transform: translateX(-50%);
+	width: min(460px, calc(100vw - 32px));
+	display: grid;
+	grid-template-columns: repeat(5, 1fr);
+	gap: 10px;
+	align-items: end;
+	color: #d8e9fb;
+	font-size: 11px;
 	text-align: center;
 }
-.sgu-hud-quest.is-complete .sgu-hud-quest-text {
-	text-decoration: line-through;
-	opacity: 0.6;
-}
-
-/* Top-right: clock dial */
-.sgu-hud-top-right {
+.sgu-hud-compass::after {
+	content: "";
 	position: absolute;
-	top: 16px;
-	right: 18px;
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	gap: 4px;
+	left: 6%;
+	right: 6%;
+	bottom: 12px;
+	height: 1px;
+	background: linear-gradient(90deg, transparent, rgba(200, 225, 245, 0.42), transparent);
 }
-.sgu-hud-clock-icon { font-size: 22px; line-height: 1; }
-.sgu-hud-clock-dial {
-	width: 38px;
-	height: 38px;
-	border-radius: 50%;
-	background: rgba(20, 24, 38, 0.55);
-	border: 1.5px solid rgba(220, 220, 220, 0.5);
+.sgu-hud-heading {
 	position: relative;
+	padding-bottom: 16px;
+	opacity: 0.74;
 }
-.sgu-hud-clock-hand {
+.sgu-hud-heading.is-current {
+	opacity: 1;
+	color: #ffffff;
+}
+.sgu-hud-heading.is-current::after {
+	content: "";
 	position: absolute;
 	left: 50%;
-	top: 50%;
-	width: 1.5px;
-	height: 14px;
-	background: #f0f0f0;
-	transform-origin: top center;
-	transform: translate(-50%, 0) rotate(0deg);
+	bottom: 4px;
+	transform: translateX(-50%);
+	width: 8px;
+	height: 8px;
+	border: 1px solid #ffd36b;
+	background: rgba(255, 211, 107, 0.12);
+	rotate: 45deg;
 }
-
-/* Bottom-left: keybind hints */
-.sgu-hud-bottom-left {
+.sgu-hud-location {
 	position: absolute;
-	bottom: 18px;
-	left: 18px;
+	top: 38px;
+	left: 50%;
+	transform: translateX(-50%);
+	color: #d5e8ff;
+	font-size: 10px;
+	font-weight: 700;
+	text-transform: uppercase;
+}
+.sgu-hud-objectives {
+	position: absolute;
+	top: 68px;
+	right: 22px;
+	width: min(310px, calc(100vw - 44px));
+	padding: 14px;
+}
+.sgu-hud-objectives-title {
+	margin-bottom: 8px;
+}
+.sgu-hud-quest-name {
+	color: #ffffff;
+	font-size: 13px;
+	font-weight: 700;
+	margin-bottom: 8px;
+}
+.sgu-hud-objective-list {
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
-	font-size: 13px;
+	gap: 7px;
 }
-.sgu-hud-key-row {
-	display: flex;
-	align-items: center;
+.sgu-hud-objective {
+	display: grid;
+	grid-template-columns: 14px 1fr;
 	gap: 8px;
+	align-items: start;
+	color: #d9e6f3;
+	font-size: 12px;
+	line-height: 1.3;
 }
-.sgu-hud-key {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	min-width: 30px;
-	padding: 2px 7px;
-	background: rgba(0, 0, 0, 0.55);
-	border: 1px solid rgba(255, 255, 255, 0.18);
-	border-radius: 4px;
-	font-family: ui-monospace, "SF Mono", Menlo, monospace;
-	font-size: 11px;
-	font-weight: 600;
-	letter-spacing: 0.5px;
-	text-transform: uppercase;
-	color: #d8d8d8;
+.sgu-hud-check {
+	width: 12px;
+	height: 12px;
+	border: 1px solid rgba(235, 245, 255, 0.72);
+	border-radius: 50%;
+	margin-top: 1px;
 }
-.sgu-hud-key-label { opacity: 0.85; }
-
-/* Bottom-center: hotbar */
-.sgu-hud-hotbar {
+.sgu-hud-objective.is-complete {
+	color: rgba(217, 230, 243, 0.58);
+}
+.sgu-hud-objective.is-complete .sgu-hud-check {
+	background: #8ad6ff;
+	border-color: #8ad6ff;
+	box-shadow: 0 0 10px rgba(138, 214, 255, 0.5);
+}
+.sgu-hud-player {
 	position: absolute;
-	bottom: 22px;
+	left: 16px;
+	top: 16px;
+	width: min(300px, calc(100vw - 32px));
+	padding: 10px;
+	display: grid;
+	grid-template-columns: 52px 1fr;
+	gap: 10px;
+	align-items: center;
+}
+.sgu-hud-portrait {
+	width: 52px;
+	height: 52px;
+	border: 1px solid rgba(168, 202, 232, 0.35);
+	border-radius: 50%;
+	background:
+		radial-gradient(circle at 52% 34%, rgba(210, 224, 238, 0.55) 0 12%, transparent 13%),
+		linear-gradient(180deg, #1b2b39, #080d13);
+	position: relative;
+	overflow: hidden;
+}
+.sgu-hud-portrait::after {
+	content: "";
+	position: absolute;
+	left: 12px;
+	right: 12px;
+	bottom: 2px;
+	height: 22px;
+	border-radius: 50% 50% 0 0;
+	background: linear-gradient(180deg, #1f2935, #111820);
+}
+.sgu-hud-player-name {
+	font-size: 11px;
+	font-weight: 800;
+	text-transform: uppercase;
+	margin-bottom: 7px;
+	color: #ffffff;
+}
+.sgu-hud-vital {
+	display: grid;
+	grid-template-columns: 50px 1fr 40px;
+	align-items: center;
+	gap: 7px;
+	margin-top: 4px;
+	font-size: 9px;
+	text-transform: uppercase;
+	color: #cfdae5;
+}
+.sgu-hud-bar {
+	height: 6px;
+	background: rgba(255, 255, 255, 0.11);
+	overflow: hidden;
+	border-radius: 1px;
+}
+.sgu-hud-bar-fill {
+	height: 100%;
+	background: linear-gradient(90deg, #87d8ff, #d7f2ff);
+}
+.sgu-hud-vital.is-power .sgu-hud-bar-fill {
+	background: linear-gradient(90deg, #ffd36b, #fff0a8);
+}
+.sgu-hud-vital.is-oxygen .sgu-hud-bar-fill {
+	background: linear-gradient(90deg, #65baff, #9edcff);
+}
+.sgu-hud-actionbar {
+	position: absolute;
 	left: 50%;
+	bottom: 18px;
 	transform: translateX(-50%);
 	display: flex;
 	gap: 6px;
+	justify-content: center;
 }
-.sgu-hud-slot {
-	width: 56px;
-	height: 56px;
-	background: rgba(0, 0, 0, 0.45);
-	border: 1.5px solid rgba(255, 255, 255, 0.22);
-	border-radius: 4px;
+.sgu-hud-action-slot {
 	position: relative;
-	display: flex;
-	align-items: flex-end;
-	justify-content: flex-end;
-	font-size: 11px;
-	font-weight: 700;
-	color: #f0f0f0;
+	width: 54px;
+	height: 54px;
+	display: grid;
+	place-items: center;
+	background:
+		linear-gradient(180deg, rgba(32, 50, 67, 0.92), rgba(6, 10, 15, 0.92)),
+		radial-gradient(circle at 50% 45%, rgba(122, 199, 255, 0.26), transparent 58%);
+	border: 1px solid rgba(166, 204, 236, 0.3);
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), 0 8px 22px rgba(0, 0, 0, 0.38);
+	border-radius: 4px;
+	color: #dff3ff;
+	font-weight: 800;
+	font-size: 13px;
 }
-.sgu-hud-slot-index {
+.sgu-hud-action-slot.is-locked {
+	color: rgba(208, 224, 238, 0.46);
+	background: linear-gradient(180deg, rgba(18, 25, 34, 0.88), rgba(5, 8, 12, 0.88));
+}
+.sgu-hud-action-key {
 	position: absolute;
-	top: 2px;
+	left: 5px;
+	top: 3px;
+	color: #93b7d5;
+	font-family: ui-monospace, "SF Mono", Menlo, monospace;
+	font-size: 10px;
+	font-weight: 800;
+}
+.sgu-hud-action-label {
+	position: absolute;
 	left: 4px;
-	font-size: 11px;
-	color: #cfd5e3;
-	opacity: 0.8;
-}
-.sgu-hud-slot-icon { font-size: 26px; line-height: 1; padding: 14px; }
-.sgu-hud-slot-count { padding: 0 4px 2px 0; }
-
-/* Bottom-right: brand tag */
-.sgu-hud-brand {
-	position: absolute;
-	bottom: 12px;
-	right: 14px;
-	font-size: 11px;
-	font-weight: 600;
-	letter-spacing: 0.5px;
+	right: 4px;
+	bottom: 4px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: rgba(224, 238, 249, 0.72);
+	font-size: 8px;
+	font-weight: 700;
+	text-align: center;
 	text-transform: uppercase;
-	background: rgba(0, 0, 0, 0.6);
-	padding: 4px 10px;
+}
+.sgu-hud-bag {
+	position: absolute;
+	right: 18px;
+	bottom: 18px;
+	display: grid;
+	grid-template-columns: 54px auto;
+	align-items: end;
+	gap: 8px;
+}
+.sgu-hud-bag-button {
+	position: relative;
+	width: 54px;
+	height: 54px;
+	display: grid;
+	place-items: center;
+	border-radius: 4px;
+	border: 1px solid rgba(210, 180, 112, 0.46);
+	background:
+		linear-gradient(180deg, rgba(58, 46, 26, 0.92), rgba(18, 13, 8, 0.94)),
+		radial-gradient(circle at 48% 42%, rgba(255, 207, 119, 0.24), transparent 58%);
+	color: #ffe4a3;
+	box-shadow: inset 0 0 0 1px rgba(255, 244, 205, 0.08), 0 8px 22px rgba(0, 0, 0, 0.38);
+	font-size: 12px;
+	font-weight: 800;
+	text-transform: uppercase;
+}
+.sgu-hud-bag-count {
+	position: absolute;
+	right: 4px;
+	bottom: 3px;
+	color: #ffffff;
+	font-family: ui-monospace, "SF Mono", Menlo, monospace;
+	font-size: 10px;
+	font-weight: 800;
+}
+.sgu-hud-bag-grid {
+	display: grid;
+	grid-template-columns: repeat(3, 38px);
+	gap: 4px;
+}
+.sgu-hud-bag-slot {
+	position: relative;
+	width: 38px;
+	height: 38px;
+	display: grid;
+	place-items: center;
 	border-radius: 3px;
-	color: #c8d3e8;
+	border: 1px solid rgba(142, 168, 190, 0.24);
+	background: linear-gradient(180deg, rgba(20, 29, 39, 0.9), rgba(4, 7, 11, 0.88));
+	color: #d9efff;
+	font-size: 11px;
+	font-weight: 800;
+}
+.sgu-hud-bag-slot.is-empty {
+	color: transparent;
+	background: rgba(4, 7, 11, 0.55);
+}
+.sgu-hud-bag-stack {
+	position: absolute;
+	right: 3px;
+	bottom: 1px;
+	color: #ffffff;
+	font-family: ui-monospace, "SF Mono", Menlo, monospace;
+	font-size: 10px;
+	font-weight: 800;
+	text-shadow: 0 1px 2px #000;
+}
+.sgu-hud-feedback {
+	position: absolute;
+	left: 50%;
+	bottom: 86px;
+	transform: translateX(-50%);
+	min-width: 260px;
+	padding: 10px 14px;
+	color: #fff0b8;
+	font-size: 12px;
+	font-weight: 700;
+	text-align: center;
+	opacity: 0;
+	transition: opacity 160ms ease;
+}
+.sgu-hud-feedback.is-visible {
+	opacity: 1;
+}
+@media (max-width: 900px), (pointer: coarse) {
+	.sgu-hud-objectives {
+		top: 58px;
+		right: 10px;
+		width: min(280px, calc(100vw - 20px));
+	}
+	.sgu-hud-player {
+		left: 10px;
+		top: 10px;
+		width: 252px;
+	}
+	.sgu-hud-actionbar {
+		bottom: 10px;
+	}
+	.sgu-hud-action-slot,
+	.sgu-hud-bag-button {
+		width: 46px;
+		height: 46px;
+	}
+	.sgu-hud-bag {
+		right: 10px;
+		bottom: 10px;
+		grid-template-columns: 46px;
+	}
+	.sgu-hud-bag-grid {
+		display: none;
+	}
 }
 `;
 
@@ -268,162 +431,200 @@ const ensureStyle = (): void => {
 	document.head.appendChild(style);
 };
 
-// ─── Build helpers ─────────────────────────────────────────────────────────
-
-const buildResourcesStrip = (): {
-	root: HTMLDivElement;
-	render: () => void;
-} => {
-	const root = el("div", "sgu-hud-resources");
-	const counts: Record<ResourceType, HTMLSpanElement> = {
-		"ship-parts": el("span", "sgu-hud-resource-count", "0"),
-		"water":      el("span", "sgu-hud-resource-count", "0"),
-		"food":       el("span", "sgu-hud-resource-count", "0"),
-		"lime":       el("span", "sgu-hud-resource-count", "0"),
-	};
-	for (const type of Object.keys(counts) as ResourceType[]) {
-		const slot = el("div", "sgu-hud-resource");
-		slot.title = RESOURCE_LABEL[type];
-		const icon = el("span", "sgu-hud-resource-icon", RESOURCE_ICON[type]);
-		slot.appendChild(icon);
-		slot.appendChild(counts[type]);
-		root.appendChild(slot);
+const buildCompass = (): HTMLDivElement => {
+	const root = el("div", "sgu-hud-compass");
+	for (const heading of ["W", "NW", "N", "NE", "E"]) {
+		root.appendChild(el("div", `sgu-hud-heading${heading === "N" ? " is-current" : ""}`, heading));
 	}
-	const render = () => {
-		const all = getAllResources();
-		for (const type of Object.keys(counts) as ResourceType[]) {
-			counts[type].textContent = String(all[type] ?? 0);
-		}
-	};
-	render();
-	return { root, render };
+	root.appendChild(el("div", "sgu-hud-location", "Engineering Deck"));
+	return root;
 };
 
-const buildQuestPanel = (): { root: HTMLDivElement; render: () => void } => {
-	const root = el("div", "sgu-hud-quests");
+const buildObjectives = (): { root: HTMLDivElement; render: () => void } => {
+	const root = el("div", "sgu-hud-objectives sgu-hud-panel");
+	const title = el("div", "sgu-hud-kicker sgu-hud-objectives-title", "Objective");
+	const questName = el("div", "sgu-hud-quest-name", "Systems Standby");
+	const list = el("div", "sgu-hud-objective-list");
+	root.append(title, questName, list);
+
 	const render = () => {
-		root.replaceChildren();
+		list.replaceChildren();
 		const manager = getActiveQuestManager();
-		if (!manager) return;
-		const log = manager.getQuestLog();
-		// Active quests, then up to two recently completed quests for affordance.
-		const active = [...log.active.values()];
-		for (const state of active) {
-			// Show only visible, top-of-stack objectives (≤4 lines per quest).
-			const visible = state.objectives.filter((o: QuestObjective) => o.visible);
-			for (const obj of visible.slice(0, 4)) {
-				const row = el("div", `sgu-hud-quest${obj.completed ? " is-complete" : ""}`);
-				row.appendChild(el("span", "sgu-hud-quest-box"));
-				row.appendChild(el("span", "sgu-hud-quest-text", obj.description));
-				root.appendChild(row);
-			}
+		if (!manager) {
+			questName.textContent = "Systems Standby";
+			list.appendChild(el("div", "sgu-hud-objective", "Awaiting mission data"));
+			return;
+		}
+
+		const active = [...manager.getQuestLog().active.values()];
+		const current = active[0];
+		if (!current) {
+			questName.textContent = "Destiny Systems";
+			list.appendChild(el("div", "sgu-hud-objective", "No active objectives"));
+			return;
+		}
+
+		questName.textContent = current.definition.title ?? current.definition.name ?? current.definition.id;
+		const visible = current.objectives.filter((objective: QuestObjective) => objective.visible);
+		for (const objective of visible.slice(0, 3)) {
+			const row = el("div", `sgu-hud-objective${objective.completed ? " is-complete" : ""}`);
+			row.appendChild(el("span", "sgu-hud-check"));
+			row.appendChild(el("span", undefined, objective.description));
+			list.appendChild(row);
 		}
 	};
+
 	render();
 	return { root, render };
 };
 
-const buildKeybindHints = (): HTMLDivElement => {
-	const root = el("div", "sgu-hud-bottom-left");
-	const HINTS: ReadonlyArray<readonly [string, string]> = [
-		["WASD",  "Move"],
-		["Shift", "Run"],
-		["Space", "Jump"],
-		["E",     "Interact"],
-		["G",     "Dial Gate"],
+const buildPlayerPanel = (): HTMLDivElement => {
+	const root = el("div", "sgu-hud-player sgu-hud-panel");
+	root.appendChild(el("div", "sgu-hud-portrait"));
+	const details = el("div");
+	details.appendChild(el("div", "sgu-hud-player-name", "Eli Wallace"));
+
+	const vitals: ReadonlyArray<readonly [string, string, number, string]> = [
+		["Health", "", 100, "100"],
+		["Power", " is-power", 76, "76"],
+		["Oxygen", " is-oxygen", 92, "92"],
 	];
-	for (const [key, label] of HINTS) {
-		const row = el("div", "sgu-hud-key-row");
-		row.appendChild(el("span", "sgu-hud-key", key));
-		row.appendChild(el("span", "sgu-hud-key-label", label));
-		root.appendChild(row);
+	for (const [label, modifier, pct, text] of vitals) {
+		const row = el("div", `sgu-hud-vital${modifier}`);
+		row.appendChild(el("span", undefined, label));
+		const bar = el("div", "sgu-hud-bar");
+		const fill = el("div", "sgu-hud-bar-fill");
+		fill.style.width = `${pct}%`;
+		bar.appendChild(fill);
+		row.appendChild(bar);
+		row.appendChild(el("span", undefined, `${text}/100`));
+		details.appendChild(row);
+	}
+	root.appendChild(details);
+	return root;
+};
+
+const buildActionBar = (): HTMLDivElement => {
+	const root = el("div", "sgu-hud-actionbar");
+	for (const slot of ACTION_SLOTS) {
+		const button = el("div", `sgu-hud-action-slot${slot.code === "--" ? " is-locked" : ""}`);
+		button.title = slot.label;
+		button.appendChild(el("span", "sgu-hud-action-key", slot.key));
+		button.appendChild(el("span", "sgu-hud-action-code", slot.code));
+		button.appendChild(el("span", "sgu-hud-action-label", slot.label));
+		root.appendChild(button);
 	}
 	return root;
 };
 
-const buildHotbar = (): HTMLDivElement => {
-	const root = el("div", "sgu-hud-hotbar");
-	for (let i = 1; i <= 5; i++) {
-		const slot = el("div", "sgu-hud-slot");
-		slot.appendChild(el("span", "sgu-hud-slot-index", String(i)));
-		root.appendChild(slot);
-	}
-	return root;
-};
+const buildBagInventory = (): { root: HTMLDivElement; render: () => void } => {
+	const root = el("div", "sgu-hud-bag");
+	const button = el("div", "sgu-hud-bag-button", "Bag");
+	const total = el("span", "sgu-hud-bag-count", "0");
+	button.title = "Personal Bag";
+	button.appendChild(total);
+	const grid = el("div", "sgu-hud-bag-grid");
+	const stacks = new Map<ResourceType, HTMLSpanElement>();
 
-const buildClock = (): { root: HTMLDivElement; tick: () => void } => {
-	const root = el("div", "sgu-hud-top-right");
-	// Phase glyph — sun for the day half, moon for the night half. We don't
-	// have a day/night cycle yet, so just pick one based on real-world hour
-	// for now; swap to ship-time-of-day source when that lands.
-	const icon = el("div", "sgu-hud-clock-icon", "🌙");
-	const dial = el("div", "sgu-hud-clock-dial");
-	const hand = el("div", "sgu-hud-clock-hand");
-	dial.appendChild(hand);
-	root.appendChild(icon);
-	root.appendChild(dial);
-	const tick = () => {
-		const now = new Date();
-		const hours = now.getHours() + now.getMinutes() / 60;
-		// 0–24h → 0–360°. The 12-hour wrap matches a clock-hand convention.
-		const deg = (hours % 12) * 30;
-		hand.style.transform = `translate(-50%, 0) rotate(${deg}deg)`;
-		icon.textContent = hours >= 6 && hours < 18 ? "☀" : "🌙";
+	for (const slot of BAG_SLOTS) {
+		const item = el("div", `sgu-hud-bag-slot${slot.type ? "" : " is-empty"}`, slot.code);
+		item.title = slot.label;
+		if (slot.type) {
+			const stack = el("span", "sgu-hud-bag-stack", "0");
+			item.appendChild(stack);
+			stacks.set(slot.type, stack);
+		}
+		grid.appendChild(item);
+	}
+
+	root.append(button, grid);
+
+	const render = () => {
+		const resources = getAllResources();
+		let totalItems = 0;
+		for (const [type, stack] of stacks) {
+			const count = resources[type] ?? 0;
+			totalItems += count;
+			stack.textContent = String(count);
+		}
+		total.textContent = String(totalItems);
 	};
-	tick();
-	return { root, tick };
+
+	render();
+	return { root, render };
 };
 
-const buildBrand = (): HTMLDivElement => el("div", "sgu-hud-brand", "Stargate · Destiny");
+const buildFeedback = (): {
+	root: HTMLDivElement;
+	show: (message: string) => void;
+	dispose: () => void;
+} => {
+	const root = el("div", "sgu-hud-feedback sgu-hud-panel");
+	let timer: number | undefined;
 
-// ─── Public API ────────────────────────────────────────────────────────────
+	const show = (message: string): void => {
+		root.textContent = message;
+		root.classList.add("is-visible");
+		if (timer !== undefined) window.clearTimeout(timer);
+		timer = window.setTimeout(() => {
+			root.classList.remove("is-visible");
+			timer = undefined;
+		}, 1800);
+	};
+
+	return {
+		root,
+		show,
+		dispose: () => {
+			if (timer !== undefined) window.clearTimeout(timer);
+		},
+	};
+};
 
 export const mountHud = (): HudHandle => {
 	ensureStyle();
 
 	const root = el("div", "sgu-hud");
+	const objectives = buildObjectives();
+	const bag = buildBagInventory();
+	const feedback = buildFeedback();
 
-	const topLeft = el("div", "sgu-hud-top-left");
-	const resources = buildResourcesStrip();
-	const quests = buildQuestPanel();
-	topLeft.appendChild(resources.root);
-	topLeft.appendChild(quests.root);
-
-	const clock = buildClock();
-	const keybinds = buildKeybindHints();
-	const hotbar = buildHotbar();
-	const brand = buildBrand();
-
-	root.appendChild(topLeft);
-	root.appendChild(clock.root);
-	root.appendChild(keybinds);
-	root.appendChild(hotbar);
-	root.appendChild(brand);
-
+	root.appendChild(buildCompass());
+	root.appendChild(objectives.root);
+	root.appendChild(buildPlayerPanel());
+	root.appendChild(buildActionBar());
+	root.appendChild(bag.root);
+	root.appendChild(feedback.root);
 	document.body.appendChild(root);
 
-	// Live updates via event bus — quest + resource changes trigger re-render.
-	// Scoped so a single .cleanup() unwinds them all.
 	const bus = scopedBus();
 	const refresh = () => {
-		resources.render();
-		quests.render();
+		bag.render();
+		objectives.render();
 	};
-	bus.on("resource:collected", refresh);
-	bus.on("resource:consumed",  refresh);
-	bus.on("resource:depleted",  refresh);
-	bus.on("quest:started",            refresh);
+	bus.on("resource:collected", ({ type, amount }) => {
+		refresh();
+		feedback.show(`${RESOURCE_LABEL[type as ResourceType] ?? type} +${amount}`);
+	});
+	bus.on("resource:consumed", refresh);
+	bus.on("resource:depleted", refresh);
+	bus.on("loot:container:opened", ({ source }) => {
+		refresh();
+		feedback.show(source === "gate-room" ? "Supply crate opened" : "Loot recovered");
+	});
+	bus.on("inventory:story-item:acquired", ({ itemName }) => {
+		refresh();
+		feedback.show(`${itemName} acquired`);
+	});
+	bus.on("quest:started", refresh);
 	bus.on("quest:objective-complete", refresh);
-	bus.on("quest:completed",          refresh);
-	bus.on("quest:failed",             refresh);
-	bus.on("save:loaded",              refresh);
-
-	// Tick the clock once a minute. Cheap; no requestAnimationFrame needed.
-	const clockTimer = window.setInterval(clock.tick, 60_000);
+	bus.on("quest:completed", refresh);
+	bus.on("quest:failed", refresh);
+	bus.on("save:loaded", refresh);
 
 	return {
 		dispose: () => {
-			window.clearInterval(clockTimer);
+			feedback.dispose();
 			bus.cleanup();
 			root.remove();
 		},

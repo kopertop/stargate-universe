@@ -20,12 +20,13 @@ import {
 import type { GameSceneModuleContext, GameSceneLifecycle } from "../../game/scene-types";
 import { emit, scopedBus } from "../../systems/event-bus";
 import { Action, getInput } from "../../systems/input";
-import { createQuestManager } from "../../systems/quest-manager";
 import { setActiveQuestManager } from "../../systems/active-quest-manager";
-import { registerAirCrisis, QUEST_ID as AIR_CRISIS_QUEST_ID } from "../../quests/air-crisis";
+import { QUEST_ID as AIR_CRISIS_QUEST_ID } from "../../quests/air-crisis";
 import { isLimeCollected, setLimeCollected } from "../../systems/scene-transition-state";
 import { createHud } from "@kopertop/vibe-game-engine";
 import { createHorizontalCompass } from "../../ui/horizontal-compass";
+import { getGameSession } from "../../systems/game-session";
+import { consumeResource } from "../../systems/resources";
 
 const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 	import: "default",
@@ -440,12 +441,11 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	camera.rotation.order = "YXZ";
 	const bus = scopedBus();
 
-	// ─── Quest manager ────────────────────────────────────────────────
-	// Fresh manager scoped to this scene; pre-advance all prior objectives
-	// to expose fix-scrubbers as the active target.
-	const questManager = createQuestManager();
-	registerAirCrisis(questManager);
-	questManager.startQuest(AIR_CRISIS_QUEST_ID);
+	// ─── Shared gameplay state ────────────────────────────────────────
+	const { questManager, timers } = getGameSession();
+	if (!questManager.isActive(AIR_CRISIS_QUEST_ID) && !questManager.isCompleted(AIR_CRISIS_QUEST_ID)) {
+		questManager.startQuest(AIR_CRISIS_QUEST_ID);
+	}
 	questManager.advanceObjective(AIR_CRISIS_QUEST_ID, "speak-to-rush");
 	questManager.advanceObjective(AIR_CRISIS_QUEST_ID, "locate-planet");
 	questManager.advanceObjective(AIR_CRISIS_QUEST_ID, "gate-to-planet");
@@ -497,6 +497,8 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		// Emit repair event — quest manager auto-advances fix-scrubbers objective
 		// (repair objectives keyed on subsystemId === targetId = "co2-scrubbers")
 		emit("ship:subsystem:repaired", { subsystemId: "co2-scrubbers", condition: 1.0 });
+		timers.cancelTimer("air-crisis:co2");
+		consumeResource("lime", 3);
 
 		// Clear lime carry state — delivery complete
 		setLimeCollected(false);
@@ -547,6 +549,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	return {
 		update(delta: number) {
 			elapsed += delta;
+			timers.tick(delta);
 
 			if (input.isActionJustPressed(Action.Interact)) tryInteract();
 
@@ -603,7 +606,6 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			compassHud.unmount(compass);
 			compassHud.dispose();
 			setActiveQuestManager(null);
-			questManager.dispose();
 			bus.cleanup();
 			// BUG-003: dispose all GPU geometry + material objects to prevent VRAM leaks.
 			scene.traverse((obj) => {

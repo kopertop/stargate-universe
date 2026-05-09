@@ -32,10 +32,11 @@ import { WebGPURenderer } from "three/webgpu";
 import { createCameraController, frameCameraOnObject } from "./camera";
 import { AudioManager } from "../systems/audio";
 import { installDebugApi, toggleDebugOverlay } from "../systems/debug-api";
-import { pollInput, getInput } from "../systems/input";
+import { pollInput, getInput, SguAction } from "../systems/input";
 import { mountTouchControls } from "../ui/touch-controls";
 import { mountHud, type HudHandle } from "../ui/hud";
 import { mountPauseMenu, type PauseMenuHandle } from "../ui/pause-menu";
+import { mountConsole, type ConsoleHandle } from "../ui/restoration-console";
 import {
 	onEscapeRequested,
 	requestFullscreenAndPointerLock,
@@ -125,11 +126,11 @@ export async function createGameApp(options: GameAppOptions) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
-  // WebGPU uses physically-based light units (candela/lux).
-  // ACESFilmic tone mapping + exposure compensates so legacy intensity values
-  // look correct without rewriting every scene's light intensities.
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 3.9;
+  // Keep the renderer un-tonemapped while the art direction is being rebuilt.
+  // Scene lighting should carry the look directly instead of being pushed
+  // through a global exposure/post stack.
+  renderer.toneMapping = THREE.NoToneMapping;
+  renderer.toneMappingExposure = 1;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   shell.append(renderer.domElement);
 
@@ -181,9 +182,6 @@ export async function createGameApp(options: GameAppOptions) {
       if (e.code === "Backquote") toggleDebugOverlay(hostHooks);
     };
     window.addEventListener("keydown", toggleDev);
-    // S4-07 dev panel — bound live to renderer tone mapping/exposure.
-    // Dynamic import so the lil-gui dep stays out of prod bundles.
-    void import("../post/dev-panel").then(({ mountDevPanel }) => mountDevPanel({ renderer }));
   }
   // S4-09 — touch controls mount only on coarse pointers (returns null on
   // desktop, keeping the DOM clean and avoiding stray pointer captures).
@@ -213,22 +211,68 @@ export async function createGameApp(options: GameAppOptions) {
     pauseMenu?.show();
   };
 
-  pauseMenu = mountPauseMenu({
-    onResume: () => resumeGame(),
-    onQuit: () => {
-      if (pauseMenu?.isVisible()) pauseMenu.hide();
-      loop.resume();
-      void loadScene("start-screen");
-    },
-  });
+	pauseMenu = mountPauseMenu({
+		onResume: () => resumeGame(),
+		onQuit: () => {
+			if (pauseMenu?.isVisible()) pauseMenu.hide();
+			loop.resume();
+			void loadScene("start-screen");
+		},
+	});
 
-  const unsubscribeEscape = onEscapeRequested(() => {
-    if (pauseMenu?.isVisible()) {
-      resumeGame();
-    } else {
-      pauseGame();
-    }
-  });
+	// ── Restoration Console ────────────────────────────────────────────────
+
+	let consoleHandle: ConsoleHandle | null = null;
+	let isConsoleOpen = false;
+
+	const closeConsole = () => {
+		if (!consoleHandle) return;
+		consoleHandle.dispose();
+		// onClose callback handles cleanup + loop.resume()
+	};
+
+	const openConsole = () => {
+		if (isConsoleOpen || !hud || pauseMenu?.isVisible()) return;
+		isConsoleOpen = true;
+		consoleHandle = mountConsole({
+			onClose: () => {
+				isConsoleOpen = false;
+				consoleHandle = null;
+				loop.resume();
+			},
+		});
+		loop.pause();
+	};
+
+	const toggleConsole = () => {
+		if (isConsoleOpen) {
+			closeConsole();
+		} else {
+			openConsole();
+		}
+	};
+
+	const handleTabKey = (e: KeyboardEvent) => {
+		if (e.key === "Tab") {
+			e.preventDefault();
+			if (isConsoleOpen) closeConsole();
+		}
+	};
+	window.addEventListener("keydown", handleTabKey);
+
+	// ── Escape (pause / console) ───────────────────────────────────────────
+
+	const unsubscribeEscape = onEscapeRequested(() => {
+		if (isConsoleOpen) {
+			closeConsole();
+			return;
+		}
+		if (pauseMenu?.isVisible()) {
+			resumeGame();
+		} else {
+			pauseGame();
+		}
+	});
 
   // Adaptive physics state
   let adaptiveStepSeconds = DEFAULT_FIXED_STEP_SECONDS;
@@ -271,6 +315,9 @@ export async function createGameApp(options: GameAppOptions) {
       }
       // Controller + keyboard snapshot (edge-detection for just-pressed actions)
       pollInput();
+      if (getInput().isActionJustPressed(SguAction.RestorationConsole)) {
+        toggleConsole();
+      }
 
       activeBundle?.lifecycle.update?.(dt);
       activeBundle?.gameplayRuntime.update(dt);
@@ -316,7 +363,7 @@ export async function createGameApp(options: GameAppOptions) {
     }
   };
 
-  const loadScene = async (sceneId: string) => {
+	const loadScene = async (sceneId: string) => {
 		const definition = options.scenes[sceneId];
 
 		if (!definition) {
@@ -324,6 +371,8 @@ export async function createGameApp(options: GameAppOptions) {
 		}
 
 		const token = ++loadToken;
+		(window as unknown as { __sguVisualReady?: boolean; __sguActiveSceneId?: string }).__sguVisualReady = false;
+		(window as unknown as { __sguVisualReady?: boolean; __sguActiveSceneId?: string }).__sguActiveSceneId = sceneId;
 		setStatus(`Loading ${definition.title}…`);
 
     let runtimeScene: ThreeRuntimeSceneInstance | undefined;
@@ -462,6 +511,7 @@ export async function createGameApp(options: GameAppOptions) {
     hud?.refresh();
 
     setStatus("");
+    (window as unknown as { __sguVisualReady?: boolean }).__sguVisualReady = true;
   };
 
   const start = () => {
@@ -469,20 +519,22 @@ export async function createGameApp(options: GameAppOptions) {
     return loadScene(options.initialSceneId);
   };
 
-  const dispose = async () => {
-    disposed = true;
-    window.removeEventListener("resize", handleResize);
-    touchControls?.dispose();
-    hud?.dispose();
-    hud = null;
-    pauseMenu?.dispose();
-    pauseMenu = null;
-    unsubscribeEscape();
-    if (activeBundle) {
-      await disposeBundle(activeBundle);
-    }
-    renderer.dispose();
-  };
+	const dispose = async () => {
+		disposed = true;
+		window.removeEventListener("resize", handleResize);
+		window.removeEventListener("keydown", handleTabKey);
+		closeConsole();
+		touchControls?.dispose();
+		hud?.dispose();
+		hud = null;
+		pauseMenu?.dispose();
+		pauseMenu = null;
+		unsubscribeEscape();
+		if (activeBundle) {
+			await disposeBundle(activeBundle);
+		}
+		renderer.dispose();
+	};
 
   const handleResize = () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -541,6 +593,8 @@ async function buildPlayer(options: {
   const vrmUrl = playerConfig.vrmUrl;
 
   if (vrmUrl) {
+    (window as unknown as { __sguHasPlayerVrm?: boolean; __sguAnimWire?: string }).__sguHasPlayerVrm = true;
+    (window as unknown as { __sguHasPlayerVrm?: boolean; __sguAnimWire?: string }).__sguAnimWire = "pending";
     // Create VRM character manager and register the player character.
     const characterManager = new VrmCharacterManager(options.camera);
     const characterInstance = characterManager.addCharacter({
@@ -565,7 +619,7 @@ async function buildPlayer(options: {
     // Wire AnimationMixer-driven locomotion once the VRM scene is loaded.
     // Failures (missing clips, bad VRM) only mean the character holds T-pose
     // — they shouldn't block scene start, so we fire-and-forget.
-    void characterInstance.whenLoaded
+    const animationReady = characterInstance.whenLoaded
       .then(async (vrm) => {
         const animController = new VrmPlayerAnimationController(vrm);
         try {
@@ -582,12 +636,20 @@ async function buildPlayer(options: {
       })
       .catch((err) => {
         console.error("[buildPlayer] Player VRM failed to load — animation skipped:", err);
+        (window as unknown as { __sguAnimWire?: string }).__sguAnimWire = "failed";
       });
+
+    await Promise.race([
+      animationReady,
+      new Promise<void>((resolve) => window.setTimeout(resolve, 6_000)),
+    ]);
 
     return controller;
   }
 
   // Fall back to starter controller (capsule physics only).
+  (window as unknown as { __sguHasPlayerVrm?: boolean; __sguAnimWire?: string }).__sguHasPlayerVrm = false;
+  (window as unknown as { __sguHasPlayerVrm?: boolean; __sguAnimWire?: string }).__sguAnimWire = "none";
   return new StarterPlayerController({
     camera: cameraController,
     input: options.input,

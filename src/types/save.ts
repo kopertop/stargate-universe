@@ -8,6 +8,9 @@
  * @see src/systems/save-manager.ts
  */
 import type { ShipStateSnapshot } from '../systems/ship-state';
+import type { LootStateSnapshot } from '../systems/loot-state';
+import type { SceneTransitionStateSnapshot } from '../systems/scene-transition-state';
+import type { TimerSystemSnapshot } from '../systems/timer-system';
 // Quest + dialogue save shapes are defined in the engine so every consumer
 // shares one schema. We re-export them here for SGU's existing imports.
 export type {
@@ -19,7 +22,7 @@ export type {
 
 // ─── Versioning ───────────────────────────────────────────────────────────────
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export const AUTOSAVE_SLOT_ID = '__autosave__';
 
@@ -61,6 +64,9 @@ export type SaveData = {
 	unlockedScenes: string[];
 	/** Whether the player is currently carrying lime from the desert planet. */
 	limeCollected?: boolean;
+	sceneTransitionState?: SceneTransitionStateSnapshot;
+	timers?: TimerSystemSnapshot;
+	lootState?: LootStateSnapshot;
 };
 
 // ─── Migration ────────────────────────────────────────────────────────────────
@@ -74,9 +80,24 @@ export type SaveData = {
  * @returns           - Data conforming to the current schema
  */
 export const migrate = (data: SaveData, fromVersion: number): SaveData => {
-	// v1 is the initial version — no migrations yet.
-	// Example for future use:
-	//   if (fromVersion < 2) data = migrateV1toV2(data);
+	if (fromVersion < 2) {
+		data = {
+			...data,
+			version: 2,
+			sceneTransitionState: {
+				version: 1,
+				limeCollected: data.limeCollected ?? false,
+			},
+			timers: {
+				version: 1,
+				timers: [],
+			},
+			lootState: {
+				version: 1,
+				containers: [],
+			},
+		};
+	}
 	if (fromVersion === SAVE_VERSION) return data;
 
 	console.warn(`[SaveManager] Migrating save from v${fromVersion} → v${SAVE_VERSION}`);

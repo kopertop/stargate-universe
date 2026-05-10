@@ -31,7 +31,7 @@ const PROFILES: Record<PostProfileId, PostProfile> = {
 		// Exposure kept at 1 because NoToneMapping ignores this field.
 		exposure: 1,
 		bloomStrength: 0,
-		vignette: 0.35,
+		vignette: 0.30,
 	},
 	interior: {
 		id: "interior",

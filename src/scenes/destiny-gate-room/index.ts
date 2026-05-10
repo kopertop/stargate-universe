@@ -190,7 +190,7 @@ function createWallMaterial(): THREE.MeshStandardMaterial {
 	return new THREE.MeshStandardMaterial({
 		color: 0x100e0a,
 		emissive: 0x1a2244,
-		emissiveIntensity: 1.5,
+		emissiveIntensity: 2.5,
 		roughness: 0.75,
 		metalness: 0.5,
 		side: THREE.DoubleSide,
@@ -200,8 +200,8 @@ function createWallMaterial(): THREE.MeshStandardMaterial {
 function buildRoom(scene: THREE.Scene): void {
 	const ceilingMat = new THREE.MeshStandardMaterial({
 		color: 0x100e0a,
-		emissive: 0x040302,
-		emissiveIntensity: 0.6,
+		emissive: 0x080605,
+		emissiveIntensity: 1.0,
 		roughness: 0.8,
 		metalness: 0.3,
 		side: THREE.DoubleSide,
@@ -211,8 +211,8 @@ function buildRoom(scene: THREE.Scene): void {
 	// silhouette stands out. The reference shows the back wall as near-black.
 	const backWallMat = new THREE.MeshStandardMaterial({
 		color: 0x080604,
-		emissive: 0x020101,
-		emissiveIntensity: 0.3,
+		emissive: 0x080605,
+		emissiveIntensity: 0.7,
 		roughness: 0.8,
 		metalness: 0.4,
 		side: THREE.DoubleSide,
@@ -551,7 +551,7 @@ function buildRoom(scene: THREE.Scene): void {
 	// Aged metal floor grate panels — single InstancedMesh for all panels
 	// to keep draw calls at 1 instead of ~936 individual meshes.
 	const grateMat = new THREE.MeshBasicMaterial({
-		color: 0x05060a,
+		color: 0x14161e,
 		fog: true,
 	});
 	const grateSpacingX = 4;
@@ -581,7 +581,7 @@ function buildRoom(scene: THREE.Scene): void {
 	const baseFloor = new THREE.Mesh(
 		new THREE.PlaneGeometry(ROOM_WIDTH - 0.4, ROOM_DEPTH - 0.4),
 		new THREE.MeshBasicMaterial({
-			color: 0x040408,
+			color: 0x0c0d14,
 			fog: true,
 		}),
 	);
@@ -981,9 +981,9 @@ function buildLighting(scene: THREE.Scene, debugObjects: THREE.Object3D[]): THRE
 	// Concept ref shows near-black walls with only the gate ring + isolated
 	// pool lights visible. Ambient/hemisphere kept at the bare minimum so
 	// architecture reads but doesn't compete with the gate's blue glow.
-	const ambientLight = new THREE.AmbientLight(0x101830, 0.8);
+	const ambientLight = new THREE.AmbientLight(0x101830, 1.2);
 	scene.add(ambientLight);
-	const hemisphereLight = new THREE.HemisphereLight(0x182238, 0x080810, 1.0);
+	const hemisphereLight = new THREE.HemisphereLight(0x182238, 0x080810, 1.4);
 	scene.add(hemisphereLight);
 
 	// Directional from above — cold, dim fill to barely reveal ceiling geometry.
@@ -1824,7 +1824,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	// SGU "very dark with isolated cool pools" look from the concept ref
 	// (design/concept-art/gate-room/gate-room-dormant.png).
 	scene.background = new THREE.Color(0x02030a);
-	scene.fog = new THREE.FogExp2(0x02030a, 0.018);
+	scene.fog = new THREE.FogExp2(0x02030a, 0.010);
 	// Activate the cinematic post profile for maximum drama:
 	// ACES tone mapping + bloom on emissive highlights + vignette edges.
 	const restorePostProfile = applyPostProfile(renderer, "cinematic");

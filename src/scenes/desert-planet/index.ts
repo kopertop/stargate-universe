@@ -28,6 +28,7 @@ import { createHud, createCompass } from "@kopertop/vibe-game-engine";
 import { setLimeCollected } from "../../systems/scene-transition-state";
 import { getGameSession } from "../../systems/game-session";
 import { addResource } from "../../systems/resources";
+import { applyPostProfile } from "../../post/profiles";
 
 const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 	import: "default",
@@ -609,6 +610,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	const { scene, camera, player, renderer } = context;
 	camera.rotation.order = "YXZ";
 	const bus = scopedBus();
+	const restorePostProfile = applyPostProfile(renderer, "exterior");
 
 	// ─── Shared gameplay state ─────────────────────────────────────────
 	const { questManager, timers } = getGameSession();
@@ -864,6 +866,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		},
 
 		dispose() {
+			restorePostProfile();
 			co2Timer.element.remove();
 			interactPrompt.remove();
 			collectionHUD.element.remove();

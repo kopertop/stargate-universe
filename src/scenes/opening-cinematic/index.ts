@@ -19,6 +19,7 @@ import {
 import type { GameSceneModuleContext, GameSceneLifecycle } from "../../game/scene-types";
 import { AudioManager } from "../../systems/audio";
 import destinyShipModelUrl from "./assets/destiny-ship.glb?url";
+import { applyPostProfile } from "../../post/profiles";
 
 const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 	import: "default",
@@ -708,7 +709,8 @@ function createSkipHint(): { setProgress: (p: number) => void; dispose: () => vo
 // ─── Scene mount ──────────────────────────────────────────────────────────────
 
 async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycle> {
-	const { scene, camera, gotoScene } = context;
+	const { scene, camera, gotoScene, renderer } = context;
+	const restorePostProfile = applyPostProfile(renderer, "cinematic");
 
 	// Deep space backdrop — equirect CanvasTexture with soft nebula clouds +
 	// dense star sparkle, so the cinematic frame reads as galactic space
@@ -1108,6 +1110,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			disposed = true;
 			window.removeEventListener("keydown", onSkipKeyDown);
 			window.removeEventListener("keyup", onSkipKeyUp);
+			restorePostProfile();
 			// DO NOT stop sgu-theme-song here — the gate-room arrival
 			// cinematic is the continuation of the same 60-second musical
 			// beat. Music is stopped when the gate-room cinematic ends

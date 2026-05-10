@@ -21,6 +21,7 @@ import { createSupplyCrate, markSupplyCrateLooted, type SupplyCrate } from "../.
 import { getGameSession } from "../../systems/game-session";
 import { isLootContainerOpened, openLootContainer } from "../../systems/loot-state";
 import { box } from "crashcat";
+import { applyPostProfile } from "../../post/profiles";
 import {
 	CRASHCAT_OBJECT_LAYER_STATIC,
 	MotionType,
@@ -698,6 +699,7 @@ function updateInteraction(
 
 async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycle> {
 	const { scene, camera, player, renderer } = context;
+	const restorePostProfile = applyPostProfile(renderer, "interior");
 	const bus = scopedBus();
 
 	const { shipState } = getGameSession();
@@ -928,6 +930,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			if (debugMode) debug.update();
 		},
 		dispose() {
+			restorePostProfile();
 			cancelRepair();
 			debug.element.remove();
 			interaction.promptElement.remove();

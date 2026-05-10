@@ -190,7 +190,7 @@ function createWallMaterial(): THREE.MeshStandardMaterial {
 	return new THREE.MeshStandardMaterial({
 		color: 0x100e0a,
 		emissive: 0x1a2244,
-		emissiveIntensity: 0.5,
+		emissiveIntensity: 2.5,
 		roughness: 0.75,
 		metalness: 0.5,
 		side: THREE.DoubleSide,
@@ -200,8 +200,8 @@ function createWallMaterial(): THREE.MeshStandardMaterial {
 function buildRoom(scene: THREE.Scene): void {
 	const ceilingMat = new THREE.MeshStandardMaterial({
 		color: 0x100e0a,
-		emissive: 0x040302,
-		emissiveIntensity: 0.2,
+		emissive: 0x080605,
+		emissiveIntensity: 1.0,
 		roughness: 0.8,
 		metalness: 0.3,
 		side: THREE.DoubleSide,
@@ -211,8 +211,8 @@ function buildRoom(scene: THREE.Scene): void {
 	// silhouette stands out. The reference shows the back wall as near-black.
 	const backWallMat = new THREE.MeshStandardMaterial({
 		color: 0x080604,
-		emissive: 0x020101,
-		emissiveIntensity: 0.1,
+		emissive: 0x080605,
+		emissiveIntensity: 0.7,
 		roughness: 0.8,
 		metalness: 0.4,
 		side: THREE.DoubleSide,
@@ -295,7 +295,7 @@ function buildRoom(scene: THREE.Scene): void {
 	const alcoveLightMat = new THREE.MeshStandardMaterial({
 		color: 0x2a3a55,
 		emissive: 0x1a2a44,
-		emissiveIntensity: 0.7,
+		emissiveIntensity: 2.1,
 		roughness: 0.4,
 		metalness: 0.2,
 	});
@@ -331,7 +331,7 @@ function buildRoom(scene: THREE.Scene): void {
 		roughness: 0.6,
 		metalness: 0.4,
 		emissive: 0x060610,
-		emissiveIntensity: 0.3,
+		emissiveIntensity: 0.9,
 	});
 	// Top arch beam — wider than the gate, arched
 	const topBeam = new THREE.Mesh(
@@ -355,7 +355,7 @@ function buildRoom(scene: THREE.Scene): void {
 		roughness: 0.5,
 		metalness: 0.6,
 		emissive: 0x2a3044,
-		emissiveIntensity: 1.4,
+		emissiveIntensity: 4.2,
 	});
 	const strutAccentMat = new THREE.MeshBasicMaterial({
 		color: 0x88b4ff,
@@ -400,7 +400,7 @@ function buildRoom(scene: THREE.Scene): void {
 				roughness: 0.7,
 				metalness: 0.5,
 				emissive: 0x080812,
-				emissiveIntensity: 0.4,
+				emissiveIntensity: 1.2,
 			}),
 		);
 		foot.position.set(baseX, 0.5, -1.5);
@@ -415,7 +415,7 @@ function buildRoom(scene: THREE.Scene): void {
 		roughness: 0.7,
 		metalness: 0.5,
 		emissive: 0x040408,
-		emissiveIntensity: 0.2,
+		emissiveIntensity: 0.6,
 	});
 	// Trusses sit at ~55% of ROOM_HEIGHT so they fall inside the front-camera
 	// frustum (camera y=14 looking at y=8 with FOV ~50° clips anything above
@@ -429,7 +429,7 @@ function buildRoom(scene: THREE.Scene): void {
 		roughness: 0.6,
 		metalness: 0.5,
 		emissive: 0x223344,
-		emissiveIntensity: 0.35,
+		emissiveIntensity: 1.05,
 	});
 	// Cluster of downlight panels concentrated above the gate dais (z=0).
 	// Concept gate-room-dormant.png shows a chandelier-like cluster of multiple
@@ -481,7 +481,7 @@ function buildRoom(scene: THREE.Scene): void {
 		roughness: 0.65,
 		metalness: 0.4,
 		emissive: 0x040408,
-		emissiveIntensity: 0.2,
+		emissiveIntensity: 0.6,
 	});
 	for (const xSign of [-1, 1]) {
 		// Staircase body — angled box from floor to second level
@@ -530,7 +530,7 @@ function buildRoom(scene: THREE.Scene): void {
 	const floorLightMat = new THREE.MeshStandardMaterial({
 		color: 0xffaa44,
 		emissive: 0xffaa44,
-		emissiveIntensity: 2.0,
+		emissiveIntensity: 6.0,
 		roughness: 0.3,
 		metalness: 0.1,
 	});
@@ -551,7 +551,7 @@ function buildRoom(scene: THREE.Scene): void {
 	// Aged metal floor grate panels — single InstancedMesh for all panels
 	// to keep draw calls at 1 instead of ~936 individual meshes.
 	const grateMat = new THREE.MeshBasicMaterial({
-		color: 0x05060a,
+		color: 0x14161e,
 		fog: true,
 	});
 	const grateSpacingX = 4;
@@ -581,7 +581,7 @@ function buildRoom(scene: THREE.Scene): void {
 	const baseFloor = new THREE.Mesh(
 		new THREE.PlaneGeometry(ROOM_WIDTH - 0.4, ROOM_DEPTH - 0.4),
 		new THREE.MeshBasicMaterial({
-			color: 0x040408,
+			color: 0x0c0d14,
 			fog: true,
 		}),
 	);
@@ -671,7 +671,7 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 		roughness: 0.6,
 		metalness: 0.5,
 		emissive: 0x05080f,
-		emissiveIntensity: 0.4,
+		emissiveIntensity: 1.2,
 	});
 	const consolePanelMat = new THREE.MeshBasicMaterial({
 		color: 0x4d8fd9,
@@ -732,7 +732,7 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 		roughness: 0.5,
 		metalness: 0.9,
 		emissive: 0x0e1520,
-		emissiveIntensity: 1.0,
+		emissiveIntensity: 6.0,           // boosted: dormant ring still reads as metal
 		fog: false,
 	});
 	const outerRing = new THREE.Mesh(
@@ -750,7 +750,7 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 		roughness: 0.55,
 		metalness: 0.9,
 		emissive: 0x06090f,
-		emissiveIntensity: 0.05,
+		emissiveIntensity: 0.15,
 		fog: false,
 	});
 	const innerRing = new THREE.Mesh(
@@ -795,12 +795,14 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 	const chevronMeshes: THREE.Mesh[] = [];
 	for (let i = 0; i < CHEVRON_COUNT; i++) {
 		const angle = Math.PI / 2 + (i / CHEVRON_COUNT) * Math.PI * 2;
-		const chevronMat = new THREE.MeshStandardMaterial({
+	const chevronMat = new THREE.MeshStandardMaterial({
 			color: COLOR_CHEVRON_OFF,
+			// Dormant chevrons have a very dim base color plus a faint blue
+			// emissive so they read as small bright spots on the ring edge.
 			roughness: 0.35,
 			metalness: 0.8,
 			emissive: COLOR_CHEVRON_OFF,
-			emissiveIntensity: 0.3,
+			emissiveIntensity: 2.0,  // boosted so dormant chevrons are faintly visible
 			fog: false,
 		});
 		const chevron = new THREE.Mesh(chevronGeo, chevronMat);
@@ -979,13 +981,13 @@ function buildLighting(scene: THREE.Scene, debugObjects: THREE.Object3D[]): THRE
 	// Concept ref shows near-black walls with only the gate ring + isolated
 	// pool lights visible. Ambient/hemisphere kept at the bare minimum so
 	// architecture reads but doesn't compete with the gate's blue glow.
-	const ambientLight = new THREE.AmbientLight(0x101830, 0.45);
+	const ambientLight = new THREE.AmbientLight(0x101830, 1.2);
 	scene.add(ambientLight);
-	const hemisphereLight = new THREE.HemisphereLight(0x182238, 0x080810, 0.6);
+	const hemisphereLight = new THREE.HemisphereLight(0x182238, 0x080810, 1.4);
 	scene.add(hemisphereLight);
 
 	// Directional from above — cold, dim fill to barely reveal ceiling geometry.
-	const dirLight = new THREE.DirectionalLight(0x334466, 0.25);
+	const dirLight = new THREE.DirectionalLight(0x334466, 0.6);
 	dirLight.position.set(0, 25, 10);
 	dirLight.target.position.set(0, 0, 0);
 	scene.add(dirLight);
@@ -999,23 +1001,23 @@ function buildLighting(scene: THREE.Scene, debugObjects: THREE.Object3D[]): THRE
 	// stays local to the gate instead of bleeding across 80+ units of wall.
 
 	// Directly IN FRONT of the gate ring — cool blue wash on the ring face.
-	const gateRingLight = new THREE.PointLight(0x3366aa, 0.6, 14, 1.6);
+	const gateRingLight = new THREE.PointLight(0x3366aa, 1.2, 14, 1.6);
 	gateRingLight.position.set(0, GATE_CENTER.y, gateZ + 4);
 	scene.add(gateRingLight);
 	lights.push(gateRingLight);
 
 	// Wider gate-area blue glow — visible from distance
-	const gateFrontLight = new THREE.PointLight(0x2244aa, 0.3, 18, 1.6);
+	const gateFrontLight = new THREE.PointLight(0x2244aa, 0.6, 18, 1.6);
 	gateFrontLight.position.set(0, 4, gateZ + 10);
 	scene.add(gateFrontLight);
 	lights.push(gateFrontLight);
 
-	const gateBackLight = new THREE.PointLight(0x2244aa, 0.4, 14, 1.6);
+	const gateBackLight = new THREE.PointLight(0x2244aa, 0.8, 14, 1.6);
 	gateBackLight.position.set(0, 5, gateZ - 6);
 	scene.add(gateBackLight);
 	lights.push(gateBackLight);
 
-	const gateTopLight = new THREE.PointLight(0x2244aa, 0.3, 16, 1.6);
+	const gateTopLight = new THREE.PointLight(0x2244aa, 0.6, 16, 1.6);
 	gateTopLight.position.set(0, 12, gateZ);
 	scene.add(gateTopLight);
 	lights.push(gateTopLight);
@@ -1030,7 +1032,7 @@ function buildLighting(scene: THREE.Scene, debugObjects: THREE.Object3D[]): THRE
 	const sideAccentMat = new THREE.MeshStandardMaterial({
 		color: COLOR_COOL_ACCENT,
 		emissive: COLOR_COOL_ACCENT,
-		emissiveIntensity: 1.4,
+		emissiveIntensity: 4.2,
 	});
 	for (const zOff of [0, ROOM_DEPTH / 3, 2 * ROOM_DEPTH / 3]) {
 		for (const xSign of [-1, 1]) {
@@ -1054,11 +1056,11 @@ function buildLighting(scene: THREE.Scene, debugObjects: THREE.Object3D[]): THRE
 	];
 
 	const housingMat = new THREE.MeshStandardMaterial({ color: 0x222233, roughness: 0.6, metalness: 0.4 });
-	const lensMat = new THREE.MeshStandardMaterial({ color: 0xccddff, emissive: 0xbbddff, emissiveIntensity: 1.5 });
+	const lensMat = new THREE.MeshStandardMaterial({ color: 0xccddff, emissive: 0xbbddff, emissiveIntensity: 4.5 });
 
 	for (const sp of spotPositions) {
 		if (sp.real) {
-			const spot = new THREE.SpotLight(0xbbddff, 20, 20, Math.PI / 5, 0.5, 1.0);
+			const spot = new THREE.SpotLight(0xbbddff, 60, 20, Math.PI / 5, 0.5, 1.0);
 			spot.position.set(sp.pos[0], sp.pos[1], sp.pos[2]);
 			spot.target.position.set(sp.target[0], sp.target[1], sp.target[2]);
 			scene.add(spot);
@@ -1096,7 +1098,7 @@ function buildLighting(scene: THREE.Scene, debugObjects: THREE.Object3D[]): THRE
 	const stripMat = new THREE.MeshStandardMaterial({
 		color: COLOR_ANCIENT_GLOW,
 		emissive: COLOR_ANCIENT_GLOW,
-		emissiveIntensity: 0.5
+		emissiveIntensity: 2.0
 	});
 
 	// Floor strips along walls
@@ -1113,7 +1115,7 @@ function buildLighting(scene: THREE.Scene, debugObjects: THREE.Object3D[]): THRE
 	const backGlowMat = new THREE.MeshStandardMaterial({
 		color: 0x2244aa,
 		emissive: 0x2244aa,
-		emissiveIntensity: 0.6
+		emissiveIntensity: 1.8
 	});
 	for (const xSign of [-1, 1]) {
 		const panel = new THREE.Mesh(
@@ -1436,11 +1438,11 @@ let extCeilingMat: THREE.MeshStandardMaterial;
 
 function createExtMaterials(): void {
 	extWallMat = new THREE.MeshStandardMaterial({
-		color: 0x222238, emissive: 0x141428, emissiveIntensity: 1.0,
+		color: 0x222238, emissive: 0x141428, emissiveIntensity: 3.0,
 		roughness: 0.9, metalness: 0.1, side: THREE.DoubleSide
 	});
 	extCeilingMat = new THREE.MeshStandardMaterial({
-		color: 0x181828, emissive: 0x0c0c20, emissiveIntensity: 1.0,
+		color: 0x181828, emissive: 0x0c0c20, emissiveIntensity: 3.0,
 		roughness: 0.95, metalness: 0.05
 	});
 }
@@ -1468,7 +1470,7 @@ function buildCorridor(scene: THREE.Scene): void {
 
 	// Floor strip emissives
 	const stripMat = new THREE.MeshStandardMaterial({
-		color: COLOR_ANCIENT_GLOW, emissive: COLOR_ANCIENT_GLOW, emissiveIntensity: 0.3
+		color: COLOR_ANCIENT_GLOW, emissive: COLOR_ANCIENT_GLOW, emissiveIntensity: 0.9
 	});
 	for (const xSign of [-1, 1]) {
 		const strip = new THREE.Mesh(
@@ -1611,7 +1613,7 @@ interface SubsystemVisual {
 
 function createSubsystemVisual(scene: THREE.Scene, sub: Subsystem, pos: THREE.Vector3, wallSide: "left" | "right" | "back"): SubsystemVisual {
 	const bodyMat = new THREE.MeshStandardMaterial({ color: 0x333348, roughness: 0.5, metalness: 0.6 });
-	const indMat = new THREE.MeshStandardMaterial({ color: 0x44ff88, emissive: 0x44ff88, emissiveIntensity: 0.5 });
+	const indMat = new THREE.MeshStandardMaterial({ color: 0x44ff88, emissive: 0x44ff88, emissiveIntensity: 1.5 });
 
 	// Body: thin against wall, taller than wide
 	const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.8, 0.6), bodyMat);
@@ -1822,10 +1824,10 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	// SGU "very dark with isolated cool pools" look from the concept ref
 	// (design/concept-art/gate-room/gate-room-dormant.png).
 	scene.background = new THREE.Color(0x02030a);
-	scene.fog = new THREE.FogExp2(0x02030a, 0.018);
-	// Renderer profile is currently neutral: tone mapping and post controls are
-	// disabled globally while the scene lighting is rebuilt directly.
-	const restorePostProfile = applyPostProfile(renderer, "interior");
+	scene.fog = new THREE.FogExp2(0x02030a, 0.010);
+	// Activate the cinematic post profile for maximum drama:
+	// ACES tone mapping + bloom on emissive highlights + vignette edges.
+	const restorePostProfile = applyPostProfile(renderer, "cinematic");
 	const bus = scopedBus();
 
 	// Reset module-level mutable state — ES modules are singletons, so any value
@@ -1910,7 +1912,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 				if (mat.userData?.sguEmissivePatched) continue;
 				if (mat.name === "Guide Strip") {
 					mat.emissive.copy(guideColor);
-					mat.emissiveIntensity = 0.12;
+					mat.emissiveIntensity = 0.36;
 					mat.needsUpdate = true;
 					mat.userData = { ...(mat.userData ?? {}), sguEmissivePatched: true };
 					continue;
@@ -1918,10 +1920,10 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 				if (!accentMatch || obj.userData.sguEmissivePatched) continue;
 				if (obj.name.startsWith("Lens")) {
 					mat.emissive.copy(lensColor);
-					mat.emissiveIntensity = 1.2;
+					mat.emissiveIntensity = 3.6;
 				} else {
 					mat.emissive.copy(stripColor);
-					mat.emissiveIntensity = 0.6;
+					mat.emissiveIntensity = 1.8;
 				}
 				mat.needsUpdate = true;
 			}
@@ -2234,7 +2236,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	// Glowing indicator dot above Rush — shown while loading, kept as nav aid
 	const rushDotGeo = new THREE.SphereGeometry(0.08, 8, 6);
 	const rushDotMat = new THREE.MeshStandardMaterial({
-		color: 0x4488ff, emissive: 0x4488ff, emissiveIntensity: 1.2,
+		color: 0x4488ff, emissive: 0x4488ff, emissiveIntensity: 3.6,
 	});
 	const rushDot = new THREE.Mesh(rushDotGeo, rushDotMat);
 	rushDot.position.set(rushPos.x, rushPos.y + 2.0, rushPos.z);
@@ -2252,11 +2254,11 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		color: 0x1a1a24, roughness: 0.35, metalness: 0.85,
 	});
 	const consolePanelMat = new THREE.MeshStandardMaterial({
-		color: 0x2a4a6a, emissive: 0x4488ff, emissiveIntensity: 0.5,
+		color: 0x2a4a6a, emissive: 0x4488ff, emissiveIntensity: 1.5,
 		roughness: 0.3, metalness: 0.7,
 	});
 	const consoleScreenMat = new THREE.MeshStandardMaterial({
-		color: 0x1a2a3a, emissive: 0x66aaff, emissiveIntensity: 0.9,
+		color: 0x1a2a3a, emissive: 0x66aaff, emissiveIntensity: 2.7,
 		roughness: 0.15, metalness: 0.1,
 	});
 	// Left side (Rush's workstations) at x=-22; mirrored right side at x=+22 for
@@ -3219,8 +3221,8 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			camera.near = origNear;
 			camera.far = origFar;
 			camera.updateProjectionMatrix();
-			// Restore renderer tone mapping + exposure to whatever was active
-			// before this scene's interior profile took over.
+	// Restore renderer tone mapping + exposure to whatever was active
+		// before this scene's cinematic profile took over.
 			restorePostProfile();
 		}
 	};

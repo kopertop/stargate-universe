@@ -27,6 +27,7 @@ import { createHud } from "@kopertop/vibe-game-engine";
 import { createHorizontalCompass } from "../../ui/horizontal-compass";
 import { getGameSession } from "../../systems/game-session";
 import { consumeResource } from "../../systems/resources";
+import { applyPostProfile } from "../../post/profiles";
 
 const assetUrlLoaders = import.meta.glob("./assets/**/*", {
 	import: "default",
@@ -438,6 +439,7 @@ function createReturnPrompt(): HTMLDivElement {
 
 async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycle> {
 	const { scene, camera, player, renderer } = context;
+	const restorePostProfile = applyPostProfile(renderer, "interior");
 	camera.rotation.order = "YXZ";
 	const bus = scopedBus();
 
@@ -598,6 +600,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		},
 
 		dispose() {
+			restorePostProfile();
 			for (const id of repairTimers) clearTimeout(id);
 			repairTimers.clear();
 			co2Display.element.remove();

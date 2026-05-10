@@ -56,6 +56,8 @@ import type {
 import { StarterPlayerController, VrmPlayerController } from "./player";
 import { VrmCharacterManager } from "../systems/vrm";
 import { VrmPlayerAnimationController } from "../systems/vrm/vrm-player-animation-controller";
+import { createPostPipeline } from "../post/pipeline";
+import { setPostPipeline } from "../post/state";
 
 const PLAYER_ANIMATIONS_BASE_PATH = "/assets/animations";
 
@@ -126,19 +128,20 @@ export async function createGameApp(options: GameAppOptions) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
-  // Keep the renderer un-tonemapped while the art direction is being rebuilt.
-  // Scene lighting should carry the look directly instead of being pushed
-  // through a global exposure/post stack.
+  // Default to neutral tone mapping — scenes override via applyPostProfile().
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.toneMappingExposure = 1;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   shell.append(renderer.domElement);
 
-  // Shared Three.js objects
   const scene = new THREE.Scene();
-  // FOV 50° = telephoto-ish, more cinematic compression. Wider FOVs flatten
-  // scale and make even huge rooms feel small; 50 makes the ship feel grand.
   const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 4000);
+
+  // Post-processing pipeline — tone mapping + exposure + vignette overlay.
+  // WebGPU renderer: no EffectComposer (ShaderMaterial incompatible), so
+  // we use renderer-level tone mapping + a CSS vignette for the same look.
+  const postPipeline = createPostPipeline(renderer);
+  setPostPipeline(postPipeline);
 
   // Attach the shared audio listener to the camera once for the life of the
   // app. Scenes just call `AudioManager.getInstance().play(id)` to play
@@ -326,6 +329,10 @@ export async function createGameApp(options: GameAppOptions) {
     },
     onRender: () => {
       renderer.render(scene, camera);
+      // Perf metrics — read from renderer.info after the render call.
+      const info = renderer.info.render;
+      perfMetrics.drawCalls = info.calls;
+      perfMetrics.triangles = info.triangles;
     }
   });
 

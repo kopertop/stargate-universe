@@ -137,9 +137,31 @@ export async function createGameApp(options: GameAppOptions) {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 4000);
 
-  // Post-processing pipeline — tone mapping + exposure + vignette overlay.
-  // WebGPU renderer: no EffectComposer (ShaderMaterial incompatible), so
-  // we use renderer-level tone mapping + a CSS vignette for the same look.
+  // Procedural environment map — dark metallic reflections without PMREM.
+  // A simple cube texture with cool-dark faces; metalness will pick up
+  // subtle reflections from it. Works on both WebGPU and WebGL.
+  const envSize = 32;
+  const envCanvas = document.createElement("canvas");
+  envCanvas.width = envSize;
+  envCanvas.height = envSize;
+  const envCtx = envCanvas.getContext("2d")!;
+  const envFaces: HTMLCanvasElement[] = [];
+  // Dark blue-grey tones for a cool metallic look
+  const envColors = ["#101520", "#0c1120", "#141a2a", "#080c18", "#121828", "#0a0e18"];
+  for (const col of envColors) {
+    envCtx.fillStyle = col;
+    envCtx.fillRect(0, 0, envSize, envSize);
+    envFaces.push(document.createElement("canvas"));
+    envFaces[envFaces.length - 1].width = envSize;
+    envFaces[envFaces.length - 1].height = envSize;
+    const fctx = envFaces[envFaces.length - 1].getContext("2d")!;
+    fctx.fillStyle = col;
+    fctx.fillRect(0, 0, envSize, envSize);
+  }
+  const envTexture = new THREE.CubeTexture(envFaces);
+  envTexture.needsUpdate = true;
+  scene.environment = envTexture;
+
   const postPipeline = createPostPipeline(renderer);
   setPostPipeline(postPipeline);
 

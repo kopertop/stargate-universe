@@ -40,3 +40,4 @@ __pycache__
 .asset-originals/
 *.glb.orig
 *.vrm.orig
+.godot/

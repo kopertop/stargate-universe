@@ -10,11 +10,34 @@ This branch (`reset-stack`) is a complete engine pivot from the previous browser
 Bootstrapped from [KenneyNL/Starter-Kit-3D-Platformer](https://github.com/KenneyNL/Starter-Kit-3D-Platformer)
 (CC0).
 
+## Install
+
+macOS (Homebrew):
+
+```sh
+brew install --cask godot
+```
+
+Otherwise download Godot 4.6+ (Forward+) from [godotengine.org](https://godotengine.org/).
+
 ## Running
 
-1. Install [Godot 4.6](https://godotengine.org/) (Forward+ renderer).
-2. Open `project.godot` in Godot.
-3. Press **F5** to run the main scene.
+Play directly (no editor):
+
+```sh
+godot --path .
+```
+
+Or open the editor: `godot -e --path .` and press **F5**.
+
+## Controls
+
+- **WASD** — move
+- **Space** — jump (double-jump enabled)
+- **Right mouse (hold)** — mouselook (WoW-style)
+- **Mouse wheel** — zoom in/out
+- **Arrow keys** — camera orbit (fallback)
+- **Esc** — release mouse / quit
 
 ## Layout
 

@@ -15,7 +15,6 @@ extends Node3D
 @export var mouse_sensitivity: float = 0.15
 # Initial yaw offset behind the player (degrees). 0 = directly behind.
 @export var initial_yaw_offset: float = 0.0
-@export var initial_pitch: float = -25.0
 @export var follow_speed: float = 10.0
 
 var camera_rotation: Vector3
@@ -25,16 +24,14 @@ var mouselook_active: bool = false
 @onready var camera: Camera3D = $Camera
 
 func _ready() -> void:
-	# Start behind the target: yaw matches target's facing + offset, pitch is a sane down-angle.
-	var target_yaw_deg: float = 0.0
+	# Preserve the scene's tuned pitch/distance; only nudge yaw to sit behind the target.
+	camera_rotation = rotation_degrees
 	if target != null:
-		target_yaw_deg = rad_to_deg(target.rotation.y) + 180.0 + initial_yaw_offset
-	camera_rotation = Vector3(initial_pitch, target_yaw_deg, 0.0)
-	rotation_degrees = camera_rotation
-	if target != null:
-		position = target.position
+		camera_rotation.y = rad_to_deg(target.rotation.y) + 180.0 + initial_yaw_offset
+		rotation_degrees = camera_rotation
 
-func _unhandled_input(event: InputEvent) -> void:
+# Use _input (not _unhandled_input) so the HUD Control doesn't eat mouse events.
+func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_RIGHT:
 			mouselook_active = event.pressed

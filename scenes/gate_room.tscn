@@ -1,46 +1,83 @@
-[gd_scene load_steps=13 format=3 uid="uid://cgr00mr00mr00"]
+[gd_scene load_steps=15 format=3 uid="uid://cgr00mr00mr00"]
 
-[ext_resource type="Environment" uid="uid://bqnqgflivjvue" path="res://scenes/main-environment.tres" id="1_env"]
+[ext_resource type="Environment" uid="uid://cgrenv00enva" path="res://scenes/gate-room-environment.tres" id="1_env"]
 [ext_resource type="Script" path="res://scripts/gate_room.gd" id="2_room"]
 [ext_resource type="PackedScene" uid="uid://dl2ed4gkybggf" path="res://objects/player.tscn" id="3_player"]
 [ext_resource type="Script" uid="uid://bcg2kkbsnttec" path="res://scripts/view.gd" id="4_view"]
 [ext_resource type="PackedScene" uid="uid://dynqkgbn3lu4u" path="res://models/sci-fi/space-station/floor.glb" id="5_floor"]
 [ext_resource type="PackedScene" uid="uid://bf2a38eob8tr5" path="res://models/sci-fi/space-station/wall.glb" id="6_wall"]
 [ext_resource type="PackedScene" uid="uid://ycqgyfiu8ry6" path="res://models/sci-fi/space-station/wall-door.glb" id="7_walldoor"]
-[ext_resource type="PackedScene" uid="uid://d377nq3lnps5g" path="res://models/sci-fi/space-station/table-display-planet.glb" id="9_dhd"]
-[ext_resource type="PackedScene" uid="uid://dwdcu6xhseqtb" path="res://models/sci-fi/space-station/stairs-ramp.glb" id="10_ramp"]
+[ext_resource type="PackedScene" uid="uid://cldv6t4rdn5cv" path="res://models/sci-fi/space-station/computer.glb" id="8_console"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
 size = Vector3(28, 0.2, 28)
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_metallic"]
+albedo_color = Color(0.42, 0.40, 0.45, 1)
+metallic = 0.85
+metallic_specular = 0.7
+roughness = 0.4
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ceiling"]
+albedo_color = Color(0.09, 0.09, 0.11, 1)
+metallic = 0.7
+roughness = 0.55
+
 [sub_resource type="TorusMesh" id="TorusMesh_gate"]
 inner_radius = 3.0
-outer_radius = 3.5
-ring_segments = 48
-rings = 24
+outer_radius = 3.6
+ring_segments = 64
+rings = 32
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_gate"]
-albedo_color = Color(0.4, 0.32, 0.22, 1)
-metallic = 0.85
-roughness = 0.35
+albedo_color = Color(0.42, 0.31, 0.18, 1)
+metallic = 0.95
+roughness = 0.28
 emission_enabled = true
-emission = Color(0.25, 0.18, 0.08, 1)
-emission_energy_multiplier = 0.35
+emission = Color(0.55, 0.32, 0.10, 1)
+emission_energy_multiplier = 0.45
 
 [node name="GateRoom" type="Node3D"]
 script = ExtResource("2_room")
+floor_size = Vector2i(22, 22)
+wall_y_scale = 6.0
+ceiling_height = 6.0
 floor_scene = ExtResource("5_floor")
 wall_scene = ExtResource("6_wall")
 wall_corner_scene = null
 wall_door_scene = ExtResource("7_walldoor")
+metallic_material = SubResource("StandardMaterial3D_metallic")
+ceiling_material = SubResource("StandardMaterial3D_ceiling")
 
 [node name="Environment" type="WorldEnvironment" parent="."]
 environment = ExtResource("1_env")
 
-[node name="Sun" type="DirectionalLight3D" parent="."]
-transform = Transform3D(-0.422618, -0.694272, 0.582563, 0, 0.642788, 0.766044, -0.906308, 0.323744, -0.271654, 0, 5, 0)
+[node name="KeyLight" type="DirectionalLight3D" parent="."]
+transform = Transform3D(-0.422618, -0.694272, 0.582563, 0, 0.642788, 0.766044, -0.906308, 0.323744, -0.271654, 0, 8, 0)
+light_color = Color(0.95, 0.82, 0.62, 1)
+light_energy = 0.6
 shadow_enabled = true
-shadow_opacity = 0.75
+shadow_opacity = 0.4
+
+[node name="CeilingFill" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5.5, 0)
+light_color = Color(0.9, 0.78, 0.6, 1)
+light_energy = 2.0
+omni_range = 22.0
+omni_attenuation = 1.0
+
+[node name="GateGlow" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.0, 0)
+light_color = Color(1.0, 0.55, 0.18, 1)
+light_energy = 4.5
+omni_range = 14.0
+omni_attenuation = 1.4
+
+[node name="ConsoleLight" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.5, -8.0)
+light_color = Color(0.7, 0.85, 1.0, 1)
+light_energy = 1.6
+omni_range = 8.0
 
 [node name="FloorCollider" type="StaticBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0)
@@ -51,29 +88,30 @@ shape = SubResource("BoxShape3D_floor")
 [node name="World" type="Node3D" parent="."]
 
 [node name="Gate" type="MeshInstance3D" parent="World"]
-transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 3.5, -5.5)
+transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 4.0, 0)
 mesh = SubResource("TorusMesh_gate")
 material_override = SubResource("StandardMaterial3D_gate")
 
-[node name="DHD" parent="World" instance=ExtResource("9_dhd")]
-transform = Transform3D(1.2, 0, 0, 0, 1.2, 0, 0, 0, 1.2, 0, 0, 1.0)
+[node name="ConsoleLeft" parent="World" instance=ExtResource("8_console")]
+transform = Transform3D(-1.4, 0, -1.2246469e-7, 0, 1.4, 0, 1.2246469e-7, 0, -1.4, -2.5, 0, -9.0)
 
-[node name="Ramp" parent="World" instance=ExtResource("10_ramp")]
-transform = Transform3D(2, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, -3.0)
-
-[node name="Ramp2" parent="World" instance=ExtResource("10_ramp")]
-transform = Transform3D(2, 0, 0, 0, 1, 0, 0, 0, -2, 0, 0, -4.5)
+[node name="ConsoleRight" parent="World" instance=ExtResource("8_console")]
+transform = Transform3D(-1.4, 0, -1.2246469e-7, 0, 1.4, 0, 1.2246469e-7, 0, -1.4, 2.5, 0, -9.0)
 
 [node name="Player" parent="." node_paths=PackedStringArray("view") groups=["player"] instance=ExtResource("3_player")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 3)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0.5, -8.0)
 view = NodePath("../View")
 
 [node name="View" type="Node3D" parent="." node_paths=PackedStringArray("target")]
-transform = Transform3D(0.707107, -0.298836, 0.640856, 0, 0.906308, 0.422618, -0.707107, -0.298836, 0.640856, 0, 0, 0)
+transform = Transform3D(0.866025, -0.25, 0.433013, 0, 0.866025, 0.5, -0.5, -0.433013, 0.75, 0, 0, 0)
 script = ExtResource("4_view")
 target = NodePath("../Player")
 
-[node name="Camera" type="Camera3D" parent="View"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 10)
+[node name="SpringArm" type="SpringArm3D" parent="View"]
+collision_mask = 2
+spring_length = 6.0
+margin = 0.2
+
+[node name="Camera" type="Camera3D" parent="View/SpringArm"]
 current = true
-fov = 50.0
+fov = 60.0

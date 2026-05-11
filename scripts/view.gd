@@ -21,7 +21,8 @@ var camera_rotation: Vector3
 var zoom: float = 10.0
 var mouselook_active: bool = false
 
-@onready var camera: Camera3D = $Camera
+@onready var camera: Camera3D = $SpringArm/Camera
+@onready var spring: SpringArm3D = $SpringArm
 
 func _ready() -> void:
 	# Preserve the scene's tuned pitch/distance; only nudge yaw to sit behind the target.
@@ -52,7 +53,8 @@ func _physics_process(delta: float) -> void:
 	if target != null:
 		position = position.lerp(target.position, delta * follow_speed)
 	rotation_degrees = rotation_degrees.lerp(camera_rotation, delta * 6.0)
-	camera.position = camera.position.lerp(Vector3(0, 0, zoom), 8.0 * delta)
+	# SpringArm3D auto-raycasts to keep camera from clipping walls/ceiling.
+	spring.spring_length = lerpf(spring.spring_length, zoom, 8.0 * delta)
 	handle_input(delta)
 
 func handle_input(delta: float) -> void:

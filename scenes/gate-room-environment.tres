@@ -1,0 +1,28 @@
+[gd_resource type="Environment" load_steps=2 format=3 uid="uid://cgrenv00enva"]
+
+[resource]
+background_mode = 1
+background_color = Color(0.035, 0.04, 0.055, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.55, 0.45, 0.35, 1)
+ambient_light_energy = 1.4
+ambient_light_sky_contribution = 0.0
+tonemap_mode = 2
+tonemap_exposure = 1.05
+ssao_enabled = true
+ssao_radius = 0.5
+ssao_intensity = 1.2
+ssao_power = 8.0
+ssil_enabled = true
+ssil_radius = 1.5
+ssil_intensity = 0.6
+glow_enabled = true
+glow_levels/2 = 0.5
+glow_levels/3 = 0.8
+glow_levels/4 = 0.6
+glow_intensity = 1.4
+glow_bloom = 0.15
+adjustment_enabled = true
+adjustment_brightness = 1.0
+adjustment_contrast = 1.15
+adjustment_saturation = 1.05

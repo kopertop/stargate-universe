@@ -25,6 +25,7 @@ config/icon="res://icon.png"
 [autoload]
 
 Audio="*res://scripts/audio.gd"
+TestCapture="*res://scripts/test_capture.gd"
 
 [display]
 

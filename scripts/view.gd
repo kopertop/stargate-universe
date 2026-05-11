@@ -27,7 +27,9 @@ func _ready() -> void:
 	# Preserve the scene's tuned pitch/distance; only nudge yaw to sit behind the target.
 	camera_rotation = rotation_degrees
 	if target != null:
-		camera_rotation.y = rad_to_deg(target.rotation.y) + 180.0 + initial_yaw_offset
+		# Player faces local -Z (Godot convention). Camera sits at view's local +Z = behind player.
+		# So view yaw should equal player yaw (no +180 flip).
+		camera_rotation.y = rad_to_deg(target.rotation.y) + initial_yaw_offset
 		rotation_degrees = camera_rotation
 
 # Use _input (not _unhandled_input) so the HUD Control doesn't eat mouse events.

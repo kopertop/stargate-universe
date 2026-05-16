@@ -1,6 +1,6 @@
 /**
  * Stargate Universe Entry Point
- * Initializes the loading screen, handles the initial app boot flow, 
+ * Initializes the loading screen, handles the initial app boot flow,
  * and orchestrates the transition from loading to the main game world.
  */
 import "./style.css";

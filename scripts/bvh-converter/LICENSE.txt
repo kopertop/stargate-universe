@@ -1,0 +1,1 @@
+MIT License — conversion logic from https://github.com/vrm-c/bvh2vrma (see that repo for full license text).

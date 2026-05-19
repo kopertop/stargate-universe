@@ -11,6 +11,7 @@
  *
  * @see design/gdd/vrm-model-integration.md
  */
+import type { VRM } from "@pixiv/three-vrm";
 import type { GameplayRuntime } from "@ggez/gameplay-runtime";
 import { vec3, type SceneSettings, type Vec3 } from "@ggez/shared";
 import {
@@ -38,6 +39,7 @@ import { createCameraController, type CameraController, type CameraMode } from "
 import type { InputManager } from "../input";
 import type { PlayerController } from "../scene";
 import type { VrmCharacterManager, VrmCharacterInstance } from "../../systems/vrm/vrm-character-instance";
+import { getVrmConfig } from "../../systems/vrm/vrm-config";
 import type { VrmAnimatorBridge } from "../../systems/vrm/vrm-retarget-bridge";
 import type { VrmPlayerAnimationController } from "../../systems/vrm/vrm-player-animation-controller";
 
@@ -49,6 +51,17 @@ const GROUND_PROBE_HEIGHT = 0.12;
 const JUMP_GROUND_LOCK_SECONDS = 0.12;
 const MOUSE_SENSITIVITY_X = 0.0024;
 const MOUSE_SENSITIVITY_Y = 0.0018;
+/** Horizontal speed above which the mesh faces velocity instead of camera yaw. */
+const FACING_SPEED_THRESHOLD = 0.1;
+
+/** Fallback when no idle clip loads — arms down instead of T-pose. */
+const applyRelaxedArmPose = (vrm: VRM): void => {
+	const angle = 1.05;
+	const leftArm = vrm.humanoid?.getNormalizedBoneNode("leftUpperArm");
+	const rightArm = vrm.humanoid?.getNormalizedBoneNode("rightUpperArm");
+	if (leftArm) leftArm.rotation.z = -angle;
+	if (rightArm) rightArm.rotation.z = angle;
+};
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -181,6 +194,10 @@ export class VrmPlayerController implements PlayerController {
 	/** Attach the AnimationMixer-driven player animation controller. */
 	setAnimationController(controller: VrmPlayerAnimationController): void {
 		this.playerAnimController = controller;
+		// If no idle clip, nudge arms down from T-pose (voidborne always plays idle).
+		if (!controller.hasIdleClip() && this.characterInstance.vrm) {
+			applyRelaxedArmPose(this.characterInstance.vrm);
+		}
 	}
 
 	setCameraMode(mode: CameraMode): void {
@@ -314,8 +331,16 @@ export class VrmPlayerController implements PlayerController {
     const t = this.body.position;
     this.object.position.set(t[0], t[1], t[2]);
 
-    // Rotate VRM model root to face movement direction
-    this.characterInstance.root.rotation.set(0, this.yaw + Math.PI, 0);
+    const velocity = this.body.motionProperties.linearVelocity;
+    const horizontalSpeed = Math.hypot(velocity[0], velocity[2]);
+
+    // Grounded movement: face velocity. Idle / airborne: face camera (jump clips are forward-facing).
+    const airborne = !this.grounded || velocity[1] > 0.35;
+    let facingYaw = this.yaw + Math.PI;
+    if (horizontalSpeed > FACING_SPEED_THRESHOLD && !airborne) {
+      facingYaw = Math.atan2(velocity[0], velocity[2]);
+    }
+    this.characterInstance.root.rotation.set(0, facingYaw, 0);
 
     // Offset VRM model so feet align with capsule bottom
     this.characterInstance.root.position.set(0, -this.footOffset, 0);
@@ -324,8 +349,6 @@ export class VrmPlayerController implements PlayerController {
     this.characterInstance.root.visible = this.camera.showPlayerBody;
 
     // Drive animation parameters from movement state
-    const velocity = this.body.motionProperties.linearVelocity;
-    const horizontalSpeed = Math.hypot(velocity[0], velocity[2]);
 
     if (this.animatorBridge) {
       this.animatorBridge.animator.setFloat("speed", horizontalSpeed);
@@ -333,6 +356,15 @@ export class VrmPlayerController implements PlayerController {
       this.animatorBridge.animator.setBool("isRunning", this.isRunning());
       this.animatorBridge.animator.setBool("isJumping", !this.grounded && velocity[1] > 0.5);
       this.animatorBridge.update(deltaSeconds);
+    }
+
+    // Match character-loader.ts / voidborne: spring bones + humanoid pass
+    // BEFORE the mixer advances clips. Mixer-after-vrm.update was making the
+    // skinned mesh vanish on WebGPU (bind pose copied over animated bones).
+    if (this.characterInstance.vrm) {
+      const config = getVrmConfig();
+      const clampedDelta = Math.min(deltaSeconds, config.springBone.maxDeltaSeconds);
+      this.characterInstance.vrm.update(clampedDelta);
     }
 
     if (this.playerAnimController) {
@@ -349,12 +381,7 @@ export class VrmPlayerController implements PlayerController {
     }
     this.jumpTriggeredFrame = false;
 
-    // Animate the raw bones — our Mixamo clips are retargeted to the VRM's
-    // specific skeleton so we apply directly to raw bones. We must then
-    // manually update the skinned-mesh skeleton's world matrices since the
-    // WebGPU renderer won't pick up bare quaternion changes.
-    // Note: DO NOT call vrm.humanoid.update() — it copies normalized (bind)
-    // pose over the mixer's work AND causes WebGPU to lose the skinned mesh.
+    // Propagate bone transforms to skinned meshes (WebGPU needs explicit sync).
     if (this.characterInstance.vrm) {
       this.characterInstance.vrm.scene.updateMatrixWorld(true);
       this.characterInstance.vrm.scene.traverse((child) => {

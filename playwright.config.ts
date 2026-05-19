@@ -1,8 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
-	// E2E tests
-	testDir: "tests/e2e",
 	outputDir: "tests/results",
 	timeout: 30_000,
 	expect: { timeout: 10_000 },
@@ -24,7 +22,16 @@ export default defineConfig({
 	},
 	projects: [
 		{
-			name: "chromium",
+			name: "e2e",
+			testDir: "tests/e2e",
+			use: {
+				...devices["Desktop Chrome"],
+				viewport: { width: 1280, height: 720 },
+			},
+		},
+		{
+			name: "visual",
+			testDir: "tests/visual",
 			use: {
 				...devices["Desktop Chrome"],
 				viewport: { width: 1280, height: 720 },

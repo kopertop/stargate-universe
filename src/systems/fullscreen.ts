@@ -26,7 +26,7 @@ const escapeListeners = new Set<EscapeListener>();
 
 const isFullscreen = (): boolean => Boolean(document.fullscreenElement);
 
-const enterFullscreen = async (): Promise<void> => {
+export const enterFullscreen = async (): Promise<void> => {
 	if (!enabled || isFullscreen()) return;
 	try {
 		await document.documentElement.requestFullscreen({ navigationUI: "hide" });

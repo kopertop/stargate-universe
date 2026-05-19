@@ -60,8 +60,11 @@ const JUMP_FADE_IN = 0.15;
 /** Crossfade duration from jump back to locomotion (seconds). */
 const JUMP_FADE_OUT = 0.25;
 
-/** How much locomotion blends through during a jump (0 = none, 1 = full). */
-const JUMP_LOCOMOTION_BLEND = 0.5;
+/** Locomotion blend while jump clip plays (lower = clearer jump pose). */
+const JUMP_LOCOMOTION_BLEND = 0.12;
+
+/** Skip ACCAD transition wind-up (walk→leap→walk) when starting the jump clip. */
+const JUMP_CLIP_WINDUP_FRACTION = 0.42;
 
 /** Crossfade duration into repair (seconds). */
 const REPAIR_FADE_IN = 0.4;
@@ -134,6 +137,10 @@ export class VrmPlayerAnimationController {
 	private runWeight = 0;
 	private strafeLeftWeight = 0;
 	private strafeRightWeight = 0;
+	/** True when at least one lateral strafe clip loaded (optional assets). */
+	private hasStrafeClips = false;
+	/** Start time for ACCAD transition clips (run→jump→walk) after load. */
+	private jumpClipStartTime = 0;
 
 	constructor(vrm: VRM) {
 		this.vrm = vrm;
@@ -160,16 +167,40 @@ export class VrmPlayerAnimationController {
 		// `walking-forward.glb`, `unarmed-idle-01.glb`) without renaming
 		// assets on disk or in R2.
 		const clipSpecs = [
-			{ name: "idle", aliases: ["idle", "standing-short-idle", "unarmed-idle-01", "breathing-idle", "neutral-idle"] },
-			{ name: "walk", aliases: ["walk", "walking-forward", "walking"] },
-			{ name: "run", aliases: ["run", "running", "running-forward"] },
-			{ name: "jump", aliases: ["jump", "jumping"] },
-			{ name: "strafe-left", aliases: ["strafe-left", "strafe-walk-left"] },
-			{ name: "strafe-right", aliases: ["strafe-right", "strafe-walk-right"] },
+			{
+				name: "idle",
+				aliases: ["eli-idle", "accad_female1_wait", "idle", "standing-short-idle", "unarmed-idle-01"],
+			},
+			{
+				name: "walk",
+				aliases: ["eli-walk", "CC0-walk", "walk", "walking-forward", "walking"],
+			},
+			{
+				name: "run",
+				aliases: ["eli-run", "CC0-run", "run", "running", "running-forward"],
+			},
+			{
+				name: "jump",
+				aliases: [
+					"eli-jump",
+					"accad_female1_run_to_jump",
+					"jump",
+					"jumping",
+					"standing-jump",
+				],
+			},
+			{
+				name: "strafe-left",
+				aliases: ["eli-strafe-left", "strafe-left", "strafe-walk-left"],
+			},
+			{
+				name: "strafe-right",
+				aliases: ["eli-strafe-right", "strafe-right", "strafe-walk-right"],
+			},
 			{ name: "repair", aliases: ["repair", "interaction"] },
 			{ name: "getting-up", aliases: ["getting-up", "stand-up"] },
 		] as const;
-		const extensions = ["glb", "fbx", "vrma"];
+		const extensions = ["vrma", "glb", "fbx"];
 
 		const results = await Promise.allSettled(
 			clipSpecs.map(async (spec) => {
@@ -226,6 +257,7 @@ export class VrmPlayerAnimationController {
 					this.jumpAction = action;
 					action.setLoop(LoopOnce, 1);
 					action.clampWhenFinished = true;
+					this.jumpClipStartTime = clip.duration * JUMP_CLIP_WINDUP_FRACTION;
 					// Don't play until triggered
 					break;
 
@@ -272,8 +304,14 @@ export class VrmPlayerAnimationController {
 			}
 		});
 
+		this.hasStrafeClips = Boolean(this.strafeLeftAction || this.strafeRightAction);
 		this.loaded = true;
 		this.loading = false;
+		if (!this.idleAction) {
+			console.warn(
+				"[VrmPlayerAnimController] No idle clip — locomotion may be walk-only until clips load",
+			);
+		}
 		this.resetIdleVariantTimer();
 
 		// Load idle variants in the background (non-blocking, optional)
@@ -302,8 +340,8 @@ export class VrmPlayerAnimationController {
 	}
 
 	/**
-	 * Update animations each frame. Call before `vrm.update()` so spring bones
-	 * simulate on top of the animated pose.
+	 * Update animations each frame. Call after `vrm.update()` (see
+	 * character-loader.ts: vrm.update → mixer.update).
 	 */
 	update(delta: number, params: PlayerAnimationParams): void {
 		if (!this.loaded) return;
@@ -338,8 +376,11 @@ export class VrmPlayerAnimationController {
 				this.triggerRepair();
 			}
 		} else if (this.state === "jump") {
-			// Auto-return to locomotion when grounded and jump animation done
-			if (params.isGrounded && this.jumpAction && !this.jumpAction.isRunning()) {
+			// Land → locomotion; also finish if the one-shot clip ends in air (edge case).
+			if (
+				params.isGrounded ||
+				(this.jumpAction && !this.jumpAction.isRunning())
+			) {
 				this.returnToLocomotion();
 			}
 		} else if (this.state === "repair") {
@@ -434,14 +475,27 @@ export class VrmPlayerAnimationController {
 
 		if (speed < IDLE_THRESHOLD) {
 			targetIdle = 1;
-		} else if (isStrafing) {
-			// Pure strafe — use strafe animations
+		} else if (isStrafing && this.hasStrafeClips) {
+			// Pure strafe — dedicated lateral clips when present on disk
 			if (strafeInput < 0) {
 				targetStrafeLeft = strafeAmount;
 				targetIdle = 1 - strafeAmount;
 			} else {
 				targetStrafeRight = strafeAmount;
 				targetIdle = 1 - strafeAmount;
+			}
+		} else if (isStrafing) {
+			// No lateral clips: walk/run by speed while mesh faces velocity (see player controller).
+			if (speed <= walkSpeed) {
+				const t = speed / Math.max(walkSpeed, 0.01);
+				targetIdle = 1 - t;
+				targetWalk = t;
+			} else if (speed <= runSpeed) {
+				const t = (speed - walkSpeed) / Math.max(runSpeed - walkSpeed, 0.01);
+				targetWalk = 1 - t;
+				targetRun = t;
+			} else {
+				targetRun = 1;
 			}
 		} else if (speed <= walkSpeed) {
 			// Blend idle → walk (with partial strafe blending for diagonal movement)
@@ -489,8 +543,8 @@ export class VrmPlayerAnimationController {
 		// Don't fade out locomotion — updateLocomotionWeights will scale them
 		// down via JUMP_LOCOMOTION_BLEND, keeping directional movement visible.
 
-		// Play jump from start
 		this.jumpAction.reset();
+		this.jumpAction.time = this.jumpClipStartTime;
 		this.jumpAction.setEffectiveWeight(1);
 		this.jumpAction.fadeIn(JUMP_FADE_IN);
 		this.jumpAction.play();
@@ -585,5 +639,10 @@ export class VrmPlayerAnimationController {
 			this.idleAction.reset().fadeIn(IDLE_VARIANT_FADE).play();
 			this.idleAction.setEffectiveWeight(this.idleWeight);
 		}
+	}
+
+	/** Whether a locomotion idle clip was loaded (voidborne always boots into idle). */
+	hasIdleClip(): boolean {
+		return Boolean(this.idleAction);
 	}
 }

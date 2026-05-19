@@ -37,10 +37,7 @@ import { mountTouchControls } from "../ui/touch-controls";
 import { mountHud, type HudHandle } from "../ui/hud";
 import { mountPauseMenu, type PauseMenuHandle } from "../ui/pause-menu";
 import { mountConsole, type ConsoleHandle } from "../ui/restoration-console";
-import {
-	onEscapeRequested,
-	requestFullscreenAndPointerLock,
-} from "../systems/fullscreen";
+import { enterFullscreen, onEscapeRequested } from "../systems/fullscreen";
 import { createDefaultGameplaySystems, createStarterGameplayHost, mergeGameplaySystems } from "./gameplay";
 import { GameLoop, FIXED_STEP_SECONDS } from "./loop";
 import { InputManager } from "./input";
@@ -224,7 +221,7 @@ export async function createGameApp(options: GameAppOptions) {
     pauseMenu.hide();
     loop.resume();
     // Restore the immersive presentation that was interrupted.
-    void requestFullscreenAndPointerLock(renderer.domElement as unknown as HTMLElement);
+    void enterFullscreen();
   };
 
   const pauseGame = () => {

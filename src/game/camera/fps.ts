@@ -10,8 +10,8 @@ import type { CameraController, CameraMode } from "./controller";
 
 export class FpsCameraController implements CameraController {
   readonly mode = "fps" as const;
-  readonly pitchMin = -1.35;
-  readonly pitchMax = 1.35;
+  readonly pitchMin = -Math.PI / 2 + 0.08;
+  readonly pitchMax = Math.PI / 2 - 0.08;
   readonly showPlayerBody = false;
 
   private readonly camera: PerspectiveCamera;

@@ -159,27 +159,20 @@ function getGamepads() {
 export function on() { return () => {}; }
 export function emit() {}
 
-// Dialogue helpers
-export function getNode() { return undefined; }
-export function getVisibleOptions(state) { return state.options ?? []; }
-export function selectOption() {}
-export function createDialogueState() { return {}; }
+// Dialogue + quest + NPC — functional dev runtime (vitest uses the same module).
+export {
+	createDialogueManager,
+	createNpcManager,
+	createQuestManager,
+	createQuestLog,
+	createDialogueState,
+	getNode,
+	getVisibleOptions,
+	checkQuestComplete as isQuestComplete,
+	getObjective,
+} from "../../../tests/mocks/vibe-game-engine.ts";
 
-// Dialogue manager
-export function createDialogueManager() {
-	return {
-		registerTree() {},
-		startDialogue() { return null; },
-		isActive() { return false; },
-		advance() {},
-		endDialogue() {},
-		getAffinity() { return 0; },
-		hasMetNpc() { return false; },
-		serialize() { return {}; },
-		deserialize() {},
-		dispose() {},
-	};
-}
+export function selectOption() {}
 
 // HUD / Dialogue panel
 export function createHud() {
@@ -191,52 +184,86 @@ export function createHud() {
 	};
 }
 
-export function createDialoguePanel() {
-	const el = document.createElement("div");
-	return {
-		...el,
-		dispose() {},
+export function createDialoguePanel(bus, options = {}) {
+	const root = document.createElement("div");
+	root.id = "dialogue-panel";
+	root.hidden = true;
+	Object.assign(root.style, {
+		position: "fixed",
+		left: "50%",
+		bottom: "18%",
+		transform: "translateX(-50%)",
+		width: "min(720px, 92vw)",
+		padding: "16px 18px",
+		borderRadius: "6px",
+		border: "1px solid rgba(120, 171, 215, 0.35)",
+		background: "rgba(1, 10, 17, 0.92)",
+		color: "#e8f4ff",
+		fontFamily: "'Courier New', monospace",
+		zIndex: "1200",
+		boxShadow: "0 12px 40px rgba(0, 0, 0, 0.55)",
+	});
+
+	const speakerEl = document.createElement("div");
+	speakerEl.style.cssText = "font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#8fd0ff;margin-bottom:8px;";
+	const textEl = document.createElement("div");
+	textEl.style.cssText = "font-size:15px;line-height:1.55;margin-bottom:12px;white-space:pre-wrap;";
+	const optionsEl = document.createElement("div");
+	optionsEl.style.cssText = "display:flex;flex-direction:column;gap:8px;";
+	root.append(speakerEl, textEl, optionsEl);
+	document.body.appendChild(root);
+
+	const hints = options.optionHints ?? ["1", "2", "3", "4"];
+
+	const renderNode = (data) => {
+		root.hidden = false;
+		speakerEl.textContent = data?.speaker ?? "";
+		textEl.textContent = data?.text ?? "";
+		optionsEl.replaceChildren();
+		for (const [index, opt] of (data?.options ?? []).entries()) {
+			const btn = document.createElement("button");
+			btn.type = "button";
+			const hint = hints[index] ? `[${hints[index]}] ` : "";
+			btn.textContent = `${hint}${opt.label ?? opt.id}`;
+			Object.assign(btn.style, {
+				textAlign: "left",
+				padding: "10px 12px",
+				borderRadius: "4px",
+				border: "1px solid rgba(120, 171, 215, 0.25)",
+				background: "rgba(8, 28, 44, 0.88)",
+				color: "#e8f4ff",
+				cursor: "pointer",
+				fontFamily: "inherit",
+				fontSize: "13px",
+			});
+			btn.addEventListener("click", () => {
+				bus.emit("player:dialogue:choice", { responseId: opt.id });
+			});
+			optionsEl.appendChild(btn);
+		}
 	};
+
+	const hide = () => {
+		root.hidden = true;
+		optionsEl.replaceChildren();
+	};
+
+	bus.on("crew:dialogue:started", () => {
+		root.hidden = false;
+	});
+	bus.on("crew:dialogue:node", renderNode);
+	bus.on("crew:dialogue:ended", hide);
+
+	return Object.assign(root, {
+		dispose() {
+			root.remove();
+		},
+	});
 }
 
 // Compass
 export function createCompass() {
 	return document.createElement("div");
-}
-
-// Quest system
-export function createQuestLog() {
-	return { active: new Map(), completed: new Map() };
-}
-export function createQuestManager() {
-	return {
-		getQuestLog() { return createQuestLog(); },
-		startQuest() { return { status: "active" }; },
-		advanceObjective() {},
-		completeQuest() {},
-		failQuest() {},
-		registerDefinition() {},
-		getQuestStatus() { return "active"; },
-		isActive() { return false; },
-		isCompleted() { return false; },
-		serialize() { return {}; },
-		deserialize() {},
-		dispose() {},
-	};
-}
-export function isQuestComplete() { return false; }
-export function getObjective() { return undefined; }
-
-// NPC system
-export function createNpcManager() {
-	return {
-		registerNpc() { return {}; },
-		getAllNpcs() { return []; },
-		get() { return undefined; },
-		getNpc() { return undefined; },
-		update() {},
-		dispose() {},
-	};
 }
 
 // Neural locomotion

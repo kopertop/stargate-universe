@@ -537,7 +537,20 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		void gotoScene(sceneId);
 	};
 
-	const ui = createStartUI(go("opening-cinematic"), go("gate-room"));
+	const onContinue = (): void => {
+		if (transitioning) return;
+		transitioning = true;
+		void (async () => {
+			const { loadMostRecentSave } = await import("../../systems/save-manager.js");
+			const loaded = await loadMostRecentSave(gotoScene);
+			if (!loaded) {
+				transitioning = false;
+				go("gate-room")();
+			}
+		})();
+	};
+
+	const ui = createStartUI(go("opening-cinematic"), onContinue);
 
 	// Looping exploration bed for the main menu at 0.3 vol — quiet enough
 	// that the hover/click SFX and the player's decision-making breathe.

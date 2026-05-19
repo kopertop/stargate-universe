@@ -34,6 +34,15 @@ canvas {
   height: 100vh;
 }
 
+/* WoW-style desktop: visible cursor; RMB drag orbits camera */
+.game-shell canvas {
+  cursor: default;
+}
+
+.game-shell.sgu-orbit-drag canvas {
+  cursor: grabbing;
+}
+
 .game-status {
   position: absolute;
   inset: 0;

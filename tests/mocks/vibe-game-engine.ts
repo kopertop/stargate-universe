@@ -104,7 +104,7 @@ function makeDialogueManager(opts?: { emit?: unknown }): DialogueManager {
 			sessions.set(id, { tree, state, active: true });
 			metNpcs.add(id);
 			bus.emit('crew:dialogue:started', { speakerId: id, dialogueId: id });
-			bus.emit('crew:dialogue:node', { nodeId: state.current.id, options: getVisibleOptions(state) });
+			emitDialogueNode(bus, tree, state);
 			checkAutoEnd(sessions.get(id)!);
 			return state.current;
 		},
@@ -140,10 +140,7 @@ function makeDialogueManager(opts?: { emit?: unknown }): DialogueManager {
 						session.state.current = next;
 						session.state.options = next.options ?? [];
 						session.state.history.push(next.id);
-						bus.emit('crew:dialogue:node', {
-							nodeId: next.id,
-							options: getVisibleOptions(session.state),
-						});
+						emitDialogueNode(bus, session.tree, session.state);
 						const wasActive = session.active;
 						checkAutoEnd(session);
 						if (wasActive && !session.active) {
@@ -319,6 +316,29 @@ function isQuestComplete(def: QuestDefinition, state: QuestState): boolean {
 	});
 }
 
+function revealUnlockedObjectives(state: QuestState): void {
+	for (const obj of state.objectives) {
+		if (obj.visible || !obj.unlockedBy) continue;
+		const prereq = state.objectives.find((o) => o.id === obj.unlockedBy);
+		if (prereq?.completed) obj.visible = true;
+	}
+}
+
+function emitDialogueNode(
+	bus: Bus,
+	tree: DialogueTree,
+	state: DialogueState,
+): void {
+	bus.emit('crew:dialogue:node', {
+		speakerId: tree.id,
+		dialogueId: tree.id,
+		nodeId: state.current.id,
+		speaker: state.current.speaker,
+		text: state.current.text,
+		options: getVisibleOptions(state).map((opt) => ({ id: opt.id, label: opt.label })),
+	});
+}
+
 function makeQuestManager(opts?: { emit?: unknown }): QuestManager {
 	const raw = opts?.emit as unknown;
 	const bus = toBus(raw);
@@ -337,6 +357,7 @@ function makeQuestManager(opts?: { emit?: unknown }): QuestManager {
 				if (!obj.completed && obj.visible && obj.type === 'repair' && obj.targetId === subsystemId) {
 					obj.current = (obj.current ?? 0) + 1;
 					if (obj.required && obj.current >= obj.required) obj.completed = true;
+					revealUnlockedObjectives(state);
 					bus.emit('quest:objective-complete', { questId: state.definition.id, objectiveId: obj.id });
 					if (isQuestComplete(state.definition, state)) {
 						log.active.delete(state.definition.id);
@@ -357,6 +378,7 @@ function makeQuestManager(opts?: { emit?: unknown }): QuestManager {
 					obj.current = (obj.current ?? 0) + 1;
 					if (obj.required && obj.current >= obj.required) {
 						obj.completed = true;
+						revealUnlockedObjectives(state);
 						bus.emit('quest:objective-complete', { questId: state.definition.id, objectiveId: obj.id });
 						if (isQuestComplete(state.definition, state)) {
 							log.active.delete(state.definition.id);
@@ -382,6 +404,7 @@ function makeQuestManager(opts?: { emit?: unknown }): QuestManager {
 				objectives: def.objectives.map((o) => ({ ...o })),
 			};
 			log.active.set(id, state);
+			revealUnlockedObjectives(state);
 			bus.emit('quest:started', { questId: id });
 			return { status: 'in-progress' };
 		},
@@ -396,14 +419,21 @@ function makeQuestManager(opts?: { emit?: unknown }): QuestManager {
 				obj.progress = obj.required ? current / obj.required : 0;
 				const wasCompleted = obj.completed;
 				if (obj.required && current >= obj.required) obj.completed = true;
-				if (!wasCompleted && obj.completed) bus.emit('quest:objective-complete', { questId, objectiveId });
+				if (!wasCompleted && obj.completed) {
+					revealUnlockedObjectives(state);
+					bus.emit('quest:objective-complete', { questId, objectiveId });
+				}
 			} else {
 				obj.current = (obj.current ?? 0) + 1;
 				obj.progress = obj.required ? obj.current / obj.required : 0;
 				const wasCompleted = obj.completed;
 				if (obj.required && obj.current >= obj.required) obj.completed = true;
-				if (!wasCompleted && obj.completed) bus.emit('quest:objective-complete', { questId, objectiveId });
+				if (!wasCompleted && obj.completed) {
+					revealUnlockedObjectives(state);
+					bus.emit('quest:objective-complete', { questId, objectiveId });
+				}
 			}
+			revealUnlockedObjectives(state);
 			if (isQuestComplete(state.definition, state)) {
 				log.active.delete(questId);
 				log.completed.set(questId, state);

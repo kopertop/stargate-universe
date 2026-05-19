@@ -13,8 +13,9 @@ const SMOOTH = 10;
 
 export class ThirdPersonCameraController implements CameraController {
   readonly mode = "third-person" as const;
-  readonly pitchMin = -1.25;
-  readonly pitchMax = 0.4;
+  /** Near-vertical orbit (WoW-style); small epsilon avoids gimbal flip. */
+  readonly pitchMin = -Math.PI / 2 + 0.08;
+  readonly pitchMax = Math.PI / 2 - 0.08;
   readonly showPlayerBody = true;
 
   private readonly camera: PerspectiveCamera;

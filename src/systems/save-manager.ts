@@ -33,6 +33,7 @@ import type { ShipState } from './ship-state.js';
 import type { QuestManager } from './quest-manager.js';
 import type { DialogueManager } from './dialogue-manager.js';
 import type { TimerSystem } from './timer-system.js';
+import { getGameSession } from './game-session.js';
 import type { DialogueSaveData } from '@kopertop/vibe-game-engine';
 import { deserialize as deserializeResources, serialize as serializeResources } from './resources.js';
 import {
@@ -75,6 +76,65 @@ export const hasStoredSaveGame = (): boolean =>
 			return false;
 		}
 	});
+
+const readSlotData = (id: string): SaveData | null => {
+	try {
+		const raw = localStorage.getItem(slotKey(id));
+		return raw ? (JSON.parse(raw) as SaveData) : null;
+	} catch {
+		return null;
+	}
+};
+
+/** Most recent autosave, or newest manual slot if no autosave blob exists. */
+export const resolveMostRecentSaveSlotId = (): string | null => {
+	const slots = listStoredSaveSlots();
+	if (slots.length === 0) return null;
+	const autosave = slots.find((s) => s.id === AUTOSAVE_SLOT_ID);
+	if (autosave && readSlotData(AUTOSAVE_SLOT_ID)) return AUTOSAVE_SLOT_ID;
+	const sorted = [...slots].sort((a, b) => b.timestamp - a.timestamp);
+	for (const slot of sorted) {
+		if (readSlotData(slot.id)) return slot.id;
+	}
+	return null;
+};
+
+/**
+ * Restore session state from the newest save and transition to its scene.
+ * Used by the start-screen CONTINUE action (no gate-room SaveManager yet).
+ */
+export const loadMostRecentSave = async (
+	gotoScene: (sceneId: string) => Promise<void>,
+	dialogueManager?: DialogueManager,
+): Promise<boolean> => {
+	const slotId = resolveMostRecentSaveSlotId();
+	if (!slotId) return false;
+
+	const raw = readSlotData(slotId);
+	if (!raw) return false;
+
+	const data = raw.version !== SAVE_VERSION ? migrate(raw, raw.version) : raw;
+	const { shipState, questManager, timers } = getGameSession();
+
+	await gotoScene(data.currentSceneId);
+
+	shipState.deserialize(data.shipState);
+	deserializeResources(data.resources as unknown as Record<string, unknown>);
+	questManager.deserialize(data.questState);
+	if (dialogueManager) {
+		dialogueManager.deserialize(data.dialogueState);
+	}
+	setLimeCollected(data.limeCollected ?? false);
+	deserializeSceneTransitionState(data.sceneTransitionState ?? {
+		version: 1,
+		limeCollected: data.limeCollected ?? false,
+	});
+	timers.deserialize(data.timers);
+	deserializeLootState(data.lootState);
+
+	emit('save:loaded', { slotId });
+	return true;
+};
 
 // ─── Context provider ─────────────────────────────────────────────────────────
 
@@ -131,15 +191,6 @@ export const createSaveManager = (options: SaveManagerOptions): SaveManager => {
 			localStorage.setItem(INDEX_KEY, JSON.stringify(slots));
 		} catch {
 			console.warn('[SaveManager] Failed to write slot index — localStorage may be full');
-		}
-	};
-
-	const readSlotData = (id: string): SaveData | null => {
-		try {
-			const raw = localStorage.getItem(slotKey(id));
-			return raw ? (JSON.parse(raw) as SaveData) : null;
-		} catch {
-			return null;
 		}
 	};
 

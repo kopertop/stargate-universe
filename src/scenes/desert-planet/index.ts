@@ -24,6 +24,10 @@ import { emit, scopedBus } from "../../systems/event-bus";
 import { Action, getInput } from "../../systems/input";
 import { setActiveQuestManager } from "../../systems/active-quest-manager";
 import { QUEST_ID as AIR_CRISIS_QUEST_ID } from "../../quests/air-crisis";
+import {
+	AIR_CRISIS_CO2_DURATION_SECONDS,
+	ensureAirCrisisCo2Timer,
+} from "../../quests/air-crisis/co2-timer";
 import { createHud, createCompass } from "@kopertop/vibe-game-engine";
 import { setLimeCollected } from "../../systems/scene-transition-state";
 import { getGameSession } from "../../systems/game-session";
@@ -617,24 +621,8 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	if (!questManager.isActive(AIR_CRISIS_QUEST_ID) && !questManager.isCompleted(AIR_CRISIS_QUEST_ID)) {
 		questManager.startQuest(AIR_CRISIS_QUEST_ID);
 	}
-	// Pre-advance objectives already done in gate-room (speak, locate, gate-to)
-	questManager.advanceObjective(AIR_CRISIS_QUEST_ID, "speak-to-rush");
-	questManager.advanceObjective(AIR_CRISIS_QUEST_ID, "locate-planet");
-	questManager.advanceObjective(AIR_CRISIS_QUEST_ID, "gate-to-planet");
 	setActiveQuestManager(questManager);
-	if (!timers.getTimer("air-crisis:co2")) {
-		timers.createTimer({
-			id: "air-crisis:co2",
-			durationSeconds: 8 * 60 * 60,
-			tags: ["air-crisis", "life-support"],
-			visible: true,
-			completionEvent: "timer:planet:expired",
-			warnings: [
-				{ thresholdSeconds: 10 * 60, event: "timer:planet:warning" },
-				{ thresholdSeconds: 2 * 60, event: "timer:planet:warning" },
-			],
-		});
-	}
+	ensureAirCrisisCo2Timer(timers);
 
 	// ─── World ─────────────────────────────────────────────────────────
 	buildLighting(scene);
@@ -748,8 +736,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	}
 
 	// ─── HUD ───────────────────────────────────────────────────────────
-	// 8 hours remaining (cosmetic — not enforced, adds atmosphere)
-	const co2Timer = createCO2Timer(8 * 60 * 60, () =>
+	const co2Timer = createCO2Timer(AIR_CRISIS_CO2_DURATION_SECONDS, () =>
 		timers.getTimer("air-crisis:co2")?.remainingSeconds ?? 0,
 	);
 	const interactPrompt = createInteractionPrompt();
@@ -765,6 +752,15 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	let gateElapsed = 0;
 
 	const input = getInput();
+	let co2RecallPending = false;
+	bus.on("timer:planet:expired", () => {
+		if (co2RecallPending) return;
+		co2RecallPending = true;
+		interactPrompt.style.display = "block";
+		interactPrompt.textContent = "CO₂ critical — emergency recall to Destiny!";
+		void context.gotoScene("gate-room");
+	});
+
 	const tryInteract = (): void => {
 		if (nearestDeposit && !nearestDeposit.collected) {
 			markDepositCollected(nearestDeposit);

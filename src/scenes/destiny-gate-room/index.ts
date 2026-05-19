@@ -2630,11 +2630,12 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	// caused duplicate overlays on Escape. Per-scene logic is removed.
 	const interactPrompt = createInteractionPrompt();
 	cinematicHide.push(interactPrompt);
-	// CO₂ scrubber status belongs to Episode 2 ("Air") — it shouldn't appear
-	// at all during Episode 1. Kept offline until a scrubber-crisis event
-	// reveals it (see episode-scripting todo). Construction is deferred so
-	// the DOM element doesn't even exist on first boot.
-	let co2Display: HTMLDivElement | undefined; // created when Ep-2 scrubber crisis begins
+	// Air Crisis (Episode 1) — CO₂ pressure readout for the gate-room briefing.
+	const co2Display = createCO2Display();
+	bus.on("timer:planet:expired", () => {
+		co2Display.textContent = "CO\u2082: CRITICAL\nEmergency recall — scrubbers failing";
+		co2Display.style.color = "#ff2222";
+	});
 	const repairBar = createRepairProgressBar3D();
 	scene.add(repairBar.group);
 

@@ -2,6 +2,9 @@ extends Node3D
 
 @export_group("Properties")
 @export var target: Node3D
+# Vertical offset added to the target position when placing the view rig — keeps
+# the camera framed on the character's chest instead of its feet.
+@export var follow_height: float = 0.9
 
 @export_group("Zoom")
 @export var zoom_minimum: float = 16.0
@@ -32,6 +35,14 @@ func _ready() -> void:
 		# So view yaw should equal player yaw (no +180 flip).
 		camera_rotation.y = rad_to_deg(target.rotation.y) + initial_yaw_offset
 		rotation_degrees = camera_rotation
+		# Snap position to target so the very first frame is framed correctly —
+		# otherwise the lerp in _physics_process gives a few frames where the
+		# camera sits at world origin and the player is offscreen.
+		position = target.position + Vector3.UP * follow_height
+	# Seed zoom from the spring length the scene was authored with, so the lerp
+	# in _physics_process doesn't crash-zoom out to the 10.0 default on entry.
+	if spring != null:
+		zoom = spring.spring_length
 
 # Use _input (not _unhandled_input) so the HUD Control doesn't eat mouse events.
 func _input(event: InputEvent) -> void:
@@ -51,7 +62,7 @@ func _input(event: InputEvent) -> void:
 
 func _physics_process(delta: float) -> void:
 	if target != null:
-		position = position.lerp(target.position, delta * follow_speed)
+		position = position.lerp(target.position + Vector3.UP * follow_height, delta * follow_speed)
 	rotation_degrees = rotation_degrees.lerp(camera_rotation, delta * 6.0)
 	# SpringArm3D auto-raycasts to keep camera from clipping walls/ceiling.
 	spring.spring_length = lerpf(spring.spring_length, zoom, 8.0 * delta)

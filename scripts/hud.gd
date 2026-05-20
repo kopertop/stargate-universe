@@ -66,9 +66,12 @@ func _on_log_added(line: String) -> void:
 	lbl.add_theme_color_override("font_color", Color(0.85, 0.95, 1.0, 1.0))
 	lbl.add_theme_font_size_override("font_size", 14)
 	_log_box.add_child(lbl)
-	# Keep only the last 3.
+	# Keep only the last 3. remove_child() first so the count drops synchronously —
+	# queue_free() alone defers deletion to end-of-frame and would spin this loop.
 	while _log_box.get_child_count() > 3:
-		_log_box.get_child(0).queue_free()
+		var oldest: Node = _log_box.get_child(0)
+		_log_box.remove_child(oldest)
+		oldest.queue_free()
 	# Auto-fade & remove after a moment.
 	var t: Tween = create_tween()
 	t.tween_interval(6.0)

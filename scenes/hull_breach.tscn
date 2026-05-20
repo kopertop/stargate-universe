@@ -1,6 +1,6 @@
 [gd_scene load_steps=18 format=3 uid="uid://cgr0hullbreach00"]
 
-[ext_resource type="Environment" uid="uid://cgrenv00enva" path="res://scenes/gate-room-environment.tres" id="1_env"]
+[ext_resource type="Environment" uid="uid://cgrenvinterior00" path="res://scenes/destiny-interior-environment.tres" id="1_env"]
 [ext_resource type="Script" path="res://scripts/kenney_room.gd" id="2_room"]
 [ext_resource type="Script" path="res://scripts/hull_breach.gd" id="3_breach"]
 [ext_resource type="PackedScene" uid="uid://dl2ed4gkybggf" path="res://objects/player.tscn" id="4_player"]
@@ -15,15 +15,15 @@
 [ext_resource type="Script" path="res://scripts/ambient_hum.gd" id="13_ambient"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_metallic"]
-albedo_color = Color(0.25, 0.23, 0.27, 1)
-metallic = 0.8
-metallic_specular = 0.6
-roughness = 0.55
+albedo_color = Color(0.42, 0.40, 0.44, 1)
+metallic = 0.25
+metallic_specular = 0.45
+roughness = 0.65
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ceiling"]
-albedo_color = Color(0.05, 0.05, 0.07, 1)
-metallic = 0.7
-roughness = 0.55
+albedo_color = Color(0.14, 0.14, 0.18, 1)
+metallic = 0.25
+roughness = 0.7
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_switch"]
 size = Vector3(0.7, 0.7, 0.4)
@@ -68,17 +68,30 @@ ceiling_material = SubResource("StandardMaterial3D_ceiling")
 [node name="Environment" type="WorldEnvironment" parent="."]
 environment = ExtResource("1_env")
 
+[node name="KeyLight" type="DirectionalLight3D" parent="."]
+transform = Transform3D(-0.422618, -0.694272, 0.582563, 0, 0.642788, 0.766044, -0.906308, 0.323744, -0.271654, 0, 5, 0)
+light_color = Color(1.0, 0.7, 0.6, 1)
+light_energy = 0.4
+shadow_enabled = true
+shadow_opacity = 0.45
+
 [node name="AlarmLight" type="OmniLight3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.5, 0)
-light_color = Color(1.0, 0.18, 0.18, 1)
-light_energy = 1.8
-omni_range = 7.0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.4, 0)
+light_color = Color(1.0, 0.25, 0.22, 1)
+light_energy = 2.0
+omni_range = 10.0
 
 [node name="WallLight" type="OmniLight3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.4, 2.0, 0)
 light_color = Color(0.5, 0.75, 1.0, 1)
-light_energy = 0.9
-omni_range = 4.0
+light_energy = 1.6
+omni_range = 6.0
+
+[node name="FloorFill" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2, 0)
+light_color = Color(1.0, 0.55, 0.45, 1)
+light_energy = 1.2
+omni_range = 6.0
 
 [node name="VentParticles" type="GPUParticles3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, 2.8)
@@ -113,17 +126,19 @@ transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 0, 0, 0)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0.5, -1.5)
 
 [node name="Player" parent="." node_paths=PackedStringArray("view") groups=["player"] instance=ExtResource("4_player")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0.5, -1.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0.5, 0.5)
 view = NodePath("../View")
 
 [node name="View" type="Node3D" parent="." node_paths=PackedStringArray("target")]
 transform = Transform3D(0.866025, -0.25, 0.433013, 0, 0.866025, 0.5, -0.5, -0.433013, 0.75, 0, 0, 0)
 script = ExtResource("5_view")
 target = NodePath("../Player")
+zoom_minimum = 4.0
+zoom_maximum = 2.5
 
 [node name="SpringArm" type="SpringArm3D" parent="View"]
 collision_mask = 2
-spring_length = 4.5
+spring_length = 2.5
 margin = 0.2
 
 [node name="Camera" type="Camera3D" parent="View/SpringArm"]

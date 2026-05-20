@@ -44,6 +44,15 @@ shape = SubResource("CapsuleShape3D_gdq8c")
 
 [node name="Character" parent="." instance=ExtResource("2_nero3")]
 
+[node name="CharacterFill" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.0, 0.6)
+light_color = Color(0.95, 0.92, 0.85, 1)
+light_energy = 0.18
+light_indirect_energy = 0.2
+light_specular = 0.1
+omni_range = 1.6
+omni_attenuation = 1.8
+
 [node name="Shadow" type="Decal" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.9, 0)
 size = Vector3(1, 2, 1)
@@ -52,6 +61,7 @@ modulate = Color(1, 1, 1, 0.705882)
 normal_fade = 0.5
 
 [node name="ParticlesTrail" type="GPUParticles3D" parent="."]
+visible = false
 physics_interpolation_mode = 2
 material_override = SubResource("StandardMaterial3D_q7stj")
 cast_shadow = 0

@@ -29,7 +29,27 @@ var _input_locked: bool = false   # locked during cutscene / scene transitions
 @onready var _particles_trail: GPUParticles3D = $ParticlesTrail
 @onready var _sound_footsteps: AudioStreamPlayer = $SoundFootsteps
 @onready var _model: Node3D = $Character
-@onready var _animation: AnimationPlayer = $Character/AnimationPlayer
+# Static meshes (Kenney Mini Characters) ship without an AnimationPlayer — keep
+# the reference optional so we can swap in skeletal characters later without
+# scene surgery.
+@onready var _animation: AnimationPlayer = $Character.get_node_or_null("AnimationPlayer")
+
+# Kenney Mini Characters share a palette texture; the glTF import loses the
+# embedded baseColorTexture binding so meshes render pure white. Re-apply the
+# shared StandardMaterial3D to every surface in the character hierarchy.
+const _COLORMAP_MAT: Material = preload("res://models/colormap.tres")
+
+func _ready() -> void:
+	_apply_colormap(_model)
+
+func _apply_colormap(root: Node) -> void:
+	if root is MeshInstance3D:
+		var mi: MeshInstance3D = root
+		if mi.mesh != null:
+			for i in mi.mesh.get_surface_count():
+				mi.set_surface_override_material(i, _COLORMAP_MAT)
+	for c in root.get_children():
+		_apply_colormap(c)
 
 func _physics_process(delta: float) -> void:
 	if _input_locked:
@@ -43,8 +63,7 @@ func _apply_idle(delta: float) -> void:
 	_apply_gravity(delta)
 	velocity = Vector3(0.0, -_gravity_velocity, 0.0)
 	move_and_slide()
-	if _animation.current_animation != "idle":
-		_animation.play("idle", 0.15)
+	_play_anim("idle", 0.15)
 
 func _handle_movement(delta: float) -> void:
 	# Camera-relative input.
@@ -93,20 +112,31 @@ func _drive_locomotion_anim() -> void:
 	var horiz_speed: float = Vector2(velocity.x, velocity.z).length()
 	if is_on_floor():
 		if horiz_speed > 0.25:
-			if _animation.current_animation != "walk":
-				_animation.play("walk", 0.1)
+			_play_anim("walk", 0.1)
 			var pitch_ratio: float = clampf(horiz_speed / walk_speed, 0.4, sprint_multiplier)
 			_sound_footsteps.stream_paused = false
 			_sound_footsteps.pitch_scale = 1.0 + (pitch_ratio - 1.0) * 0.6
-			_animation.speed_scale = pitch_ratio
+			if _animation != null:
+				_animation.speed_scale = pitch_ratio
 			if pitch_ratio > 1.2:
 				_particles_trail.emitting = true
-		elif _animation.current_animation != "idle":
-			_animation.play("idle", 0.1)
+		else:
+			_play_anim("idle", 0.1)
+			if _animation != null:
+				_animation.speed_scale = 1.0
+	else:
+		_play_anim("jump", 0.1)
+		if _animation != null:
 			_animation.speed_scale = 1.0
-	elif _animation.current_animation != "jump":
-		_animation.play("jump", 0.1)
-		_animation.speed_scale = 1.0
+
+func _play_anim(name: String, blend: float) -> void:
+	if _animation == null:
+		return
+	if not _animation.has_animation(name):
+		return
+	if _animation.current_animation == name:
+		return
+	_animation.play(name, blend)
 
 func _handle_interact() -> void:
 	var target: Node = _find_interact_target()

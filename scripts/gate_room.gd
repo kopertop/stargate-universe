@@ -32,8 +32,9 @@ extends Node3D
 
 @onready var _world: Node3D = $World
 @onready var _player: CharacterBody3D = $Player
-@onready var _gate: MeshInstance3D = $World/Gate
-@onready var _gate_glow: OmniLight3D = $GateGlow
+@onready var _stargate: Node3D = $World/Stargate
+@onready var _gate_back_light: OmniLight3D = $GateBackLight
+@onready var _gate_key_light: OmniLight3D = $GateKeyLight
 @onready var _gate_sfx: AudioStreamPlayer = $GateSFX
 @onready var _ambient_sfx: AudioStreamPlayer = $AmbientHum
 
@@ -68,26 +69,24 @@ func _run_arrival() -> void:
 		_player.set_input_locked(false)
 
 func _set_gate_active(active: bool) -> void:
-	# Pulse the gate emission to sell the kawhoosh, then dim once shut.
-	if _gate == null:
-		return
-	var mat: StandardMaterial3D = _gate.material_override as StandardMaterial3D
-	if mat == null:
-		return
+	# Light up the event-horizon puddle for the kawhoosh, then dim & shut once
+	# the arrival lockout ends.
+	if _stargate != null and "active" in _stargate:
+		_stargate.active = active
 	if active:
-		mat.emission_energy_multiplier = 2.5
-		if _gate_glow != null:
-			_gate_glow.light_energy = 8.0
-		# Tween down over arrival_lockout seconds.
-		var t: Tween = create_tween()
-		t.tween_property(mat, "emission_energy_multiplier", 0.25, arrival_lockout)
-		if _gate_glow != null:
+		if _gate_back_light != null:
+			_gate_back_light.light_energy = 1.6
+			var t1: Tween = create_tween()
+			t1.tween_property(_gate_back_light, "light_energy", 0.9, arrival_lockout)
+		if _gate_key_light != null:
+			_gate_key_light.light_energy = 1.6
 			var t2: Tween = create_tween()
-			t2.tween_property(_gate_glow, "light_energy", 0.4, arrival_lockout)
+			t2.tween_property(_gate_key_light, "light_energy", 0.9, arrival_lockout)
 	else:
-		mat.emission_energy_multiplier = 0.25
-		if _gate_glow != null:
-			_gate_glow.light_energy = 0.4
+		if _gate_back_light != null:
+			_gate_back_light.light_energy = 0.9
+		if _gate_key_light != null:
+			_gate_key_light.light_energy = 0.9
 
 func _build_ceiling() -> void:
 	var size_x: float = float(floor_size.x) * tile_size

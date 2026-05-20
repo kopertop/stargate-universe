@@ -1,6 +1,6 @@
 [gd_scene load_steps=13 format=3 uid="uid://cgr0corridor00"]
 
-[ext_resource type="Environment" uid="uid://cgrenv00enva" path="res://scenes/gate-room-environment.tres" id="1_env"]
+[ext_resource type="Environment" uid="uid://cgrenvinterior00" path="res://scenes/destiny-interior-environment.tres" id="1_env"]
 [ext_resource type="Script" path="res://scripts/kenney_room.gd" id="2_room"]
 [ext_resource type="Script" path="res://scripts/destiny_corridor.gd" id="3_corridor"]
 [ext_resource type="PackedScene" uid="uid://dl2ed4gkybggf" path="res://objects/player.tscn" id="4_player"]
@@ -13,15 +13,15 @@
 [ext_resource type="Script" path="res://scripts/ambient_hum.gd" id="11_ambient"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_metallic"]
-albedo_color = Color(0.38, 0.36, 0.40, 1)
-metallic = 0.85
-metallic_specular = 0.7
-roughness = 0.42
+albedo_color = Color(0.52, 0.50, 0.55, 1)
+metallic = 0.25
+metallic_specular = 0.45
+roughness = 0.62
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ceiling"]
-albedo_color = Color(0.07, 0.07, 0.09, 1)
-metallic = 0.7
-roughness = 0.55
+albedo_color = Color(0.18, 0.18, 0.22, 1)
+metallic = 0.25
+roughness = 0.65
 
 [node name="DestinyCorridor" type="Node3D"]
 script = ExtResource("3_corridor")
@@ -48,28 +48,28 @@ environment = ExtResource("1_env")
 
 [node name="KeyLight" type="DirectionalLight3D" parent="."]
 transform = Transform3D(-0.422618, -0.694272, 0.582563, 0, 0.642788, 0.766044, -0.906308, 0.323744, -0.271654, 0, 8, 0)
-light_color = Color(0.7, 0.78, 0.9, 1)
-light_energy = 0.35
+light_color = Color(0.78, 0.84, 0.95, 1)
+light_energy = 2.4
 shadow_enabled = true
 shadow_opacity = 0.4
 
 [node name="CorridorLightN" type="OmniLight3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5.4, -6)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.6, -6)
 light_color = Color(0.85, 0.78, 0.55, 1)
-light_energy = 2.4
-omni_range = 9.0
+light_energy = 8.0
+omni_range = 14.0
 
 [node name="CorridorLightC" type="OmniLight3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5.4, 0.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.6, 0.5)
 light_color = Color(0.55, 0.7, 0.95, 1)
-light_energy = 2.0
-omni_range = 8.0
+light_energy = 6.5
+omni_range = 13.0
 
 [node name="CorridorLightS" type="OmniLight3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5.4, 7)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.6, 7)
 light_color = Color(0.85, 0.78, 0.55, 1)
-light_energy = 2.4
-omni_range = 9.0
+light_energy = 8.0
+omni_range = 14.0
 
 [node name="GateRoomDoor" parent="." groups=["interactable"] instance=ExtResource("9_door")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0, -9.5)

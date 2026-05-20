@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3 uid="uid://cgr00mr00mr00"]
+[gd_scene load_steps=14 format=3 uid="uid://cgr00mr00mr00"]
 
 [ext_resource type="Environment" uid="uid://cgrenv00enva" path="res://scenes/gate-room-environment.tres" id="1_env"]
 [ext_resource type="Script" path="res://scripts/gate_room.gd" id="2_room"]
@@ -12,48 +12,44 @@
 [ext_resource type="PackedScene" uid="uid://b1hudsgu000" path="res://objects/hud.tscn" id="10_hud"]
 [ext_resource type="AudioStream" uid="uid://bxhb7ygtvbt1k" path="res://sounds/break.ogg" id="11_breaksfx"]
 [ext_resource type="Script" path="res://scripts/ambient_hum.gd" id="12_ambient"]
+[ext_resource type="PackedScene" uid="uid://b2stargateobj00" path="res://objects/stargate.tscn" id="13_stargate"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
-size = Vector3(28, 0.2, 28)
+size = Vector3(30, 0.2, 40)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_metallic"]
-albedo_color = Color(0.42, 0.40, 0.45, 1)
-metallic = 0.85
-metallic_specular = 0.7
-roughness = 0.4
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ceiling"]
-albedo_color = Color(0.09, 0.09, 0.11, 1)
-metallic = 0.7
+albedo_color = Color(0.46, 0.48, 0.54, 1)
+metallic = 0.3
+metallic_specular = 0.5
 roughness = 0.55
 
-[sub_resource type="TorusMesh" id="TorusMesh_gate"]
-inner_radius = 3.0
-outer_radius = 3.6
-ring_segments = 64
-rings = 32
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ceiling"]
+albedo_color = Color(0.22, 0.22, 0.27, 1)
+metallic = 0.3
+roughness = 0.65
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_gate"]
-albedo_color = Color(0.42, 0.31, 0.18, 1)
-metallic = 0.95
-roughness = 0.28
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_dais"]
+albedo_color = Color(0.30, 0.28, 0.30, 1)
+metallic = 0.55
+roughness = 0.40
 emission_enabled = true
 emission = Color(0.55, 0.32, 0.10, 1)
-emission_energy_multiplier = 0.45
+emission_energy_multiplier = 0.25
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_puddle"]
-albedo_color = Color(0.5, 0.78, 1.0, 1)
-emission_enabled = true
-emission = Color(0.45, 0.78, 1.0, 1)
-emission_energy_multiplier = 3.2
-metallic = 0.0
-roughness = 1.0
+[sub_resource type="BoxMesh" id="BoxMesh_dais"]
+size = Vector3(8.0, 0.6, 4.5)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_dais"]
+size = Vector3(8.0, 0.6, 4.5)
+
+[sub_resource type="BoxMesh" id="BoxMesh_step"]
+size = Vector3(6.0, 0.2, 0.8)
 
 [node name="GateRoom" type="Node3D"]
 script = ExtResource("2_room")
-floor_size = Vector2i(22, 22)
-wall_y_scale = 6.0
-ceiling_height = 6.0
+floor_size = Vector2i(30, 40)
+wall_y_scale = 14.0
+ceiling_height = 14.0
 floor_scene = ExtResource("5_floor")
 wall_scene = ExtResource("6_wall")
 wall_corner_scene = null
@@ -65,31 +61,54 @@ ceiling_material = SubResource("StandardMaterial3D_ceiling")
 environment = ExtResource("1_env")
 
 [node name="KeyLight" type="DirectionalLight3D" parent="."]
-transform = Transform3D(-0.422618, -0.694272, 0.582563, 0, 0.642788, 0.766044, -0.906308, 0.323744, -0.271654, 0, 8, 0)
-light_color = Color(0.95, 0.82, 0.62, 1)
-light_energy = 0.6
+transform = Transform3D(-0.422618, -0.694272, 0.582563, 0, 0.642788, 0.766044, -0.906308, 0.323744, -0.271654, 0, 12, 0)
+light_color = Color(0.78, 0.88, 1.0, 1)
+light_energy = 0.8
 shadow_enabled = true
-shadow_opacity = 0.4
+shadow_opacity = 0.5
 
 [node name="CeilingFill" type="OmniLight3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5.5, 0)
-light_color = Color(0.9, 0.78, 0.6, 1)
-light_energy = 2.0
-omni_range = 22.0
-omni_attenuation = 1.0
-
-[node name="GateGlow" type="OmniLight3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.0, 0)
-light_color = Color(1.0, 0.55, 0.18, 1)
-light_energy = 4.5
-omni_range = 14.0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 12.0, 0)
+light_color = Color(0.85, 0.92, 1.0, 1)
+light_energy = 3.0
+omni_range = 36.0
 omni_attenuation = 1.4
 
-[node name="ConsoleLight" type="OmniLight3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.5, -8.0)
-light_color = Color(0.7, 0.85, 1.0, 1)
-light_energy = 1.6
-omni_range = 8.0
+[node name="CeilingFillFront" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 11.0, -10.0)
+light_color = Color(0.85, 0.92, 1.0, 1)
+light_energy = 2.0
+omni_range = 24.0
+omni_attenuation = 1.4
+
+[node name="GateKeyLight" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 7.0, 5.0)
+light_color = Color(0.75, 0.88, 1.0, 1)
+light_energy = 1.2
+omni_range = 7.0
+omni_attenuation = 2.0
+shadow_enabled = true
+
+[node name="GateBackLight" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6.0, 15.5)
+light_color = Color(1.0, 0.55, 0.18, 1)
+light_energy = 2.2
+omni_range = 10.0
+omni_attenuation = 1.6
+
+[node name="ConsoleLightLeft" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10.5, 2.0, 0.0)
+light_color = Color(0.95, 0.62, 0.25, 1)
+light_energy = 2.4
+omni_range = 12.0
+omni_attenuation = 1.6
+
+[node name="ConsoleLightRight" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10.5, 2.0, 0.0)
+light_color = Color(0.95, 0.62, 0.25, 1)
+light_energy = 2.4
+omni_range = 12.0
+omni_attenuation = 1.6
 
 [node name="FloorCollider" type="StaticBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0)
@@ -99,36 +118,87 @@ shape = SubResource("BoxShape3D_floor")
 
 [node name="World" type="Node3D" parent="."]
 
-[node name="Gate" type="MeshInstance3D" parent="World"]
-transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 4.0, 0)
-mesh = SubResource("TorusMesh_gate")
-material_override = SubResource("StandardMaterial3D_gate")
+[node name="Dais" type="StaticBody3D" parent="World"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 14.5)
+collision_layer = 1
+collision_mask = 0
 
-[node name="GatePuddle" type="MeshInstance3D" parent="World"]
-transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 4.0, -0.05)
-mesh = SubResource("TorusMesh_gate")
+[node name="DaisMesh" type="MeshInstance3D" parent="World/Dais"]
+mesh = SubResource("BoxMesh_dais")
+material_override = SubResource("StandardMaterial3D_dais")
 
-[node name="ConsoleLeft" parent="World" instance=ExtResource("8_console")]
-transform = Transform3D(-1.4, 0, -1.2246469e-7, 0, 1.4, 0, 1.2246469e-7, 0, -1.4, -2.5, 0, -9.0)
+[node name="DaisCollider" type="CollisionShape3D" parent="World/Dais"]
+shape = SubResource("BoxShape3D_dais")
 
-[node name="ConsoleRight" parent="World" instance=ExtResource("8_console")]
-transform = Transform3D(-1.4, 0, -1.2246469e-7, 0, 1.4, 0, 1.2246469e-7, 0, -1.4, 2.5, 0, -9.0)
+[node name="DaisStepA" type="StaticBody3D" parent="World"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 12.0)
+collision_layer = 1
+collision_mask = 0
+
+[node name="StepMesh" type="MeshInstance3D" parent="World/DaisStepA"]
+mesh = SubResource("BoxMesh_step")
+material_override = SubResource("StandardMaterial3D_dais")
+
+[node name="DaisStepB" type="StaticBody3D" parent="World"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 11.2)
+collision_layer = 1
+collision_mask = 0
+
+[node name="StepMeshB" type="MeshInstance3D" parent="World/DaisStepB"]
+mesh = SubResource("BoxMesh_step")
+material_override = SubResource("StandardMaterial3D_dais")
+
+[node name="DaisStepC" type="StaticBody3D" parent="World"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, 10.4)
+collision_layer = 1
+collision_mask = 0
+
+[node name="StepMeshC" type="MeshInstance3D" parent="World/DaisStepC"]
+mesh = SubResource("BoxMesh_step")
+material_override = SubResource("StandardMaterial3D_dais")
+
+[node name="Stargate" parent="World" instance=ExtResource("13_stargate")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.6, 14.5)
+
+[node name="ConsoleL1" parent="World" instance=ExtResource("8_console")]
+transform = Transform3D(0, 0, 1.6, 0, 1.6, 0, -1.6, 0, 0, -11.8, 0, 6.0)
+
+[node name="ConsoleL2" parent="World" instance=ExtResource("8_console")]
+transform = Transform3D(0, 0, 1.6, 0, 1.6, 0, -1.6, 0, 0, -11.8, 0, 2.0)
+
+[node name="ConsoleL3" parent="World" instance=ExtResource("8_console")]
+transform = Transform3D(0, 0, 1.6, 0, 1.6, 0, -1.6, 0, 0, -11.8, 0, -2.0)
+
+[node name="ConsoleL4" parent="World" instance=ExtResource("8_console")]
+transform = Transform3D(0, 0, 1.6, 0, 1.6, 0, -1.6, 0, 0, -11.8, 0, -6.0)
+
+[node name="ConsoleR1" parent="World" instance=ExtResource("8_console")]
+transform = Transform3D(0, 0, -1.6, 0, 1.6, 0, 1.6, 0, 0, 11.8, 0, 6.0)
+
+[node name="ConsoleR2" parent="World" instance=ExtResource("8_console")]
+transform = Transform3D(0, 0, -1.6, 0, 1.6, 0, 1.6, 0, 0, 11.8, 0, 2.0)
+
+[node name="ConsoleR3" parent="World" instance=ExtResource("8_console")]
+transform = Transform3D(0, 0, -1.6, 0, 1.6, 0, 1.6, 0, 0, 11.8, 0, -2.0)
+
+[node name="ConsoleR4" parent="World" instance=ExtResource("8_console")]
+transform = Transform3D(0, 0, -1.6, 0, 1.6, 0, 1.6, 0, 0, 11.8, 0, -6.0)
 
 [node name="ExitDoor" parent="." groups=["interactable"] instance=ExtResource("9_door")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0, -10.4)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.5, 0, -19.4)
 target_scene = "res://scenes/destiny_corridor.tscn"
 target_spawn = "FromGateRoom"
 open_prompt = "Step into the corridor"
 transition_prompt = "Step into the corridor"
 
 [node name="FromGate" type="Marker3D" parent="."]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0.5, -8.0)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0.7, 8.0)
 
 [node name="FromCorridor" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0.5, -9.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -17.5)
 
 [node name="Player" parent="." node_paths=PackedStringArray("view") groups=["player"] instance=ExtResource("3_player")]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0.5, -8.0)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0.7, 8.0)
 view = NodePath("../View")
 
 [node name="View" type="Node3D" parent="." node_paths=PackedStringArray("target")]
@@ -138,12 +208,12 @@ target = NodePath("../Player")
 
 [node name="SpringArm" type="SpringArm3D" parent="View"]
 collision_mask = 2
-spring_length = 6.0
+spring_length = 7.0
 margin = 0.2
 
 [node name="Camera" type="Camera3D" parent="View/SpringArm"]
 current = true
-fov = 60.0
+fov = 62.0
 
 [node name="GateSFX" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("11_breaksfx")

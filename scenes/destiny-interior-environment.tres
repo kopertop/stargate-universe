@@ -1,10 +1,10 @@
-[gd_resource type="Environment" load_steps=2 format=3 uid="uid://cgrenv00enva"]
+[gd_resource type="Environment" load_steps=2 format=3 uid="uid://cgrenvinterior00"]
 
 [resource]
 background_mode = 1
 background_color = Color(0.05, 0.06, 0.08, 1)
 ambient_light_source = 2
-ambient_light_color = Color(0.50, 0.52, 0.56, 1)
+ambient_light_color = Color(0.52, 0.52, 0.54, 1)
 ambient_light_energy = 1.2
 ambient_light_sky_contribution = 0.0
 tonemap_mode = 2

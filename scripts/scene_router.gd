@@ -8,6 +8,12 @@ signal scene_changed(scene_path: String)
 
 const FADE_DURATION: float = 0.45
 
+# When true, skip the fade animation and switch scenes synchronously. Used by
+# headless tests (Tween.finished is unreliable across multiple back-to-back
+# scene changes in headless mode) and available for any future fast-travel /
+# instant-reload feature.
+var instant_mode: bool = false
+
 var _fade_layer: CanvasLayer
 var _fade_rect: ColorRect
 var _is_transitioning: bool = false
@@ -73,6 +79,9 @@ func _find_marker(node: Node, target_name: String) -> Node:
 	return null
 
 func _fade_to(target_alpha: float) -> void:
+	if instant_mode:
+		_fade_rect.color.a = target_alpha
+		return
 	var tween: Tween = create_tween()
 	tween.tween_property(_fade_rect, "color:a", target_alpha, FADE_DURATION)
 	await tween.finished

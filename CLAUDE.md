@@ -69,7 +69,24 @@ character pipelines in Godot are battle-tested and the Kenney kit ships a workin
 The `/add-scene`, `/add-npc`, `/add-dialogue` etc. slash commands in `.claude/skills/` were written
 for the browser stack and **need to be rewritten for Godot**. Treat them as stale until ported.
 
+CCGS testing skills (`/smoke-check`, `/playtest-report`, `/qa-plan`, `/test-setup`, `/test-helpers`,
+`/soak-test`, `/dev-story`, `/regression-suite`, `/skill-test`) are imported and Godot-aware.
+
 Use the **godot-specialist** and **godot-gdscript-specialist** subagents for engine-specific work.
+
+## Testing
+
+Headless smoke + flow tests live in `tests/smoke/` (Godot `SceneTree`-extending scripts, no
+GDUnit4 needed). Run:
+
+```bash
+tests/run.sh         # all
+tests/run.sh scene   # scene-boot only
+tests/run.sh flow    # e1-flow only
+```
+
+See `tests/README.md` for details. Both tests must pass before any branch can claim the E1
+vertical slice ships.
 
 ## Collaboration Protocol
 

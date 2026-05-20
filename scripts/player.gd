@@ -29,10 +29,11 @@ var _input_locked: bool = false   # locked during cutscene / scene transitions
 @onready var _particles_trail: GPUParticles3D = $ParticlesTrail
 @onready var _sound_footsteps: AudioStreamPlayer = $SoundFootsteps
 @onready var _model: Node3D = $Character
-# Static meshes (Kenney Mini Characters) ship without an AnimationPlayer — keep
-# the reference optional so we can swap in skeletal characters later without
-# scene surgery.
-@onready var _animation: AnimationPlayer = $Character.get_node_or_null("AnimationPlayer")
+# AnimationPlayer lives inside the glTF root (e.g. Character/Model/AnimationPlayer
+# for Kenney Mini Characters). Recursive find keeps player.gd resilient if the
+# asset wrapper ever moves it around. Kept optional so static-mesh characters
+# still boot without animation.
+@onready var _animation: AnimationPlayer = _find_animation_player($Character)
 
 # Kenney Mini Characters share a palette texture; the glTF import loses the
 # embedded baseColorTexture binding so meshes render pure white. Re-apply the
@@ -50,6 +51,15 @@ func _apply_colormap(root: Node) -> void:
 				mi.set_surface_override_material(i, _COLORMAP_MAT)
 	for c in root.get_children():
 		_apply_colormap(c)
+
+func _find_animation_player(root: Node) -> AnimationPlayer:
+	if root is AnimationPlayer:
+		return root
+	for c in root.get_children():
+		var found: AnimationPlayer = _find_animation_player(c)
+		if found != null:
+			return found
+	return null
 
 func _physics_process(delta: float) -> void:
 	if _input_locked:
@@ -112,12 +122,14 @@ func _drive_locomotion_anim() -> void:
 	var horiz_speed: float = Vector2(velocity.x, velocity.z).length()
 	if is_on_floor():
 		if horiz_speed > 0.25:
-			_play_anim("walk", 0.1)
+			var is_sprinting: bool = horiz_speed > walk_speed * 1.15
+			_play_anim("sprint" if is_sprinting else "walk", 0.1)
+			# Sprint clip is already fast; only scale walk by speed ratio.
 			var pitch_ratio: float = clampf(horiz_speed / walk_speed, 0.4, sprint_multiplier)
 			_sound_footsteps.stream_paused = false
 			_sound_footsteps.pitch_scale = 1.0 + (pitch_ratio - 1.0) * 0.6
 			if _animation != null:
-				_animation.speed_scale = pitch_ratio
+				_animation.speed_scale = 1.0 if is_sprinting else pitch_ratio
 			if pitch_ratio > 1.2:
 				_particles_trail.emitting = true
 		else:
@@ -125,7 +137,10 @@ func _drive_locomotion_anim() -> void:
 			if _animation != null:
 				_animation.speed_scale = 1.0
 	else:
-		_play_anim("jump", 0.1)
+		# Rising → jump clip; descending → fall clip (graceful fallback to jump
+		# if the model only has one airborne anim).
+		var airborne_anim: String = "jump" if _gravity_velocity < 0.0 else "fall"
+		_play_anim(airborne_anim, 0.1)
 		if _animation != null:
 			_animation.speed_scale = 1.0
 

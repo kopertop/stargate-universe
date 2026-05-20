@@ -61,10 +61,10 @@ const JUMP_FADE_IN = 0.15;
 const JUMP_FADE_OUT = 0.25;
 
 /** Locomotion blend while jump clip plays (lower = clearer jump pose). */
-const JUMP_LOCOMOTION_BLEND = 0.12;
+const JUMP_LOCOMOTION_BLEND = 0.05;
 
-/** Skip ACCAD transition wind-up (walk→leap→walk) when starting the jump clip. */
-const JUMP_CLIP_WINDUP_FRACTION = 0.42;
+/** Playback rate for in-place jump clip (~1s source). */
+const JUMP_TIME_SCALE = 1.35;
 
 /** Crossfade duration into repair (seconds). */
 const REPAIR_FADE_IN = 0.4;
@@ -139,8 +139,6 @@ export class VrmPlayerAnimationController {
 	private strafeRightWeight = 0;
 	/** True when at least one lateral strafe clip loaded (optional assets). */
 	private hasStrafeClips = false;
-	/** Start time for ACCAD transition clips (run→jump→walk) after load. */
-	private jumpClipStartTime = 0;
 
 	constructor(vrm: VRM) {
 		this.vrm = vrm;
@@ -181,13 +179,7 @@ export class VrmPlayerAnimationController {
 			},
 			{
 				name: "jump",
-				aliases: [
-					"eli-jump",
-					"accad_female1_run_to_jump",
-					"jump",
-					"jumping",
-					"standing-jump",
-				],
+				aliases: ["eli-jump", "Jump", "jump", "jumping", "standing-jump"],
 			},
 			{
 				name: "strafe-left",
@@ -257,7 +249,7 @@ export class VrmPlayerAnimationController {
 					this.jumpAction = action;
 					action.setLoop(LoopOnce, 1);
 					action.clampWhenFinished = true;
-					this.jumpClipStartTime = clip.duration * JUMP_CLIP_WINDUP_FRACTION;
+					action.timeScale = JUMP_TIME_SCALE;
 					// Don't play until triggered
 					break;
 
@@ -270,6 +262,7 @@ export class VrmPlayerAnimationController {
 				case "strafe-left":
 					this.strafeLeftAction = action;
 					action.setLoop(LoopRepeat, Infinity);
+					action.timeScale = 1.4;
 					action.play();
 					action.setEffectiveWeight(0);
 					break;
@@ -277,6 +270,7 @@ export class VrmPlayerAnimationController {
 				case "strafe-right":
 					this.strafeRightAction = action;
 					action.setLoop(LoopRepeat, Infinity);
+					action.timeScale = 1.4;
 					action.play();
 					action.setEffectiveWeight(0);
 					break;
@@ -473,10 +467,8 @@ export class VrmPlayerAnimationController {
 		let targetStrafeLeft = 0;
 		let targetStrafeRight = 0;
 
-		if (speed < IDLE_THRESHOLD) {
-			targetIdle = 1;
-		} else if (isStrafing && this.hasStrafeClips) {
-			// Pure strafe — dedicated lateral clips when present on disk
+		if (isStrafing && this.hasStrafeClips) {
+			// Dedicated lateral clips (works even when speed is near-zero from input alone)
 			if (strafeInput < 0) {
 				targetStrafeLeft = strafeAmount;
 				targetIdle = 1 - strafeAmount;
@@ -484,6 +476,8 @@ export class VrmPlayerAnimationController {
 				targetStrafeRight = strafeAmount;
 				targetIdle = 1 - strafeAmount;
 			}
+		} else if (speed < IDLE_THRESHOLD) {
+			targetIdle = 1;
 		} else if (isStrafing) {
 			// No lateral clips: walk/run by speed while mesh faces velocity (see player controller).
 			if (speed <= walkSpeed) {
@@ -544,7 +538,6 @@ export class VrmPlayerAnimationController {
 		// down via JUMP_LOCOMOTION_BLEND, keeping directional movement visible.
 
 		this.jumpAction.reset();
-		this.jumpAction.time = this.jumpClipStartTime;
 		this.jumpAction.setEffectiveWeight(1);
 		this.jumpAction.fadeIn(JUMP_FADE_IN);
 		this.jumpAction.play();

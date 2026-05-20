@@ -127,6 +127,8 @@ export class VrmPlayerController implements PlayerController {
 	private jumpQueued = false;
 	private spaceWasDown = false;
 	private jumpGroundLockRemaining = 0;
+	/** Facing locked at takeoff so jump matches movement direction, not camera. */
+	private jumpFacingYaw: number | null = null;
 
 	// Ground tracking
 	private grounded = false;
@@ -313,6 +315,12 @@ export class VrmPlayerController implements PlayerController {
 					),
 				);
 				const currentVel = this.body.motionProperties.linearVelocity;
+				const horizontalAtJump = Math.hypot(currentVel[0], currentVel[2]);
+				this.jumpFacingYaw = this.resolveMovementFacingYaw(
+					horizontalAtJump,
+					currentVel[0],
+					currentVel[2],
+				);
 				rigidBody.setLinearVelocity(this.world, this.body, [
 					currentVel[0],
 					this.supportVelocity.y +
@@ -334,11 +342,19 @@ export class VrmPlayerController implements PlayerController {
     const velocity = this.body.motionProperties.linearVelocity;
     const horizontalSpeed = Math.hypot(velocity[0], velocity[2]);
 
-    // Grounded movement: face velocity. Idle / airborne: face camera (jump clips are forward-facing).
-    const airborne = !this.grounded || velocity[1] > 0.35;
-    let facingYaw = this.yaw + Math.PI;
-    if (horizontalSpeed > FACING_SPEED_THRESHOLD && !airborne) {
-      facingYaw = Math.atan2(velocity[0], velocity[2]);
+    // Face velocity / move input on ground; lock takeoff facing for the whole jump.
+    let facingYaw: number;
+    if (!this.grounded && this.jumpFacingYaw !== null) {
+      facingYaw = this.jumpFacingYaw;
+    } else {
+      facingYaw = this.resolveMovementFacingYaw(
+        horizontalSpeed,
+        velocity[0],
+        velocity[2],
+      );
+      if (this.grounded) {
+        this.jumpFacingYaw = null;
+      }
     }
     this.characterInstance.root.rotation.set(0, facingYaw, 0);
 
@@ -533,6 +549,37 @@ export class VrmPlayerController implements PlayerController {
 		}
 
 		return undefined;
+	}
+
+	/** World-space yaw from current velocity, move input, or camera-forward fallback. */
+	private resolveMovementFacingYaw(
+		horizontalSpeed: number,
+		velocityX: number,
+		velocityZ: number,
+	): number {
+		if (horizontalSpeed > FACING_SPEED_THRESHOLD) {
+			return Math.atan2(velocityX, velocityZ);
+		}
+
+		const moveX = this.lastStrafeInput;
+		const moveZ = this.lastForwardInput;
+		if (Math.abs(moveX) > 0.1 || Math.abs(moveZ) > 0.1) {
+			resolveViewDirection(this.yaw, this.pitch, this._viewDirection);
+			const vx = this._viewDirection.x;
+			const vz = this._viewDirection.z;
+			const fLen = Math.hypot(vx, vz) || 1;
+			const fx = vx / fLen;
+			const fz = vz / fLen;
+			const rx = -fz;
+			const rz = fx;
+			const wishX = rx * moveX + fx * moveZ;
+			const wishZ = rz * moveX + fz * moveZ;
+			if (Math.hypot(wishX, wishZ) > 0.05) {
+				return Math.atan2(wishX, wishZ);
+			}
+		}
+
+		return this.yaw + Math.PI;
 	}
 }
 

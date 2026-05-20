@@ -1,0 +1,167 @@
+[gd_scene load_steps=8 format=3 uid="uid://b1hudsgu000"]
+
+[ext_resource type="Script" uid="uid://bap462su1xjtx" path="res://scripts/hud.gd" id="1_hud"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_objective"]
+font_size = 22
+font_color = Color(0.95, 0.98, 1, 1)
+outline_size = 6
+outline_color = Color(0, 0, 0, 0.65)
+shadow_color = Color(0, 0, 0, 0.45)
+shadow_offset = Vector2(1, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_smalltitle"]
+font_size = 12
+font_color = Color(0.7, 0.85, 1, 0.9)
+outline_size = 4
+outline_color = Color(0, 0, 0, 0.6)
+
+[sub_resource type="LabelSettings" id="LabelSettings_interact"]
+font_size = 20
+font_color = Color(1, 1, 1, 1)
+outline_size = 8
+outline_color = Color(0, 0, 0, 0.85)
+shadow_color = Color(0, 0, 0, 0.5)
+shadow_offset = Vector2(1, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_kinohint"]
+font_size = 16
+font_color = Color(0.95, 0.8, 0.45, 1)
+outline_size = 6
+outline_color = Color(0, 0, 0, 0.85)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_barbg"]
+bg_color = Color(0.05, 0.07, 0.1, 0.55)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.6, 0.75, 0.95, 0.65)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_barfill"]
+bg_color = Color(0.4, 0.85, 0.95, 0.95)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[node name="HUD" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_hud")
+
+[node name="Objective" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.0
+anchor_top = 0.0
+offset_left = 24.0
+offset_top = 18.0
+offset_right = 700.0
+offset_bottom = 60.0
+text = "Objective: —"
+label_settings = SubResource("LabelSettings_objective")
+
+[node name="Status" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.0
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -118.0
+offset_right = 244.0
+offset_bottom = -24.0
+grow_vertical = 0
+theme_override_constants/separation = 6
+
+[node name="Health" type="VBoxContainer" parent="Status"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="Status/Health"]
+layout_mode = 2
+text = "HEALTH"
+label_settings = SubResource("LabelSettings_smalltitle")
+
+[node name="Bar" type="ProgressBar" parent="Status/Health"]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
+theme_override_styles/background = SubResource("StyleBoxFlat_barbg")
+theme_override_styles/fill = SubResource("StyleBoxFlat_barfill")
+max_value = 100.0
+value = 100.0
+show_percentage = false
+
+[node name="Oxygen" type="VBoxContainer" parent="Status"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="Status/Oxygen"]
+layout_mode = 2
+text = "OXYGEN"
+label_settings = SubResource("LabelSettings_smalltitle")
+
+[node name="Bar" type="ProgressBar" parent="Status/Oxygen"]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
+theme_override_styles/background = SubResource("StyleBoxFlat_barbg")
+theme_override_styles/fill = SubResource("StyleBoxFlat_barfill")
+max_value = 100.0
+value = 100.0
+show_percentage = false
+
+[node name="InteractPrompt" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -260.0
+offset_top = -120.0
+offset_right = 260.0
+offset_bottom = -90.0
+grow_horizontal = 2
+grow_vertical = 0
+horizontal_alignment = 1
+text = ""
+label_settings = SubResource("LabelSettings_interact")
+
+[node name="KinoHint" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -260.0
+offset_top = -52.0
+offset_right = -24.0
+offset_bottom = -24.0
+grow_horizontal = 0
+grow_vertical = 0
+horizontal_alignment = 2
+text = "[Tab]  Kino Remote"
+label_settings = SubResource("LabelSettings_kinohint")
+visible = false
+
+[node name="Log" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 1.0
+anchor_top = 0.0
+anchor_right = 1.0
+offset_left = -340.0
+offset_top = 18.0
+offset_right = -24.0
+offset_bottom = 130.0
+grow_horizontal = 0
+alignment = 0

@@ -1,163 +1,160 @@
 extends CharacterBody3D
 
-signal coin_collected
+# SGU third-person player controller (Eli Wallace).
+# Camera-relative WASD movement. Sprint toggle. Interact ray points where the
+# camera looks. No double-jump or fall-respawn (kit platformer bits removed).
+
+signal interact_target_changed(target: Node)
 
 @export_subgroup("Components")
 @export var view: Node3D
 
-@export_subgroup("Properties")
-@export var movement_speed = 250
-@export var jump_strength = 7
+@export_subgroup("Movement")
+@export var walk_speed: float = 4.0          # m/s
+@export var sprint_multiplier: float = 1.7
+@export var accel_smoothing: float = 12.0
+@export var gravity_strength: float = 25.0
+@export var jump_strength: float = 5.5
 
-var movement_velocity: Vector3
-var rotation_direction: float
-var gravity = 0
+@export_subgroup("Interact")
+@export var interact_reach: float = 2.4      # metres
+@export var interact_origin_height: float = 1.1  # chest height
 
-var previously_floored = false
+var _gravity_velocity: float = 0.0
+var _move_velocity: Vector3 = Vector3.ZERO
+var _facing_yaw: float = 0.0
+var _current_interactable: Node = null
+var _input_locked: bool = false   # locked during cutscene / scene transitions
 
-var jump_single = true
-var jump_double = true
+@onready var _particles_trail: GPUParticles3D = $ParticlesTrail
+@onready var _sound_footsteps: AudioStreamPlayer = $SoundFootsteps
+@onready var _model: Node3D = $Character
+@onready var _animation: AnimationPlayer = $Character/AnimationPlayer
 
-var coins = 0
+func _physics_process(delta: float) -> void:
+	if _input_locked:
+		_apply_idle(delta)
+		return
+	_handle_movement(delta)
+	_handle_interact()
 
-@onready var particles_trail = $ParticlesTrail
-@onready var sound_footsteps = $SoundFootsteps
-@onready var model = $Character
-@onready var animation = $Character/AnimationPlayer
+func _apply_idle(delta: float) -> void:
+	_move_velocity = Vector3.ZERO
+	_apply_gravity(delta)
+	velocity = Vector3(0.0, -_gravity_velocity, 0.0)
+	move_and_slide()
+	if _animation.current_animation != "idle":
+		_animation.play("idle", 0.15)
 
-# Functions
+func _handle_movement(delta: float) -> void:
+	# Camera-relative input.
+	var input_vec: Vector3 = Vector3.ZERO
+	input_vec.x = Input.get_axis("move_left", "move_right")
+	input_vec.z = Input.get_axis("move_forward", "move_back")
+	if input_vec.length() > 1.0:
+		input_vec = input_vec.normalized()
+	if view != null:
+		input_vec = input_vec.rotated(Vector3.UP, view.rotation.y)
 
-func _physics_process(delta):
+	var target_speed: float = walk_speed
+	if Input.is_action_pressed("sprint"):
+		target_speed *= sprint_multiplier
 
-	# Handle functions
+	var target_velocity: Vector3 = input_vec * target_speed
+	_move_velocity = _move_velocity.lerp(target_velocity, accel_smoothing * delta)
 
-	handle_controls(delta)
-	handle_gravity(delta)
+	_apply_gravity(delta)
+	if Input.is_action_just_pressed("jump") and is_on_floor():
+		_gravity_velocity = -jump_strength
+		Audio.play("res://sounds/jump.ogg")
 
-	handle_effects(delta)
-
-	# Movement
-
-	var applied_velocity: Vector3
-
-	applied_velocity = velocity.lerp(movement_velocity, delta * 10)
-	applied_velocity.y = -gravity
-
-	velocity = applied_velocity
+	velocity = Vector3(_move_velocity.x, -_gravity_velocity, _move_velocity.z)
 	move_and_slide()
 
-	# Rotation
+	# Face direction of motion (or camera yaw when standing still).
+	var horiz: Vector2 = Vector2(velocity.z, velocity.x)
+	if horiz.length() > 0.2:
+		_facing_yaw = horiz.angle()
+	elif view != null:
+		_facing_yaw = view.rotation.y
+	rotation.y = lerp_angle(rotation.y, _facing_yaw, delta * 12.0)
 
-	if Vector2(velocity.z, velocity.x).length() > 0:
-		rotation_direction = Vector2(velocity.z, velocity.x).angle()
+	_drive_locomotion_anim()
 
-	rotation.y = lerp_angle(rotation.y, rotation_direction, delta * 10)
-
-	# Falling/respawning
-
-	if position.y < -10:
-		get_tree().reload_current_scene()
-
-	# Animation for scale (jumping and landing)
-
-	model.scale = model.scale.lerp(Vector3(1, 1, 1), delta * 10)
-
-	# Animation when landing
-
-	if is_on_floor() and gravity > 2 and !previously_floored:
-		model.scale = Vector3(1.25, 0.75, 1.25)
-		Audio.play("res://sounds/land.ogg")
-
-	previously_floored = is_on_floor()
-
-# Handle animation(s)
-
-func handle_effects(delta):
-
-	particles_trail.emitting = false
-	sound_footsteps.stream_paused = true
-
+func _apply_gravity(delta: float) -> void:
 	if is_on_floor():
-		var horizontal_velocity = Vector2(velocity.x, velocity.z)
-		var speed_factor = horizontal_velocity.length() / movement_speed / delta
-		if speed_factor > 0.05:
-			if animation.current_animation != "walk":
-				animation.play("walk", 0.1)
-
-			if speed_factor > 0.3:
-				sound_footsteps.stream_paused = false
-				sound_footsteps.pitch_scale = speed_factor
-
-			if speed_factor > 0.75:
-				particles_trail.emitting = true
-
-		elif animation.current_animation != "idle":
-			animation.play("idle", 0.1)
-			
-		if animation.current_animation == "walk":
-			animation.speed_scale = speed_factor
-		else:
-			animation.speed_scale = 1.0
-			
-	elif animation.current_animation != "jump":
-		animation.play("jump", 0.1)
-
-# Handle movement input
-
-func handle_controls(delta):
-
-	# Movement
-
-	var input := Vector3.ZERO
-
-	input.x = Input.get_axis("move_left", "move_right")
-	input.z = Input.get_axis("move_forward", "move_back")
-
-	input = input.rotated(Vector3.UP, view.rotation.y)
-
-	if input.length() > 1:
-		input = input.normalized()
-
-	movement_velocity = input * movement_speed * delta
-
-	# Jumping
-
-	if Input.is_action_just_pressed("jump"):
-
-		if jump_single or jump_double:
-			jump()
-
-# Handle gravity
-
-func handle_gravity(delta):
-
-	gravity += 25 * delta
-
-	if gravity > 0 and is_on_floor():
-
-		jump_single = true
-		gravity = 0
-
-# Jumping
-
-func jump():
-
-	Audio.play("res://sounds/jump.ogg")
-
-	gravity = -jump_strength
-
-	model.scale = Vector3(0.5, 1.5, 0.5)
-
-	if jump_single:
-		jump_single = false;
-		jump_double = true;
+		_gravity_velocity = max(_gravity_velocity, 0.0)
 	else:
-		jump_double = false;
+		_gravity_velocity += gravity_strength * delta
 
-# Collecting coins
+func _drive_locomotion_anim() -> void:
+	_particles_trail.emitting = false
+	_sound_footsteps.stream_paused = true
+	var horiz_speed: float = Vector2(velocity.x, velocity.z).length()
+	if is_on_floor():
+		if horiz_speed > 0.25:
+			if _animation.current_animation != "walk":
+				_animation.play("walk", 0.1)
+			var pitch_ratio: float = clampf(horiz_speed / walk_speed, 0.4, sprint_multiplier)
+			_sound_footsteps.stream_paused = false
+			_sound_footsteps.pitch_scale = 1.0 + (pitch_ratio - 1.0) * 0.6
+			_animation.speed_scale = pitch_ratio
+			if pitch_ratio > 1.2:
+				_particles_trail.emitting = true
+		elif _animation.current_animation != "idle":
+			_animation.play("idle", 0.1)
+			_animation.speed_scale = 1.0
+	elif _animation.current_animation != "jump":
+		_animation.play("jump", 0.1)
+		_animation.speed_scale = 1.0
 
-func collect_coin():
+func _handle_interact() -> void:
+	var target: Node = _find_interact_target()
+	if target != _current_interactable:
+		_current_interactable = target
+		interact_target_changed.emit(target)
+	if target != null and Input.is_action_just_pressed("interact"):
+		if target.has_method("interact"):
+			target.interact(self)
 
-	coins += 1
+func _find_interact_target() -> Node:
+	if view == null:
+		return null
+	var camera: Camera3D = view.get_node_or_null("SpringArm/Camera")
+	if camera == null:
+		camera = view.get_node_or_null("Camera")
+	if camera == null:
+		return null
+	# Cast from the player's chest forward along the camera's yaw.
+	var origin: Vector3 = global_position + Vector3.UP * interact_origin_height
+	var forward: Vector3 = -camera.global_transform.basis.z
+	forward.y = 0.0
+	if forward.length() < 0.001:
+		return null
+	forward = forward.normalized()
+	var to: Vector3 = origin + forward * interact_reach
+	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+	var params: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(origin, to)
+	params.exclude = [self.get_rid()]
+	params.collide_with_areas = true
+	params.collide_with_bodies = true
+	# Layer 4 reserved for interactable areas/bodies.
+	params.collision_mask = 4
+	var hit: Dictionary = space.intersect_ray(params)
+	if hit.is_empty():
+		return null
+	var collider: Object = hit.get("collider")
+	if collider == null:
+		return null
+	# Walk up the tree looking for the first node in group "interactable".
+	var n: Node = collider as Node
+	while n != null:
+		if n.is_in_group("interactable"):
+			return n
+		n = n.get_parent()
+	return null
 
-	coin_collected.emit(coins)
+func set_input_locked(locked: bool) -> void:
+	_input_locked = locked
+	if locked:
+		_move_velocity = Vector3.ZERO

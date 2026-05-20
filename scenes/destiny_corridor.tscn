@@ -1,0 +1,136 @@
+[gd_scene load_steps=13 format=3 uid="uid://cgr0corridor00"]
+
+[ext_resource type="Environment" uid="uid://cgrenv00enva" path="res://scenes/gate-room-environment.tres" id="1_env"]
+[ext_resource type="Script" path="res://scripts/kenney_room.gd" id="2_room"]
+[ext_resource type="Script" path="res://scripts/destiny_corridor.gd" id="3_corridor"]
+[ext_resource type="PackedScene" uid="uid://dl2ed4gkybggf" path="res://objects/player.tscn" id="4_player"]
+[ext_resource type="Script" uid="uid://bcg2kkbsnttec" path="res://scripts/view.gd" id="5_view"]
+[ext_resource type="PackedScene" uid="uid://dynqkgbn3lu4u" path="res://models/sci-fi/space-station/floor.glb" id="6_floor"]
+[ext_resource type="PackedScene" uid="uid://bf2a38eob8tr5" path="res://models/sci-fi/space-station/wall.glb" id="7_wall"]
+[ext_resource type="PackedScene" uid="uid://ycqgyfiu8ry6" path="res://models/sci-fi/space-station/wall-door.glb" id="8_walldoor"]
+[ext_resource type="PackedScene" uid="uid://b0doorinteractable" path="res://objects/door.tscn" id="9_door"]
+[ext_resource type="PackedScene" uid="uid://b1hudsgu000" path="res://objects/hud.tscn" id="10_hud"]
+[ext_resource type="Script" path="res://scripts/ambient_hum.gd" id="11_ambient"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_metallic"]
+albedo_color = Color(0.38, 0.36, 0.40, 1)
+metallic = 0.85
+metallic_specular = 0.7
+roughness = 0.42
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ceiling"]
+albedo_color = Color(0.07, 0.07, 0.09, 1)
+metallic = 0.7
+roughness = 0.55
+
+[node name="DestinyCorridor" type="Node3D"]
+script = ExtResource("3_corridor")
+
+[node name="Room" type="Node3D" parent="."]
+script = ExtResource("2_room")
+floor_size = Vector2i(8, 20)
+wall_y_scale = 6.0
+ceiling_height = 6.0
+floor_scene = ExtResource("6_floor")
+wall_scene = ExtResource("7_wall")
+wall_door_scene = ExtResource("8_walldoor")
+south_door_index = 4
+north_door_index = 4
+east_door_index = 10
+west_door_index = 10
+metallic_material = SubResource("StandardMaterial3D_metallic")
+ceiling_material = SubResource("StandardMaterial3D_ceiling")
+
+[node name="World" type="Node3D" parent="Room"]
+
+[node name="Environment" type="WorldEnvironment" parent="."]
+environment = ExtResource("1_env")
+
+[node name="KeyLight" type="DirectionalLight3D" parent="."]
+transform = Transform3D(-0.422618, -0.694272, 0.582563, 0, 0.642788, 0.766044, -0.906308, 0.323744, -0.271654, 0, 8, 0)
+light_color = Color(0.7, 0.78, 0.9, 1)
+light_energy = 0.35
+shadow_enabled = true
+shadow_opacity = 0.4
+
+[node name="CorridorLightN" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5.4, -6)
+light_color = Color(0.85, 0.78, 0.55, 1)
+light_energy = 2.4
+omni_range = 9.0
+
+[node name="CorridorLightC" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5.4, 0.5)
+light_color = Color(0.55, 0.7, 0.95, 1)
+light_energy = 2.0
+omni_range = 8.0
+
+[node name="CorridorLightS" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5.4, 7)
+light_color = Color(0.85, 0.78, 0.55, 1)
+light_energy = 2.4
+omni_range = 9.0
+
+[node name="GateRoomDoor" parent="." groups=["interactable"] instance=ExtResource("9_door")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0, -9.5)
+target_scene = "res://scenes/gate_room.tscn"
+target_spawn = "FromCorridor"
+transition_prompt = "Return to the gate room"
+open_prompt = "Return to the gate room"
+
+[node name="QuartersDoor" parent="." groups=["interactable"] instance=ExtResource("9_door")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -3.5, 0, 0.5)
+target_scene = "res://scenes/eli_quarters.tscn"
+target_spawn = "FromCorridor"
+transition_prompt = "Enter the crew quarters"
+open_prompt = "Enter the crew quarters"
+
+[node name="BreachDoor" parent="." groups=["interactable"] instance=ExtResource("9_door")]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 3.5, 0, 0.5)
+target_scene = "res://scenes/hull_breach.tscn"
+target_spawn = "FromCorridor"
+transition_prompt = "Enter the damaged compartment"
+open_prompt = "Enter the damaged compartment"
+
+[node name="ObservationDoor" parent="." groups=["interactable"] instance=ExtResource("9_door")]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.5, 0, 9.5)
+locked = true
+lock_message = "Observation Deck — sealed. Power offline."
+target_scene = ""
+
+[node name="FromGateRoom" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0.5, -8.0)
+
+[node name="FromQuarters" type="Marker3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -2.5, 0.5, 0.5)
+
+[node name="FromBreach" type="Marker3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 2.5, 0.5, 0.5)
+
+[node name="Player" parent="." node_paths=PackedStringArray("view") groups=["player"] instance=ExtResource("4_player")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0.5, -8.0)
+view = NodePath("../View")
+
+[node name="View" type="Node3D" parent="." node_paths=PackedStringArray("target")]
+transform = Transform3D(0.866025, -0.25, 0.433013, 0, 0.866025, 0.5, -0.5, -0.433013, 0.75, 0, 0, 0)
+script = ExtResource("5_view")
+target = NodePath("../Player")
+
+[node name="SpringArm" type="SpringArm3D" parent="View"]
+collision_mask = 2
+spring_length = 6.0
+margin = 0.2
+
+[node name="Camera" type="Camera3D" parent="View/SpringArm"]
+current = true
+fov = 60.0
+
+[node name="HUDLayer" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="HUD" parent="HUDLayer" instance=ExtResource("10_hud")]
+
+[node name="AmbientHum" type="AudioStreamPlayer" parent="."]
+volume_db = -18.0
+script = ExtResource("11_ambient")
+base_freq = 48.0

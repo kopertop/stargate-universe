@@ -1,0 +1,147 @@
+[gd_scene load_steps=18 format=3 uid="uid://cgr0quarters00"]
+
+[ext_resource type="Environment" uid="uid://cgrenv00enva" path="res://scenes/gate-room-environment.tres" id="1_env"]
+[ext_resource type="Script" path="res://scripts/kenney_room.gd" id="2_room"]
+[ext_resource type="Script" path="res://scripts/eli_quarters.gd" id="3_quarters"]
+[ext_resource type="PackedScene" uid="uid://dl2ed4gkybggf" path="res://objects/player.tscn" id="4_player"]
+[ext_resource type="Script" uid="uid://bcg2kkbsnttec" path="res://scripts/view.gd" id="5_view"]
+[ext_resource type="PackedScene" uid="uid://dynqkgbn3lu4u" path="res://models/sci-fi/space-station/floor.glb" id="6_floor"]
+[ext_resource type="PackedScene" uid="uid://bf2a38eob8tr5" path="res://models/sci-fi/space-station/wall.glb" id="7_wall"]
+[ext_resource type="PackedScene" uid="uid://ycqgyfiu8ry6" path="res://models/sci-fi/space-station/wall-door.glb" id="8_walldoor"]
+[ext_resource type="PackedScene" uid="uid://b0doorinteractable" path="res://objects/door.tscn" id="9_door"]
+[ext_resource type="PackedScene" uid="uid://b1hudsgu000" path="res://objects/hud.tscn" id="10_hud"]
+[ext_resource type="Script" path="res://scripts/bed.gd" id="11_bed"]
+[ext_resource type="Script" path="res://scripts/kino_pickup.gd" id="12_kino"]
+[ext_resource type="PackedScene" uid="uid://bmhihff2c6msf" path="res://models/sci-fi/space-station/bed-single.glb" id="13_bedmesh"]
+[ext_resource type="PackedScene" uid="uid://2c62df4mbpbg" path="res://models/sci-fi/space-station/table.glb" id="14_table"]
+[ext_resource type="Script" path="res://scripts/ambient_hum.gd" id="15_ambient"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_metallic"]
+albedo_color = Color(0.32, 0.30, 0.34, 1)
+metallic = 0.75
+metallic_specular = 0.6
+roughness = 0.45
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ceiling"]
+albedo_color = Color(0.07, 0.07, 0.09, 1)
+metallic = 0.7
+roughness = 0.55
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_bed"]
+size = Vector3(1.2, 0.7, 2.2)
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_kino"]
+radius = 0.22
+
+[sub_resource type="SphereMesh" id="SphereMesh_kino"]
+radius = 0.18
+height = 0.36
+radial_segments = 24
+rings = 16
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_kino"]
+albedo_color = Color(0.18, 0.42, 0.7, 1)
+metallic = 0.4
+roughness = 0.15
+emission_enabled = true
+emission = Color(0.55, 0.85, 1.0, 1)
+emission_energy_multiplier = 4.0
+
+[node name="EliQuarters" type="Node3D"]
+script = ExtResource("3_quarters")
+
+[node name="Room" type="Node3D" parent="."]
+script = ExtResource("2_room")
+floor_size = Vector2i(6, 6)
+wall_y_scale = 4.0
+ceiling_height = 4.0
+floor_scene = ExtResource("6_floor")
+wall_scene = ExtResource("7_wall")
+wall_door_scene = ExtResource("8_walldoor")
+south_door_index = 3
+metallic_material = SubResource("StandardMaterial3D_metallic")
+ceiling_material = SubResource("StandardMaterial3D_ceiling")
+
+[node name="World" type="Node3D" parent="Room"]
+
+[node name="Environment" type="WorldEnvironment" parent="."]
+environment = ExtResource("1_env")
+
+[node name="DeskLight" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.6, 2.4, 0.0)
+light_color = Color(0.55, 0.85, 1.0, 1)
+light_energy = 2.2
+omni_range = 4.0
+
+[node name="CeilingLight" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.6, 0)
+light_color = Color(0.85, 0.78, 0.55, 1)
+light_energy = 1.6
+omni_range = 6.0
+
+[node name="CorridorDoor" parent="." groups=["interactable"] instance=ExtResource("9_door")]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.5, 0, -2.5)
+target_scene = "res://scenes/destiny_corridor.tscn"
+target_spawn = "FromQuarters"
+transition_prompt = "Return to the corridor"
+open_prompt = "Return to the corridor"
+
+[node name="Bed" type="StaticBody3D" parent="." groups=["interactable"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 0, 1.5)
+collision_layer = 4
+collision_mask = 0
+script = ExtResource("11_bed")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Bed"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.35, 0)
+shape = SubResource("BoxShape3D_bed")
+
+[node name="Visual" parent="Bed" instance=ExtResource("13_bedmesh")]
+
+[node name="Desk" parent="." instance=ExtResource("14_table")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.6, 0, 0.0)
+
+[node name="KinoPickup" type="StaticBody3D" parent="." node_paths=PackedStringArray("prop_to_hide") groups=["interactable"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.6, 0.95, 0.0)
+collision_layer = 4
+collision_mask = 0
+script = ExtResource("12_kino")
+prop_to_hide = NodePath("Visual")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="KinoPickup"]
+shape = SubResource("SphereShape3D_kino")
+
+[node name="Visual" type="MeshInstance3D" parent="KinoPickup"]
+mesh = SubResource("SphereMesh_kino")
+material_override = SubResource("StandardMaterial3D_kino")
+
+[node name="FromCorridor" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0.5, -1.5)
+
+[node name="Player" parent="." node_paths=PackedStringArray("view") groups=["player"] instance=ExtResource("4_player")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0.5, -1.5)
+view = NodePath("../View")
+
+[node name="View" type="Node3D" parent="." node_paths=PackedStringArray("target")]
+transform = Transform3D(0.866025, -0.25, 0.433013, 0, 0.866025, 0.5, -0.5, -0.433013, 0.75, 0, 0, 0)
+script = ExtResource("5_view")
+target = NodePath("../Player")
+
+[node name="SpringArm" type="SpringArm3D" parent="View"]
+collision_mask = 2
+spring_length = 4.5
+margin = 0.2
+
+[node name="Camera" type="Camera3D" parent="View/SpringArm"]
+current = true
+fov = 60.0
+
+[node name="HUDLayer" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="HUD" parent="HUDLayer" instance=ExtResource("10_hud")]
+
+[node name="AmbientHum" type="AudioStreamPlayer" parent="."]
+volume_db = -20.0
+script = ExtResource("15_ambient")
+base_freq = 60.0

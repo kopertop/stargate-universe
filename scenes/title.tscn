@@ -1,0 +1,109 @@
+[gd_scene load_steps=4 format=3 uid="uid://cgr0title00"]
+
+[ext_resource type="Script" path="res://scripts/title.gd" id="1_title"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn"]
+bg_color = Color(0.06, 0.12, 0.18, 0.9)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.45, 0.78, 1.0, 0.7)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_hover"]
+bg_color = Color(0.12, 0.26, 0.4, 0.95)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.7, 0.9, 1.0, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[node name="Title" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_title")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.01, 0.02, 0.05, 1)
+
+[node name="Frame" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Stack" type="VBoxContainer" parent="Frame"]
+custom_minimum_size = Vector2(560, 0)
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="Title" type="Label" parent="Frame/Stack"]
+layout_mode = 2
+text = "STARGATE UNIVERSE"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 44
+theme_override_colors/font_color = Color(0.55, 0.85, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 6
+
+[node name="Subtitle" type="Label" parent="Frame/Stack"]
+layout_mode = 2
+text = "Episode 1 — \"Air\""
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(0.7, 0.85, 1, 0.85)
+
+[node name="Lore" type="Label" parent="Frame/Stack"]
+layout_mode = 2
+text = "Icarus Base has fallen.
+The ninth chevron locked. Something rushed through.
+
+You are Eli Wallace — student, accidental savior of a dying program,
+and now an uninvited passenger on the Destiny, an Ancient ship adrift
+between galaxies. The lights are dim. The air, when it comes, comes wrong.
+
+Find a way to breathe."
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.78, 0.85, 0.95, 0.9)
+theme_override_constants/line_spacing = 4
+
+[node name="Spacer" type="Control" parent="Frame/Stack"]
+custom_minimum_size = Vector2(0, 18)
+layout_mode = 2
+
+[node name="StartButton" type="Button" parent="Frame/Stack"]
+layout_mode = 2
+custom_minimum_size = Vector2(220, 48)
+text = "Walk Through the Gate"
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(0.9, 0.97, 1, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_hover")
+
+[node name="QuitButton" type="Button" parent="Frame/Stack"]
+layout_mode = 2
+custom_minimum_size = Vector2(220, 40)
+text = "Quit"
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.7, 0.78, 0.9, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_hover")

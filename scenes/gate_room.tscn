@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3 uid="uid://cgr00mr00mr00"]
+[gd_scene load_steps=18 format=3 uid="uid://cgr00mr00mr00"]
 
 [ext_resource type="Environment" uid="uid://cgrenv00enva" path="res://scenes/gate-room-environment.tres" id="1_env"]
 [ext_resource type="Script" path="res://scripts/gate_room.gd" id="2_room"]
@@ -8,6 +8,10 @@
 [ext_resource type="PackedScene" uid="uid://bf2a38eob8tr5" path="res://models/sci-fi/space-station/wall.glb" id="6_wall"]
 [ext_resource type="PackedScene" uid="uid://ycqgyfiu8ry6" path="res://models/sci-fi/space-station/wall-door.glb" id="7_walldoor"]
 [ext_resource type="PackedScene" uid="uid://cldv6t4rdn5cv" path="res://models/sci-fi/space-station/computer.glb" id="8_console"]
+[ext_resource type="PackedScene" uid="uid://b0doorinteractable" path="res://objects/door.tscn" id="9_door"]
+[ext_resource type="PackedScene" uid="uid://b1hudsgu000" path="res://objects/hud.tscn" id="10_hud"]
+[ext_resource type="AudioStream" uid="uid://bxhb7ygtvbt1k" path="res://sounds/break.ogg" id="11_breaksfx"]
+[ext_resource type="Script" path="res://scripts/ambient_hum.gd" id="12_ambient"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
 size = Vector3(28, 0.2, 28)
@@ -36,6 +40,14 @@ roughness = 0.28
 emission_enabled = true
 emission = Color(0.55, 0.32, 0.10, 1)
 emission_energy_multiplier = 0.45
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_puddle"]
+albedo_color = Color(0.5, 0.78, 1.0, 1)
+emission_enabled = true
+emission = Color(0.45, 0.78, 1.0, 1)
+emission_energy_multiplier = 3.2
+metallic = 0.0
+roughness = 1.0
 
 [node name="GateRoom" type="Node3D"]
 script = ExtResource("2_room")
@@ -92,11 +104,28 @@ transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 4.0, 0)
 mesh = SubResource("TorusMesh_gate")
 material_override = SubResource("StandardMaterial3D_gate")
 
+[node name="GatePuddle" type="MeshInstance3D" parent="World"]
+transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 4.0, -0.05)
+mesh = SubResource("TorusMesh_gate")
+
 [node name="ConsoleLeft" parent="World" instance=ExtResource("8_console")]
 transform = Transform3D(-1.4, 0, -1.2246469e-7, 0, 1.4, 0, 1.2246469e-7, 0, -1.4, -2.5, 0, -9.0)
 
 [node name="ConsoleRight" parent="World" instance=ExtResource("8_console")]
 transform = Transform3D(-1.4, 0, -1.2246469e-7, 0, 1.4, 0, 1.2246469e-7, 0, -1.4, 2.5, 0, -9.0)
+
+[node name="ExitDoor" parent="." groups=["interactable"] instance=ExtResource("9_door")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0, -10.4)
+target_scene = "res://scenes/destiny_corridor.tscn"
+target_spawn = "FromGateRoom"
+open_prompt = "Step into the corridor"
+transition_prompt = "Step into the corridor"
+
+[node name="FromGate" type="Marker3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0.5, -8.0)
+
+[node name="FromCorridor" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0.5, -9.5)
 
 [node name="Player" parent="." node_paths=PackedStringArray("view") groups=["player"] instance=ExtResource("3_player")]
 transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0.5, -8.0)
@@ -115,3 +144,16 @@ margin = 0.2
 [node name="Camera" type="Camera3D" parent="View/SpringArm"]
 current = true
 fov = 60.0
+
+[node name="GateSFX" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("11_breaksfx")
+volume_db = -2.0
+
+[node name="AmbientHum" type="AudioStreamPlayer" parent="."]
+volume_db = -16.0
+script = ExtResource("12_ambient")
+
+[node name="HUDLayer" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="HUD" parent="HUDLayer" instance=ExtResource("10_hud")]

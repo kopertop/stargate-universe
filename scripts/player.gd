@@ -101,9 +101,11 @@ func _handle_movement(delta: float) -> void:
 	move_and_slide()
 
 	# Face direction of motion (or camera yaw when standing still).
-	var horiz: Vector2 = Vector2(velocity.z, velocity.x)
-	if horiz.length() > 0.2:
-		_facing_yaw = horiz.angle()
+	# Negated atan2 args put body yaw in Godot's -Z-forward convention so the
+	# body yaw at idle (= view yaw) matches the body yaw during forward motion.
+	var horiz_speed: float = Vector2(velocity.x, velocity.z).length()
+	if horiz_speed > 0.2:
+		_facing_yaw = atan2(-velocity.x, -velocity.z)
 	elif view != null:
 		_facing_yaw = view.rotation.y
 	rotation.y = lerp_angle(rotation.y, _facing_yaw, delta * 12.0)

@@ -31,8 +31,11 @@ func _ready() -> void:
 	# Preserve the scene's tuned pitch/distance; only nudge yaw to sit behind the target.
 	camera_rotation = rotation_degrees
 	if target != null:
-		# Player faces local -Z (Godot convention). Camera sits at view's local +Z = behind player.
-		# So view yaw should equal player yaw (no +180 flip).
+		# SpringArm3D extends along view's local +Z. With view yaw = player yaw
+		# (= π at spawn), view's +Z in world = -Z, putting the camera BEHIND the
+		# player (player faces +Z after the spawn 180° rotation). No yaw offset
+		# needed; matching view yaw to player yaw also avoids a spawn-time
+		# snap-rotation of the body.
 		camera_rotation.y = rad_to_deg(target.rotation.y) + initial_yaw_offset
 		rotation_degrees = camera_rotation
 		# Snap position to target so the very first frame is framed correctly —

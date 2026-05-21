@@ -11,11 +11,8 @@ const TAB_OBJECTIVES: int = 2
 const TAB_INVENTORY: int = 3
 
 const ROOM_DEFS: Array = [
-	{"id": "gate_room", "label": "Gate Room", "x": 0.5, "y": 0.78},
-	{"id": "corridor", "label": "Main Corridor", "x": 0.5, "y": 0.5},
-	{"id": "quarters", "label": "Crew Quarters", "x": 0.25, "y": 0.5},
-	{"id": "hull_breach", "label": "Compartment 14B", "x": 0.75, "y": 0.5},
-	{"id": "observation", "label": "Observation Deck", "x": 0.5, "y": 0.22},
+	{"id": "gate_room", "label": "Gate Room", "x": 0.5, "y": 0.72},
+	{"id": "corridor", "label": "Main Corridor", "x": 0.5, "y": 0.32},
 ]
 
 var _layer: CanvasLayer

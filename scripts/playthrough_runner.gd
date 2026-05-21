@@ -1,11 +1,12 @@
 extends Node
 
-# E1 playthrough integration test runner.
+# Phase A playthrough integration test runner.
 #
 # Drives the actual gameplay pipeline (Doors → SceneRouter → Interactables) from
-# gate-room arrival to episode_completed signal. This complements the smoke
-# tests by exercising real cross-scene transitions, real autoloads, and real
-# Interactable.interact() codepaths — not just GameState mutators.
+# gate-room arrival, through the FTL console interact, into the dead-end
+# corridor, and back. This complements the smoke tests by exercising real
+# cross-scene transitions, real autoloads, and real Interactable.interact()
+# codepaths.
 #
 # Lives as a direct child of /root (sibling to autoloads) so it survives
 # SceneRouter.change_to() — which frees current_scene. Bootstrapped from
@@ -22,7 +23,6 @@ const SETTLE_FRAMES: int = 3
 # windowed screen recordings, not the headless test suite.
 const DEMO_HOLD_SEC: float = 1.6
 
-var _episode_completed_fired: bool = false
 var _failures: Array[String] = []
 var _passes: int = 0
 var _started: bool = false
@@ -42,18 +42,14 @@ func _begin() -> void:
 	_started = true
 	_demo_mode = OS.get_environment("PLAYTHROUGH_DEMO") != ""
 	_shot_dir = OS.get_environment("PLAYTHROUGH_SHOTS")
-	print("=== e1_playthrough integration test ===")
+	print("=== phase-a playthrough integration test ===")
 	if _demo_mode:
 		print("  (demo mode: fade on, holds enabled)")
 	if _shot_dir != "":
 		print("  (screenshot capture → ", _shot_dir, ")")
 		DirAccess.make_dir_recursive_absolute(_shot_dir)
-	# Skip the fade animation in test mode — Tween.finished signals are unreliable
-	# across back-to-back scene changes in headless and we don't need polish there.
 	SceneRouter.instant_mode = not _demo_mode
-	GameState.episode_completed.connect(_on_episode_completed)
 	get_tree().create_timer(TIMEOUT_SEC).timeout.connect(_on_timeout)
-	# Reset to a clean E1 starting state.
 	GameState.reset()
 	_drive()
 
@@ -67,7 +63,6 @@ func _demo_hold() -> void:
 func _shot(label: String) -> void:
 	if _shot_dir == "":
 		return
-	# Give the viewport a couple of frames to finalize the rendered image.
 	await RenderingServer.frame_post_draw
 	await RenderingServer.frame_post_draw
 	var vp: Viewport = get_tree().root
@@ -85,78 +80,50 @@ func _shot(label: String) -> void:
 
 
 func _drive() -> void:
-	# === STEP 1: gate_room (arrival) ===
+	# === STEP 1: arrive in gate_room ===
 	await _change_to("res://scenes/gate_room.tscn", "FromGate")
 	_assert_current_scene("gate_room.tscn")
-	_expect(_find_door_to("res://scenes/destiny_corridor.tscn") != null, "gate_room: door to corridor present")
+	_expect(GameState.rooms_discovered.has("gate_room"), "gate_room: discover_room fired")
+	_expect(_find_door_to("res://scenes/destiny_corridor.tscn") != null, "gate_room: exit door to corridor present")
 	await _shot("gate_room_arrival")
 	await _demo_hold()
-	await _shot("gate_room_post_arrival")
 
-	# === STEP 2: gate_room → destiny_corridor ===
-	await _interact_door_to("res://scenes/destiny_corridor.tscn")
-	_assert_current_scene("destiny_corridor.tscn")
-	await _shot("corridor")
-	await _demo_hold()
-
-	# === STEP 3: corridor → eli_quarters (via QuartersDoor) ===
-	await _interact_door_to("res://scenes/eli_quarters.tscn")
-	_assert_current_scene("eli_quarters.tscn")
-	await _shot("quarters")
-	await _demo_hold()
-
-	# === STEP 4: pick up the Kino Remote ===
-	var kino: KinoPickup = _find_first_of_type("KinoPickup") as KinoPickup
-	_expect(kino != null, "eli_quarters: KinoPickup present")
-	if kino != null:
-		kino.interact(null)
-	_expect(GameState.kino_acquired, "GameState.kino_acquired after pickup")
-	await _demo_hold()
-
-	# === STEP 5: sleep in bed → marks quarters_found, heals, restores oxygen ===
-	GameState.damage(40.0)
-	GameState.consume_oxygen(30.0)
-	var bed: Bed = _find_first_of_type("Bed") as Bed
-	_expect(bed != null, "eli_quarters: Bed present")
-	if bed != null:
-		bed.interact(null)
-	_expect(GameState.quarters_found, "GameState.quarters_found after sleep")
-	_expect(GameState.health == GameState.MAX_HEALTH, "bed restored health to MAX")
-	_expect(GameState.oxygen == GameState.MAX_OXYGEN, "bed restored oxygen to MAX")
-	await _demo_hold()
-
-	# Episode must NOT yet be complete — no breach sealed.
-	_expect(GameState.episode_complete == false, "episode NOT complete pre-breach")
-
-	# === STEP 6: eli_quarters → destiny_corridor (return via CorridorDoor) ===
-	await _interact_door_to("res://scenes/destiny_corridor.tscn")
-	_assert_current_scene("destiny_corridor.tscn")
-	await _demo_hold()
-
-	# === STEP 7: corridor → hull_breach ===
-	await _interact_door_to("res://scenes/hull_breach.tscn")
-	_assert_current_scene("hull_breach.tscn")
-	await _shot("hull_breach")
-	await _demo_hold()
-
-	# === STEP 8: flip the emergency seal switch ===
-	var seal: HullSealSwitch = _find_first_of_type("HullSealSwitch") as HullSealSwitch
-	_expect(seal != null, "hull_breach: SealSwitch present")
-	if seal != null:
-		seal.interact(null)
-	_expect(GameState.breaches_sealed.size() == 1, "one breach sealed")
-	_expect(GameState.breaches_sealed[0] == "compartment_14b", "correct breach_id sealed")
-
-	# === STEP 9: episode_completed should fire from check_episode_complete() ===
-	for i in SETTLE_FRAMES:
+	# === STEP 2: read the FTL console — verify the readout text mutates ===
+	var ftl: Node = _find_console("ftl_countdown")
+	_expect(ftl != null, "gate_room: FTL console present")
+	if ftl != null:
+		var before: float = float(ftl.get("ftl_seconds_remaining"))
+		# Let one process tick pass so the countdown advances.
 		await get_tree().process_frame
-	_expect(GameState.episode_complete, "GameState.episode_complete == true")
-	_expect(_episode_completed_fired, "episode_completed signal fired exactly once")
-	await _shot("episode_complete")
+		await get_tree().process_frame
+		var after: float = float(ftl.get("ftl_seconds_remaining"))
+		_expect(after < before, "FTL countdown ticks down")
+		ftl.interact(null)
+		_expect(GameState.log_entries.size() >= 1, "FTL console interact added log")
+	await _shot("gate_room_post_ftl")
+	await _demo_hold()
 
-	# Hold on the episode_complete card so the screen recording captures it.
-	if _demo_mode:
-		await get_tree().create_timer(3.5).timeout
+	# === STEP 3: read the Gate Control console ===
+	var gate_ctrl: Node = _find_console("gate_control")
+	_expect(gate_ctrl != null, "gate_room: Gate Control console present")
+	if gate_ctrl != null:
+		gate_ctrl.interact(null)
+	await _demo_hold()
+
+	# === STEP 4: gate_room → destiny_corridor via ExitDoor ===
+	await _interact_door_to("res://scenes/destiny_corridor.tscn")
+	_assert_current_scene("destiny_corridor.tscn")
+	_expect(GameState.rooms_discovered.has("corridor"), "corridor: discover_room fired")
+	await _shot("corridor_dead_end")
+	await _demo_hold()
+
+	# === STEP 5: return to gate room — verify re-entry doesn't replay cinematic ===
+	await _interact_door_to("res://scenes/gate_room.tscn")
+	_assert_current_scene("gate_room.tscn")
+	# rooms_discovered.has("gate_room") should still be true (idempotent).
+	_expect(GameState.rooms_discovered.has("gate_room"), "gate_room: discovery preserved on re-entry")
+	await _shot("gate_room_return")
+	await _demo_hold()
 
 	_report()
 
@@ -176,7 +143,6 @@ func _interact_door_to(target_scene: String) -> void:
 		_fail("could not find door to " + target_scene)
 		return
 	door.interact(null)
-	# Door._transition kicks off SceneRouter.change_to — wait for scene_changed.
 	await SceneRouter.scene_changed
 	for i in SETTLE_FRAMES:
 		await get_tree().process_frame
@@ -191,25 +157,15 @@ func _find_door_to(target_scene: String) -> Door:
 	return null
 
 
-func _find_first_of_type(type_name: String) -> Node:
+func _find_console(kind: String) -> Node:
+	# Duck-type rather than relying on class_name GateConsole — the class index
+	# may not be rebuilt in a single headless run.
 	for n in get_tree().get_nodes_in_group("interactable"):
-		var s: Script = n.get_script()
-		if s == null:
+		var script: Script = n.get_script()
+		if script == null:
 			continue
-		var base: String = s.resource_path.get_file().get_basename()
-		match type_name:
-			"KinoPickup":
-				if base == "kino_pickup":
-					return n
-			"Bed":
-				if base == "bed":
-					return n
-			"HullSealSwitch":
-				if base == "hull_seal_switch":
-					return n
-			"Door":
-				if base == "door":
-					return n
+		if script.resource_path.ends_with("gate_console.gd") and String(n.get("kind")) == kind:
+			return n
 	return null
 
 
@@ -236,11 +192,6 @@ func _expect(condition: bool, label: String) -> void:
 func _fail(reason: String) -> void:
 	print("  FAIL  ", reason)
 	_failures.append(reason)
-
-
-func _on_episode_completed() -> void:
-	_episode_completed_fired = true
-	print("  >>>>  GameState.episode_completed signal received")
 
 
 func _on_timeout() -> void:

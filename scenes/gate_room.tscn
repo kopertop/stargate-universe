@@ -1,204 +1,35 @@
-[gd_scene load_steps=14 format=3 uid="uid://cgr00mr00mr00"]
+[gd_scene load_steps=9 format=3 uid="uid://cgr00mr00mr00"]
 
 [ext_resource type="Environment" uid="uid://cgrenv00enva" path="res://scenes/gate-room-environment.tres" id="1_env"]
 [ext_resource type="Script" path="res://scripts/gate_room.gd" id="2_room"]
 [ext_resource type="PackedScene" uid="uid://dl2ed4gkybggf" path="res://objects/player.tscn" id="3_player"]
 [ext_resource type="Script" uid="uid://bcg2kkbsnttec" path="res://scripts/view.gd" id="4_view"]
-[ext_resource type="PackedScene" uid="uid://dynqkgbn3lu4u" path="res://models/sci-fi/space-station/floor.glb" id="5_floor"]
-[ext_resource type="PackedScene" uid="uid://bf2a38eob8tr5" path="res://models/sci-fi/space-station/wall.glb" id="6_wall"]
-[ext_resource type="PackedScene" uid="uid://ycqgyfiu8ry6" path="res://models/sci-fi/space-station/wall-door.glb" id="7_walldoor"]
-[ext_resource type="PackedScene" uid="uid://cldv6t4rdn5cv" path="res://models/sci-fi/space-station/computer.glb" id="8_console"]
-[ext_resource type="PackedScene" uid="uid://b0doorinteractable" path="res://objects/door.tscn" id="9_door"]
-[ext_resource type="PackedScene" uid="uid://b1hudsgu000" path="res://objects/hud.tscn" id="10_hud"]
-[ext_resource type="AudioStream" uid="uid://bxhb7ygtvbt1k" path="res://sounds/break.ogg" id="11_breaksfx"]
-[ext_resource type="Script" path="res://scripts/ambient_hum.gd" id="12_ambient"]
-[ext_resource type="PackedScene" uid="uid://b2stargateobj00" path="res://objects/stargate.tscn" id="13_stargate"]
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
-size = Vector3(30, 0.2, 40)
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_metallic"]
-albedo_color = Color(0.46, 0.48, 0.54, 1)
-metallic = 0.3
-metallic_specular = 0.5
-roughness = 0.55
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ceiling"]
-albedo_color = Color(0.22, 0.22, 0.27, 1)
-metallic = 0.3
-roughness = 0.65
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_dais"]
-albedo_color = Color(0.30, 0.28, 0.30, 1)
-metallic = 0.55
-roughness = 0.40
-emission_enabled = true
-emission = Color(0.55, 0.32, 0.10, 1)
-emission_energy_multiplier = 0.25
-
-[sub_resource type="BoxMesh" id="BoxMesh_dais"]
-size = Vector3(8.0, 0.6, 4.5)
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_dais"]
-size = Vector3(8.0, 0.6, 4.5)
-
-[sub_resource type="BoxMesh" id="BoxMesh_step"]
-size = Vector3(6.0, 0.2, 0.8)
+[ext_resource type="PackedScene" uid="uid://b1hudsgu000" path="res://objects/hud.tscn" id="5_hud"]
+[ext_resource type="AudioStream" uid="uid://bxhb7ygtvbt1k" path="res://sounds/break.ogg" id="6_breaksfx"]
+[ext_resource type="Script" path="res://scripts/ambient_hum.gd" id="7_ambient"]
+[ext_resource type="PackedScene" uid="uid://b0doorinteractable" path="res://objects/door.tscn" id="8_door"]
 
 [node name="GateRoom" type="Node3D"]
 script = ExtResource("2_room")
-floor_size = Vector2i(30, 40)
-wall_y_scale = 14.0
-ceiling_height = 14.0
-floor_scene = ExtResource("5_floor")
-wall_scene = ExtResource("6_wall")
-wall_corner_scene = null
-wall_door_scene = ExtResource("7_walldoor")
-metallic_material = SubResource("StandardMaterial3D_metallic")
-ceiling_material = SubResource("StandardMaterial3D_ceiling")
 
 [node name="Environment" type="WorldEnvironment" parent="."]
 environment = ExtResource("1_env")
 
-[node name="KeyLight" type="DirectionalLight3D" parent="."]
-transform = Transform3D(-0.422618, -0.694272, 0.582563, 0, 0.642788, 0.766044, -0.906308, 0.323744, -0.271654, 0, 12, 0)
-light_color = Color(0.78, 0.88, 1.0, 1)
-light_energy = 0.8
-shadow_enabled = true
-shadow_opacity = 0.5
-
-[node name="CeilingFill" type="OmniLight3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 12.0, 0)
-light_color = Color(0.85, 0.92, 1.0, 1)
-light_energy = 3.0
-omni_range = 36.0
-omni_attenuation = 1.4
-
-[node name="CeilingFillFront" type="OmniLight3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 11.0, -10.0)
-light_color = Color(0.85, 0.92, 1.0, 1)
-light_energy = 2.0
-omni_range = 24.0
-omni_attenuation = 1.4
-
-[node name="GateKeyLight" type="OmniLight3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 7.0, 5.0)
-light_color = Color(0.75, 0.88, 1.0, 1)
-light_energy = 1.2
-omni_range = 7.0
-omni_attenuation = 2.0
-shadow_enabled = true
-
-[node name="GateBackLight" type="OmniLight3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6.0, 15.5)
-light_color = Color(1.0, 0.55, 0.18, 1)
-light_energy = 2.2
-omni_range = 10.0
-omni_attenuation = 1.6
-
-[node name="ConsoleLightLeft" type="OmniLight3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10.5, 2.0, 0.0)
-light_color = Color(0.95, 0.62, 0.25, 1)
-light_energy = 2.4
-omni_range = 12.0
-omni_attenuation = 1.6
-
-[node name="ConsoleLightRight" type="OmniLight3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10.5, 2.0, 0.0)
-light_color = Color(0.95, 0.62, 0.25, 1)
-light_energy = 2.4
-omni_range = 12.0
-omni_attenuation = 1.6
-
-[node name="FloorCollider" type="StaticBody3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0)
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="FloorCollider"]
-shape = SubResource("BoxShape3D_floor")
-
 [node name="World" type="Node3D" parent="."]
 
-[node name="Dais" type="StaticBody3D" parent="World"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 14.5)
-collision_layer = 1
-collision_mask = 0
+[node name="FromGate" type="Marker3D" parent="."]
 
-[node name="DaisMesh" type="MeshInstance3D" parent="World/Dais"]
-mesh = SubResource("BoxMesh_dais")
-material_override = SubResource("StandardMaterial3D_dais")
+[node name="FromCorridor" type="Marker3D" parent="."]
 
-[node name="DaisCollider" type="CollisionShape3D" parent="World/Dais"]
-shape = SubResource("BoxShape3D_dais")
-
-[node name="DaisStepA" type="StaticBody3D" parent="World"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 12.0)
-collision_layer = 1
-collision_mask = 0
-
-[node name="StepMesh" type="MeshInstance3D" parent="World/DaisStepA"]
-mesh = SubResource("BoxMesh_step")
-material_override = SubResource("StandardMaterial3D_dais")
-
-[node name="DaisStepB" type="StaticBody3D" parent="World"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 11.2)
-collision_layer = 1
-collision_mask = 0
-
-[node name="StepMeshB" type="MeshInstance3D" parent="World/DaisStepB"]
-mesh = SubResource("BoxMesh_step")
-material_override = SubResource("StandardMaterial3D_dais")
-
-[node name="DaisStepC" type="StaticBody3D" parent="World"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, 10.4)
-collision_layer = 1
-collision_mask = 0
-
-[node name="StepMeshC" type="MeshInstance3D" parent="World/DaisStepC"]
-mesh = SubResource("BoxMesh_step")
-material_override = SubResource("StandardMaterial3D_dais")
-
-[node name="Stargate" parent="World" instance=ExtResource("13_stargate")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.6, 14.5)
-
-[node name="ConsoleL1" parent="World" instance=ExtResource("8_console")]
-transform = Transform3D(0, 0, 1.6, 0, 1.6, 0, -1.6, 0, 0, -11.8, 0, 6.0)
-
-[node name="ConsoleL2" parent="World" instance=ExtResource("8_console")]
-transform = Transform3D(0, 0, 1.6, 0, 1.6, 0, -1.6, 0, 0, -11.8, 0, 2.0)
-
-[node name="ConsoleL3" parent="World" instance=ExtResource("8_console")]
-transform = Transform3D(0, 0, 1.6, 0, 1.6, 0, -1.6, 0, 0, -11.8, 0, -2.0)
-
-[node name="ConsoleL4" parent="World" instance=ExtResource("8_console")]
-transform = Transform3D(0, 0, 1.6, 0, 1.6, 0, -1.6, 0, 0, -11.8, 0, -6.0)
-
-[node name="ConsoleR1" parent="World" instance=ExtResource("8_console")]
-transform = Transform3D(0, 0, -1.6, 0, 1.6, 0, 1.6, 0, 0, 11.8, 0, 6.0)
-
-[node name="ConsoleR2" parent="World" instance=ExtResource("8_console")]
-transform = Transform3D(0, 0, -1.6, 0, 1.6, 0, 1.6, 0, 0, 11.8, 0, 2.0)
-
-[node name="ConsoleR3" parent="World" instance=ExtResource("8_console")]
-transform = Transform3D(0, 0, -1.6, 0, 1.6, 0, 1.6, 0, 0, 11.8, 0, -2.0)
-
-[node name="ConsoleR4" parent="World" instance=ExtResource("8_console")]
-transform = Transform3D(0, 0, -1.6, 0, 1.6, 0, 1.6, 0, 0, 11.8, 0, -6.0)
-
-[node name="ExitDoor" parent="." groups=["interactable"] instance=ExtResource("9_door")]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.5, 0, -19.4)
+[node name="ExitDoor" parent="." groups=["interactable"] instance=ExtResource("8_door")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -15.8)
 target_scene = "res://scenes/destiny_corridor.tscn"
 target_spawn = "FromGateRoom"
 open_prompt = "Step into the corridor"
 transition_prompt = "Step into the corridor"
 
-[node name="FromGate" type="Marker3D" parent="."]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0.7, 8.0)
-
-[node name="FromCorridor" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -17.5)
-
 [node name="Player" parent="." node_paths=PackedStringArray("view") groups=["player"] instance=ExtResource("3_player")]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0.7, 8.0)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 1.05, 10.5)
 view = NodePath("../View")
 
 [node name="View" type="Node3D" parent="." node_paths=PackedStringArray("target")]
@@ -215,15 +46,18 @@ margin = 0.2
 current = true
 fov = 62.0
 
-[node name="GateSFX" type="AudioStreamPlayer" parent="."]
-stream = ExtResource("11_breaksfx")
-volume_db = -2.0
-
 [node name="AmbientHum" type="AudioStreamPlayer" parent="."]
 volume_db = -16.0
-script = ExtResource("12_ambient")
+script = ExtResource("7_ambient")
+
+[node name="GateActiveLoop" type="AudioStreamPlayer" parent="."]
+volume_db = -8.0
+
+[node name="GateShutdown" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("6_breaksfx")
+volume_db = -4.0
 
 [node name="HUDLayer" type="CanvasLayer" parent="."]
 layer = 10
 
-[node name="HUD" parent="HUDLayer" instance=ExtResource("10_hud")]
+[node name="HUD" parent="HUDLayer" instance=ExtResource("5_hud")]

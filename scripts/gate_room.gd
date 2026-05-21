@@ -1,199 +1,583 @@
 extends Node3D
 
-# Gate room scene controller. Owns:
-#   - Procedural Kenney floor + perimeter walls + ceiling
-#   - The arrival "cinematic" (player input locked while gate shuts behind them)
-#   - Gate kawhoosh SFX + ambient ship hum
-#   - Objective state for E1 opening beat
+# Phase A: cavernous two-deck gateroom — Destiny's "altar". Procedurally builds
+# the hero space so the .tscn stays small and re-runs cheap. Layout:
+#
+#   • Origin at room centre. +Z = "altar end" (the Stargate); -Z = exit wall
+#     with twin staircases and the corridor archway.
+#   • 32 m × 32 m footprint, 9 m ceiling, mezzanine deck at y = 5 m on three
+#     sides (back, left, right) — open on the +Z side so you can look down on
+#     the gate from the back balcony.
+#   • Gate platform: stepped bronze dais 8 m × 6 m × 1 m at +Z end. Stargate
+#     mounted at y ≈ 4 m on top of it.
+#   • Lighting: amber floor uplights washing the upper walls, cyan accents
+#     along the mezzanine rail, and an emissive strip ringing the ceiling.
+
+const STARGATE_SCENE: PackedScene = preload("res://objects/stargate.tscn")
+const FLOOR_SCENE: PackedScene = preload("res://models/sci-fi/space-station/floor.glb")
+const CONSOLE_SCENE: PackedScene = preload("res://models/sci-fi/space-station/computer.glb")
+const GATE_CONSOLE_SCRIPT: Script = preload("res://scripts/gate_console.gd")
 
 @export_group("Room")
-@export var floor_size: Vector2i = Vector2i(22, 22)
-@export var tile_size: float = 1.0
-@export var wall_height_offset: float = 0.0
-@export var wall_y_scale: float = 6.0
-
-@export_group("Assets")
-@export var floor_scene: PackedScene
-@export var wall_scene: PackedScene
-@export var wall_corner_scene: PackedScene
-@export var wall_door_scene: PackedScene
-
-@export_group("Ceiling")
-@export var ceiling_height: float = 6.0
-@export var ceiling_material: StandardMaterial3D
-
-@export_group("Materials")
-@export var metallic_material: StandardMaterial3D
+@export var room_size: Vector2 = Vector2(32.0, 32.0)
+@export var tile_size: float = 2.0
+@export var deck1_height: float = 0.0
+@export var mezzanine_height: float = 5.0
+@export var ceiling_height: float = 9.0
+@export var mezzanine_depth: float = 4.0     # how far the mezzanine extends inward from walls
+@export var exit_width: float = 3.2
 
 @export_group("Arrival")
-# If true, run the gate-arrival opening. False on returns from corridor.
-@export var play_arrival: bool = true
-@export var arrival_lockout: float = 1.4
+# Total time the portal stays cyan after spawn (player input locked the whole hold).
+@export var arrival_hold: float = 1.5
+@export var arrival_fade: float = 1.0
 
 @onready var _world: Node3D = $World
 @onready var _player: CharacterBody3D = $Player
-@onready var _stargate: Node3D = $World/Stargate
-@onready var _gate_back_light: OmniLight3D = $GateBackLight
-@onready var _gate_key_light: OmniLight3D = $GateKeyLight
-@onready var _gate_sfx: AudioStreamPlayer = $GateSFX
+@onready var _view: Node3D = $View
 @onready var _ambient_sfx: AudioStreamPlayer = $AmbientHum
+@onready var _gate_loop_sfx: AudioStreamPlayer = $GateActiveLoop
+@onready var _gate_shutdown_sfx: AudioStreamPlayer = $GateShutdown
+
+var _stargate: Node3D
+var _from_gate_marker: Marker3D
+var _from_corridor_marker: Marker3D
 
 func _ready() -> void:
+	# Tell the save system this is a real gameplay scene.
+	GameState.current_scene_path = "res://scenes/gate_room.tscn"
+
+	# Build the room and gate furniture before anything else looks for nodes.
 	_build_floor()
-	_build_walls()
-	_build_ceiling()
-	_build_room_colliders()
-	# Mark this room as discovered every entry; the gate-arrival cinematic only
-	# fires the first time (subsequent visits keep the gate dimmed).
+	_build_walls_and_ceiling()
+	_build_mezzanine()
+	_build_staircases()
+	_build_gate_platform()
+	_build_consoles()
+	_build_lighting_props()
+
+	# Spawn the gate model on the dais.
+	_stargate = STARGATE_SCENE.instantiate()
+	_stargate.name = "Stargate"
+	# Gate diameter 6 m → centre at y = 4 means bottom rim at y = 1 (on the dais).
+	_stargate.position = Vector3(0.0, 4.0, room_size.y * 0.5 - 3.8)
+	_world.add_child(_stargate)
+
+	# Place the spawn markers now that the room geometry is in place.
+	_create_spawn_markers()
+
+	# Discover + run arrival branch. If resuming from save, skip the cinematic.
 	var first_visit: bool = not GameState.rooms_discovered.has("gate_room")
 	GameState.discover_room("gate_room", "Gate Room")
-	if play_arrival and first_visit:
+
+	if GameState.skip_arrival_cinematic and GameState.pending_spawn_position != null:
+		# Continue-from-save: place player at saved position with their facing.
+		_apply_pending_save_spawn()
+		GameState.skip_arrival_cinematic = false
+		GameState.pending_spawn_position = null
+		# Gate already dormant.
+		if _stargate != null and "active" in _stargate:
+			_stargate.active = false
+		_start_ambient()
+	elif first_visit:
 		_run_arrival()
 	else:
-		# Returning — make sure gate is dimmed/closed visually.
-		_set_gate_active(false)
+		# Re-entry from corridor — no cinematic, gate dormant.
+		if _stargate != null and "active" in _stargate:
+			_stargate.active = false
+		_start_ambient()
+
+# ----- spawn -----------------------------------------------------------------
+
+func _create_spawn_markers() -> void:
+	# "FromGate" — player just stepped through the portal, on the dais, facing -Z.
+	_from_gate_marker = $FromGate
+	_from_gate_marker.position = Vector3(0.0, 1.05, room_size.y * 0.5 - 5.5)
+	_from_gate_marker.rotation = Vector3.ZERO  # -Z forward = facing the room
+	# "FromCorridor" — re-enters from the exit archway, facing +Z toward the gate.
+	_from_corridor_marker = $FromCorridor
+	_from_corridor_marker.position = Vector3(0.0, 0.5, -room_size.y * 0.5 + 2.5)
+	_from_corridor_marker.rotation = Vector3(0.0, PI, 0.0)  # face +Z (toward gate)
+
+func _apply_pending_save_spawn() -> void:
+	if _player == null:
+		return
+	_player.global_position = GameState.pending_spawn_position
+	_player.rotation.y = GameState.pending_spawn_yaw
+
+# ----- arrival ---------------------------------------------------------------
 
 func _run_arrival() -> void:
-	GameState.set_objective("Step away from the gate and find a way off this ship")
-	GameState.add_log("Gate sealed. Power flickering. Where are we?")
+	# Player spawns on the dais facing outward; gate active behind them.
+	GameState.set_objective("Find a way off this ship")
+	GameState.add_log("Eli: Okay… where am I?")
 	if _player != null and _player.has_method("set_input_locked"):
 		_player.set_input_locked(true)
-	_set_gate_active(true)
-	if _gate_sfx != null and _gate_sfx.stream != null:
-		_gate_sfx.play()
-	if _ambient_sfx != null and _ambient_sfx.stream != null:
-		_ambient_sfx.play()
-	await get_tree().create_timer(arrival_lockout).timeout
-	_set_gate_active(false)
+	if _stargate != null and "active" in _stargate:
+		_stargate.active = true
+	if _gate_loop_sfx != null and _gate_loop_sfx.stream != null:
+		_gate_loop_sfx.play()
+
+	# Hold on the active portal so the player registers the cyan glow behind them.
+	await get_tree().create_timer(arrival_hold).timeout
+
+	# Collapse: shut the portal, play the whoosh, hand control back.
+	if _stargate != null and "active" in _stargate:
+		_stargate.active = false
+	if _gate_loop_sfx != null and _gate_loop_sfx.playing:
+		var t: Tween = create_tween()
+		t.tween_property(_gate_loop_sfx, "volume_db", -60.0, arrival_fade)
+		t.tween_callback(Callable(_gate_loop_sfx, "stop"))
+	if _gate_shutdown_sfx != null and _gate_shutdown_sfx.stream != null:
+		_gate_shutdown_sfx.play()
+
+	_start_ambient()
 	if _player != null and _player.has_method("set_input_locked"):
 		_player.set_input_locked(false)
 
-func _set_gate_active(active: bool) -> void:
-	# Light up the event-horizon puddle for the kawhoosh, then dim & shut once
-	# the arrival lockout ends.
-	if _stargate != null and "active" in _stargate:
-		_stargate.active = active
-	if active:
-		if _gate_back_light != null:
-			_gate_back_light.light_energy = 1.6
-			var t1: Tween = create_tween()
-			t1.tween_property(_gate_back_light, "light_energy", 0.9, arrival_lockout)
-		if _gate_key_light != null:
-			_gate_key_light.light_energy = 1.6
-			var t2: Tween = create_tween()
-			t2.tween_property(_gate_key_light, "light_energy", 0.9, arrival_lockout)
-	else:
-		if _gate_back_light != null:
-			_gate_back_light.light_energy = 0.9
-		if _gate_key_light != null:
-			_gate_key_light.light_energy = 0.9
+func _start_ambient() -> void:
+	if _ambient_sfx != null and not _ambient_sfx.playing:
+		_ambient_sfx.play()
 
-func _build_ceiling() -> void:
-	var size_x: float = float(floor_size.x) * tile_size
-	var size_z: float = float(floor_size.y) * tile_size
+# ----- procedural geometry ---------------------------------------------------
+
+func _build_floor() -> void:
+	var half_x: float = room_size.x * 0.5
+	var half_z: float = room_size.y * 0.5
+	# Single mesh-based floor — Kenney tiles would cost 256 instances at 2 m
+	# pitch. A BoxMesh + offset gives the same look at one draw call.
 	var mi: MeshInstance3D = MeshInstance3D.new()
-	var plane: PlaneMesh = PlaneMesh.new()
-	plane.size = Vector2(size_x, size_z)
-	mi.mesh = plane
-	mi.rotation_degrees = Vector3(180.0, 0.0, 0.0)
-	mi.position = Vector3(0.0, ceiling_height, 0.0)
-	if ceiling_material != null:
-		mi.material_override = ceiling_material
+	mi.name = "Floor"
+	var box: BoxMesh = BoxMesh.new()
+	box.size = Vector3(room_size.x, 0.2, room_size.y)
+	mi.mesh = box
+	var mat: StandardMaterial3D = StandardMaterial3D.new()
+	mat.albedo_color = Color(0.16, 0.155, 0.17, 1.0)
+	mat.metallic = 0.32
+	mat.roughness = 0.62
+	mi.material_override = mat
+	mi.position = Vector3(0.0, -0.1, 0.0)
 	_world.add_child(mi)
 
-func _build_room_colliders() -> void:
-	var size_x: float = float(floor_size.x) * tile_size
-	var size_z: float = float(floor_size.y) * tile_size
-	var thickness: float = 0.5
-	# Walls: layer 1 (blocks player) + layer 2 (SpringArm camera occluder).
+	# Floor collider.
+	var body: StaticBody3D = StaticBody3D.new()
+	body.name = "FloorCollider"
+	body.collision_layer = 1 | 2
+	body.collision_mask = 0
+	_world.add_child(body)
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var shape: BoxShape3D = BoxShape3D.new()
+	shape.size = Vector3(room_size.x, 0.2, room_size.y)
+	cs.shape = shape
+	cs.position = Vector3(0.0, -0.1, 0.0)
+	body.add_child(cs)
+
+	# Inlay: bronze ring of light tiles around the gate dais (visual interest).
+	var inlay_mat: StandardMaterial3D = StandardMaterial3D.new()
+	inlay_mat.albedo_color = Color(0.18, 0.13, 0.06, 1.0)
+	inlay_mat.metallic = 0.7
+	inlay_mat.roughness = 0.35
+	inlay_mat.emission_enabled = true
+	inlay_mat.emission = Color(1.0, 0.45, 0.12, 1.0)
+	inlay_mat.emission_energy_multiplier = 0.6
+	var inlay: MeshInstance3D = MeshInstance3D.new()
+	var ring: TorusMesh = TorusMesh.new()
+	ring.inner_radius = 5.0
+	ring.outer_radius = 5.4
+	ring.ring_segments = 64
+	ring.rings = 8
+	inlay.mesh = ring
+	inlay.material_override = inlay_mat
+	inlay.position = Vector3(0.0, 0.02, half_z - 4.0)
+	_world.add_child(inlay)
+
+
+func _build_walls_and_ceiling() -> void:
+	var half_x: float = room_size.x * 0.5
+	var half_z: float = room_size.y * 0.5
+	var wall_thickness: float = 0.5
+
+	var wall_mat: StandardMaterial3D = StandardMaterial3D.new()
+	wall_mat.albedo_color = Color(0.21, 0.20, 0.23, 1.0)
+	wall_mat.metallic = 0.30
+	wall_mat.roughness = 0.65
+
+	var dark_mat: StandardMaterial3D = StandardMaterial3D.new()
+	dark_mat.albedo_color = Color(0.13, 0.13, 0.16, 1.0)
+	dark_mat.metallic = 0.25
+	dark_mat.roughness = 0.7
+
 	var walls: StaticBody3D = StaticBody3D.new()
+	walls.name = "Walls"
 	walls.collision_layer = 1 | 2
 	walls.collision_mask = 0
 	_world.add_child(walls)
-	# South wall has a 1-tile cutout near x=0.5 for the corridor exit.
-	var cutout_w: float = tile_size
-	var cutout_h: float = 2.4
-	var top_h: float = ceiling_height - cutout_h
-	var door_center_x: float = 0.5
-	var left_len: float = door_center_x - cutout_w * 0.5 + size_x * 0.5
-	var right_len: float = size_x * 0.5 - (door_center_x + cutout_w * 0.5)
-	# South wall — split around exit cutout
-	_add_box_collider(walls, Vector3(-size_x * 0.5 + left_len * 0.5, ceiling_height * 0.5, -size_z * 0.5 - thickness * 0.5),
-		Vector3(left_len, ceiling_height, thickness))
-	_add_box_collider(walls, Vector3(size_x * 0.5 - right_len * 0.5, ceiling_height * 0.5, -size_z * 0.5 - thickness * 0.5),
-		Vector3(right_len, ceiling_height, thickness))
-	_add_box_collider(walls, Vector3(door_center_x, cutout_h + top_h * 0.5, -size_z * 0.5 - thickness * 0.5),
-		Vector3(cutout_w, top_h, thickness))
-	# +X wall (solid)
-	_add_box_collider(walls, Vector3(size_x * 0.5 + thickness * 0.5, ceiling_height * 0.5, 0.0),
-		Vector3(thickness, ceiling_height, size_z))
-	# -X wall (solid)
-	_add_box_collider(walls, Vector3(-size_x * 0.5 - thickness * 0.5, ceiling_height * 0.5, 0.0),
-		Vector3(thickness, ceiling_height, size_z))
-	# +Z wall (back, solid — gate is here)
-	_add_box_collider(walls, Vector3(0.0, ceiling_height * 0.5, size_z * 0.5 + thickness * 0.5),
-		Vector3(size_x, ceiling_height, thickness))
-	# Ceiling (camera occluder only — player doesn't jump that high anyway).
+
+	# +X wall (right, solid).
+	_add_wall_segment(walls, wall_mat, Vector3(half_x + wall_thickness * 0.5, ceiling_height * 0.5, 0.0),
+		Vector3(wall_thickness, ceiling_height, room_size.y))
+	# -X wall (left, solid).
+	_add_wall_segment(walls, wall_mat, Vector3(-half_x - wall_thickness * 0.5, ceiling_height * 0.5, 0.0),
+		Vector3(wall_thickness, ceiling_height, room_size.y))
+	# +Z wall (back, behind the gate — solid).
+	_add_wall_segment(walls, wall_mat, Vector3(0.0, ceiling_height * 0.5, half_z + wall_thickness * 0.5),
+		Vector3(room_size.x, ceiling_height, wall_thickness))
+
+	# -Z wall (front, the EXIT wall) — split around the archway opening.
+	var arch_h: float = 3.2
+	var top_h: float = ceiling_height - arch_h
+	var side_w: float = (room_size.x - exit_width) * 0.5
+	# Left of arch
+	_add_wall_segment(walls, wall_mat, Vector3(-half_x + side_w * 0.5, ceiling_height * 0.5, -half_z - wall_thickness * 0.5),
+		Vector3(side_w, ceiling_height, wall_thickness))
+	# Right of arch
+	_add_wall_segment(walls, wall_mat, Vector3(half_x - side_w * 0.5, ceiling_height * 0.5, -half_z - wall_thickness * 0.5),
+		Vector3(side_w, ceiling_height, wall_thickness))
+	# Lintel above the arch
+	_add_wall_segment(walls, wall_mat, Vector3(0.0, arch_h + top_h * 0.5, -half_z - wall_thickness * 0.5),
+		Vector3(exit_width, top_h, wall_thickness))
+
+	# Ceiling (dark; not a collider for player, only for SpringArm).
 	var ceil_body: StaticBody3D = StaticBody3D.new()
+	ceil_body.name = "Ceiling"
 	ceil_body.collision_layer = 2
 	ceil_body.collision_mask = 0
 	_world.add_child(ceil_body)
-	_add_box_collider(ceil_body, Vector3(0.0, ceiling_height + thickness * 0.5, 0.0),
-		Vector3(size_x, thickness, size_z))
+	_add_wall_segment(ceil_body, dark_mat, Vector3(0.0, ceiling_height + wall_thickness * 0.5, 0.0),
+		Vector3(room_size.x, wall_thickness, room_size.y))
 
-func _add_box_collider(parent: StaticBody3D, pos: Vector3, size: Vector3) -> void:
+	# Edge glow strips — emissive amber boxes hugging the top of every wall.
+	# Creates the "ring of light at the top of the wall" the reference image shows.
+	var glow_mat: StandardMaterial3D = StandardMaterial3D.new()
+	glow_mat.albedo_color = Color(1.0, 0.55, 0.18, 1.0)
+	glow_mat.emission_enabled = true
+	glow_mat.emission = Color(1.0, 0.55, 0.18, 1.0)
+	glow_mat.emission_energy_multiplier = 4.0
+	glow_mat.metallic = 0.0
+	glow_mat.roughness = 0.4
+	var strip_thickness: float = 0.18
+	var strip_y: float = ceiling_height - 0.35
+	# +X strip
+	_add_decorative_box(Vector3(half_x - 0.1, strip_y, 0.0), Vector3(strip_thickness, strip_thickness, room_size.y - 1.0), glow_mat)
+	# -X strip
+	_add_decorative_box(Vector3(-half_x + 0.1, strip_y, 0.0), Vector3(strip_thickness, strip_thickness, room_size.y - 1.0), glow_mat)
+	# +Z strip
+	_add_decorative_box(Vector3(0.0, strip_y, half_z - 0.1), Vector3(room_size.x - 1.0, strip_thickness, strip_thickness), glow_mat)
+	# -Z strip (split around lintel for visual coherence)
+	_add_decorative_box(Vector3(0.0, strip_y, -half_z + 0.1), Vector3(room_size.x - 1.0, strip_thickness, strip_thickness), glow_mat)
+
+
+func _add_wall_segment(parent: StaticBody3D, mat: StandardMaterial3D, pos: Vector3, size: Vector3) -> void:
 	var cs: CollisionShape3D = CollisionShape3D.new()
-	var box: BoxShape3D = BoxShape3D.new()
-	box.size = size
-	cs.shape = box
+	var shape: BoxShape3D = BoxShape3D.new()
+	shape.size = size
+	cs.shape = shape
 	cs.position = pos
 	parent.add_child(cs)
+	var mi: MeshInstance3D = MeshInstance3D.new()
+	var box: BoxMesh = BoxMesh.new()
+	box.size = size
+	mi.mesh = box
+	mi.material_override = mat
+	mi.position = pos
+	parent.add_child(mi)
 
-func _build_floor() -> void:
-	if floor_scene == null:
-		push_warning("gate_room: floor_scene not assigned")
-		return
-	var origin_x: float = -float(floor_size.x) * 0.5 * tile_size + tile_size * 0.5
-	var origin_z: float = -float(floor_size.y) * 0.5 * tile_size + tile_size * 0.5
-	for x in floor_size.x:
-		for z in floor_size.y:
-			var tile: Node3D = floor_scene.instantiate()
-			tile.position = Vector3(origin_x + x * tile_size, 0.0, origin_z + z * tile_size)
-			_world.add_child(tile)
-			_apply_metallic(tile)
+func _add_decorative_box(pos: Vector3, size: Vector3, mat: StandardMaterial3D) -> void:
+	var mi: MeshInstance3D = MeshInstance3D.new()
+	var box: BoxMesh = BoxMesh.new()
+	box.size = size
+	mi.mesh = box
+	mi.material_override = mat
+	mi.position = pos
+	_world.add_child(mi)
 
-func _apply_metallic(root: Node) -> void:
-	if metallic_material == null:
-		return
-	if root is MeshInstance3D:
-		var mi: MeshInstance3D = root
-		for i in mi.get_surface_override_material_count():
-			mi.set_surface_override_material(i, metallic_material)
-	for c in root.get_children():
-		_apply_metallic(c)
 
-func _build_walls() -> void:
-	if wall_scene == null:
-		push_warning("gate_room: wall_scene not assigned")
-		return
-	var half_x: float = float(floor_size.x) * 0.5 * tile_size
-	var half_z: float = float(floor_size.y) * 0.5 * tile_size
-	var door_index: int = floor_size.x / 2
-	for x in floor_size.x:
-		var px: float = -half_x + (x + 0.5) * tile_size
-		_place_wall(Vector3(px, wall_height_offset, half_z), 180.0, wall_scene)
-		var is_door: bool = (x == door_index) and (wall_door_scene != null)
-		var s: PackedScene = wall_door_scene if is_door else wall_scene
-		_place_wall(Vector3(px, wall_height_offset, -half_z), 0.0, s)
-	for z in floor_size.y:
-		var pz: float = -half_z + (z + 0.5) * tile_size
-		_place_wall(Vector3(half_x, wall_height_offset, pz), 270.0, wall_scene)
-		_place_wall(Vector3(-half_x, wall_height_offset, pz), 90.0, wall_scene)
+func _build_mezzanine() -> void:
+	# 3-sided U mezzanine at y = mezzanine_height. Open on the +Z (gate) side.
+	var half_x: float = room_size.x * 0.5
+	var half_z: float = room_size.y * 0.5
+	var deck_thickness: float = 0.3
+	var mat: StandardMaterial3D = StandardMaterial3D.new()
+	mat.albedo_color = Color(0.19, 0.18, 0.21, 1.0)
+	mat.metallic = 0.35
+	mat.roughness = 0.55
 
-func _place_wall(pos: Vector3, yaw_deg: float, scene: PackedScene) -> void:
-	var w: Node3D = scene.instantiate()
-	w.position = pos
-	w.rotation_degrees = Vector3(0, yaw_deg, 0)
-	w.scale = Vector3(1.0, wall_y_scale, 1.0)
-	_world.add_child(w)
-	_apply_metallic(w)
+	var deck: StaticBody3D = StaticBody3D.new()
+	deck.name = "Mezzanine"
+	deck.collision_layer = 1 | 2
+	deck.collision_mask = 0
+	_world.add_child(deck)
+
+	# Back deck strip (-Z runs along -Z wall, the "back" facing the gate)
+	_add_wall_segment(deck, mat,
+		Vector3(0.0, mezzanine_height, -half_z + mezzanine_depth * 0.5),
+		Vector3(room_size.x, deck_thickness, mezzanine_depth))
+	# Left deck strip (-X)
+	_add_wall_segment(deck, mat,
+		Vector3(-half_x + mezzanine_depth * 0.5, mezzanine_height, 0.0),
+		Vector3(mezzanine_depth, deck_thickness, room_size.y - mezzanine_depth * 2.0))
+	# Right deck strip (+X)
+	_add_wall_segment(deck, mat,
+		Vector3(half_x - mezzanine_depth * 0.5, mezzanine_height, 0.0),
+		Vector3(mezzanine_depth, deck_thickness, room_size.y - mezzanine_depth * 2.0))
+
+	# Underside trim — a darker thinner mesh on the bottom of each deck strip,
+	# reads as architectural soffit and hides the raw box bottom.
+	var trim_mat: StandardMaterial3D = StandardMaterial3D.new()
+	trim_mat.albedo_color = Color(0.10, 0.09, 0.11, 1.0)
+	trim_mat.metallic = 0.45
+	trim_mat.roughness = 0.42
+	_add_decorative_box(Vector3(0.0, mezzanine_height - deck_thickness * 0.5 - 0.05, -half_z + mezzanine_depth * 0.5),
+		Vector3(room_size.x, 0.06, mezzanine_depth + 0.1), trim_mat)
+	_add_decorative_box(Vector3(-half_x + mezzanine_depth * 0.5, mezzanine_height - deck_thickness * 0.5 - 0.05, 0.0),
+		Vector3(mezzanine_depth + 0.1, 0.06, room_size.y - mezzanine_depth * 2.0), trim_mat)
+	_add_decorative_box(Vector3(half_x - mezzanine_depth * 0.5, mezzanine_height - deck_thickness * 0.5 - 0.05, 0.0),
+		Vector3(mezzanine_depth + 0.1, 0.06, room_size.y - mezzanine_depth * 2.0), trim_mat)
+
+	# Railing along the open (inward-facing) edge of each strip.
+	_build_railing()
+
+
+func _build_railing() -> void:
+	# Modular railing: short emissive cyan posts at intervals connected by a
+	# darker top rail. Posts double as "rail accent" lights — they have a
+	# strong emissive cyan top that reads at distance.
+	var half_x: float = room_size.x * 0.5
+	var half_z: float = room_size.y * 0.5
+	var inner_x: float = half_x - mezzanine_depth          # right rail x
+	var inner_z_back: float = -half_z + mezzanine_depth    # back rail z (front edge of back deck)
+	var post_spacing: float = 2.0
+	var top_rail_y: float = mezzanine_height + 1.0
+
+	var post_mat: StandardMaterial3D = StandardMaterial3D.new()
+	post_mat.albedo_color = Color(0.16, 0.16, 0.18, 1.0)
+	post_mat.metallic = 0.5
+	post_mat.roughness = 0.5
+	var accent_mat: StandardMaterial3D = StandardMaterial3D.new()
+	accent_mat.albedo_color = Color(0.0, 0.6, 0.85, 1.0)
+	accent_mat.emission_enabled = true
+	accent_mat.emission = Color(0.0, 0.75, 1.0, 1.0)
+	accent_mat.emission_energy_multiplier = 5.0
+	accent_mat.metallic = 0.0
+	accent_mat.roughness = 0.3
+	var rail_mat: StandardMaterial3D = StandardMaterial3D.new()
+	rail_mat.albedo_color = Color(0.20, 0.20, 0.24, 1.0)
+	rail_mat.metallic = 0.6
+	rail_mat.roughness = 0.45
+
+	# Back rail (runs along x at z = inner_z_back).
+	var back_count: int = int(room_size.x / post_spacing)
+	for i in back_count + 1:
+		var x: float = -half_x + i * post_spacing
+		_add_rail_post(Vector3(x, mezzanine_height, inner_z_back), post_mat, accent_mat)
+	_add_decorative_box(Vector3(0.0, top_rail_y, inner_z_back), Vector3(room_size.x, 0.08, 0.08), rail_mat)
+
+	# Side rails (-X and +X) — span z range minus mezzanine_depth on each end.
+	var side_z_min: float = -half_z + mezzanine_depth
+	var side_z_max: float = half_z - mezzanine_depth
+	var side_count: int = int((side_z_max - side_z_min) / post_spacing)
+	for side_x in [-(half_x - mezzanine_depth), half_x - mezzanine_depth]:
+		for i in side_count + 1:
+			var z: float = side_z_min + i * post_spacing
+			_add_rail_post(Vector3(side_x, mezzanine_height, z), post_mat, accent_mat)
+		_add_decorative_box(Vector3(side_x, top_rail_y, (side_z_min + side_z_max) * 0.5),
+			Vector3(0.08, 0.08, side_z_max - side_z_min), rail_mat)
+
+
+func _add_rail_post(base: Vector3, post_mat: StandardMaterial3D, accent_mat: StandardMaterial3D) -> void:
+	# Stem (0.06 × 1.0 × 0.06) topped by a small emissive cyan cap (0.16 × 0.06 × 0.16).
+	var stem: MeshInstance3D = MeshInstance3D.new()
+	var stem_box: BoxMesh = BoxMesh.new()
+	stem_box.size = Vector3(0.06, 1.0, 0.06)
+	stem.mesh = stem_box
+	stem.material_override = post_mat
+	stem.position = base + Vector3(0.0, 0.5, 0.0)
+	_world.add_child(stem)
+
+	var cap: MeshInstance3D = MeshInstance3D.new()
+	var cap_box: BoxMesh = BoxMesh.new()
+	cap_box.size = Vector3(0.16, 0.06, 0.16)
+	cap.mesh = cap_box
+	cap.material_override = accent_mat
+	cap.position = base + Vector3(0.0, 0.96, 0.0)
+	_world.add_child(cap)
+
+
+func _build_staircases() -> void:
+	# Two straight diagonal flights flanking the exit archway: bottom near the
+	# -Z wall and inset by ~6 m on x, climbing toward the back mezzanine. The
+	# top step lands on the side mezzanines.
+	var half_x: float = room_size.x * 0.5
+	var half_z: float = room_size.y * 0.5
+	var step_count: int = 10
+	var step_h: float = mezzanine_height / float(step_count)   # 0.5 m
+	var step_run: float = 0.8
+	var stair_width: float = 2.4
+	# Place left staircase on the left mezzanine: base just past the front
+	# wall, climbing toward +Z up to the side mezzanine at x = -(half_x - mezzanine_depth*0.5).
+	var stair_mat: StandardMaterial3D = StandardMaterial3D.new()
+	stair_mat.albedo_color = Color(0.22, 0.18, 0.13, 1.0)
+	stair_mat.metallic = 0.45
+	stair_mat.roughness = 0.45
+	stair_mat.emission_enabled = true
+	stair_mat.emission = Color(1.0, 0.55, 0.18, 1.0)
+	stair_mat.emission_energy_multiplier = 0.18
+
+	var z_start: float = -half_z + 1.0
+	for side_sign in [-1.0, 1.0]:
+		var x_center: float = side_sign * (half_x - mezzanine_depth * 0.5)
+		var stairs: StaticBody3D = StaticBody3D.new()
+		stairs.name = "Stairs_%s" % ("L" if side_sign < 0 else "R")
+		stairs.collision_layer = 1 | 2
+		stairs.collision_mask = 0
+		_world.add_child(stairs)
+		for i in step_count:
+			var step_y: float = (i + 0.5) * step_h
+			var step_z: float = z_start + i * step_run + step_run * 0.5
+			_add_wall_segment(stairs, stair_mat,
+				Vector3(x_center, step_y, step_z),
+				Vector3(stair_width, step_h, step_run))
+		# Stair handrail — single emissive bar along the inside edge.
+		var rail_mat: StandardMaterial3D = StandardMaterial3D.new()
+		rail_mat.albedo_color = Color(0.20, 0.20, 0.24, 1.0)
+		rail_mat.metallic = 0.6
+		rail_mat.roughness = 0.45
+		var inside_x: float = x_center + (-side_sign) * (stair_width * 0.5)
+		var z_mid: float = z_start + (step_count * step_run) * 0.5
+		# Rail rises with the stairs; rotate around X so the bar tilts with the slope.
+		var rail: MeshInstance3D = MeshInstance3D.new()
+		var rail_box: BoxMesh = BoxMesh.new()
+		var rise: float = mezzanine_height
+		var run: float = step_count * step_run
+		rail_box.size = Vector3(0.06, 0.06, sqrt(rise * rise + run * run))
+		rail.mesh = rail_box
+		rail.material_override = rail_mat
+		rail.position = Vector3(inside_x, mezzanine_height * 0.5 + 0.9, z_mid)
+		rail.rotation = Vector3(atan2(rise, run), 0.0, 0.0)
+		_world.add_child(rail)
+
+
+func _build_gate_platform() -> void:
+	# Stepped pedestal on the +Z side: 8 × 6 × 1 main slab + two 0.3 m steps
+	# in front so the player visibly climbs onto the dais.
+	var half_z: float = room_size.y * 0.5
+	var platform_z: float = half_z - 3.8
+	var dais_mat: StandardMaterial3D = StandardMaterial3D.new()
+	dais_mat.albedo_color = Color(0.24, 0.18, 0.10, 1.0)
+	dais_mat.metallic = 0.65
+	dais_mat.roughness = 0.40
+	dais_mat.emission_enabled = true
+	dais_mat.emission = Color(0.6, 0.34, 0.12, 1.0)
+	dais_mat.emission_energy_multiplier = 0.22
+
+	# Main slab.
+	var slab: StaticBody3D = StaticBody3D.new()
+	slab.name = "GatePlatform"
+	slab.collision_layer = 1 | 2
+	slab.collision_mask = 0
+	_world.add_child(slab)
+	_add_wall_segment(slab, dais_mat, Vector3(0.0, 0.5, platform_z), Vector3(10.0, 1.0, 6.0))
+
+	# Front step #1 (0.66 m high, in front of slab going -Z).
+	_add_wall_segment(slab, dais_mat, Vector3(0.0, 0.33, platform_z - 3.6), Vector3(8.0, 0.66, 1.2))
+	# Front step #2 (0.33 m high, further -Z).
+	_add_wall_segment(slab, dais_mat, Vector3(0.0, 0.165, platform_z - 4.8), Vector3(6.0, 0.33, 1.2))
+
+
+func _build_consoles() -> void:
+	# Two consoles on the deck-1 floor, facing the gate (i.e. looking +Z).
+	# Player walks down the front steps and reaches them between the dais and
+	# the centre of the room.
+	var half_z: float = room_size.y * 0.5
+	var z_console: float = half_z - 10.5
+	for spec in [
+		{"name": "GateControlConsole", "x": -3.5, "kind": "gate_control"},
+		{"name": "FTLConsole",         "x":  3.5, "kind": "ftl_countdown"},
+	]:
+		var holder: Node3D = Node3D.new()
+		holder.name = spec["name"]
+		holder.position = Vector3(spec["x"], 0.0, z_console)
+		# Make the console face +Z (toward the gate) so the player reads it
+		# from the gate-room side. Default console model points -Z.
+		holder.rotation = Vector3(0.0, PI, 0.0)
+		_world.add_child(holder)
+
+		var mesh: Node3D = CONSOLE_SCENE.instantiate()
+		mesh.scale = Vector3(1.4, 1.4, 1.4)
+		holder.add_child(mesh)
+
+		# Wrap with a StaticBody3D on the interactable layer.
+		var inter: StaticBody3D = StaticBody3D.new()
+		inter.set_script(GATE_CONSOLE_SCRIPT)
+		inter.name = "Interactable"
+		inter.set("kind", spec["kind"])
+		var cs: CollisionShape3D = CollisionShape3D.new()
+		var shape: BoxShape3D = BoxShape3D.new()
+		shape.size = Vector3(1.8, 1.8, 1.4)
+		cs.shape = shape
+		cs.position = Vector3(0.0, 0.9, 0.0)
+		inter.add_child(cs)
+		holder.add_child(inter)
+
+
+func _build_lighting_props() -> void:
+	# Atmospheric uplights — amber OmniLights at floor level pointed up by
+	# placement, washing the upper walls warm. Plus dedicated SpotLights aimed
+	# at the gate from below.
+	var half_x: float = room_size.x * 0.5
+	var half_z: float = room_size.y * 0.5
+
+	# Floor uplights around the perimeter (4 corners + 2 mid-walls).
+	var uplight_positions: Array = [
+		Vector3(-half_x + 2.0, 0.5,  half_z - 2.0),
+		Vector3( half_x - 2.0, 0.5,  half_z - 2.0),
+		Vector3(-half_x + 2.0, 0.5, -half_z + 2.0),
+		Vector3( half_x - 2.0, 0.5, -half_z + 2.0),
+		Vector3(-half_x + 2.0, 0.5, 0.0),
+		Vector3( half_x - 2.0, 0.5, 0.0),
+	]
+	for p in uplight_positions:
+		var l: OmniLight3D = OmniLight3D.new()
+		l.light_color = Color(1.0, 0.55, 0.20, 1.0)
+		l.light_energy = 2.4
+		l.omni_range = 11.0
+		l.omni_attenuation = 1.6
+		l.position = p
+		_world.add_child(l)
+
+	# Gate uplighting: 1 spot from directly in front, 2 from the sides.
+	# look_at() requires the node to already be inside the tree, so add_child
+	# before re-orienting; otherwise the call quietly errors and the spotlight
+	# points along its default axis.
+	var gate_center: Vector3 = Vector3(0.0, 4.0, half_z - 3.8)
+	# Front spot
+	var front_spot: SpotLight3D = SpotLight3D.new()
+	front_spot.light_color = Color(1.0, 0.65, 0.25, 1.0)
+	front_spot.light_energy = 6.0
+	front_spot.spot_range = 14.0
+	front_spot.spot_angle = 35.0
+	front_spot.position = Vector3(0.0, 1.2, gate_center.z - 5.5)
+	_world.add_child(front_spot)
+	front_spot.look_at(gate_center, Vector3.UP)
+	# Side spots
+	for sx in [-1.0, 1.0]:
+		var side: SpotLight3D = SpotLight3D.new()
+		side.light_color = Color(1.0, 0.55, 0.18, 1.0)
+		side.light_energy = 4.0
+		side.spot_range = 12.0
+		side.spot_angle = 32.0
+		side.position = Vector3(sx * 5.5, 1.2, gate_center.z - 1.5)
+		_world.add_child(side)
+		side.look_at(gate_center, Vector3.UP)
+
+	# Soft top key light — directional, slightly cool. Establishes the "shafts
+	# from above" feel even without a volumetric pass.
+	var key: DirectionalLight3D = DirectionalLight3D.new()
+	key.name = "KeyLight"
+	key.light_color = Color(0.78, 0.86, 1.0, 1.0)
+	key.light_energy = 0.45
+	key.shadow_enabled = true
+	key.shadow_opacity = 0.45
+	# Tilt to come "from above and front" (-Y mostly, slight +Z).
+	key.rotation = Vector3(deg_to_rad(-72.0), deg_to_rad(15.0), 0.0)
+	_world.add_child(key)

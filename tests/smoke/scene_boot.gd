@@ -14,19 +14,27 @@ const SCENES: Array = [
 	},
 	{
 		"path": "res://scenes/gate_room.tscn",
-		"requires": ["Player", "View", "View/SpringArm/Camera", "HUDLayer/HUD"],
+		"requires": [
+			"Player",
+			"View",
+			"View/SpringArm/Camera",
+			"HUDLayer/HUD",
+			"World",
+			"FromGate",
+			"FromCorridor",
+			"AmbientHum",
+			"GateActiveLoop",
+			"GateShutdown",
+		],
 	},
 	{
 		"path": "res://scenes/destiny_corridor.tscn",
-		"requires": ["Player", "View/SpringArm/Camera", "QuartersDoor", "BreachDoor", "GateRoomDoor", "ObservationDoor", "FromGateRoom", "FromQuarters", "FromBreach"],
-	},
-	{
-		"path": "res://scenes/eli_quarters.tscn",
-		"requires": ["Player", "View/SpringArm/Camera", "Bed", "KinoPickup", "CorridorDoor", "FromCorridor"],
-	},
-	{
-		"path": "res://scenes/hull_breach.tscn",
-		"requires": ["Player", "View/SpringArm/Camera", "SealSwitch", "CorridorDoor", "AlarmLight", "VentParticles"],
+		"requires": [
+			"Player",
+			"View/SpringArm/Camera",
+			"GateRoomDoor",
+			"FromGateRoom",
+		],
 	},
 ]
 

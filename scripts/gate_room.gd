@@ -383,6 +383,18 @@ func _build_railing() -> void:
 		_add_decorative_box(Vector3(side_x, top_rail_y, (side_z_min + side_z_max) * 0.5),
 			Vector3(0.08, 0.08, side_z_max - side_z_min), rail_mat)
 
+	# Open-end rails on the side mezzanines (+Z end faces the gate — would
+	# otherwise be a fall-off-the-edge hazard when walking past the inside rail
+	# and out onto the gate-facing tip of the side deck).
+	var end_count: int = int(mezzanine_depth / post_spacing)
+	for side_x in [-half_x + mezzanine_depth * 0.5, half_x - mezzanine_depth * 0.5]:
+		var x_min: float = side_x - mezzanine_depth * 0.5
+		for i in end_count + 1:
+			var x: float = x_min + i * (mezzanine_depth / float(end_count))
+			_add_rail_post(Vector3(x, mezzanine_height, side_z_max), post_mat, accent_mat)
+		_add_decorative_box(Vector3(side_x, top_rail_y, side_z_max),
+			Vector3(mezzanine_depth, 0.08, 0.08), rail_mat)
+
 
 func _add_rail_post(base: Vector3, post_mat: StandardMaterial3D, accent_mat: StandardMaterial3D) -> void:
 	# Stem (0.06 × 1.0 × 0.06) topped by a small emissive cyan cap (0.16 × 0.06 × 0.16).
@@ -405,16 +417,18 @@ func _add_rail_post(base: Vector3, post_mat: StandardMaterial3D, accent_mat: Sta
 
 func _build_staircases() -> void:
 	# Two straight diagonal flights flanking the exit archway: bottom near the
-	# -Z wall and inset by ~6 m on x, climbing toward the back mezzanine. The
-	# top step lands on the side mezzanines.
+	# -Z wall, climbing toward +Z up to the side mezzanines.
+	#
+	# Collision is a single inclined ramp per stair, NOT per-step boxes.
+	# CharacterBody3D has no built-in step-up; a stack of 0.5 m collision boxes
+	# walks like a wall. The visual step meshes remain on top for the staircase
+	# read; the invisible ramp underneath does the walking.
 	var half_x: float = room_size.x * 0.5
 	var half_z: float = room_size.y * 0.5
 	var step_count: int = 10
 	var step_h: float = mezzanine_height / float(step_count)   # 0.5 m
 	var step_run: float = 0.8
 	var stair_width: float = 2.4
-	# Place left staircase on the left mezzanine: base just past the front
-	# wall, climbing toward +Z up to the side mezzanine at x = -(half_x - mezzanine_depth*0.5).
 	var stair_mat: StandardMaterial3D = StandardMaterial3D.new()
 	stair_mat.albedo_color = Color(0.22, 0.18, 0.13, 1.0)
 	stair_mat.metallic = 0.45
@@ -424,37 +438,81 @@ func _build_staircases() -> void:
 	stair_mat.emission_energy_multiplier = 0.18
 
 	var z_start: float = -half_z + 1.0
+	var rise: float = mezzanine_height
+	var run: float = step_count * step_run
+	var ramp_len: float = sqrt(rise * rise + run * run)
+	var slope_angle: float = atan2(rise, run)
+
 	for side_sign in [-1.0, 1.0]:
 		var x_center: float = side_sign * (half_x - mezzanine_depth * 0.5)
-		var stairs: StaticBody3D = StaticBody3D.new()
-		stairs.name = "Stairs_%s" % ("L" if side_sign < 0 else "R")
-		stairs.collision_layer = 1 | 2
-		stairs.collision_mask = 0
-		_world.add_child(stairs)
+
+		# Visual steps — mesh only, no collider.
 		for i in step_count:
 			var step_y: float = (i + 0.5) * step_h
 			var step_z: float = z_start + i * step_run + step_run * 0.5
-			_add_wall_segment(stairs, stair_mat,
-				Vector3(x_center, step_y, step_z),
-				Vector3(stair_width, step_h, step_run))
-		# Stair handrail — single emissive bar along the inside edge.
-		var rail_mat: StandardMaterial3D = StandardMaterial3D.new()
-		rail_mat.albedo_color = Color(0.20, 0.20, 0.24, 1.0)
-		rail_mat.metallic = 0.6
-		rail_mat.roughness = 0.45
-		var inside_x: float = x_center + (-side_sign) * (stair_width * 0.5)
-		var z_mid: float = z_start + (step_count * step_run) * 0.5
-		# Rail rises with the stairs; rotate around X so the bar tilts with the slope.
-		var rail: MeshInstance3D = MeshInstance3D.new()
-		var rail_box: BoxMesh = BoxMesh.new()
-		var rise: float = mezzanine_height
-		var run: float = step_count * step_run
-		rail_box.size = Vector3(0.06, 0.06, sqrt(rise * rise + run * run))
-		rail.mesh = rail_box
-		rail.material_override = rail_mat
-		rail.position = Vector3(inside_x, mezzanine_height * 0.5 + 0.9, z_mid)
-		rail.rotation = Vector3(atan2(rise, run), 0.0, 0.0)
-		_world.add_child(rail)
+			_add_decorative_box(Vector3(x_center, step_y, step_z),
+				Vector3(stair_width, step_h, step_run), stair_mat)
+
+		# Single inclined ramp collider — the actual walking surface.
+		# Positive X rotation in Godot's right-handed system tilts +Z toward -Y,
+		# so to put the +Z end up (matching the stair climbing from -Z to +Z)
+		# we rotate by NEGATIVE slope_angle.
+		var ramp_body: StaticBody3D = StaticBody3D.new()
+		ramp_body.name = "Stairs_%s" % ("L" if side_sign < 0 else "R")
+		ramp_body.collision_layer = 1 | 2
+		ramp_body.collision_mask = 0
+		_world.add_child(ramp_body)
+		var ramp_cs: CollisionShape3D = CollisionShape3D.new()
+		var ramp_shape: BoxShape3D = BoxShape3D.new()
+		ramp_shape.size = Vector3(stair_width, 0.2, ramp_len)
+		ramp_cs.shape = ramp_shape
+		ramp_cs.position = Vector3(x_center, rise * 0.5, z_start + run * 0.5)
+		ramp_cs.rotation = Vector3(-slope_angle, 0.0, 0.0)
+		ramp_body.add_child(ramp_cs)
+
+		# Railings — one on each side of the stair so the player can't fall off.
+		for rail_sign in [-1.0, 1.0]:
+			var rail_x: float = x_center + rail_sign * (stair_width * 0.5)
+			_build_stair_railing(rail_x, z_start, step_count, step_h, step_run,
+				slope_angle, ramp_len)
+
+
+func _build_stair_railing(rail_x: float, z_start: float, step_count: int, step_h: float,
+		step_run: float, slope_angle: float, ramp_len: float) -> void:
+	# Matches the mezzanine railing palette: dark posts, cyan emissive caps,
+	# darker top bar. One post every two steps. Top bar is a single sloped box.
+	var post_mat: StandardMaterial3D = StandardMaterial3D.new()
+	post_mat.albedo_color = Color(0.16, 0.16, 0.18, 1.0)
+	post_mat.metallic = 0.5
+	post_mat.roughness = 0.5
+	var accent_mat: StandardMaterial3D = StandardMaterial3D.new()
+	accent_mat.albedo_color = Color(0.0, 0.6, 0.85, 1.0)
+	accent_mat.emission_enabled = true
+	accent_mat.emission = Color(0.0, 0.75, 1.0, 1.0)
+	accent_mat.emission_energy_multiplier = 5.0
+	accent_mat.metallic = 0.0
+	accent_mat.roughness = 0.3
+	var rail_mat: StandardMaterial3D = StandardMaterial3D.new()
+	rail_mat.albedo_color = Color(0.20, 0.20, 0.24, 1.0)
+	rail_mat.metallic = 0.6
+	rail_mat.roughness = 0.45
+
+	for i in range(0, step_count + 1, 2):
+		var post_base_y: float = float(i) * step_h
+		var post_z: float = z_start + float(i) * step_run
+		_add_rail_post(Vector3(rail_x, post_base_y, post_z), post_mat, accent_mat)
+
+	# Top rail spans from post-top at bottom of stair to post-top at top of
+	# stair: (z_start, 1.0) → (z_start + run, mezzanine_height + 1.0).
+	var run: float = float(step_count) * step_run
+	var top_rail: MeshInstance3D = MeshInstance3D.new()
+	var top_box: BoxMesh = BoxMesh.new()
+	top_box.size = Vector3(0.08, 0.08, ramp_len)
+	top_rail.mesh = top_box
+	top_rail.material_override = rail_mat
+	top_rail.position = Vector3(rail_x, mezzanine_height * 0.5 + 1.0, z_start + run * 0.5)
+	top_rail.rotation = Vector3(-slope_angle, 0.0, 0.0)
+	_world.add_child(top_rail)
 
 
 func _build_gate_platform() -> void:
@@ -470,7 +528,7 @@ func _build_gate_platform() -> void:
 	dais_mat.emission = Color(0.6, 0.34, 0.12, 1.0)
 	dais_mat.emission_energy_multiplier = 0.22
 
-	# Main slab.
+	# Main slab — kept as a collider so the player stands on the dais top.
 	var slab: StaticBody3D = StaticBody3D.new()
 	slab.name = "GatePlatform"
 	slab.collision_layer = 1 | 2
@@ -478,10 +536,32 @@ func _build_gate_platform() -> void:
 	_world.add_child(slab)
 	_add_wall_segment(slab, dais_mat, Vector3(0.0, 0.5, platform_z), Vector3(10.0, 1.0, 6.0))
 
-	# Front step #1 (0.66 m high, in front of slab going -Z).
-	_add_wall_segment(slab, dais_mat, Vector3(0.0, 0.33, platform_z - 3.6), Vector3(8.0, 0.66, 1.2))
-	# Front step #2 (0.33 m high, further -Z).
-	_add_wall_segment(slab, dais_mat, Vector3(0.0, 0.165, platform_z - 4.8), Vector3(6.0, 0.33, 1.2))
+	# Front ceremonial steps — visual only. Their tops (0.33 m, 0.66 m) are
+	# too tall for CharacterBody3D to step up; the ramp collider below handles
+	# the actual climb so the visible steps stay decorative.
+	_add_decorative_box(Vector3(0.0, 0.33, platform_z - 3.6), Vector3(8.0, 0.66, 1.2), dais_mat)
+	_add_decorative_box(Vector3(0.0, 0.165, platform_z - 4.8), Vector3(6.0, 0.33, 1.2), dais_mat)
+
+	# Hidden ramp collider: from (y=0, z=front-of-step-2) up to (y=1, z=front-of-slab).
+	# Step #2 front: platform_z - 4.8 - 0.6 = platform_z - 5.4
+	# Slab front:    platform_z - 3.0
+	# Run = 2.4 m, rise = 1.0 m → slope ≈ 22.6° (well under floor_max_angle).
+	var ramp_run: float = 2.4
+	var ramp_rise: float = 1.0
+	var ramp_len: float = sqrt(ramp_run * ramp_run + ramp_rise * ramp_rise)
+	var ramp_angle: float = atan2(ramp_rise, ramp_run)
+	var dais_ramp: StaticBody3D = StaticBody3D.new()
+	dais_ramp.name = "DaisRamp"
+	dais_ramp.collision_layer = 1 | 2
+	dais_ramp.collision_mask = 0
+	_world.add_child(dais_ramp)
+	var ramp_cs: CollisionShape3D = CollisionShape3D.new()
+	var ramp_shape: BoxShape3D = BoxShape3D.new()
+	ramp_shape.size = Vector3(8.0, 0.2, ramp_len)
+	ramp_cs.shape = ramp_shape
+	ramp_cs.position = Vector3(0.0, ramp_rise * 0.5, platform_z - 3.0 - ramp_run * 0.5)
+	ramp_cs.rotation = Vector3(-ramp_angle, 0.0, 0.0)
+	dais_ramp.add_child(ramp_cs)
 
 
 func _build_consoles() -> void:

@@ -4,6 +4,17 @@ A sci-fi open-world RPG set in the Stargate Universe TV series. Players take on 
 aboard the ancient ship Destiny, exploring uncharted galaxies, managing resources, making
 story-defining choices, and surviving against alien threats.
 
+## Current Status
+
+_Snapshot — refresh with `/help`. Last updated: 2026-05-21._
+
+- **Phase:** Production · **Active sprint:** sprint-005 (first Godot-era sprint) · **Branch:** `godot`
+- **Sprint-005 goal:** Make E1 Mission 1 actually playable — wire rooms via doors, add Kino pickup + UI, flesh out hull breach + seal interaction, ship mission-complete trigger.
+- **Done:** Concept, Systems Design (15 GDDs in `design/gdd/`), engine pivot to Godot 4.6, E1 gate-room slice + headless smoke tests
+- **Sprint format:** Task tables in `production/sprints/sprint-NNN.md` (no `production/epics/` hierarchy)
+- **Sprints 1–4 archived:** `production/sprints/archive-browser-stack/` — all pre-pivot Three.js work. Do not resume; conceptual notes folded into design GDDs + memory.
+- **Tech debt — not blocking:** missing `docs/architecture/architecture.md`, `docs/architecture/control-manifest.md`, `design/accessibility-requirements.md` (4 ADRs exist in `docs/architecture/`)
+
 ## Engine
 
 **Godot 4.6** (Forward+ renderer). Bootstrapped from

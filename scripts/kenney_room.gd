@@ -134,7 +134,8 @@ func _add_side_with_cutout(body: StaticBody3D, curtain: StaticBody3D, side: Stri
 		if right_len > 0.01:
 			_add_box_collider(body, Vector3(right_center, ceiling_height * 0.5, side_z),
 				Vector3(right_len, ceiling_height, thickness))
-		# Header above cutout.
+		# Header collider above cutout. The visible header is provided by the
+		# solid wall.glb placed behind the wall-door.glb in _place_door_or_wall.
 		if top_h > 0.01:
 			_add_box_collider(body, Vector3(center_along, cutout_h + top_h * 0.5, side_z),
 				Vector3(cutout_w, top_h, thickness))
@@ -154,6 +155,7 @@ func _add_side_with_cutout(body: StaticBody3D, curtain: StaticBody3D, side: Stri
 				Vector3(thickness, top_h, cutout_w))
 		_add_box_collider(curtain, Vector3(side_x, cutout_h * 0.5, center_along),
 			Vector3(thickness, cutout_h, cutout_w))
+
 
 func _add_box_collider(parent: StaticBody3D, pos: Vector3, size: Vector3) -> void:
 	var cs: CollisionShape3D = CollisionShape3D.new()
@@ -209,18 +211,33 @@ func _build_walls() -> void:
 	# +Z (north) and -Z (south)
 	for x in floor_size.x:
 		var px: float = -half_x + (x + 0.5) * tile_size
-		_place_wall(Vector3(px, 0.0, half_z), 180.0, _pick(x, north_door_index))
-		_place_wall(Vector3(px, 0.0, -half_z), 0.0, _pick(x, south_door_index))
+		_place_door_or_wall(Vector3(px, 0.0, half_z), 180.0, x == north_door_index)
+		_place_door_or_wall(Vector3(px, 0.0, -half_z), 0.0, x == south_door_index)
 	# +X (east) and -X (west)
 	for z in floor_size.y:
 		var pz: float = -half_z + (z + 0.5) * tile_size
-		_place_wall(Vector3(half_x, 0.0, pz), 270.0, _pick(z, east_door_index))
-		_place_wall(Vector3(-half_x, 0.0, pz), 90.0, _pick(z, west_door_index))
+		_place_door_or_wall(Vector3(half_x, 0.0, pz), 270.0, z == east_door_index)
+		_place_door_or_wall(Vector3(-half_x, 0.0, pz), 90.0, z == west_door_index)
 
-func _pick(i: int, door_index: int) -> PackedScene:
-	if i == door_index and wall_door_scene != null:
-		return wall_door_scene
-	return wall_scene
+
+# At a door slot, render the solid wall.glb at the wall plane PLUS the
+# wall-door.glb pushed 0.05m inward — that way the door reads as a recessed
+# panel against an unbroken wall, like the gate-room. The kit's wall-door.glb
+# has dark/transparent geometry above the door panel; without the solid
+# backdrop, that area renders as a void up to the ceiling.
+func _place_door_or_wall(pos: Vector3, yaw_deg: float, is_door: bool) -> void:
+	_place_wall(pos, yaw_deg, wall_scene)
+	if is_door and wall_door_scene != null:
+		var inward: Vector3 = _wall_inward(yaw_deg) * 0.05
+		_place_wall(pos + inward, yaw_deg, wall_door_scene)
+
+
+# Unit vector pointing from the wall toward the room centre, given the wall's
+# yaw. Walls face inward, so this is the wall's local +Z rotated by yaw.
+func _wall_inward(yaw_deg: float) -> Vector3:
+	var rad: float = deg_to_rad(yaw_deg)
+	return Vector3(sin(rad), 0.0, cos(rad))
+
 
 func _place_wall(pos: Vector3, yaw_deg: float, scene: PackedScene) -> void:
 	if scene == null:

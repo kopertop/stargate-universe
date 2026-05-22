@@ -10,7 +10,14 @@ extends SceneTree
 const SCENES: Array = [
 	{
 		"path": "res://scenes/title.tscn",
-		"requires": ["Background", "Frame/Stack/StartButton", "Frame/Stack/QuitButton"],
+		"requires": [
+			"Background",
+			"LeftColumn/MenuList/ContinueButton",
+			"LeftColumn/MenuList/NewGameButton",
+			"LeftColumn/MenuList/SettingsButton",
+			"LeftColumn/MenuList/ExitButton",
+			"SettingsOverlay",
+		],
 	},
 	{
 		"path": "res://scenes/gate_room.tscn",
@@ -36,6 +43,10 @@ const SCENES: Array = [
 			"FromGateRoom",
 			"ControlRoomDoor",
 			"FromControlRoom",
+			"MessHallDoor",
+			"FromMessCorridor",
+			"CrewQuartersDoor",
+			"FromCrewCorridor",
 		],
 	},
 	{

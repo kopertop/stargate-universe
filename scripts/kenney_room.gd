@@ -68,11 +68,18 @@ func _build_room_colliders() -> void:
 	wall_body.collision_layer = 1 | 2  # walk-blocker AND camera-occluder
 	wall_body.collision_mask = 0
 	_world.add_child(wall_body)
+	# Camera-only "curtain" body — invisible plates spanning each door cutout.
+	# The player (mask layer 1) walks through; the camera SpringArm (mask layer 2)
+	# bounces off so it cannot escape the room through the doorway.
+	var curtain_body: StaticBody3D = StaticBody3D.new()
+	curtain_body.collision_layer = 2
+	curtain_body.collision_mask = 0
+	_world.add_child(curtain_body)
 	# Each side is split around the door cutout so the player can walk through.
-	_add_side_with_cutout(wall_body, "south", size_x, size_z, thickness)
-	_add_side_with_cutout(wall_body, "north", size_x, size_z, thickness)
-	_add_side_with_cutout(wall_body, "east", size_x, size_z, thickness)
-	_add_side_with_cutout(wall_body, "west", size_x, size_z, thickness)
+	_add_side_with_cutout(wall_body, curtain_body, "south", size_x, size_z, thickness)
+	_add_side_with_cutout(wall_body, curtain_body, "north", size_x, size_z, thickness)
+	_add_side_with_cutout(wall_body, curtain_body, "east", size_x, size_z, thickness)
+	_add_side_with_cutout(wall_body, curtain_body, "west", size_x, size_z, thickness)
 	# Ceiling (camera-occluder only).
 	var ceiling_body: StaticBody3D = StaticBody3D.new()
 	ceiling_body.collision_layer = 2
@@ -81,7 +88,8 @@ func _build_room_colliders() -> void:
 	_add_box_collider(ceiling_body, Vector3(0.0, ceiling_height + thickness * 0.5, 0.0),
 		Vector3(size_x, thickness, size_z))
 
-func _add_side_with_cutout(body: StaticBody3D, side: String, size_x: float, size_z: float, thickness: float) -> void:
+func _add_side_with_cutout(body: StaticBody3D, curtain: StaticBody3D, side: String,
+		size_x: float, size_z: float, thickness: float) -> void:
 	# Cutout is 1 tile wide & 2.4m tall (matches Kenney wall-door clearance).
 	var cutout_w: float = tile_size
 	var cutout_h: float = 2.4
@@ -130,6 +138,9 @@ func _add_side_with_cutout(body: StaticBody3D, side: String, size_x: float, size
 		if top_h > 0.01:
 			_add_box_collider(body, Vector3(center_along, cutout_h + top_h * 0.5, side_z),
 				Vector3(cutout_w, top_h, thickness))
+		# Camera-only curtain across the cutout itself.
+		_add_box_collider(curtain, Vector3(center_along, cutout_h * 0.5, side_z),
+			Vector3(cutout_w, cutout_h, thickness))
 	else:
 		var side_x: float = (size_x * 0.5 + thickness * 0.5) * (1.0 if side == "east" else -1.0)
 		if left_len > 0.01:
@@ -141,6 +152,8 @@ func _add_side_with_cutout(body: StaticBody3D, side: String, size_x: float, size
 		if top_h > 0.01:
 			_add_box_collider(body, Vector3(side_x, cutout_h + top_h * 0.5, center_along),
 				Vector3(thickness, top_h, cutout_w))
+		_add_box_collider(curtain, Vector3(side_x, cutout_h * 0.5, center_along),
+			Vector3(thickness, cutout_h, cutout_w))
 
 func _add_box_collider(parent: StaticBody3D, pos: Vector3, size: Vector3) -> void:
 	var cs: CollisionShape3D = CollisionShape3D.new()

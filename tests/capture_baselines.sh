@@ -70,7 +70,9 @@ for room in "${ROOMS[@]}"; do
 	echo "==> ${room}"
 	rm -f "$SRC_PNG"
 	get_extra_args "$room"
-	"$GODOT_BIN" --quit-after 240 "$scene" ++ capture "${EXTRA_ARGS[@]}" 2>&1 | tail -3
+	# macOS bash 3.2 rejects "${EMPTY_ARRAY[@]}" under `set -u`; the +alt
+	# expansion below is a no-op when EXTRA_ARGS has no entries.
+	"$GODOT_BIN" --quit-after 240 "$scene" ++ capture ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} 2>&1 | tail -3
 	if [[ -f "$SRC_PNG" ]]; then
 		cp "$SRC_PNG" "$dest"
 		echo "    saved $dest ($(stat -f%z "$dest") bytes)"

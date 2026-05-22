@@ -100,32 +100,33 @@ omni_range = 11.0
 
 ; --- Doors -------------------------------------------------------------------
 ; Walls sit at z=±9 (south/north) and x=±7 (east/west) given floor_size 14×18.
-; Door interactables are anchored 0.5 m inside the wall plane so the
-; interaction prompt fires as the player approaches.
+; Door interactables are anchored AT the wall plane so the door body fills the
+; wall cutout — half embedded in the wall thickness, half flush as a recessed
+; panel facing the room.
 
 [node name="GateRoomDoor" parent="." groups=["interactable"] instance=ExtResource("9_door")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0, -8.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0, -8.75)
 target_scene = "res://scenes/gate_room.tscn"
 target_spawn = "FromCorridor"
 transition_prompt = "Return to the gate room"
 open_prompt = "Return to the gate room"
 
 [node name="ControlRoomDoor" parent="." groups=["interactable"] instance=ExtResource("9_door")]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.5, 0, 8.5)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.5, 0, 8.75)
 target_scene = "res://scenes/control_room.tscn"
 target_spawn = "FromCorridor"
 transition_prompt = "Enter the control room"
 open_prompt = "Enter the control room"
 
 [node name="MessHallDoor" parent="." groups=["interactable"] instance=ExtResource("9_door")]
-transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 6.5, 0, 0.5)
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 6.75, 0, 0.5)
 target_scene = "res://scenes/corridor_mess.tscn"
 target_spawn = "FromGateRoom"
 transition_prompt = "Take the mess-hall corridor"
 open_prompt = "Take the mess-hall corridor"
 
 [node name="CrewQuartersDoor" parent="." groups=["interactable"] instance=ExtResource("9_door")]
-transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -6.5, 0, 0.5)
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -6.75, 0, 0.5)
 target_scene = "res://scenes/corridor_crew.tscn"
 target_spawn = "FromGateRoom"
 transition_prompt = "Take the crew-quarters corridor"

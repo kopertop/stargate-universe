@@ -91,7 +91,7 @@ light_energy = 3.4
 omni_range = 10.0
 
 [node name="CorridorDoor" parent="." groups=["interactable"] instance=ExtResource("8_door")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0, -4.7)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0, -4.85)
 target_scene = "res://scenes/corridor_mess.tscn"
 target_spawn = "FromMessHall"
 transition_prompt = "Into the corridor"

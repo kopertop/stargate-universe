@@ -108,14 +108,14 @@ light_energy = 3.0
 omni_range = 8.0
 
 [node name="CorridorDoor" parent="." groups=["interactable"] instance=ExtResource("8_door")]
-transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -6.7, 0, 0)
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -6.85, 0, 0)
 target_scene = "res://scenes/destiny_corridor.tscn"
 target_spawn = "FromControlRoom"
 transition_prompt = "Back to the corridor"
 open_prompt = "Back to the corridor"
 
 [node name="ObservationDoor" parent="." groups=["interactable"] instance=ExtResource("8_door")]
-transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 6.7, 0, 0)
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 6.85, 0, 0)
 target_scene = "res://scenes/observation_room.tscn"
 target_spawn = "FromControlRoom"
 transition_prompt = "Enter the observation deck"

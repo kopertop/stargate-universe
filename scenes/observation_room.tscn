@@ -148,7 +148,7 @@ light_energy = 1.8
 omni_range = 8.0
 
 [node name="ControlRoomDoor" parent="." groups=["interactable"] instance=ExtResource("8_door")]
-transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -6.7, 0, 0.5)
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -6.85, 0, 0.5)
 target_scene = "res://scenes/control_room.tscn"
 target_spawn = "FromObservation"
 transition_prompt = "Back to the control room"

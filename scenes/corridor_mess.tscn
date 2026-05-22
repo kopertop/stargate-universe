@@ -82,14 +82,14 @@ light_energy = 5.5
 omni_range = 11.0
 
 [node name="MessHallDoor" parent="." groups=["interactable"] instance=ExtResource("8_door")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0, -5.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0, -5.75)
 target_scene = "res://scenes/mess_hall.tscn"
 target_spawn = "FromCorridor"
 transition_prompt = "Enter the mess hall"
 open_prompt = "Enter the mess hall"
 
 [node name="JunctionDoor" parent="." groups=["interactable"] instance=ExtResource("8_door")]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.5, 0, 5.5)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.5, 0, 5.75)
 target_scene = "res://scenes/destiny_corridor.tscn"
 target_spawn = "FromMessCorridor"
 transition_prompt = "Back to the corridor junction"

@@ -104,7 +104,7 @@ process_material = SubResource("ParticleProcessMaterial_vent")
 draw_pass_1 = SubResource("SphereMesh_vent")
 
 [node name="CorridorDoor" parent="." groups=["interactable"] instance=ExtResource("9_door")]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.5, 0, -2.5)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.5, 0, -2.75)
 target_scene = "res://scenes/destiny_corridor.tscn"
 target_spawn = "FromBreach"
 transition_prompt = "Retreat to the corridor"

@@ -21,6 +21,24 @@ extends Interactable
 @export var requires_kino: bool = false
 @export var requires_kino_message: String = "I need the Kino Remote first."
 
+# Plaque shown above the door's frame: the destination room's display name.
+# Leave empty to auto-derive from target_scene (e.g. crew_quarters.tscn →
+# "Crew Quarters"). Set explicitly to override for canonical names like
+# "Gate Room" or "Hull Breach — Compartment 14B".
+@export var plaque_label: String = ""
+
+# Canonical display names for scenes whose snake_case filename doesn't title
+# -case cleanly. Keep in sync with the GameState.discover_room calls in each
+# scene's controller script.
+const PLAQUE_OVERRIDES: Dictionary = {
+	"destiny_corridor": "Main Corridor",
+	"gate_room": "Gate Room",
+	"hull_breach": "Hull Breach",
+	"eli_quarters": "Eli's Quarters",
+	"corridor_crew": "Crew Corridor",
+	"corridor_mess": "Mess Corridor",
+}
+
 # Visual tunables — kept in sync with the BoxShape3D on door.tscn (1.6 × 2.2 × 0.4).
 const FRAME_WIDTH: float = 1.8
 const FRAME_HEIGHT: float = 2.4
@@ -218,6 +236,70 @@ func _build_visual() -> void:
 	_right_leaf.position = Vector3(LEAF_WIDTH * 0.5, 0.0, 0.0)
 	visual.add_child(_right_leaf)
 	_build_leaf(_right_leaf, leaf_mat, bronze_mat, -1.0)
+
+	# Destination plaque — only meaningful for transition doors. Toggle-only
+	# doors (target_scene blank) get no plaque.
+	if target_scene != "":
+		_add_plaque(visual, frame_mat)
+
+
+# Plaque sits on the wall plane above the frame so it reads as ship signage
+# rather than competing with the bronze trim / status-light hardware on the
+# door itself. Mirrored on both sides like the status light.
+func _add_plaque(visual: Node3D, frame_mat: StandardMaterial3D) -> void:
+	var label_text: String = _resolve_plaque_text()
+	if label_text == "":
+		return
+	var plaque_w: float = FRAME_WIDTH - 0.1
+	var plaque_h: float = 0.30
+	var plaque_y: float = FRAME_HEIGHT + plaque_h * 0.5 + 0.08
+	var plate_depth: float = 0.04
+	# Dark backing plate so the white text reads against any wall colour.
+	var plate_mat: StandardMaterial3D = _make_material(Color(0.08, 0.09, 0.11, 1.0), 0.30, 0.55)
+	for side in [1.0, -1.0]:
+		var z: float = side * (FRAME_DEPTH * 0.5 + plate_depth * 0.5)
+		_attach_visual_box(visual,
+			Vector3(0.0, plaque_y, z),
+			Vector3(plaque_w, plaque_h, plate_depth), plate_mat)
+		var label: Label3D = Label3D.new()
+		label.text = label_text
+		label.font_size = 64
+		label.outline_size = 8
+		label.modulate = Color(0.92, 0.94, 0.98, 1.0)
+		label.outline_modulate = Color(0.04, 0.05, 0.07, 1.0)
+		label.pixel_size = 0.0035
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		label.no_depth_test = false
+		label.shaded = false
+		label.double_sided = false
+		label.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+		# Sit the label just in front of the backing plate so the text doesn't
+		# z-fight the plate surface.
+		label.position = Vector3(0.0, plaque_y, z + side * (plate_depth * 0.5 + 0.005))
+		# Rotate the back-side label 180° around Y so its text reads from -Z too.
+		if side < 0.0:
+			label.rotation_degrees = Vector3(0.0, 180.0, 0.0)
+		visual.add_child(label)
+
+
+# Auto-derive the plaque text from target_scene unless plaque_label was set
+# explicitly. Falls back to title-casing the snake_case filename.
+func _resolve_plaque_text() -> String:
+	if plaque_label != "":
+		return plaque_label
+	if target_scene == "":
+		return ""
+	var basename: String = target_scene.get_file().get_basename()
+	if PLAQUE_OVERRIDES.has(basename):
+		return PLAQUE_OVERRIDES[basename]
+	var parts: PackedStringArray = basename.split("_", false)
+	var out: PackedStringArray = PackedStringArray()
+	for p in parts:
+		if p.length() == 0:
+			continue
+		out.append(p.substr(0, 1).to_upper() + p.substr(1))
+	return " ".join(out)
 
 
 func _build_leaf(pivot: Node3D, leaf_mat: StandardMaterial3D, bronze_mat: StandardMaterial3D, inner_sign: float) -> void:

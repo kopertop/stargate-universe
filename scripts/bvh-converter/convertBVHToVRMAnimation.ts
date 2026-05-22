@@ -3,6 +3,7 @@ import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
 import type { BVH } from "three/examples/jsm/loaders/BVHLoader.js";
 import { getRootBone } from "./getRootBone";
 import { mapSkeletonToVRM } from "./mapSkeletonToVRM";
+import { removeAccadEndSiteBones, renameAccadBonesForVrmExport } from "./accadBoneMap";
 import { VRMAnimationExporterPlugin } from "./VRMAnimationExporterPlugin";
 
 const _v3A = new THREE.Vector3();
@@ -36,9 +37,8 @@ export async function convertBVHToVRMAnimation(
   });
   rootBone.updateWorldMatrix(false, true);
 
-  // create a map from vrm bone names to bones
+  // create a map from vrm bone names to bones (ACCAD names)
   const vrmBoneMap = mapSkeletonToVRM(rootBone);
-  rootBone.userData.vrmBoneMap = vrmBoneMap;
 
   const hipsBone = vrmBoneMap.get("hips")!;
   const hipsBoneName = hipsBone.name;
@@ -75,7 +75,10 @@ export async function convertBVHToVRMAnimation(
     }
   }
 
+  removeAccadEndSiteBones(rootBone);
   clip.tracks = filteredTracks;
+  renameAccadBonesForVrmExport(rootBone, clip);
+  rootBone.userData.vrmBoneMap = vrmBoneMap;
 
   // Remove offsets contained in hips position track
   if (hipsPositionTrack != null) {

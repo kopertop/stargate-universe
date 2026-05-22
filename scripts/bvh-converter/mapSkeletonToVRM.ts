@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { VRMHumanBoneName } from '@pixiv/three-vrm';
 import { pickByProbability } from './pickByProbability';
+import { firstAnimatableChild, isEndSiteBone, tryMapAccadSkeletonToVRM } from './accadBoneMap';
 
 const _v3A = new THREE.Vector3();
 
@@ -149,7 +150,7 @@ function determineLegBones(
     let currentDepth = 0;
 
     while (currentBone != null) {
-      const firstChild = currentBone.children[0] as THREE.Bone | undefined;
+      const firstChild = firstAnimatableChild(currentBone);
 
       bones.push({
         bone: currentBone,
@@ -201,7 +202,7 @@ function determineArmBones(
     let currentDepth = 0;
 
     while (currentBone != null) {
-      const firstChild = currentBone.children[0] as THREE.Bone | undefined;
+      const firstChild = firstAnimatableChild(currentBone);
 
       bones.push({
         bone: currentBone,
@@ -268,7 +269,7 @@ function determineFingerBones(
 
   for (const leftRight of leftRights) {
     const handBone = handBoneMap[leftRight];
-    const fingerRoots = handBone.children.concat();
+    const fingerRoots = handBone.children.filter((obj) => !isEndSiteBone(obj));
 
     for (const fingerName of fingerNames) {
       const fingerBoneNames = fingerBoneNamesMap[leftRight][fingerName];
@@ -316,9 +317,13 @@ function determineHeadBones(
 ] {
   let head = headRoot;
 
-  // neck might have two or more bones
+  // neck might have two or more bones — never walk into BVH End Site nodes
   while (head.children.length === 1) {
-    head = head.children[0] as THREE.Bone;
+    const next = head.children[0] as THREE.Bone;
+    if (isEndSiteBone(next)) {
+      break;
+    }
+    head = next;
   }
 
   const neck = headRoot === head ? null : headRoot;
@@ -326,7 +331,7 @@ function determineHeadBones(
   let leftEye: THREE.Bone | null = null;
   let rightEye: THREE.Bone | null = null;
 
-  if (head.children.length === 0) {
+  if (head.children.length > 0) {
     leftEye = pickByProbability(
       head.children,
       [
@@ -356,6 +361,11 @@ function determineHeadBones(
  * Map given hierarchy to VRM humanoid.
  */
 export function mapSkeletonToVRM(root: THREE.Bone): Map<VRMHumanBoneName, THREE.Bone> {
+  const accadMap = tryMapAccadSkeletonToVRM(root);
+  if (accadMap != null) {
+    return accadMap;
+  }
+
   const result = new Map<VRMHumanBoneName, THREE.Bone>();
 
   // find hips - the first descendant of the root which has three children

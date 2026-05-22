@@ -345,6 +345,7 @@ export async function createGameApp(options: GameAppOptions) {
       activeBundle?.gameplayRuntime.update(dt);
       // Camera is updated at variable rate for smooth motion at high refresh rates.
       activeBundle?.player?.updateCamera(dt);
+      hud?.updateCompass(camera.rotation.y);
     },
     onRender: () => {
       renderer.render(scene, camera);
@@ -529,7 +530,7 @@ export async function createGameApp(options: GameAppOptions) {
     // picks up the freshly-registered quest manager.
     const showHud = definition.hud !== false;
     if (showHud && !hud) {
-      hud = mountHud();
+      hud = mountHud(definition.title);
     } else if (!showHud && hud) {
       hud.dispose();
       hud = null;

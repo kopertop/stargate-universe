@@ -13,7 +13,6 @@ import {
 	AnimationClip,
 	Quaternion,
 	QuaternionKeyframeTrack,
-	Vector3,
 	VectorKeyframeTrack,
 } from "three";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
@@ -297,13 +296,9 @@ export async function loadVrmaAnimation(
  * Load an animation clip from any supported format and apply it to a VRM.
  *
  * Auto-detects format by file extension:
- * - `.vrma` → native VRM Animation (best quality, no retargeting needed)
+ * - `.vrma` → native VRM Animation
  * - `.fbx` → Mixamo FBX with retargeting
  * - `.glb` / `.gltf` → Mixamo GLB with retargeting
- *
- * @param url Path to the animation file
- * @param vrm The target VRM model
- * @param clipName Name for the resulting AnimationClip
  */
 export async function loadAnimation(
 	url: string,

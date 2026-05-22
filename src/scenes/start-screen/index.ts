@@ -90,6 +90,7 @@ interface StartUI {
 const createStartUI = (
 	onNewGame: () => void,
 	onContinue: () => void,
+	onCharacters: () => void,
 ): StartUI => {
 	const root = document.createElement("div");
 	root.id    = "start-screen";
@@ -414,16 +415,18 @@ const createStartUI = (
 	const continueBtn = makeButton("CONTINUE GAME", onContinue);
 	const newGameBtn = makeButton("NEW GAME", onNewGame);
 	const settingsBtn = makeButton("SETTINGS", openSettings);
+	const charactersBtn = makeButton("CHARACTERS", onCharacters);
 	const exitBtn = makeButton("EXIT", () => undefined);
 	continueBtn.disabled = !canContinue;
 	menu.appendChild(continueBtn);
 	menu.appendChild(newGameBtn);
 	menu.appendChild(settingsBtn);
+	menu.appendChild(charactersBtn);
 	menu.appendChild(exitBtn);
 
 	// Focus state for controller/keyboard nav.
-	const buttons: HTMLButtonElement[] = [continueBtn, newGameBtn, settingsBtn, exitBtn];
-	const handlers: Array<() => void> = [onContinue, onNewGame, () => undefined, () => undefined];
+	const buttons: HTMLButtonElement[] = [continueBtn, newGameBtn, settingsBtn, charactersBtn, exitBtn];
+	const handlers: Array<() => void> = [onContinue, onNewGame, openSettings, onCharacters, () => undefined];
 	let focusIndex = canContinue ? 0 : 1;
 
 	const paintFocus = (): void => {
@@ -550,7 +553,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		})();
 	};
 
-	const ui = createStartUI(go("opening-cinematic"), onContinue);
+	const ui = createStartUI(go("opening-cinematic"), onContinue, go("character-viewer"));
 
 	// Looping exploration bed for the main menu at 0.3 vol — quiet enough
 	// that the hover/click SFX and the player's decision-making breathe.

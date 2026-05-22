@@ -9,7 +9,7 @@
 			"role": "scientist",
 			"gender": "male",
 			"expressionIntensity": 0.6,
-			"notes": "Older male, 50s, gaunt, disheveled dark-grey hair, intense eyes, dark civilian jacket"
+			"notes": "Older male, 50s, gaunt, disheveled dark-grey hair, intense eyes, dark civilian jacket. Full VRoid model."
 		},
 		{
 			"id": "young",
@@ -37,7 +37,7 @@
 			"gender": "male",
 			"isPlayer": true,
 			"expressionIntensity": 0.9,
-			"notes": "Male, early 20s, slightly stocky, casual hoodie/t-shirt, messy hair, friendly face"
+			"notes": "Male, early 20s, slightly stocky, casual hoodie/t-shirt, messy hair, friendly face. Full VRoid model."
 		},
 		{
 			"id": "chloe",
@@ -46,7 +46,7 @@
 			"role": "civilian",
 			"gender": "female",
 			"expressionIntensity": 0.85,
-			"notes": "Female, early 20s, civilian, dark hair, civilian clothes"
+			"notes": "Female, early 20s, civilian, dark hair, civilian clothes. Full VRoid model (shared asset pack with .bin and textures)."
 		},
 		{
 			"id": "greer",

@@ -24,7 +24,6 @@ import { setActiveQuestManager } from "../../systems/active-quest-manager";
 import { QUEST_ID as AIR_CRISIS_QUEST_ID } from "../../quests/air-crisis";
 import { isLimeCollected, setLimeCollected } from "../../systems/scene-transition-state";
 import { createHud } from "@kopertop/vibe-game-engine";
-import { createHorizontalCompass } from "../../ui/horizontal-compass";
 import { getGameSession } from "../../systems/game-session";
 import { consumeResource } from "../../systems/resources";
 import { applyPostProfile } from "../../post/profiles";
@@ -466,9 +465,6 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	const returnPrompt = createReturnPrompt();
 
 	const compassHud = createHud(renderer.domElement.parentElement ?? document.body);
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const compass = createHorizontalCompass() as any;
-	compassHud.mount(compass);
 
 	// ─── State ────────────────────────────────────────────────────────
 	let elapsed = 0;
@@ -601,7 +597,6 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			co2Display.element.remove();
 			interactPrompt.remove();
 			returnPrompt.remove();
-			compassHud.unmount(compass);
 			compassHud.dispose();
 			setActiveQuestManager(null);
 			bus.cleanup();

@@ -33,7 +33,6 @@ import {
 	BONE_COUNT,
 	type SequenceOutput,
 } from "@kopertop/vibe-game-engine";
-import { createHorizontalCompass } from "../../ui/horizontal-compass";
 import { box } from "crashcat";
 import {
 	CRASHCAT_OBJECT_LAYER_STATIC,
@@ -43,6 +42,10 @@ import {
 } from "@ggez/runtime-physics-crashcat";
 import type { DialoguePanelEventBus } from "@kopertop/vibe-game-engine";
 import { loadVRMCharacter, type CharacterLoadResult } from "../../characters/character-loader";
+import {
+	startCrewIdleAnimation,
+	type CrewIdleAnimationHandle,
+} from "../../systems/vrm/vrm-crew-idle-animation";
 import { GateRoomCinematicController } from "./cinematic-controller";
 
 const assetUrlLoaders = import.meta.glob("./assets/**/*", {
@@ -473,6 +476,36 @@ function buildRoom(scene: THREE.Scene): void {
 			scene.add(drop);
 		}
 	}
+	// ── Ceiling cable bundles — drooping from the overhead ring above gate.
+	// Concept views-sheet panel 04 "Upper Overlook" shows thick cable
+	// harnesses hanging down from the ceiling toward the gate machinery.
+	const cableMat = new THREE.MeshStandardMaterial({
+		color: 0x0a0a14,
+		roughness: 0.85,
+		metalness: 0.3,
+		emissive: 0x060810,
+		emissiveIntensity: 0.6,
+	});
+	const cableCount = 12;
+	for (let i = 0; i < cableCount; i++) {
+		const angle = (i / cableCount) * Math.PI * 2;
+		const cableR = GATE_RADIUS * 1.4 + Math.sin(i * 3.7) * 2;
+		const cx = Math.cos(angle) * cableR;
+		const cz = Math.sin(angle) * cableR - ROOM_DEPTH * 0.02;
+		const hangLength = 8 + Math.sin(i * 2.3) * 4;
+		const cable = new THREE.Mesh(
+			new THREE.CylinderGeometry(0.12, 0.15, hangLength, 6),
+			cableMat,
+		);
+		cable.position.set(cx, ROOM_HEIGHT - hangLength / 2 - 1, cz);
+		scene.add(cable);
+	}
+	// Horizontal cable ring connecting the hanging bundles
+	const cableRingGeo = new THREE.TorusGeometry(GATE_RADIUS * 1.6, 0.2, 8, 32);
+	const cableRing = new THREE.Mesh(cableRingGeo, cableMat);
+	cableRing.position.set(0, ROOM_HEIGHT - 6, 0);
+	scene.add(cableRing);
+
 	// Staircase structures flanking the gate — the SGU gate room has
 	// staircases on both sides leading up to a second-floor catwalk/balcony.
 	// These are the large angled structures visible in the reference image.
@@ -522,6 +555,30 @@ function buildRoom(scene: THREE.Scene): void {
 			0,
 		);
 		scene.add(platform);
+	}
+
+	// ── Vertical emissive wall ribs — concept shows strong repeating
+	// blue-lit ribs along both side walls creating the signature Ancient
+	// ribcage silhouette. These sit between the arch columns.
+	const ribMat = new THREE.MeshStandardMaterial({
+		color: 0x0a0e1a,
+		roughness: 0.6,
+		metalness: 0.7,
+		emissive: 0x1a3366,
+		emissiveIntensity: 2.8,
+	});
+	const ribCount = 14;
+	const ribSpacingZ = (ROOM_DEPTH - 12) / ribCount;
+	for (let i = 0; i < ribCount; i++) {
+		const z = -ROOM_DEPTH / 2 + 6 + i * ribSpacingZ;
+		for (const xSign of [-1, 1]) {
+			const rib = new THREE.Mesh(
+				new THREE.BoxGeometry(0.3, ROOM_HEIGHT * 0.7, 0.15),
+				ribMat,
+			);
+			rib.position.set(xSign * (ROOM_WIDTH / 2 - 1.2), ROOM_HEIGHT * 0.4, z);
+			scene.add(rib);
+		}
 	}
 
 	// Amber embedded floor lights — matching the SGU reference: two rows of
@@ -661,11 +718,9 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 	daisTrimLow.position.set(0, 0.38, GATE_RADIUS * 1.3 - 0.03);
 	scene.add(daisTrimLow);
 
-	// ── Console row props along both side walls flanking the gate (per
-	// concept gate-room-active.png — banks of lit operator consoles extending
-	// from gate-mid toward the back wall). Procedural cluster: dark base box
-	// + warm-blue emissive panel top. Placed ~14m off centerline, raised on
-	// short bases. MeshBasic for the panels keeps them gate-room-exposure stable.
+	// ── Dense console banks flanking both sides of the approach aisle.
+	// Concept views-sheet panel 06 "Control Dais" shows multi-monitor stacks
+	// with angled screens facing the centerline, cyan readouts on dark metal.
 	const consoleBaseMat = new THREE.MeshStandardMaterial({
 		color: 0x101522,
 		roughness: 0.6,
@@ -678,27 +733,49 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 		fog: false,
 		toneMapped: false,
 	});
-	const consoleCount = 5;
-	const consoleSpacing = 5.2;
+	const consoleScreenMat2 = new THREE.MeshBasicMaterial({
+		color: 0x1a3355,
+		fog: false,
+		toneMapped: false,
+	});
+	const consoleCount = 7;
+	const consoleSpacing = 4.6;
 	const consoleZStart = -GATE_RADIUS - 2;
 	for (const sideX of [-14, 14] as const) {
+		const inward = sideX < 0 ? 1 : -1;
 		for (let i = 0; i < consoleCount; i++) {
 			const z = consoleZStart - i * consoleSpacing;
+			// Base cabinet
 			const base = new THREE.Mesh(
 				new THREE.BoxGeometry(2.4, 1.1, 1.6),
 				consoleBaseMat,
 			);
 			base.position.set(sideX, 0.55, z);
 			scene.add(base);
+			// Flat top panel (tilted toward centerline)
 			const panel = new THREE.Mesh(
 				new THREE.BoxGeometry(2.0, 0.06, 1.0),
 				consolePanelMat,
 			);
-			// tilt panel toward gate centerline
 			panel.rotation.x = -0.25;
-			panel.rotation.y = sideX < 0 ? -0.18 : 0.18;
-			panel.position.set(sideX + (sideX < 0 ? 0.15 : -0.15), 1.18, z);
+			panel.rotation.y = inward * 0.18;
+			panel.position.set(sideX + inward * 0.15, 1.18, z);
 			scene.add(panel);
+			// Multi-monitor stack: 2 angled screens rising above the base
+			for (let row = 0; row < 2; row++) {
+				const screen = new THREE.Mesh(
+					new THREE.BoxGeometry(1.8, 0.6, 0.04),
+					row === 0 ? consolePanelMat : consoleScreenMat2,
+				);
+				screen.position.set(
+					sideX + inward * 0.4,
+					1.5 + row * 0.7,
+					z,
+				);
+				screen.rotation.y = inward * 0.35;
+				screen.rotation.x = -0.15 + row * 0.1;
+				scene.add(screen);
+			}
 		}
 	}
 
@@ -728,11 +805,11 @@ function buildStargate(scene: THREE.Scene): GateRuntime {
 	// profile matches the show's industrial look far better than TorusGeometry.
 	// fog:false so the ring punches through atmospheric fog at distance.
 	const outerRingMat = new THREE.MeshStandardMaterial({
-		color: 0x3a3a44,
-		roughness: 0.5,
-		metalness: 0.9,
-		emissive: 0x0e1520,
-		emissiveIntensity: 6.0,           // boosted: dormant ring still reads as metal
+		color: 0x2a2a34,
+		roughness: 0.45,
+		metalness: 0.92,
+		emissive: 0x0a1018,
+		emissiveIntensity: 3.5,
 		fog: false,
 	});
 	const outerRing = new THREE.Mesh(
@@ -1219,9 +1296,9 @@ function updateDialing(gate: GateRuntime, delta: number): void {
 function lockChevron(gate: GateRuntime, index: number): void {
 	const chevron = gate.chevronMeshes[index];
 	const mat = chevron.material as THREE.MeshStandardMaterial;
-	mat.color.set(COLOR_CHEVRON_ON);
+	mat.color.set(0xccddff);
 	mat.emissive.set(COLOR_CHEVRON_ON);
-	mat.emissiveIntensity = 2.0;
+	mat.emissiveIntensity = 5.0;
 }
 
 function updateKawoosh(gate: GateRuntime, delta: number): void {
@@ -2292,9 +2369,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	scene.add(consoleRoot);
 
 	// Load Dr. Rush's character model; fall back to capsule on error.
-	// Path matches /assets/characters/manifest.json. The legacy
-	// /assets/characters/dr-rush.vrm at the top level is a byte-identical
-	// duplicate of eli-wallace.vrm (placeholder) — do not reference it.
+	// Path matches /assets/characters/manifest.json (distinct from Eli/Chloe).
 	void loadVRMCharacter("/assets/characters/nicholas-rush/nicholas-rush.vrm")
 		.then((char) => {
 			rushCharacter = char;
@@ -2327,6 +2402,9 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	// Elements the cinematic should hide — populated as they're built
 	// below. The cinematic walks this list and sets display:none on each.
 	const cinematicHide: HTMLElement[] = [];
+
+	let openingScottNpc: CharacterLoadResult | undefined;
+	let openingScottIdle: CrewIdleAnimationHandle | undefined;
 
 	// Opening dialogue — "Eli... Eli, can you hear me?" — plays right after the
 	// cinematic. Scott appears in front of the player; player clicks through a
@@ -2384,7 +2462,16 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 			// Face the player — opposite of the camera's forward.
 			scottRoot.lookAt(pp.x, scottRoot.position.y, pp.z);
 			scene.add(scottRoot);
+			if (scott?.vrm) {
+				openingScottNpc = scott;
+				openingScottIdle = await startCrewIdleAnimation(scott, {
+					gender: "male",
+				});
+			}
 			gateRoomExtraDisposables.push(() => {
+				openingScottIdle?.dispose();
+				openingScottIdle = undefined;
+				openingScottNpc = undefined;
 				scene.remove(scottRoot);
 				scott?.dispose?.();
 			});
@@ -2505,11 +2592,7 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 	const hud = createHUD();
 	cinematicHide.push(hud);
 	const compassHud = createHud(renderer.domElement.parentElement ?? document.body);
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const compass = createHorizontalCompass() as any;
-	compassHud.mount(compass);
-	// compassHud has no public DOM ref — it's its own managed HTMLDivElement
-	// returned from createHud(). Cast to probe for common element shapes.
+	// Scene compass removed — global HUD provides live compass now.
 	const compassAny = compassHud as unknown as { element?: HTMLElement; container?: HTMLElement };
 	const compassRoot = compassAny.element ?? compassAny.container;
 	if (compassRoot) cinematicHide.push(compassRoot);
@@ -2794,6 +2877,9 @@ async function mount(context: GameSceneModuleContext): Promise<GameSceneLifecycl
 		update(delta: number) {
 			playtimeMs += delta * 1000;
 			timers.tick(delta);
+
+			openingScottNpc?.update(delta);
+			openingScottIdle?.update(delta);
 
 			// ─── Input (unified: keyboard + gamepad via InputManager) ───────
 			// InputManager is polled once per frame in app.ts. We only read

@@ -1,11 +1,13 @@
 /**
- * Player HUD — concept-facing exploration overlay.
+ * Player HUD — Destiny Restored exploration overlay.
  *
- * The HUD is display-only. Shared gameplay systems own resources, quests,
- * ship state, and loot; this renderer turns those snapshots into the
- * persistent third-person exploration layer shown in the Destiny Restored
- * concept: compass/location, compact objectives, a WoW-like unit frame, tool
- * slots, bag inventory, and pickup feedback.
+ * Layout matches design/concept-art/ui/destiny-restored-hud-layout.png:
+ *   Top center: live compass + location
+ *   Top right: objective tracker
+ *   Bottom left: player unit frame (portrait + vitals)
+ *   Bottom center: multi-tool action bar
+ *   Bottom right: bag inventory
+ *   Bottom strip: resource/ship status bar
  *
  * Ship telemetry stays on physical consoles until the Kino remote is unlocked.
  */
@@ -13,11 +15,12 @@ import type { QuestObjective } from "@kopertop/vibe-game-engine";
 import { getActiveQuestManager } from "../systems/active-quest-manager";
 import { scopedBus } from "../systems/event-bus";
 import { getAllResources, type ResourceType } from "../systems/resources";
+import "./styles/hud.scss";
 
 export interface HudHandle {
 	dispose: () => void;
-	/** Force a full re-render (e.g. after scene change or save load). */
 	refresh: () => void;
+	updateCompass: (cameraYaw: number) => void;
 }
 
 const RESOURCE_LABEL: Record<ResourceType, string> = {
@@ -51,6 +54,8 @@ const ACTION_SLOTS: ReadonlyArray<{
 	{ key: "4", code: "--", label: "Locked" },
 ];
 
+const COMPASS_POINTS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] as const;
+
 const el = <K extends keyof HTMLElementTagNameMap>(
 	tag: K,
 	className?: string,
@@ -62,383 +67,35 @@ const el = <K extends keyof HTMLElementTagNameMap>(
 	return node;
 };
 
-const STYLE_ID = "sgu-hud-style";
-
-const STYLE = `
-.sgu-hud {
-	position: fixed;
-	inset: 0;
-	pointer-events: none;
-	z-index: 100;
-	font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-	color: #e8f2ff;
-	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
-	user-select: none;
-}
-.sgu-hud * {
-	box-sizing: border-box;
-	pointer-events: none;
-	letter-spacing: 0;
-}
-.sgu-hud-panel {
-	background: linear-gradient(180deg, rgba(10, 16, 24, 0.82), rgba(5, 9, 14, 0.66));
-	border: 1px solid rgba(138, 174, 205, 0.26);
-	box-shadow: 0 14px 36px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-	backdrop-filter: blur(8px);
-	border-radius: 4px;
-}
-.sgu-hud-kicker {
-	color: #c9d9ea;
-	font-size: 10px;
-	font-weight: 700;
-	text-transform: uppercase;
-}
-.sgu-hud-compass {
-	position: absolute;
-	top: 16px;
-	left: 50%;
-	transform: translateX(-50%);
-	width: min(460px, calc(100vw - 32px));
-	display: grid;
-	grid-template-columns: repeat(5, 1fr);
-	gap: 10px;
-	align-items: end;
-	color: #d8e9fb;
-	font-size: 11px;
-	text-align: center;
-}
-.sgu-hud-compass::after {
-	content: "";
-	position: absolute;
-	left: 6%;
-	right: 6%;
-	bottom: 12px;
-	height: 1px;
-	background: linear-gradient(90deg, transparent, rgba(200, 225, 245, 0.42), transparent);
-}
-.sgu-hud-heading {
-	position: relative;
-	padding-bottom: 16px;
-	opacity: 0.74;
-}
-.sgu-hud-heading.is-current {
-	opacity: 1;
-	color: #ffffff;
-}
-.sgu-hud-heading.is-current::after {
-	content: "";
-	position: absolute;
-	left: 50%;
-	bottom: 4px;
-	transform: translateX(-50%);
-	width: 8px;
-	height: 8px;
-	border: 1px solid #ffd36b;
-	background: rgba(255, 211, 107, 0.12);
-	rotate: 45deg;
-}
-.sgu-hud-location {
-	position: absolute;
-	top: 38px;
-	left: 50%;
-	transform: translateX(-50%);
-	color: #d5e8ff;
-	font-size: 10px;
-	font-weight: 700;
-	text-transform: uppercase;
-}
-.sgu-hud-objectives {
-	position: absolute;
-	top: 68px;
-	right: 22px;
-	width: min(310px, calc(100vw - 44px));
-	padding: 14px;
-}
-.sgu-hud-objectives-title {
-	margin-bottom: 8px;
-}
-.sgu-hud-quest-name {
-	color: #ffffff;
-	font-size: 13px;
-	font-weight: 700;
-	margin-bottom: 8px;
-}
-.sgu-hud-objective-list {
-	display: flex;
-	flex-direction: column;
-	gap: 7px;
-}
-.sgu-hud-objective {
-	display: grid;
-	grid-template-columns: 14px 1fr;
-	gap: 8px;
-	align-items: start;
-	color: #d9e6f3;
-	font-size: 12px;
-	line-height: 1.3;
-}
-.sgu-hud-check {
-	width: 12px;
-	height: 12px;
-	border: 1px solid rgba(235, 245, 255, 0.72);
-	border-radius: 50%;
-	margin-top: 1px;
-}
-.sgu-hud-objective.is-complete {
-	color: rgba(217, 230, 243, 0.58);
-}
-.sgu-hud-objective.is-complete .sgu-hud-check {
-	background: #8ad6ff;
-	border-color: #8ad6ff;
-	box-shadow: 0 0 10px rgba(138, 214, 255, 0.5);
-}
-.sgu-hud-player {
-	position: absolute;
-	left: 16px;
-	top: 16px;
-	width: min(300px, calc(100vw - 32px));
-	padding: 10px;
-	display: grid;
-	grid-template-columns: 52px 1fr;
-	gap: 10px;
-	align-items: center;
-}
-.sgu-hud-portrait {
-	width: 52px;
-	height: 52px;
-	border: 1px solid rgba(168, 202, 232, 0.35);
-	border-radius: 50%;
-	background:
-		radial-gradient(circle at 52% 34%, rgba(210, 224, 238, 0.55) 0 12%, transparent 13%),
-		linear-gradient(180deg, #1b2b39, #080d13);
-	position: relative;
-	overflow: hidden;
-}
-.sgu-hud-portrait::after {
-	content: "";
-	position: absolute;
-	left: 12px;
-	right: 12px;
-	bottom: 2px;
-	height: 22px;
-	border-radius: 50% 50% 0 0;
-	background: linear-gradient(180deg, #1f2935, #111820);
-}
-.sgu-hud-player-name {
-	font-size: 11px;
-	font-weight: 800;
-	text-transform: uppercase;
-	margin-bottom: 7px;
-	color: #ffffff;
-}
-.sgu-hud-vital {
-	display: grid;
-	grid-template-columns: 50px 1fr 40px;
-	align-items: center;
-	gap: 7px;
-	margin-top: 4px;
-	font-size: 9px;
-	text-transform: uppercase;
-	color: #cfdae5;
-}
-.sgu-hud-bar {
-	height: 6px;
-	background: rgba(255, 255, 255, 0.11);
-	overflow: hidden;
-	border-radius: 1px;
-}
-.sgu-hud-bar-fill {
-	height: 100%;
-	background: linear-gradient(90deg, #87d8ff, #d7f2ff);
-}
-.sgu-hud-vital.is-power .sgu-hud-bar-fill {
-	background: linear-gradient(90deg, #ffd36b, #fff0a8);
-}
-.sgu-hud-vital.is-oxygen .sgu-hud-bar-fill {
-	background: linear-gradient(90deg, #65baff, #9edcff);
-}
-.sgu-hud-actionbar {
-	position: absolute;
-	left: 50%;
-	bottom: 18px;
-	transform: translateX(-50%);
-	display: flex;
-	gap: 6px;
-	justify-content: center;
-}
-.sgu-hud-action-slot {
-	position: relative;
-	width: 54px;
-	height: 54px;
-	display: grid;
-	place-items: center;
-	background:
-		linear-gradient(180deg, rgba(32, 50, 67, 0.92), rgba(6, 10, 15, 0.92)),
-		radial-gradient(circle at 50% 45%, rgba(122, 199, 255, 0.26), transparent 58%);
-	border: 1px solid rgba(166, 204, 236, 0.3);
-	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), 0 8px 22px rgba(0, 0, 0, 0.38);
-	border-radius: 4px;
-	color: #dff3ff;
-	font-weight: 800;
-	font-size: 13px;
-}
-.sgu-hud-action-slot.is-locked {
-	color: rgba(208, 224, 238, 0.46);
-	background: linear-gradient(180deg, rgba(18, 25, 34, 0.88), rgba(5, 8, 12, 0.88));
-}
-.sgu-hud-action-key {
-	position: absolute;
-	left: 5px;
-	top: 3px;
-	color: #93b7d5;
-	font-family: ui-monospace, "SF Mono", Menlo, monospace;
-	font-size: 10px;
-	font-weight: 800;
-}
-.sgu-hud-action-label {
-	position: absolute;
-	left: 4px;
-	right: 4px;
-	bottom: 4px;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	color: rgba(224, 238, 249, 0.72);
-	font-size: 8px;
-	font-weight: 700;
-	text-align: center;
-	text-transform: uppercase;
-}
-.sgu-hud-bag {
-	position: absolute;
-	right: 18px;
-	bottom: 18px;
-	display: grid;
-	grid-template-columns: 54px auto;
-	align-items: end;
-	gap: 8px;
-}
-.sgu-hud-bag-button {
-	position: relative;
-	width: 54px;
-	height: 54px;
-	display: grid;
-	place-items: center;
-	border-radius: 4px;
-	border: 1px solid rgba(210, 180, 112, 0.46);
-	background:
-		linear-gradient(180deg, rgba(58, 46, 26, 0.92), rgba(18, 13, 8, 0.94)),
-		radial-gradient(circle at 48% 42%, rgba(255, 207, 119, 0.24), transparent 58%);
-	color: #ffe4a3;
-	box-shadow: inset 0 0 0 1px rgba(255, 244, 205, 0.08), 0 8px 22px rgba(0, 0, 0, 0.38);
-	font-size: 12px;
-	font-weight: 800;
-	text-transform: uppercase;
-}
-.sgu-hud-bag-count {
-	position: absolute;
-	right: 4px;
-	bottom: 3px;
-	color: #ffffff;
-	font-family: ui-monospace, "SF Mono", Menlo, monospace;
-	font-size: 10px;
-	font-weight: 800;
-}
-.sgu-hud-bag-grid {
-	display: grid;
-	grid-template-columns: repeat(3, 38px);
-	gap: 4px;
-}
-.sgu-hud-bag-slot {
-	position: relative;
-	width: 38px;
-	height: 38px;
-	display: grid;
-	place-items: center;
-	border-radius: 3px;
-	border: 1px solid rgba(142, 168, 190, 0.24);
-	background: linear-gradient(180deg, rgba(20, 29, 39, 0.9), rgba(4, 7, 11, 0.88));
-	color: #d9efff;
-	font-size: 11px;
-	font-weight: 800;
-}
-.sgu-hud-bag-slot.is-empty {
-	color: transparent;
-	background: rgba(4, 7, 11, 0.55);
-}
-.sgu-hud-bag-stack {
-	position: absolute;
-	right: 3px;
-	bottom: 1px;
-	color: #ffffff;
-	font-family: ui-monospace, "SF Mono", Menlo, monospace;
-	font-size: 10px;
-	font-weight: 800;
-	text-shadow: 0 1px 2px #000;
-}
-.sgu-hud-feedback {
-	position: absolute;
-	left: 50%;
-	bottom: 86px;
-	transform: translateX(-50%);
-	min-width: 260px;
-	padding: 10px 14px;
-	color: #fff0b8;
-	font-size: 12px;
-	font-weight: 700;
-	text-align: center;
-	opacity: 0;
-	transition: opacity 160ms ease;
-}
-.sgu-hud-feedback.is-visible {
-	opacity: 1;
-}
-@media (max-width: 900px), (pointer: coarse) {
-	.sgu-hud-objectives {
-		top: 58px;
-		right: 10px;
-		width: min(280px, calc(100vw - 20px));
-	}
-	.sgu-hud-player {
-		left: 10px;
-		top: 10px;
-		width: 252px;
-	}
-	.sgu-hud-actionbar {
-		bottom: 10px;
-	}
-	.sgu-hud-action-slot,
-	.sgu-hud-bag-button {
-		width: 46px;
-		height: 46px;
-	}
-	.sgu-hud-bag {
-		right: 10px;
-		bottom: 10px;
-		grid-template-columns: 46px;
-	}
-	.sgu-hud-bag-grid {
-		display: none;
-	}
-}
-`;
-
-const ensureStyle = (): void => {
-	if (document.getElementById(STYLE_ID)) return;
-	const style = document.createElement("style");
-	style.id = STYLE_ID;
-	style.textContent = STYLE;
-	document.head.appendChild(style);
-};
-
-const buildCompass = (): HTMLDivElement => {
+const buildCompass = (sceneTitle: string): {
+	root: HTMLDivElement;
+	locationEl: HTMLDivElement;
+	tickEls: HTMLDivElement[];
+} => {
 	const root = el("div", "sgu-hud-compass");
-	for (const heading of ["W", "NW", "N", "NE", "E"]) {
-		root.appendChild(el("div", `sgu-hud-heading${heading === "N" ? " is-current" : ""}`, heading));
+	const tickEls: HTMLDivElement[] = [];
+
+	for (const heading of COMPASS_POINTS) {
+		const tick = el("div", "sgu-hud-compass-tick", heading);
+		tickEls.push(tick);
+		root.appendChild(tick);
 	}
-	root.appendChild(el("div", "sgu-hud-location", "Engineering Deck"));
-	return root;
+
+	const locationEl = el("div", "sgu-hud-location", sceneTitle);
+	root.appendChild(locationEl);
+	return { root, locationEl, tickEls };
 };
+
+function updateCompassHeading(tickEls: HTMLDivElement[], cameraYaw: number): void {
+	// cameraYaw is in radians; 0 = looking +Z (south in game), PI/2 = looking +X (west)
+	// Normalize to 0–360 compass degrees where 0=N (looking -Z)
+	let degrees = (((-cameraYaw * 180) / Math.PI) + 360) % 360;
+	// Find which compass point is closest to current heading
+	const pointIndex = Math.round(degrees / 45) % 8;
+	for (let i = 0; i < tickEls.length; i++) {
+		tickEls[i].classList.toggle("is-current", i === pointIndex);
+	}
+}
 
 const buildObjectives = (): { root: HTMLDivElement; render: () => void } => {
 	const root = el("div", "sgu-hud-objectives sgu-hud-panel");
@@ -554,6 +211,42 @@ const buildBagInventory = (): { root: HTMLDivElement; render: () => void } => {
 	return { root, render };
 };
 
+const buildBottomStrip = (): HTMLDivElement => {
+	const root = el("div", "sgu-hud-bottom-strip");
+
+	const items: Array<{ label: string; value: string }> = [
+		{ label: "Tritanium", value: "540" },
+		{ label: "Naquadah", value: "320" },
+		{ label: "Silicon", value: "210" },
+		{ label: "Power", value: "68%" },
+		{ label: "Crew", value: "29/97" },
+	];
+
+	for (let i = 0; i < items.length; i++) {
+		if (i > 0) root.appendChild(el("div", "sgu-hud-strip-separator"));
+		const item = el("div", "sgu-hud-strip-item");
+		item.appendChild(el("div", "sgu-hud-strip-icon"));
+		item.appendChild(el("span", undefined, items[i].label));
+		item.appendChild(el("span", "sgu-hud-strip-value", items[i].value));
+		root.appendChild(item);
+	}
+
+	root.appendChild(el("div", "sgu-hud-strip-separator"));
+
+	// Destiny integrity bar
+	const integrityItem = el("div", "sgu-hud-strip-item");
+	integrityItem.appendChild(el("span", undefined, "Integrity"));
+	const integrityBar = el("div", "sgu-hud-strip-bar");
+	const integrityFill = el("div", "sgu-hud-strip-bar-fill");
+	integrityFill.style.width = "61%";
+	integrityBar.appendChild(integrityFill);
+	integrityItem.appendChild(integrityBar);
+	integrityItem.appendChild(el("span", "sgu-hud-strip-value", "61%"));
+	root.appendChild(integrityItem);
+
+	return root;
+};
+
 const buildFeedback = (): {
 	root: HTMLDivElement;
 	show: (message: string) => void;
@@ -581,19 +274,19 @@ const buildFeedback = (): {
 	};
 };
 
-export const mountHud = (): HudHandle => {
-	ensureStyle();
-
+export const mountHud = (sceneTitle?: string): HudHandle => {
 	const root = el("div", "sgu-hud");
+	const compass = buildCompass(sceneTitle ?? "Gate Room");
 	const objectives = buildObjectives();
 	const bag = buildBagInventory();
 	const feedback = buildFeedback();
 
-	root.appendChild(buildCompass());
+	root.appendChild(compass.root);
 	root.appendChild(objectives.root);
 	root.appendChild(buildPlayerPanel());
 	root.appendChild(buildActionBar());
 	root.appendChild(bag.root);
+	root.appendChild(buildBottomStrip());
 	root.appendChild(feedback.root);
 	document.body.appendChild(root);
 
@@ -629,5 +322,8 @@ export const mountHud = (): HudHandle => {
 			root.remove();
 		},
 		refresh,
+		updateCompass: (cameraYaw: number) => {
+			updateCompassHeading(compass.tickEls, cameraYaw);
+		},
 	};
 };

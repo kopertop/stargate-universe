@@ -74,6 +74,15 @@ const setupShadows = (root: THREE.Object3D): void => {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+export type CharacterLoadOptions = {
+	/**
+	 * When true (default), rotate VRM 180° on Y so the model faces +Z (gate-room
+	 * movement convention). Disable in the character viewer — a Y-flip conflicts
+	 * with createVRMAnimationClip on some converted VRMA files in debug viewers.
+	 */
+	readonly facePositiveZ?: boolean;
+};
+
 /**
  * Load a character model (`.vrm` or `.glb`) and return a unified handle.
  *
@@ -84,7 +93,9 @@ const setupShadows = (root: THREE.Object3D): void => {
  */
 export const loadVRMCharacter = async (
 	path: string,
+	options: CharacterLoadOptions = {},
 ): Promise<CharacterLoadResult> => {
+	const facePositiveZ = options.facePositiveZ ?? true;
 	const isVRM = path.toLowerCase().endsWith(".vrm");
 	const loader = getSharedLoader();
 
@@ -96,7 +107,7 @@ export const loadVRMCharacter = async (
 	setupShadows(gltf.scene);
 	root.add(gltf.scene);
 
-	const mixer = new THREE.AnimationMixer(root);
+	const mixer = isVRM ? undefined : new THREE.AnimationMixer(root);
 
 	if (isVRM) {
 		const vrm = gltf.userData["vrm"] as VRM | undefined;
@@ -109,30 +120,37 @@ export const loadVRMCharacter = async (
 		// merge in a single pass.
 		VRMUtils.removeUnnecessaryVertices(vrm.scene);
 		VRMUtils.combineSkeletons(vrm.scene);
+		VRMUtils.rotateVRM0(vrm);
 
-		// VRM models face -Z by default; rotate 180° so they face +Z (toward camera)
-		vrm.scene.rotation.y = Math.PI;
+		if (facePositiveZ) {
+			// Gate-room convention: character mesh faces +Z for movement/camera
+			vrm.scene.rotation.y = Math.PI;
+		}
+
+		// Retargeted clips bind to normalized humanoid bones under vrm.scene
+		const vrmMixer = new THREE.AnimationMixer(vrm.scene);
 
 		const update = (delta: number): void => {
 			vrm.update(delta);
-			mixer.update(delta);
+			vrmMixer.update(delta);
 		};
 
 		const dispose = (): void => {
-			mixer.stopAllAction();
+			vrmMixer.stopAllAction();
 			root.parent?.remove(root);
 			VRMUtils.deepDispose(vrm.scene);
 		};
 
-		return { root, vrm, mixer, format: "vrm", update, dispose };
+		return { root, vrm, mixer: vrmMixer, format: "vrm", update, dispose };
 	} else {
 		// GLB path — no VRM spring bones, just AnimationMixer
+		const glbMixer = mixer!;
 		const update = (delta: number): void => {
-			mixer.update(delta);
+			glbMixer.update(delta);
 		};
 
 		const dispose = (): void => {
-			mixer.stopAllAction();
+			glbMixer.stopAllAction();
 			root.parent?.remove(root);
 			gltf.scene.traverse((obj) => {
 				const mesh = obj as THREE.Mesh;
@@ -149,11 +167,11 @@ export const loadVRMCharacter = async (
 
 		// Auto-play any embedded animations (e.g. Mixamo retargeted GLBs)
 		if (gltf.animations.length > 0) {
-			const action = mixer.clipAction(gltf.animations[0]);
+			const action = glbMixer.clipAction(gltf.animations[0]);
 			action.play();
 		}
 
-		return { root, vrm: undefined, mixer, format: "glb", update, dispose };
+		return { root, vrm: undefined, mixer: glbMixer, format: "glb", update, dispose };
 	}
 };
 

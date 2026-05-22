@@ -48,6 +48,22 @@ const CHARACTERS = [
 		clothingColor: [0.38, 0.32, 0.27],  // civilian warm-brown
 	},
 	{
+		id: 'eli-wallace',
+		name: 'Eli Wallace',
+		gender: 'male',
+		skinTone:      [0.86, 0.72, 0.58],
+		hairColor:     [0.22, 0.16, 0.10],
+		clothingColor: [0.28, 0.32, 0.38],  // casual hoodie grey-blue
+	},
+	{
+		id: 'nicholas-rush',
+		name: 'Dr. Nicholas Rush',
+		gender: 'male',
+		skinTone:      [0.78, 0.64, 0.52],
+		hairColor:     [0.18, 0.16, 0.14],  // disheveled dark grey
+		clothingColor: [0.12, 0.12, 0.14],  // dark civilian jacket
+	},
+	{
 		id: 'ronald-greer',
 		name: 'MSgt. Ronald Greer',
 		gender: 'male',

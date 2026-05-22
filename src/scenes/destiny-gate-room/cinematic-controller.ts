@@ -155,7 +155,8 @@ function countMeshes(root: THREE.Object3D): number {
 
 // Standard VRoid used for all crew when their own model is missing or a
 // placeholder. Rush's VRM is 10 MB and known-good; Eli has his own.
-const STANDARD_VROID_PATH = "/assets/characters/nicholas-rush/nicholas-rush.vrm";
+/** Full VRoid used when crew placeholder meshes have zero skinned parts. */
+const STANDARD_VROID_PATH = "/assets/characters/chloe-armstrong/chloe-armstrong.vrm";
 
 /**
  * Wrap loadCrewMember so cinematic actors always render with a real VRoid

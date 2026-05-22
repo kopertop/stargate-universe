@@ -59,6 +59,7 @@
 		"meshoptimizer": "^1.1.1",
 		"npm-run-all2": "^8.0.4",
 		"playwright": "^1.59.1",
+		"sass": "^1.99.0",
 		"sharp": "^0.34.5",
 		"typescript": "^5.9.3",
 		"vite": "^7.1.12",

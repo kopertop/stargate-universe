@@ -26,3 +26,15 @@
 
 ### Skills Completed
 - `story-done` — end-of-story completion handshake (Phase 1-8, writes story file)
+
+## Cross-cutting Engine Conventions (Watch For)
+
+- **Two floor-y conventions coexist** — `scripts/gate_room.gd` uses a `BoxMesh` floor
+  with visible top at y=0; `scripts/kenney_room.gd` uses Kenney `floor.glb` tiles with
+  visible top at y=0.3. Any utility, NPC spawn, or prop-placement helper that crosses
+  rooms must branch on the host scene's convention or be parameterized by floor-top-y.
+  Full details: `.claude/agent-memory/godot-gdscript-specialist/MEMORY.md`.
+- **`Interactable._ready()` overwrites `collision_layer = 4`** unconditionally —
+  subclasses needing extra bits must reassign AFTER `super()._ready()`, not in the
+  `.tscn`. If you're reviewing a PR that adds a new `Interactable` subclass needing
+  walk-blocker (1) or camera-occluder (2) bits, this is the first thing to check.

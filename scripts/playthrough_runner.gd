@@ -114,6 +114,12 @@ func _drive() -> void:
 	await _interact_door_to("res://scenes/destiny_corridor.tscn")
 	_assert_current_scene("destiny_corridor.tscn")
 	_expect(GameState.rooms_discovered.has("corridor"), "corridor: discover_room fired")
+	# Regression: after arriving via cross-scene transition, the player must face
+	# AWAY from the entry door. Previously the spawn marker's identity-basis was
+	# inherited as the player's rotation, leaving them facing the door they came
+	# through with the camera in front of them — pushing forward walked the player
+	# back into the entry door.
+	_expect_player_faces_away_from_entry_door("res://scenes/gate_room.tscn", "corridor")
 	await _shot("corridor_dead_end")
 	await _demo_hold()
 
@@ -122,6 +128,7 @@ func _drive() -> void:
 	_assert_current_scene("gate_room.tscn")
 	# rooms_discovered.has("gate_room") should still be true (idempotent).
 	_expect(GameState.rooms_discovered.has("gate_room"), "gate_room: discovery preserved on re-entry")
+	_expect_player_faces_away_from_entry_door("res://scenes/destiny_corridor.tscn", "gate_room")
 	await _shot("gate_room_return")
 	await _demo_hold()
 
@@ -142,7 +149,22 @@ func _interact_door_to(target_scene: String) -> void:
 	if door == null:
 		_fail("could not find door to " + target_scene)
 		return
-	door.interact(null)
+	# Regression: passing `null` here skipped door._transition's auto_walk path
+	# entirely, which is the path real play exercises. The bug it hid: rooms
+	# have solid -Z walls and the auto_walk target was placed PAST the door,
+	# inside the wall — auto_walk_finished never fired, scene never changed.
+	# Pass the actual player so the walk-up-then-transition codepath runs.
+	# Teleport the player ~0.9m in front of the door first so the auto_walk
+	# completes within the headless --quit-after frame budget (a full-room
+	# traverse would take 4+ seconds = past the 180-frame ceiling).
+	var player: Node = get_tree().get_first_node_in_group("player")
+	if player is Node3D and door is Node3D:
+		var to_player: Vector3 = (player as Node3D).global_position - (door as Node3D).global_position
+		to_player.y = 0.0
+		if to_player.length() > 0.01:
+			var approach: Vector3 = (door as Node3D).global_position + to_player.normalized() * 0.9
+			(player as Node3D).global_position = Vector3(approach.x, (player as Node3D).global_position.y, approach.z)
+	door.interact(player)
 	await SceneRouter.scene_changed
 	for i in SETTLE_FRAMES:
 		await get_tree().process_frame
@@ -170,6 +192,41 @@ func _find_console(kind: String) -> Node:
 
 
 # --- assertions / reporting ---------------------------------------------
+
+# After arrival, the entry door is the door in the current scene whose
+# target_scene points back to where we came from. Player must face AWAY from
+# it — formally, the player's forward vector (-Z in Godot) must have a
+# positive component along (player_pos - door_pos). Also confirms the player
+# is reasonably close (<3m) to the entry door, i.e. arrived AT it.
+func _expect_player_faces_away_from_entry_door(from_scene: String, label: String) -> void:
+	var entry: Door = null
+	for n in get_tree().get_nodes_in_group("interactable"):
+		if n is Door and (n as Door).target_scene == from_scene:
+			entry = n
+			break
+	if entry == null:
+		_fail(label + ": no entry door (target_scene=" + from_scene + ") in arrival scene")
+		return
+	var player_n: Node = get_tree().get_first_node_in_group("player")
+	if player_n == null or not (player_n is Node3D):
+		_fail(label + ": no player Node3D found post-arrival")
+		return
+	var player: Node3D = player_n as Node3D
+	var to_player: Vector3 = player.global_position - entry.global_position
+	to_player.y = 0.0
+	var dist: float = to_player.length()
+	_expect(dist < 3.0, label + ": player spawned within 3m of entry door (got %.2fm)" % dist)
+	if dist < 0.01:
+		# Degenerate — same position. Skip facing check, distance check above already failed.
+		return
+	var player_forward: Vector3 = -player.global_transform.basis.z
+	player_forward.y = 0.0
+	if player_forward.length() < 0.01:
+		_fail(label + ": player forward vector is zero")
+		return
+	var dot: float = player_forward.normalized().dot(to_player.normalized())
+	_expect(dot > 0.5, label + ": player faces AWAY from entry door (dot=%.2f, want > 0.5)" % dot)
+
 
 func _assert_current_scene(expected_filename: String) -> void:
 	var cs: Node = get_tree().current_scene

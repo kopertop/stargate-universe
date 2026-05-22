@@ -54,7 +54,7 @@ run_scene_test() {
 	echo "==============================="
 	echo " $label"
 	echo "==============================="
-	"$GODOT_BIN" --headless --quit-after 180 "$scene" 2>&1
+	"$GODOT_BIN" --headless --quit-after 900 "$scene" 2>&1
 	return $?
 }
 

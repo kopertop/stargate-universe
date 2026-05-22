@@ -81,12 +81,12 @@ light_color = Color(0.85, 0.78, 0.55, 1)
 light_energy = 5.5
 omni_range = 11.0
 
-[node name="GateRoomDoor" parent="." groups=["interactable"] instance=ExtResource("8_door")]
+[node name="JunctionDoor" parent="." groups=["interactable"] instance=ExtResource("8_door")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0, -5.5)
-target_scene = "res://scenes/gate_room.tscn"
-target_spawn = "FromCrewQuarters"
-transition_prompt = "Back to the gate room"
-open_prompt = "Back to the gate room"
+target_scene = "res://scenes/destiny_corridor.tscn"
+target_spawn = "FromCrewCorridor"
+transition_prompt = "Back to the corridor junction"
+open_prompt = "Back to the corridor junction"
 
 [node name="CrewQuartersDoor" parent="." groups=["interactable"] instance=ExtResource("8_door")]
 transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.5, 0, 5.5)

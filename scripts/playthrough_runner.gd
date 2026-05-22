@@ -197,7 +197,9 @@ func _find_console(kind: String) -> Node:
 # target_scene points back to where we came from. Player must face AWAY from
 # it — formally, the player's forward vector (-Z in Godot) must have a
 # positive component along (player_pos - door_pos). Also confirms the player
-# is reasonably close (<3m) to the entry door, i.e. arrived AT it.
+# is reasonably close (<4.5m) to the entry door, i.e. arrived AT it. The hub
+# corridor places spawn markers ~3.5m inside the wall so the SpringArm has
+# shoulder room behind the player; auto-walk adds another ~0.5m on arrival.
 func _expect_player_faces_away_from_entry_door(from_scene: String, label: String) -> void:
 	var entry: Door = null
 	for n in get_tree().get_nodes_in_group("interactable"):
@@ -215,7 +217,7 @@ func _expect_player_faces_away_from_entry_door(from_scene: String, label: String
 	var to_player: Vector3 = player.global_position - entry.global_position
 	to_player.y = 0.0
 	var dist: float = to_player.length()
-	_expect(dist < 3.0, label + ": player spawned within 3m of entry door (got %.2fm)" % dist)
+	_expect(dist < 4.5, label + ": player spawned within 4.5m of entry door (got %.2fm)" % dist)
 	if dist < 0.01:
 		# Degenerate — same position. Skip facing check, distance check above already failed.
 		return

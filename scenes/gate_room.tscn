@@ -21,32 +21,12 @@ environment = ExtResource("1_env")
 
 [node name="FromCorridor" type="Marker3D" parent="."]
 
-[node name="FromCrewQuarters" type="Marker3D" parent="."]
-transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 14.5, 0.05, 0)
-
-[node name="FromMessHall" type="Marker3D" parent="."]
-transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -14.5, 0.05, 0)
-
 [node name="ExitDoor" parent="." groups=["interactable"] instance=ExtResource("8_door")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -16)
 target_scene = "res://scenes/destiny_corridor.tscn"
 target_spawn = "FromGateRoom"
 open_prompt = "Step into the corridor"
 transition_prompt = "Step into the corridor"
-
-[node name="CrewQuartersDoor" parent="." groups=["interactable"] instance=ExtResource("8_door")]
-transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 16, 0, 0)
-target_scene = "res://scenes/corridor_crew.tscn"
-target_spawn = "FromGateRoom"
-open_prompt = "Head to the crew quarters"
-transition_prompt = "Head to the crew quarters"
-
-[node name="MessHallDoor" parent="." groups=["interactable"] instance=ExtResource("8_door")]
-transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -16, 0, 0)
-target_scene = "res://scenes/corridor_mess.tscn"
-target_spawn = "FromGateRoom"
-open_prompt = "Head to the mess hall"
-transition_prompt = "Head to the mess hall"
 
 [node name="Player" parent="." node_paths=PackedStringArray("view") groups=["player"] instance=ExtResource("3_player")]
 transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 1.05, 10.5)

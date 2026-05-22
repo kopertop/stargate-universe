@@ -88,12 +88,12 @@ target_spawn = "FromCorridor"
 transition_prompt = "Enter the mess hall"
 open_prompt = "Enter the mess hall"
 
-[node name="GateRoomDoor" parent="." groups=["interactable"] instance=ExtResource("8_door")]
+[node name="JunctionDoor" parent="." groups=["interactable"] instance=ExtResource("8_door")]
 transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.5, 0, 5.5)
-target_scene = "res://scenes/gate_room.tscn"
-target_spawn = "FromMessHall"
-transition_prompt = "Back to the gate room"
-open_prompt = "Back to the gate room"
+target_scene = "res://scenes/destiny_corridor.tscn"
+target_spawn = "FromMessCorridor"
+transition_prompt = "Back to the corridor junction"
+open_prompt = "Back to the corridor junction"
 
 [node name="FromMessHall" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0.35, -4.5)

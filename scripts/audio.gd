@@ -3,7 +3,9 @@ extends Node
 # Code adapted from KidsCanCode
 
 var num_players = 12
-var bus = "master"
+# All one-shot SFX route through the SFX bus so the volume slider in the title
+# menu affects them; ambient hum (music bed) lives on the Music bus.
+var bus = "SFX"
 
 var available = []  # The available players.
 var queue = []  # The queue of sounds to play.

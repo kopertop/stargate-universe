@@ -30,6 +30,11 @@ GameState="*res://scripts/game_state.gd"
 SceneRouter="*res://scripts/scene_router.gd"
 KinoRemote="*res://scripts/kino_remote.gd"
 EpisodeWrap="*res://scripts/episode_wrap.gd"
+Settings="*res://scripts/settings.gd"
+
+[audio]
+
+buses/default_bus_layout="res://default_bus_layout.tres"
 
 [display]
 

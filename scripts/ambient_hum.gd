@@ -17,6 +17,9 @@ var _playback: AudioStreamGeneratorPlayback
 func _ready() -> void:
 	if not enabled:
 		return
+	# Ambient drone is the closest thing the game has to music — route it
+	# through the Music bus so the title-menu music slider affects it.
+	bus = "Music"
 	var gen: AudioStreamGenerator = AudioStreamGenerator.new()
 	gen.mix_rate = sample_rate
 	gen.buffer_length = 0.2

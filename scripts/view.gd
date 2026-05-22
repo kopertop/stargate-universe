@@ -30,22 +30,23 @@ var mouselook_active: bool = false
 func _ready() -> void:
 	# Preserve the scene's tuned pitch/distance; only nudge yaw to sit behind the target.
 	camera_rotation = rotation_degrees
-	if target != null:
-		# SpringArm3D extends along view's local +Z. With view yaw = player yaw
-		# (= π at spawn), view's +Z in world = -Z, putting the camera BEHIND the
-		# player (player faces +Z after the spawn 180° rotation). No yaw offset
-		# needed; matching view yaw to player yaw also avoids a spawn-time
-		# snap-rotation of the body.
-		camera_rotation.y = rad_to_deg(target.rotation.y) + initial_yaw_offset
-		rotation_degrees = camera_rotation
-		# Snap position to target so the very first frame is framed correctly —
-		# otherwise the lerp in _physics_process gives a few frames where the
-		# camera sits at world origin and the player is offscreen.
-		position = target.position + Vector3.UP * follow_height
+	snap_to_target()
 	# Seed zoom from the spring length the scene was authored with, so the lerp
 	# in _physics_process doesn't crash-zoom out to the 10.0 default on entry.
 	if spring != null:
 		zoom = spring.spring_length
+
+# Snap the camera rig to sit directly behind the target with the authored pitch.
+# Called from _ready() at scene load, and from SceneRouter after a cross-scene
+# transition (which teleports the player without firing _ready again).
+func snap_to_target() -> void:
+	if target == null:
+		return
+	# Match view yaw to player yaw so SpringArm3D's local +Z lands behind the
+	# player. Skips the body snap-rotation that an offset would trigger.
+	camera_rotation.y = rad_to_deg(target.rotation.y) + initial_yaw_offset
+	rotation_degrees = camera_rotation
+	position = target.position + Vector3.UP * follow_height
 
 # Use _input (not _unhandled_input) so the HUD Control doesn't eat mouse events.
 func _input(event: InputEvent) -> void:

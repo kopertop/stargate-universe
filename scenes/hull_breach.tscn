@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3 uid="uid://cgr0hullbreach00"]
+[gd_scene load_steps=19 format=3 uid="uid://cgr0hullbreach00"]
 
 [ext_resource type="Environment" uid="uid://cgrenvinterior00" path="res://scenes/destiny-interior-environment.tres" id="1_env"]
 [ext_resource type="Script" path="res://scripts/kenney_room.gd" id="2_room"]
@@ -13,6 +13,7 @@
 [ext_resource type="Script" path="res://scripts/hull_seal_switch.gd" id="11_seal"]
 [ext_resource type="PackedScene" uid="uid://djvd4gog4wgi1" path="res://models/sci-fi/space-station/wall-switch.glb" id="12_switch"]
 [ext_resource type="Script" path="res://scripts/ambient_hum.gd" id="13_ambient"]
+[ext_resource type="Script" path="res://scripts/hull_breach_decor.gd" id="14_decor"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_metallic"]
 albedo_color = Color(0.42, 0.40, 0.44, 1)
@@ -124,6 +125,9 @@ transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 0, 0, 0)
 
 [node name="FromCorridor" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0.5, -1.5)
+
+[node name="Decor" type="Node3D" parent="."]
+script = ExtResource("14_decor")
 
 [node name="Player" parent="." node_paths=PackedStringArray("view") groups=["player"] instance=ExtResource("4_player")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0.5, 0.5)

@@ -29,6 +29,12 @@ extends Node3D
 @export var metallic_material: StandardMaterial3D
 @export var ceiling_material: StandardMaterial3D
 
+@export_group("Narrative")
+# Contextual objective set on the HUD when this room loads. Leave empty
+# to keep whatever the prior scene set. Prevents "Step through the gate"
+# from sticking once the player has moved past the gate.
+@export_multiline var objective_on_enter: String = ""
+
 @onready var _world: Node3D = $World
 
 func _ready() -> void:
@@ -36,6 +42,8 @@ func _ready() -> void:
 	_build_walls()
 	_build_ceiling()
 	_build_room_colliders()
+	if objective_on_enter != "":
+		GameState.set_objective(objective_on_enter)
 
 func _build_ceiling() -> void:
 	var size_x: float = float(floor_size.x) * tile_size
@@ -149,6 +157,9 @@ func _build_floor() -> void:
 	var origin_x: float = -float(floor_size.x) * 0.5 * tile_size + tile_size * 0.5
 	var origin_z: float = -float(floor_size.y) * 0.5 * tile_size + tile_size * 0.5
 	# Floor collider so player walks on it.
+	# Kenney floor.glb tiles sit on their origin and rise 0.3m, so the visual top is at y=0.3.
+	# Anchor the collider top at y=0.3 to match the visible surface — otherwise the player
+	# rests at y≈0 while the floor renders 0.3m above, sinking the character.
 	var floor_body: StaticBody3D = StaticBody3D.new()
 	floor_body.collision_layer = 1
 	floor_body.collision_mask = 0
@@ -157,7 +168,7 @@ func _build_floor() -> void:
 	var box: BoxShape3D = BoxShape3D.new()
 	box.size = Vector3(float(floor_size.x) * tile_size + 0.4, 0.2, float(floor_size.y) * tile_size + 0.4)
 	cs.shape = box
-	cs.position = Vector3(0.0, -0.1, 0.0)
+	cs.position = Vector3(0.0, 0.2, 0.0)
 	floor_body.add_child(cs)
 	for x in floor_size.x:
 		for z in floor_size.y:

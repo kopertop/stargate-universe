@@ -47,8 +47,14 @@ func change_to(scene_path: String, spawn_point: String = "") -> void:
 		_is_transitioning = false
 		await _fade_to(0.0)
 		return
-	# Wait one frame for the new scene to enter the tree.
-	await get_tree().process_frame
+	# Wait until the new scene is actually in the tree. In Godot 4,
+	# change_scene_to_file is deferred — current_scene is briefly null while the
+	# old scene frees and the new one instantiates. A single process_frame is
+	# not enough in headless mode; loop with a small ceiling so we never hang.
+	var attempts: int = 0
+	while get_tree().current_scene == null and attempts < 30:
+		await get_tree().process_frame
+		attempts += 1
 	_place_player_at_spawn()
 	scene_changed.emit(scene_path)
 	await _fade_to(0.0)
@@ -67,7 +73,31 @@ func _place_player_at_spawn() -> void:
 	var player: Node = tree.get_first_node_in_group("player")
 	if player == null or not (player is Node3D):
 		return
-	(player as Node3D).global_transform = (marker as Node3D).global_transform
+	var marker_n: Node3D = marker as Node3D
+	# Different scenes authored spawn markers with different (or zero) basis
+	# rotation, so we cannot trust `marker_n.basis` for the player's facing.
+	# Derive "into the room" from geometry — nearest Door to the marker — and
+	# build a fresh transform that always places the player AT the door,
+	# facing away from it, so the camera lands behind them and continuing
+	# straight walks deeper into the room (not back through the entry door).
+	var forward: Vector3 = _direction_into_room(root, marker_n)
+	# Godot's default forward is -Z; rotating the body by `atan2(-fx, -fz)`
+	# aligns -Z with the world-space `forward` vector.
+	var yaw: float = atan2(-forward.x, -forward.z)
+	var spawn_xform: Transform3D = Transform3D(Basis(Vector3.UP, yaw), marker_n.global_position)
+	(player as Node3D).global_transform = spawn_xform
+	# Re-sync the camera rig: View._ready() ran before the teleport, so its
+	# camera_rotation still reflects the scene-authored player yaw. Without this,
+	# the camera lerps to the new position but keeps the old yaw — leaving the
+	# player walking sideways or backwards relative to the camera on entry.
+	var view: Node = root.get_node_or_null("View")
+	if view != null and view.has_method("snap_to_target"):
+		view.call("snap_to_target")
+	# Auto-walk forward into the room over the fade-in; sells "stepped through
+	# the door" rather than "teleported in." Runs concurrently with the fade.
+	if player.has_method("auto_walk_to"):
+		var walk_to: Vector3 = marker_n.global_position + forward * 0.4
+		player.call("auto_walk_to", walk_to, 5.0)
 
 func _find_marker(node: Node, target_name: String) -> Node:
 	if node.name == target_name and node is Marker3D:
@@ -77,6 +107,44 @@ func _find_marker(node: Node, target_name: String) -> Node:
 		if found != null:
 			return found
 	return null
+
+# Direction "into the room" derived from geometry: nearest Door's position is
+# behind the player, so we walk away from it. Falls back to the marker's local
+# -Z when no door is found (e.g. test scenes without any doors).
+func _direction_into_room(root: Node, marker_n: Node3D) -> Vector3:
+	var nearest_door: Node3D = _find_nearest_door(root, marker_n.global_position)
+	if nearest_door != null:
+		var away: Vector3 = marker_n.global_position - nearest_door.global_position
+		away.y = 0.0
+		if away.length() > 0.01:
+			return away.normalized()
+	var fallback: Vector3 = -marker_n.global_transform.basis.z
+	fallback.y = 0.0
+	if fallback.length() < 0.01:
+		return Vector3.FORWARD
+	return fallback.normalized()
+
+func _find_nearest_door(root: Node, pos: Vector3) -> Node3D:
+	var best: Node3D = null
+	var best_d: float = INF
+	for n in _gather_doors(root):
+		var d: float = (n.global_position - pos).length_squared()
+		if d < best_d:
+			best_d = d
+			best = n
+	return best
+
+# Doors are scripted Node3Ds; detect by script resource path so we don't depend
+# on a class_name being parsed at autoload time.
+func _gather_doors(node: Node) -> Array[Node3D]:
+	var out: Array[Node3D] = []
+	var script: Script = node.get_script()
+	if script != null and script.resource_path.ends_with("door.gd") and node is Node3D:
+		out.append(node)
+	for c in node.get_children():
+		for d in _gather_doors(c):
+			out.append(d)
+	return out
 
 func _fade_to(target_alpha: float) -> void:
 	if instant_mode:

@@ -5,12 +5,13 @@ extends CharacterBody3D
 # camera looks. No double-jump or fall-respawn (kit platformer bits removed).
 
 signal interact_target_changed(target: Node)
+signal auto_walk_finished
 
 @export_subgroup("Components")
 @export var view: Node3D
 
 @export_subgroup("Movement")
-@export var walk_speed: float = 4.0          # m/s
+@export var walk_speed: float = 8.0          # m/s
 @export var sprint_multiplier: float = 1.7
 @export var accel_smoothing: float = 12.0
 @export var gravity_strength: float = 25.0
@@ -25,6 +26,10 @@ var _move_velocity: Vector3 = Vector3.ZERO
 var _facing_yaw: float = 0.0
 var _current_interactable: Node = null
 var _input_locked: bool = false   # locked during cutscene / scene transitions
+var _auto_walking: bool = false
+var _auto_walk_target: Vector3 = Vector3.ZERO
+var _auto_walk_speed: float = 5.0
+var _auto_walk_arrive_dist: float = 0.18
 
 @onready var _particles_trail: GPUParticles3D = $ParticlesTrail
 @onready var _sound_footsteps: AudioStreamPlayer = $SoundFootsteps
@@ -62,6 +67,9 @@ func _find_animation_player(root: Node) -> AnimationPlayer:
 	return null
 
 func _physics_process(delta: float) -> void:
+	if _auto_walking:
+		_drive_auto_walk(delta)
+		return
 	if _input_locked:
 		_apply_idle(delta)
 		return
@@ -205,3 +213,40 @@ func set_input_locked(locked: bool) -> void:
 	_input_locked = locked
 	if locked:
 		_move_velocity = Vector3.ZERO
+
+# Drive the player toward a world-space target on a straight line. Locks input
+# for the duration. Used by door transitions to sell "walked through the door"
+# rather than fade-cutting between scenes. Emits `auto_walk_finished` when the
+# player arrives within `_auto_walk_arrive_dist` of the target.
+func auto_walk_to(target_world_pos: Vector3, speed: float = 5.0) -> void:
+	_auto_walk_target = Vector3(target_world_pos.x, global_position.y, target_world_pos.z)
+	_auto_walk_speed = max(speed, 0.1)
+	_auto_walking = true
+	_input_locked = true
+
+func _drive_auto_walk(delta: float) -> void:
+	var to_target: Vector3 = _auto_walk_target - global_position
+	to_target.y = 0.0
+	var dist: float = to_target.length()
+	if dist < _auto_walk_arrive_dist:
+		_auto_walking = false
+		_input_locked = false
+		_move_velocity = Vector3.ZERO
+		velocity = Vector3.ZERO
+		_apply_gravity(delta)
+		move_and_slide()
+		_play_anim("idle", 0.1)
+		auto_walk_finished.emit()
+		return
+	var dir: Vector3 = to_target.normalized()
+	_move_velocity = dir * _auto_walk_speed
+	_facing_yaw = atan2(-dir.x, -dir.z)
+	rotation.y = lerp_angle(rotation.y, _facing_yaw, delta * 16.0)
+	_apply_gravity(delta)
+	velocity = Vector3(_move_velocity.x, -_gravity_velocity, _move_velocity.z)
+	move_and_slide()
+	_play_anim("walk", 0.1)
+	if _animation != null:
+		_animation.speed_scale = 1.0
+	_sound_footsteps.stream_paused = false
+	_sound_footsteps.pitch_scale = 1.25

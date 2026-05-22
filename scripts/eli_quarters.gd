@@ -5,6 +5,6 @@ extends Node3D
 func _ready() -> void:
 	GameState.discover_room("quarters", "Eli's Quarters")
 	if not GameState.kino_acquired:
-		GameState.set_objective("Pick up the Kino Remote on the desk")
+		GameState.set_objective("Pick up the Kino Remote on your bed")
 	elif not GameState.quarters_found:
 		GameState.set_objective("Sleep in the bed to register these as your quarters")

@@ -1,0 +1,206 @@
+[gd_scene load_steps=11 format=3 uid="uid://cgr0messhall01"]
+
+[ext_resource type="Environment" uid="uid://cgrenvinterior00" path="res://scenes/destiny-interior-environment.tres" id="1_env"]
+[ext_resource type="Script" path="res://scripts/kenney_room.gd" id="2_room"]
+[ext_resource type="PackedScene" uid="uid://dl2ed4gkybggf" path="res://objects/player.tscn" id="3_player"]
+[ext_resource type="Script" uid="uid://bcg2kkbsnttec" path="res://scripts/view.gd" id="4_view"]
+[ext_resource type="PackedScene" uid="uid://dynqkgbn3lu4u" path="res://models/sci-fi/space-station/floor.glb" id="5_floor"]
+[ext_resource type="PackedScene" uid="uid://bf2a38eob8tr5" path="res://models/sci-fi/space-station/wall.glb" id="6_wall"]
+[ext_resource type="PackedScene" uid="uid://ycqgyfiu8ry6" path="res://models/sci-fi/space-station/wall-door.glb" id="7_walldoor"]
+[ext_resource type="PackedScene" uid="uid://b0doorinteractable" path="res://objects/door.tscn" id="8_door"]
+[ext_resource type="PackedScene" uid="uid://b1hudsgu000" path="res://objects/hud.tscn" id="9_hud"]
+[ext_resource type="Script" path="res://scripts/ambient_hum.gd" id="10_ambient"]
+[ext_resource type="Script" path="res://scripts/mess_hall_decor.gd" id="11_decor"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_metallic"]
+albedo_color = Color(0.52, 0.50, 0.55, 1)
+metallic = 0.25
+metallic_specular = 0.45
+roughness = 0.6
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ceiling"]
+albedo_color = Color(0.20, 0.20, 0.24, 1)
+metallic = 0.25
+roughness = 0.65
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_table"]
+albedo_color = Color(0.42, 0.38, 0.32, 1)
+metallic = 0.35
+roughness = 0.45
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_bench"]
+albedo_color = Color(0.30, 0.28, 0.30, 1)
+metallic = 0.30
+roughness = 0.55
+
+[sub_resource type="BoxMesh" id="BoxMesh_table_top"]
+size = Vector3(1.4, 0.08, 4.0)
+
+[sub_resource type="BoxMesh" id="BoxMesh_table_leg"]
+size = Vector3(0.10, 0.85, 0.10)
+
+[sub_resource type="BoxMesh" id="BoxMesh_bench"]
+size = Vector3(0.45, 0.45, 4.0)
+
+[node name="MessHall" type="Node3D"]
+
+[node name="Room" type="Node3D" parent="."]
+script = ExtResource("2_room")
+floor_size = Vector2i(12, 10)
+wall_y_scale = 4.5
+ceiling_height = 4.5
+floor_scene = ExtResource("5_floor")
+wall_scene = ExtResource("6_wall")
+wall_door_scene = ExtResource("7_walldoor")
+south_door_index = 6
+north_door_index = -1
+east_door_index = -1
+west_door_index = -1
+metallic_material = SubResource("StandardMaterial3D_metallic")
+ceiling_material = SubResource("StandardMaterial3D_ceiling")
+objective_on_enter = "Search the mess for rations"
+
+[node name="World" type="Node3D" parent="Room"]
+
+[node name="Environment" type="WorldEnvironment" parent="."]
+environment = ExtResource("1_env")
+
+[node name="KeyLight" type="DirectionalLight3D" parent="."]
+transform = Transform3D(-0.422618, -0.694272, 0.582563, 0, 0.642788, 0.766044, -0.906308, 0.323744, -0.271654, 0, 5, 0)
+light_color = Color(0.88, 0.86, 0.78, 1)
+light_energy = 0.7
+shadow_enabled = true
+shadow_opacity = 0.4
+
+[node name="CeilingLightW" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 3.6, 0)
+light_color = Color(1.00, 0.90, 0.70, 1)
+light_energy = 3.4
+omni_range = 10.0
+
+[node name="CeilingLightC" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.6, 0)
+light_color = Color(1.00, 0.90, 0.70, 1)
+light_energy = 3.4
+omni_range = 10.0
+
+[node name="CeilingLightE" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 3.6, 0)
+light_color = Color(1.00, 0.90, 0.70, 1)
+light_energy = 3.4
+omni_range = 10.0
+
+[node name="CorridorDoor" parent="." groups=["interactable"] instance=ExtResource("8_door")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0, -4.7)
+target_scene = "res://scenes/corridor_mess.tscn"
+target_spawn = "FromMessHall"
+transition_prompt = "Into the corridor"
+open_prompt = "Into the corridor"
+
+[node name="FromCorridor" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0.35, -3.5)
+
+[node name="Decor" type="Node3D" parent="."]
+script = ExtResource("11_decor")
+
+[node name="MessTables" type="Node3D" parent="."]
+
+[node name="TableA" type="MeshInstance3D" parent="MessTables"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.5, 0.85, 1.5)
+mesh = SubResource("BoxMesh_table_top")
+material_override = SubResource("StandardMaterial3D_table")
+
+[node name="TableALeg1" type="MeshInstance3D" parent="MessTables"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.1, 0.42, 0.0)
+mesh = SubResource("BoxMesh_table_leg")
+material_override = SubResource("StandardMaterial3D_table")
+
+[node name="TableALeg2" type="MeshInstance3D" parent="MessTables"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.9, 0.42, 0.0)
+mesh = SubResource("BoxMesh_table_leg")
+material_override = SubResource("StandardMaterial3D_table")
+
+[node name="TableALeg3" type="MeshInstance3D" parent="MessTables"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.1, 0.42, 3.0)
+mesh = SubResource("BoxMesh_table_leg")
+material_override = SubResource("StandardMaterial3D_table")
+
+[node name="TableALeg4" type="MeshInstance3D" parent="MessTables"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.9, 0.42, 3.0)
+mesh = SubResource("BoxMesh_table_leg")
+material_override = SubResource("StandardMaterial3D_table")
+
+[node name="BenchAL" type="MeshInstance3D" parent="MessTables"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.6, 0.22, 1.5)
+mesh = SubResource("BoxMesh_bench")
+material_override = SubResource("StandardMaterial3D_bench")
+
+[node name="BenchAR" type="MeshInstance3D" parent="MessTables"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.4, 0.22, 1.5)
+mesh = SubResource("BoxMesh_bench")
+material_override = SubResource("StandardMaterial3D_bench")
+
+[node name="TableB" type="MeshInstance3D" parent="MessTables"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.5, 0.85, 1.5)
+mesh = SubResource("BoxMesh_table_top")
+material_override = SubResource("StandardMaterial3D_table")
+
+[node name="TableBLeg1" type="MeshInstance3D" parent="MessTables"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.9, 0.42, 0.0)
+mesh = SubResource("BoxMesh_table_leg")
+material_override = SubResource("StandardMaterial3D_table")
+
+[node name="TableBLeg2" type="MeshInstance3D" parent="MessTables"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.1, 0.42, 0.0)
+mesh = SubResource("BoxMesh_table_leg")
+material_override = SubResource("StandardMaterial3D_table")
+
+[node name="TableBLeg3" type="MeshInstance3D" parent="MessTables"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.9, 0.42, 3.0)
+mesh = SubResource("BoxMesh_table_leg")
+material_override = SubResource("StandardMaterial3D_table")
+
+[node name="TableBLeg4" type="MeshInstance3D" parent="MessTables"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.1, 0.42, 3.0)
+mesh = SubResource("BoxMesh_table_leg")
+material_override = SubResource("StandardMaterial3D_table")
+
+[node name="BenchBL" type="MeshInstance3D" parent="MessTables"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.4, 0.22, 1.5)
+mesh = SubResource("BoxMesh_bench")
+material_override = SubResource("StandardMaterial3D_bench")
+
+[node name="BenchBR" type="MeshInstance3D" parent="MessTables"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.6, 0.22, 1.5)
+mesh = SubResource("BoxMesh_bench")
+material_override = SubResource("StandardMaterial3D_bench")
+
+[node name="Player" parent="." node_paths=PackedStringArray("view") groups=["player"] instance=ExtResource("3_player")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0.35, -3.5)
+view = NodePath("../View")
+
+[node name="View" type="Node3D" parent="." node_paths=PackedStringArray("target")]
+transform = Transform3D(0.866025, -0.25, 0.433013, 0, 0.866025, 0.5, -0.5, -0.433013, 0.75, 0, 0, 0)
+script = ExtResource("4_view")
+target = NodePath("../Player")
+zoom_minimum = 4.0
+zoom_maximum = 2.5
+
+[node name="SpringArm" type="SpringArm3D" parent="View"]
+collision_mask = 2
+spring_length = 3.5
+margin = 0.2
+
+[node name="Camera" type="Camera3D" parent="View/SpringArm"]
+current = true
+fov = 60.0
+
+[node name="HUDLayer" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="HUD" parent="HUDLayer" instance=ExtResource("9_hud")]
+
+[node name="AmbientHum" type="AudioStreamPlayer" parent="."]
+volume_db = -22.0
+script = ExtResource("10_ambient")
+base_freq = 58.0

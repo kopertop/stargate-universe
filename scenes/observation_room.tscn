@@ -1,0 +1,280 @@
+[gd_scene load_steps=15 format=3 uid="uid://cgr0observe001"]
+
+[ext_resource type="Environment" uid="uid://cgrenvinterior00" path="res://scenes/destiny-interior-environment.tres" id="1_env"]
+[ext_resource type="Script" path="res://scripts/kenney_room.gd" id="2_room"]
+[ext_resource type="PackedScene" uid="uid://dl2ed4gkybggf" path="res://objects/player.tscn" id="3_player"]
+[ext_resource type="Script" uid="uid://bcg2kkbsnttec" path="res://scripts/view.gd" id="4_view"]
+[ext_resource type="PackedScene" uid="uid://dynqkgbn3lu4u" path="res://models/sci-fi/space-station/floor.glb" id="5_floor"]
+[ext_resource type="PackedScene" uid="uid://bf2a38eob8tr5" path="res://models/sci-fi/space-station/wall.glb" id="6_wall"]
+[ext_resource type="PackedScene" uid="uid://ycqgyfiu8ry6" path="res://models/sci-fi/space-station/wall-door.glb" id="7_walldoor"]
+[ext_resource type="PackedScene" uid="uid://b0doorinteractable" path="res://objects/door.tscn" id="8_door"]
+[ext_resource type="PackedScene" uid="uid://b1hudsgu000" path="res://objects/hud.tscn" id="9_hud"]
+[ext_resource type="Script" path="res://scripts/ambient_hum.gd" id="10_ambient"]
+[ext_resource type="Script" path="res://scripts/observation_room_decor.gd" id="11_decor"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_metallic"]
+albedo_color = Color(0.38, 0.40, 0.46, 1)
+metallic = 0.35
+metallic_specular = 0.55
+roughness = 0.55
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ceiling"]
+albedo_color = Color(0.14, 0.14, 0.18, 1)
+metallic = 0.25
+roughness = 0.65
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_void"]
+albedo_color = Color(0.01, 0.012, 0.02, 1)
+metallic = 0.0
+roughness = 1.0
+emission_enabled = true
+emission = Color(0.02, 0.03, 0.06, 1)
+emission_energy_multiplier = 0.8
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_star"]
+albedo_color = Color(0.0, 0.0, 0.0, 1)
+metallic = 0.0
+roughness = 1.0
+emission_enabled = true
+emission = Color(1.0, 0.96, 0.88, 1)
+emission_energy_multiplier = 6.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_star_blue"]
+albedo_color = Color(0.0, 0.0, 0.0, 1)
+metallic = 0.0
+roughness = 1.0
+emission_enabled = true
+emission = Color(0.55, 0.78, 1.0, 1)
+emission_energy_multiplier = 5.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_window_frame"]
+albedo_color = Color(0.44, 0.30, 0.16, 1)
+metallic = 0.80
+roughness = 0.30
+emission_enabled = true
+emission = Color(1.0, 0.55, 0.22, 1)
+emission_energy_multiplier = 0.4
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_glass"]
+albedo_color = Color(0.12, 0.22, 0.30, 0.18)
+metallic = 0.0
+roughness = 0.05
+transparency = 1
+emission_enabled = true
+emission = Color(0.20, 0.45, 0.65, 1)
+emission_energy_multiplier = 0.18
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_bench"]
+albedo_color = Color(0.30, 0.28, 0.32, 1)
+metallic = 0.30
+roughness = 0.55
+
+[sub_resource type="BoxMesh" id="BoxMesh_void"]
+size = Vector3(0.2, 4.0, 7.0)
+
+[sub_resource type="BoxMesh" id="BoxMesh_glass"]
+size = Vector3(0.05, 3.6, 6.6)
+
+[sub_resource type="BoxMesh" id="BoxMesh_frame_v"]
+size = Vector3(0.3, 4.4, 0.3)
+
+[sub_resource type="BoxMesh" id="BoxMesh_frame_h"]
+size = Vector3(0.3, 0.3, 7.4)
+
+[sub_resource type="SphereMesh" id="SphereMesh_star_small"]
+radius = 0.06
+height = 0.12
+radial_segments = 8
+rings = 4
+
+[sub_resource type="SphereMesh" id="SphereMesh_star_med"]
+radius = 0.10
+height = 0.20
+radial_segments = 8
+rings = 4
+
+[sub_resource type="BoxMesh" id="BoxMesh_bench_long"]
+size = Vector3(3.6, 0.45, 0.55)
+
+[sub_resource type="BoxMesh" id="BoxMesh_bench_back"]
+size = Vector3(3.6, 0.9, 0.12)
+
+[node name="ObservationRoom" type="Node3D"]
+
+[node name="Room" type="Node3D" parent="."]
+script = ExtResource("2_room")
+floor_size = Vector2i(14, 10)
+wall_y_scale = 5.0
+ceiling_height = 5.0
+floor_scene = ExtResource("5_floor")
+wall_scene = ExtResource("6_wall")
+wall_door_scene = ExtResource("7_walldoor")
+south_door_index = -1
+north_door_index = -1
+east_door_index = -1
+west_door_index = 5
+metallic_material = SubResource("StandardMaterial3D_metallic")
+ceiling_material = SubResource("StandardMaterial3D_ceiling")
+objective_on_enter = "Watch the stars rush past"
+
+[node name="World" type="Node3D" parent="Room"]
+
+[node name="Environment" type="WorldEnvironment" parent="."]
+environment = ExtResource("1_env")
+
+[node name="KeyLight" type="DirectionalLight3D" parent="."]
+transform = Transform3D(-0.422618, -0.694272, 0.582563, 0, 0.642788, 0.766044, -0.906308, 0.323744, -0.271654, 0, 5, 0)
+light_color = Color(0.65, 0.78, 0.98, 1)
+light_energy = 0.4
+shadow_enabled = true
+shadow_opacity = 0.5
+
+[node name="WindowGlow" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.0, 2.3, 0)
+light_color = Color(0.55, 0.80, 1.0, 1)
+light_energy = 2.6
+omni_range = 9.0
+
+[node name="CeilingLightW" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 4.2, 0)
+light_color = Color(0.85, 0.78, 0.65, 1)
+light_energy = 2.2
+omni_range = 8.0
+
+[node name="CeilingLightC" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.2, 0)
+light_color = Color(0.85, 0.78, 0.65, 1)
+light_energy = 1.8
+omni_range = 8.0
+
+[node name="ControlRoomDoor" parent="." groups=["interactable"] instance=ExtResource("8_door")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -6.7, 0, 0.5)
+target_scene = "res://scenes/control_room.tscn"
+target_spawn = "FromObservation"
+transition_prompt = "Back to the control room"
+open_prompt = "Back to the control room"
+
+[node name="FromControlRoom" type="Marker3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -5.5, 0.35, 0.5)
+
+[node name="Decor" type="Node3D" parent="."]
+script = ExtResource("11_decor")
+
+[node name="Window" type="Node3D" parent="."]
+
+[node name="VoidBackdrop" type="MeshInstance3D" parent="Window"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.85, 2.3, 0)
+mesh = SubResource("BoxMesh_void")
+material_override = SubResource("StandardMaterial3D_void")
+
+[node name="GlassPane" type="MeshInstance3D" parent="Window"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.72, 2.3, 0)
+mesh = SubResource("BoxMesh_glass")
+material_override = SubResource("StandardMaterial3D_glass")
+
+[node name="FrameTop" type="MeshInstance3D" parent="Window"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.85, 4.30, 0)
+mesh = SubResource("BoxMesh_frame_h")
+material_override = SubResource("StandardMaterial3D_window_frame")
+
+[node name="FrameBottom" type="MeshInstance3D" parent="Window"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.85, 0.30, 0)
+mesh = SubResource("BoxMesh_frame_h")
+material_override = SubResource("StandardMaterial3D_window_frame")
+
+[node name="FrameLeft" type="MeshInstance3D" parent="Window"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.85, 2.3, -3.55)
+mesh = SubResource("BoxMesh_frame_v")
+material_override = SubResource("StandardMaterial3D_window_frame")
+
+[node name="FrameRight" type="MeshInstance3D" parent="Window"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.85, 2.3, 3.55)
+mesh = SubResource("BoxMesh_frame_v")
+material_override = SubResource("StandardMaterial3D_window_frame")
+
+[node name="FrameMullion" type="MeshInstance3D" parent="Window"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.85, 2.3, 0)
+mesh = SubResource("BoxMesh_frame_v")
+material_override = SubResource("StandardMaterial3D_window_frame")
+
+[node name="Star1" type="MeshInstance3D" parent="Window"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.78, 3.6, -1.8)
+mesh = SubResource("SphereMesh_star_med")
+material_override = SubResource("StandardMaterial3D_star")
+
+[node name="Star2" type="MeshInstance3D" parent="Window"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.78, 1.4, 2.4)
+mesh = SubResource("SphereMesh_star_small")
+material_override = SubResource("StandardMaterial3D_star")
+
+[node name="Star3" type="MeshInstance3D" parent="Window"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.78, 2.8, 1.1)
+mesh = SubResource("SphereMesh_star_small")
+material_override = SubResource("StandardMaterial3D_star_blue")
+
+[node name="Star4" type="MeshInstance3D" parent="Window"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.78, 3.9, 2.7)
+mesh = SubResource("SphereMesh_star_small")
+material_override = SubResource("StandardMaterial3D_star")
+
+[node name="Star5" type="MeshInstance3D" parent="Window"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.78, 0.9, -2.6)
+mesh = SubResource("SphereMesh_star_small")
+material_override = SubResource("StandardMaterial3D_star_blue")
+
+[node name="Star6" type="MeshInstance3D" parent="Window"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.78, 2.1, -0.4)
+mesh = SubResource("SphereMesh_star_small")
+material_override = SubResource("StandardMaterial3D_star")
+
+[node name="Star7" type="MeshInstance3D" parent="Window"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.78, 3.3, -3.0)
+mesh = SubResource("SphereMesh_star_small")
+material_override = SubResource("StandardMaterial3D_star_blue")
+
+[node name="Star8" type="MeshInstance3D" parent="Window"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.78, 1.7, 0.6)
+mesh = SubResource("SphereMesh_star_med")
+material_override = SubResource("StandardMaterial3D_star")
+
+[node name="ViewingBench" type="Node3D" parent="."]
+
+[node name="BenchSeat" type="MeshInstance3D" parent="ViewingBench"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.5, 0.45, 0)
+mesh = SubResource("BoxMesh_bench_long")
+material_override = SubResource("StandardMaterial3D_bench")
+
+[node name="BenchBack" type="MeshInstance3D" parent="ViewingBench"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.78, 1.10, 0)
+mesh = SubResource("BoxMesh_bench_back")
+material_override = SubResource("StandardMaterial3D_bench")
+
+[node name="Player" parent="." node_paths=PackedStringArray("view") groups=["player"] instance=ExtResource("3_player")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -5.5, 0.35, 0.5)
+view = NodePath("../View")
+
+[node name="View" type="Node3D" parent="." node_paths=PackedStringArray("target")]
+transform = Transform3D(0.866025, -0.25, 0.433013, 0, 0.866025, 0.5, -0.5, -0.433013, 0.75, 0, 0, 0)
+script = ExtResource("4_view")
+target = NodePath("../Player")
+zoom_minimum = 4.0
+zoom_maximum = 2.5
+
+[node name="SpringArm" type="SpringArm3D" parent="View"]
+collision_mask = 2
+spring_length = 3.5
+margin = 0.2
+
+[node name="Camera" type="Camera3D" parent="View/SpringArm"]
+current = true
+fov = 62.0
+
+[node name="HUDLayer" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="HUD" parent="HUDLayer" instance=ExtResource("9_hud")]
+
+[node name="AmbientHum" type="AudioStreamPlayer" parent="."]
+volume_db = -24.0
+script = ExtResource("10_ambient")
+base_freq = 42.0

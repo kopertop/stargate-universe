@@ -35,7 +35,7 @@ var kino_acquired: bool = false
 var quarters_found: bool = false
 var rooms_discovered: Array[String] = []
 var breaches_sealed: Array[String] = []
-var current_objective: String = "Step through the gate"
+var current_objective: String = "Explore the Destiny"
 var episode_complete: bool = false
 var log_entries: Array[String] = []
 
@@ -46,7 +46,7 @@ func reset() -> void:
 	quarters_found = false
 	rooms_discovered.clear()
 	breaches_sealed.clear()
-	current_objective = "Step through the gate"
+	current_objective = "Explore the Destiny"
 	episode_complete = false
 	log_entries.clear()
 	health_changed.emit(health)

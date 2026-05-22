@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3 uid="uid://cgr0quarters00"]
+[gd_scene load_steps=23 format=3 uid="uid://cgr0quarters00"]
 
 [ext_resource type="Environment" uid="uid://cgrenvinterior00" path="res://scenes/destiny-interior-environment.tres" id="1_env"]
 [ext_resource type="Script" path="res://scripts/kenney_room.gd" id="2_room"]
@@ -15,6 +15,9 @@
 [ext_resource type="PackedScene" uid="uid://bmhihff2c6msf" path="res://models/sci-fi/space-station/bed-single.glb" id="13_bedmesh"]
 [ext_resource type="PackedScene" uid="uid://2c62df4mbpbg" path="res://models/sci-fi/space-station/table.glb" id="14_table"]
 [ext_resource type="Script" path="res://scripts/ambient_hum.gd" id="15_ambient"]
+[ext_resource type="Script" path="res://scripts/eli_quarters_decor.gd" id="16_decor"]
+[ext_resource type="PackedScene" uid="uid://dpxc7qqcwp521" path="res://models/sci-fi/space-station/computer-system.glb" id="17_console"]
+[ext_resource type="PackedScene" uid="uid://c7ko2cm8gj7g" path="res://models/sci-fi/space-station/container-tall.glb" id="18_dispenser"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_metallic"]
 albedo_color = Color(0.55, 0.52, 0.58, 1)
@@ -30,22 +33,27 @@ roughness = 0.65
 [sub_resource type="BoxShape3D" id="BoxShape3D_bed"]
 size = Vector3(1.2, 0.7, 2.2)
 
-[sub_resource type="SphereShape3D" id="SphereShape3D_kino"]
-radius = 0.22
+[sub_resource type="BoxShape3D" id="BoxShape3D_kino"]
+size = Vector3(0.20, 0.04, 0.14)
 
-[sub_resource type="SphereMesh" id="SphereMesh_kino"]
-radius = 0.18
-height = 0.36
-radial_segments = 24
-rings = 16
+[sub_resource type="BoxMesh" id="BoxMesh_kino_body"]
+size = Vector3(0.18, 0.025, 0.12)
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_kino"]
-albedo_color = Color(0.18, 0.42, 0.7, 1)
-metallic = 0.4
-roughness = 0.15
+[sub_resource type="BoxMesh" id="BoxMesh_kino_screen"]
+size = Vector3(0.155, 0.005, 0.095)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_kino_body"]
+albedo_color = Color(0.10, 0.10, 0.12, 1)
+metallic = 0.55
+roughness = 0.35
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_kino_screen"]
+albedo_color = Color(0.08, 0.22, 0.40, 1)
+metallic = 0.10
+roughness = 0.20
 emission_enabled = true
-emission = Color(0.55, 0.85, 1.0, 1)
-emission_energy_multiplier = 4.0
+emission = Color(0.40, 0.80, 1.0, 1)
+emission_energy_multiplier = 5.0
 
 [node name="EliQuarters" type="Node3D"]
 script = ExtResource("3_quarters")
@@ -111,22 +119,38 @@ shape = SubResource("BoxShape3D_bed")
 
 [node name="Visual" parent="Bed" instance=ExtResource("13_bedmesh")]
 
+[node name="Decor" type="Node3D" parent="."]
+script = ExtResource("16_decor")
+
 [node name="Desk" parent="." instance=ExtResource("14_table")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.6, 0, 0.0)
 
+[node name="Console" parent="." instance=ExtResource("17_console")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 2.7, 0, 0.5)
+
+[node name="KinoDispenser" parent="." instance=ExtResource("18_dispenser")]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -2.7, 0, -1.6)
+
 [node name="KinoPickup" type="StaticBody3D" parent="." node_paths=PackedStringArray("prop_to_hide") groups=["interactable"]]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.6, 0.95, 0.0)
+transform = Transform3D(0.866025, 0, -0.5, 0, 1, 0, 0.5, 0, 0.866025, -1.5, 0.78, 1.5)
 collision_layer = 4
 collision_mask = 0
 script = ExtResource("12_kino")
 prop_to_hide = NodePath("Visual")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="KinoPickup"]
-shape = SubResource("SphereShape3D_kino")
+shape = SubResource("BoxShape3D_kino")
 
-[node name="Visual" type="MeshInstance3D" parent="KinoPickup"]
-mesh = SubResource("SphereMesh_kino")
-material_override = SubResource("StandardMaterial3D_kino")
+[node name="Visual" type="Node3D" parent="KinoPickup"]
+
+[node name="Body" type="MeshInstance3D" parent="KinoPickup/Visual"]
+mesh = SubResource("BoxMesh_kino_body")
+material_override = SubResource("StandardMaterial3D_kino_body")
+
+[node name="Screen" type="MeshInstance3D" parent="KinoPickup/Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.014, 0)
+mesh = SubResource("BoxMesh_kino_screen")
+material_override = SubResource("StandardMaterial3D_kino_screen")
 
 [node name="FromCorridor" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0.5, -1.5)

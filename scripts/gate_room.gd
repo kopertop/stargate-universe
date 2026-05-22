@@ -15,8 +15,17 @@ extends Node3D
 
 const STARGATE_SCENE: PackedScene = preload("res://objects/stargate.tscn")
 const FLOOR_SCENE: PackedScene = preload("res://models/sci-fi/space-station/floor.glb")
-const CONSOLE_SCENE: PackedScene = preload("res://models/sci-fi/space-station/computer.glb")
 const GATE_CONSOLE_SCRIPT: Script = preload("res://scripts/gate_console.gd")
+
+# Railings are tall enough that the player's 0.6 m jump (jump² / 2·g ≈ 0.6 m
+# given the player's tunables) can't clear them. Combined with the per-rail
+# collider below, the rail is unjumpable AND impassable.
+const RAIL_HEIGHT: float = 1.4
+const RAIL_THICKNESS: float = 0.1
+# Stair landing geometry — also referenced by the railing code so the side
+# mezzanine rail can leave a doorway for the stair.
+const STAIR_WIDTH: float = 2.4
+const STAIR_Z_CENTER: float = -10.0
 
 @export_group("Room")
 @export var room_size: Vector2 = Vector2(32.0, 32.0)
@@ -25,7 +34,6 @@ const GATE_CONSOLE_SCRIPT: Script = preload("res://scripts/gate_console.gd")
 @export var mezzanine_height: float = 5.0
 @export var ceiling_height: float = 9.0
 @export var mezzanine_depth: float = 4.0     # how far the mezzanine extends inward from walls
-@export var exit_width: float = 3.2
 
 @export_group("Arrival")
 # Total time the portal stays cyan after spawn (player input locked the whole hold).
@@ -95,8 +103,9 @@ func _create_spawn_markers() -> void:
 	_from_gate_marker.position = Vector3(0.0, 1.05, room_size.y * 0.5 - 5.5)
 	_from_gate_marker.rotation = Vector3.ZERO  # -Z forward = facing the room
 	# "FromCorridor" — re-enters from the exit archway, facing +Z toward the gate.
+	# y=0.05 keeps the capsule bottom (player.y + 0.05) just above the main floor.
 	_from_corridor_marker = $FromCorridor
-	_from_corridor_marker.position = Vector3(0.0, 0.5, -room_size.y * 0.5 + 2.5)
+	_from_corridor_marker.position = Vector3(0.0, 0.05, -room_size.y * 0.5 + 2.5)
 	_from_corridor_marker.rotation = Vector3(0.0, PI, 0.0)  # face +Z (toward gate)
 
 func _apply_pending_save_spawn() -> void:
@@ -152,7 +161,7 @@ func _build_floor() -> void:
 	box.size = Vector3(room_size.x, 0.2, room_size.y)
 	mi.mesh = box
 	var mat: StandardMaterial3D = StandardMaterial3D.new()
-	mat.albedo_color = Color(0.16, 0.155, 0.17, 1.0)
+	mat.albedo_color = Color(0.30, 0.29, 0.32, 1.0)
 	mat.metallic = 0.32
 	mat.roughness = 0.62
 	mi.material_override = mat
@@ -198,12 +207,12 @@ func _build_walls_and_ceiling() -> void:
 	var wall_thickness: float = 0.5
 
 	var wall_mat: StandardMaterial3D = StandardMaterial3D.new()
-	wall_mat.albedo_color = Color(0.21, 0.20, 0.23, 1.0)
+	wall_mat.albedo_color = Color(0.36, 0.34, 0.38, 1.0)
 	wall_mat.metallic = 0.30
 	wall_mat.roughness = 0.65
 
 	var dark_mat: StandardMaterial3D = StandardMaterial3D.new()
-	dark_mat.albedo_color = Color(0.13, 0.13, 0.16, 1.0)
+	dark_mat.albedo_color = Color(0.22, 0.22, 0.26, 1.0)
 	dark_mat.metallic = 0.25
 	dark_mat.roughness = 0.7
 
@@ -213,29 +222,24 @@ func _build_walls_and_ceiling() -> void:
 	walls.collision_mask = 0
 	_world.add_child(walls)
 
-	# +X wall (right, solid).
-	_add_wall_segment(walls, wall_mat, Vector3(half_x + wall_thickness * 0.5, ceiling_height * 0.5, 0.0),
+	# Walls are solid — doors are decorative panels recessed INTO the wall, and the
+	# scene transition is driven entirely by their E-interact. No archway cutouts.
+	# +X wall (right, Crew Quarters side).
+	_add_wall_segment(walls, wall_mat,
+		Vector3(half_x + wall_thickness * 0.5, ceiling_height * 0.5, 0.0),
 		Vector3(wall_thickness, ceiling_height, room_size.y))
-	# -X wall (left, solid).
-	_add_wall_segment(walls, wall_mat, Vector3(-half_x - wall_thickness * 0.5, ceiling_height * 0.5, 0.0),
+	# -X wall (left, Mess Hall side).
+	_add_wall_segment(walls, wall_mat,
+		Vector3(-half_x - wall_thickness * 0.5, ceiling_height * 0.5, 0.0),
 		Vector3(wall_thickness, ceiling_height, room_size.y))
-	# +Z wall (back, behind the gate — solid).
-	_add_wall_segment(walls, wall_mat, Vector3(0.0, ceiling_height * 0.5, half_z + wall_thickness * 0.5),
+	# +Z wall (back, behind the gate).
+	_add_wall_segment(walls, wall_mat,
+		Vector3(0.0, ceiling_height * 0.5, half_z + wall_thickness * 0.5),
 		Vector3(room_size.x, ceiling_height, wall_thickness))
-
-	# -Z wall (front, the EXIT wall) — split around the archway opening.
-	var arch_h: float = 3.2
-	var top_h: float = ceiling_height - arch_h
-	var side_w: float = (room_size.x - exit_width) * 0.5
-	# Left of arch
-	_add_wall_segment(walls, wall_mat, Vector3(-half_x + side_w * 0.5, ceiling_height * 0.5, -half_z - wall_thickness * 0.5),
-		Vector3(side_w, ceiling_height, wall_thickness))
-	# Right of arch
-	_add_wall_segment(walls, wall_mat, Vector3(half_x - side_w * 0.5, ceiling_height * 0.5, -half_z - wall_thickness * 0.5),
-		Vector3(side_w, ceiling_height, wall_thickness))
-	# Lintel above the arch
-	_add_wall_segment(walls, wall_mat, Vector3(0.0, arch_h + top_h * 0.5, -half_z - wall_thickness * 0.5),
-		Vector3(exit_width, top_h, wall_thickness))
+	# -Z wall (front, the EXIT wall) — also solid; ExitDoor sits recessed in it.
+	_add_wall_segment(walls, wall_mat,
+		Vector3(0.0, ceiling_height * 0.5, -half_z - wall_thickness * 0.5),
+		Vector3(room_size.x, ceiling_height, wall_thickness))
 
 	# Ceiling (dark; not a collider for player, only for SpringArm).
 	var ceil_body: StaticBody3D = StaticBody3D.new()
@@ -298,7 +302,7 @@ func _build_mezzanine() -> void:
 	var half_z: float = room_size.y * 0.5
 	var deck_thickness: float = 0.3
 	var mat: StandardMaterial3D = StandardMaterial3D.new()
-	mat.albedo_color = Color(0.19, 0.18, 0.21, 1.0)
+	mat.albedo_color = Color(0.32, 0.30, 0.34, 1.0)
 	mat.metallic = 0.35
 	mat.roughness = 0.55
 
@@ -308,17 +312,22 @@ func _build_mezzanine() -> void:
 	deck.collision_mask = 0
 	_world.add_child(deck)
 
+	# `mezzanine_height` is the WALKING SURFACE (top of deck). The box centre
+	# sits half a deck-thickness below it so the deck top aligns with the
+	# stair-top tread top — otherwise the player walks up to a 0.15 m wall at
+	# the deck's inside face and gets stuck.
+	var deck_center_y: float = mezzanine_height - deck_thickness * 0.5
 	# Back deck strip (-Z runs along -Z wall, the "back" facing the gate)
 	_add_wall_segment(deck, mat,
-		Vector3(0.0, mezzanine_height, -half_z + mezzanine_depth * 0.5),
+		Vector3(0.0, deck_center_y, -half_z + mezzanine_depth * 0.5),
 		Vector3(room_size.x, deck_thickness, mezzanine_depth))
 	# Left deck strip (-X)
 	_add_wall_segment(deck, mat,
-		Vector3(-half_x + mezzanine_depth * 0.5, mezzanine_height, 0.0),
+		Vector3(-half_x + mezzanine_depth * 0.5, deck_center_y, 0.0),
 		Vector3(mezzanine_depth, deck_thickness, room_size.y - mezzanine_depth * 2.0))
 	# Right deck strip (+X)
 	_add_wall_segment(deck, mat,
-		Vector3(half_x - mezzanine_depth * 0.5, mezzanine_height, 0.0),
+		Vector3(half_x - mezzanine_depth * 0.5, deck_center_y, 0.0),
 		Vector3(mezzanine_depth, deck_thickness, room_size.y - mezzanine_depth * 2.0))
 
 	# Underside trim — a darker thinner mesh on the bottom of each deck strip,
@@ -327,11 +336,12 @@ func _build_mezzanine() -> void:
 	trim_mat.albedo_color = Color(0.10, 0.09, 0.11, 1.0)
 	trim_mat.metallic = 0.45
 	trim_mat.roughness = 0.42
-	_add_decorative_box(Vector3(0.0, mezzanine_height - deck_thickness * 0.5 - 0.05, -half_z + mezzanine_depth * 0.5),
+	var trim_y: float = mezzanine_height - deck_thickness - 0.05
+	_add_decorative_box(Vector3(0.0, trim_y, -half_z + mezzanine_depth * 0.5),
 		Vector3(room_size.x, 0.06, mezzanine_depth + 0.1), trim_mat)
-	_add_decorative_box(Vector3(-half_x + mezzanine_depth * 0.5, mezzanine_height - deck_thickness * 0.5 - 0.05, 0.0),
+	_add_decorative_box(Vector3(-half_x + mezzanine_depth * 0.5, trim_y, 0.0),
 		Vector3(mezzanine_depth + 0.1, 0.06, room_size.y - mezzanine_depth * 2.0), trim_mat)
-	_add_decorative_box(Vector3(half_x - mezzanine_depth * 0.5, mezzanine_height - deck_thickness * 0.5 - 0.05, 0.0),
+	_add_decorative_box(Vector3(half_x - mezzanine_depth * 0.5, trim_y, 0.0),
 		Vector3(mezzanine_depth + 0.1, 0.06, room_size.y - mezzanine_depth * 2.0), trim_mat)
 
 	# Railing along the open (inward-facing) edge of each strip.
@@ -339,15 +349,17 @@ func _build_mezzanine() -> void:
 
 
 func _build_railing() -> void:
-	# Modular railing: short emissive cyan posts at intervals connected by a
-	# darker top rail. Posts double as "rail accent" lights — they have a
-	# strong emissive cyan top that reads at distance.
+	# Modular railing: emissive cyan posts at intervals connected by a darker
+	# top rail. A thin invisible collision wall runs the length of each rail so
+	# the player can't walk through or jump over it. Side rails leave a doorway
+	# at the top of each staircase.
 	var half_x: float = room_size.x * 0.5
 	var half_z: float = room_size.y * 0.5
-	var inner_x: float = half_x - mezzanine_depth          # right rail x
-	var inner_z_back: float = -half_z + mezzanine_depth    # back rail z (front edge of back deck)
+	var inner_x: float = half_x - mezzanine_depth          # right rail x (+12)
+	var inner_z_back: float = -half_z + mezzanine_depth    # back rail z (-12)
 	var post_spacing: float = 2.0
-	var top_rail_y: float = mezzanine_height + 1.0
+	var top_rail_y: float = mezzanine_height + RAIL_HEIGHT
+	var rail_collider_y: float = mezzanine_height + RAIL_HEIGHT * 0.5
 
 	var post_mat: StandardMaterial3D = StandardMaterial3D.new()
 	post_mat.albedo_color = Color(0.16, 0.16, 0.18, 1.0)
@@ -365,45 +377,88 @@ func _build_railing() -> void:
 	rail_mat.metallic = 0.6
 	rail_mat.roughness = 0.45
 
-	# Back rail (runs along x at z = inner_z_back).
-	var back_count: int = int(room_size.x / post_spacing)
+	var rail_body: StaticBody3D = StaticBody3D.new()
+	rail_body.name = "Railings"
+	rail_body.collision_layer = 1 | 2
+	rail_body.collision_mask = 0
+	_world.add_child(rail_body)
+
+	# Stair-landing doorway in the side rails.
+	var stair_gap_min: float = STAIR_Z_CENTER - STAIR_WIDTH * 0.5    # -11.2
+	var stair_gap_max: float = STAIR_Z_CENTER + STAIR_WIDTH * 0.5    # -8.8
+
+	# ===== Back rail =====
+	# Only the *open* inner span needs a rail — outside the inner_x corners the
+	# back deck continues onto the side decks at the same y level, so no edge.
+	var back_x_min: float = -inner_x   # -12
+	var back_x_max: float =  inner_x   # +12
+	var back_len: float = back_x_max - back_x_min
+	var back_count: int = int(back_len / post_spacing)
 	for i in back_count + 1:
-		var x: float = -half_x + i * post_spacing
+		var x: float = back_x_min + i * (back_len / float(back_count))
 		_add_rail_post(Vector3(x, mezzanine_height, inner_z_back), post_mat, accent_mat)
-	_add_decorative_box(Vector3(0.0, top_rail_y, inner_z_back), Vector3(room_size.x, 0.08, 0.08), rail_mat)
+	_add_decorative_box(Vector3((back_x_min + back_x_max) * 0.5, top_rail_y, inner_z_back),
+		Vector3(back_len, 0.08, 0.08), rail_mat)
+	_add_rail_collider(rail_body,
+		Vector3((back_x_min + back_x_max) * 0.5, rail_collider_y, inner_z_back),
+		Vector3(back_len, RAIL_HEIGHT, RAIL_THICKNESS))
 
-	# Side rails (-X and +X) — span z range minus mezzanine_depth on each end.
-	var side_z_min: float = -half_z + mezzanine_depth
-	var side_z_max: float = half_z - mezzanine_depth
-	var side_count: int = int((side_z_max - side_z_min) / post_spacing)
-	for side_x in [-(half_x - mezzanine_depth), half_x - mezzanine_depth]:
-		for i in side_count + 1:
-			var z: float = side_z_min + i * post_spacing
-			_add_rail_post(Vector3(side_x, mezzanine_height, z), post_mat, accent_mat)
-		_add_decorative_box(Vector3(side_x, top_rail_y, (side_z_min + side_z_max) * 0.5),
-			Vector3(0.08, 0.08, side_z_max - side_z_min), rail_mat)
+	# ===== Side rails =====
+	var side_z_min: float = -half_z + mezzanine_depth    # -12
+	var side_z_max: float =  half_z - mezzanine_depth    # +12
+	for side_sign in [-1.0, 1.0]:
+		var side_x: float = side_sign * inner_x          # ±12
+		# Two segments: from side_z_min to the stair gap, and from the stair
+		# gap up to side_z_max.
+		var seg_a_len: float = stair_gap_min - side_z_min   # 0.8
+		var seg_b_len: float = side_z_max - stair_gap_max   # 20.8
 
-	# Open-end rails on the side mezzanines (+Z end faces the gate — would
-	# otherwise be a fall-off-the-edge hazard when walking past the inside rail
-	# and out onto the gate-facing tip of the side deck).
+		if seg_a_len > 0.05:
+			var seg_a_center_z: float = (side_z_min + stair_gap_min) * 0.5
+			var seg_a_posts: int = max(1, int(seg_a_len / post_spacing))
+			for i in seg_a_posts + 1:
+				var z: float = side_z_min + i * (seg_a_len / float(seg_a_posts))
+				_add_rail_post(Vector3(side_x, mezzanine_height, z), post_mat, accent_mat)
+			_add_decorative_box(Vector3(side_x, top_rail_y, seg_a_center_z),
+				Vector3(0.08, 0.08, seg_a_len), rail_mat)
+			_add_rail_collider(rail_body,
+				Vector3(side_x, rail_collider_y, seg_a_center_z),
+				Vector3(RAIL_THICKNESS, RAIL_HEIGHT, seg_a_len))
+
+		if seg_b_len > 0.05:
+			var seg_b_center_z: float = (stair_gap_max + side_z_max) * 0.5
+			var seg_b_posts: int = max(1, int(seg_b_len / post_spacing))
+			for i in seg_b_posts + 1:
+				var z: float = stair_gap_max + i * (seg_b_len / float(seg_b_posts))
+				_add_rail_post(Vector3(side_x, mezzanine_height, z), post_mat, accent_mat)
+			_add_decorative_box(Vector3(side_x, top_rail_y, seg_b_center_z),
+				Vector3(0.08, 0.08, seg_b_len), rail_mat)
+			_add_rail_collider(rail_body,
+				Vector3(side_x, rail_collider_y, seg_b_center_z),
+				Vector3(RAIL_THICKNESS, RAIL_HEIGHT, seg_b_len))
+
+	# ===== Open-end rails on the +Z tips of the side mezzanines =====
 	var end_count: int = int(mezzanine_depth / post_spacing)
-	for side_x in [-half_x + mezzanine_depth * 0.5, half_x - mezzanine_depth * 0.5]:
-		var x_min: float = side_x - mezzanine_depth * 0.5
+	for side_x_center in [-half_x + mezzanine_depth * 0.5, half_x - mezzanine_depth * 0.5]:
+		var x_min: float = side_x_center - mezzanine_depth * 0.5
 		for i in end_count + 1:
 			var x: float = x_min + i * (mezzanine_depth / float(end_count))
 			_add_rail_post(Vector3(x, mezzanine_height, side_z_max), post_mat, accent_mat)
-		_add_decorative_box(Vector3(side_x, top_rail_y, side_z_max),
+		_add_decorative_box(Vector3(side_x_center, top_rail_y, side_z_max),
 			Vector3(mezzanine_depth, 0.08, 0.08), rail_mat)
+		_add_rail_collider(rail_body,
+			Vector3(side_x_center, rail_collider_y, side_z_max),
+			Vector3(mezzanine_depth, RAIL_HEIGHT, RAIL_THICKNESS))
 
 
 func _add_rail_post(base: Vector3, post_mat: StandardMaterial3D, accent_mat: StandardMaterial3D) -> void:
-	# Stem (0.06 × 1.0 × 0.06) topped by a small emissive cyan cap (0.16 × 0.06 × 0.16).
+	# Stem (0.06 × RAIL_HEIGHT × 0.06) topped by a small emissive cyan cap.
 	var stem: MeshInstance3D = MeshInstance3D.new()
 	var stem_box: BoxMesh = BoxMesh.new()
-	stem_box.size = Vector3(0.06, 1.0, 0.06)
+	stem_box.size = Vector3(0.06, RAIL_HEIGHT, 0.06)
 	stem.mesh = stem_box
 	stem.material_override = post_mat
-	stem.position = base + Vector3(0.0, 0.5, 0.0)
+	stem.position = base + Vector3(0.0, RAIL_HEIGHT * 0.5, 0.0)
 	_world.add_child(stem)
 
 	var cap: MeshInstance3D = MeshInstance3D.new()
@@ -411,24 +466,41 @@ func _add_rail_post(base: Vector3, post_mat: StandardMaterial3D, accent_mat: Sta
 	cap_box.size = Vector3(0.16, 0.06, 0.16)
 	cap.mesh = cap_box
 	cap.material_override = accent_mat
-	cap.position = base + Vector3(0.0, 0.96, 0.0)
+	cap.position = base + Vector3(0.0, RAIL_HEIGHT - 0.04, 0.0)
 	_world.add_child(cap)
 
 
+func _add_rail_collider(parent: StaticBody3D, center: Vector3, size: Vector3,
+		rotation: Vector3 = Vector3.ZERO) -> void:
+	# Thin static-box collider used to give rails actual physics. Without this
+	# the decorative rail boxes are mesh-only and the player walks straight
+	# through them.
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var shape: BoxShape3D = BoxShape3D.new()
+	shape.size = size
+	cs.shape = shape
+	cs.position = center
+	cs.rotation = rotation
+	parent.add_child(cs)
+
+
 func _build_staircases() -> void:
-	# Two straight diagonal flights flanking the exit archway: bottom near the
-	# -Z wall, climbing toward +Z up to the side mezzanines.
+	# Two flights, one per side mezzanine. They climb in the X direction
+	# (perpendicular to the deck's inside edge) so the *top* lands ON the deck
+	# rather than into its underside, and the *bottom* sits well clear of the
+	# front wall.
+	#
+	#   Right stair: floor at (x=4,  z=-10) → deck at (x=+12, y=5, z=-10)
+	#   Left stair:  floor at (x=-4, z=-10) → deck at (x=-12, y=5, z=-10)
 	#
 	# Collision is a single inclined ramp per stair, NOT per-step boxes.
 	# CharacterBody3D has no built-in step-up; a stack of 0.5 m collision boxes
-	# walks like a wall. The visual step meshes remain on top for the staircase
+	# walks like a wall. The visual step meshes sit on top for the staircase
 	# read; the invisible ramp underneath does the walking.
 	var half_x: float = room_size.x * 0.5
-	var half_z: float = room_size.y * 0.5
 	var step_count: int = 10
 	var step_h: float = mezzanine_height / float(step_count)   # 0.5 m
-	var step_run: float = 0.8
-	var stair_width: float = 2.4
+	var step_run: float = 0.8                                   # 0.8 m
 	var stair_mat: StandardMaterial3D = StandardMaterial3D.new()
 	stair_mat.albedo_color = Color(0.22, 0.18, 0.13, 1.0)
 	stair_mat.metallic = 0.45
@@ -437,26 +509,28 @@ func _build_staircases() -> void:
 	stair_mat.emission = Color(1.0, 0.55, 0.18, 1.0)
 	stair_mat.emission_energy_multiplier = 0.18
 
-	var z_start: float = -half_z + 1.0
-	var rise: float = mezzanine_height
-	var run: float = step_count * step_run
-	var ramp_len: float = sqrt(rise * rise + run * run)
-	var slope_angle: float = atan2(rise, run)
+	var rise: float = mezzanine_height                          # 5
+	var run: float = float(step_count) * step_run               # 8
+	var ramp_len: float = sqrt(rise * rise + run * run)         # ~9.43
+	var slope_angle: float = atan2(rise, run)                   # ~32°
+	var x_top_abs: float = half_x - mezzanine_depth             # 12 — deck inside edge
+	var x_bot_abs: float = x_top_abs - run                      # 4
 
 	for side_sign in [-1.0, 1.0]:
-		var x_center: float = side_sign * (half_x - mezzanine_depth * 0.5)
+		var x_top: float = side_sign * x_top_abs
+		var x_bot: float = side_sign * x_bot_abs
+		var x_center: float = (x_top + x_bot) * 0.5             # ±8
 
-		# Visual steps — mesh only, no collider.
+		# Visual steps — mesh only.
 		for i in step_count:
 			var step_y: float = (i + 0.5) * step_h
-			var step_z: float = z_start + i * step_run + step_run * 0.5
-			_add_decorative_box(Vector3(x_center, step_y, step_z),
-				Vector3(stair_width, step_h, step_run), stair_mat)
+			var step_x: float = x_bot + side_sign * (float(i) + 0.5) * step_run
+			_add_decorative_box(Vector3(step_x, step_y, STAIR_Z_CENTER),
+				Vector3(step_run, step_h, STAIR_WIDTH), stair_mat)
 
 		# Single inclined ramp collider — the actual walking surface.
-		# Positive X rotation in Godot's right-handed system tilts +Z toward -Y,
-		# so to put the +Z end up (matching the stair climbing from -Z to +Z)
-		# we rotate by NEGATIVE slope_angle.
+		# Long axis is X; rotating around Z by +slope_angle tilts +X up.
+		# For the left stair we want -X up, so rotation.z = side_sign * slope.
 		var ramp_body: StaticBody3D = StaticBody3D.new()
 		ramp_body.name = "Stairs_%s" % ("L" if side_sign < 0 else "R")
 		ramp_body.collision_layer = 1 | 2
@@ -464,23 +538,25 @@ func _build_staircases() -> void:
 		_world.add_child(ramp_body)
 		var ramp_cs: CollisionShape3D = CollisionShape3D.new()
 		var ramp_shape: BoxShape3D = BoxShape3D.new()
-		ramp_shape.size = Vector3(stair_width, 0.2, ramp_len)
+		ramp_shape.size = Vector3(ramp_len, 0.2, STAIR_WIDTH)
 		ramp_cs.shape = ramp_shape
-		ramp_cs.position = Vector3(x_center, rise * 0.5, z_start + run * 0.5)
-		ramp_cs.rotation = Vector3(-slope_angle, 0.0, 0.0)
+		ramp_cs.position = Vector3(x_center, rise * 0.5, STAIR_Z_CENTER)
+		ramp_cs.rotation = Vector3(0.0, 0.0, side_sign * slope_angle)
 		ramp_body.add_child(ramp_cs)
 
-		# Railings — one on each side of the stair so the player can't fall off.
+		# Railings — one on each Z side of the stair so the player can't fall off.
 		for rail_sign in [-1.0, 1.0]:
-			var rail_x: float = x_center + rail_sign * (stair_width * 0.5)
-			_build_stair_railing(rail_x, z_start, step_count, step_h, step_run,
-				slope_angle, ramp_len)
+			var rail_z: float = STAIR_Z_CENTER + rail_sign * (STAIR_WIDTH * 0.5)
+			_build_stair_railing(x_bot, x_top, rail_z, slope_angle, ramp_len,
+				side_sign, step_count, step_h, step_run)
 
 
-func _build_stair_railing(rail_x: float, z_start: float, step_count: int, step_h: float,
-		step_run: float, slope_angle: float, ramp_len: float) -> void:
+func _build_stair_railing(x_bot: float, x_top: float, rail_z: float, slope_angle: float,
+		ramp_len: float, side_sign: float, step_count: int, step_h: float,
+		step_run: float) -> void:
 	# Matches the mezzanine railing palette: dark posts, cyan emissive caps,
-	# darker top bar. One post every two steps. Top bar is a single sloped box.
+	# darker top bar. One post every two steps. Top bar is a single sloped box
+	# paired with an invisible inclined collision wall so the rail is solid.
 	var post_mat: StandardMaterial3D = StandardMaterial3D.new()
 	post_mat.albedo_color = Color(0.16, 0.16, 0.18, 1.0)
 	post_mat.metallic = 0.5
@@ -497,22 +573,43 @@ func _build_stair_railing(rail_x: float, z_start: float, step_count: int, step_h
 	rail_mat.metallic = 0.6
 	rail_mat.roughness = 0.45
 
+	# Vertical posts every two steps. By construction (step_h/step_run == slope)
+	# the post tops line up exactly with the sloped top rail.
 	for i in range(0, step_count + 1, 2):
 		var post_base_y: float = float(i) * step_h
-		var post_z: float = z_start + float(i) * step_run
-		_add_rail_post(Vector3(rail_x, post_base_y, post_z), post_mat, accent_mat)
+		var post_x: float = x_bot + side_sign * float(i) * step_run
+		_add_rail_post(Vector3(post_x, post_base_y, rail_z), post_mat, accent_mat)
 
-	# Top rail spans from post-top at bottom of stair to post-top at top of
-	# stair: (z_start, 1.0) → (z_start + run, mezzanine_height + 1.0).
-	var run: float = float(step_count) * step_run
+	# Top decorative bar — a single rotated box following the slope.
+	var x_center: float = (x_bot + x_top) * 0.5
 	var top_rail: MeshInstance3D = MeshInstance3D.new()
 	var top_box: BoxMesh = BoxMesh.new()
-	top_box.size = Vector3(0.08, 0.08, ramp_len)
+	top_box.size = Vector3(ramp_len, 0.08, 0.08)
 	top_rail.mesh = top_box
 	top_rail.material_override = rail_mat
-	top_rail.position = Vector3(rail_x, mezzanine_height * 0.5 + 1.0, z_start + run * 0.5)
-	top_rail.rotation = Vector3(-slope_angle, 0.0, 0.0)
+	top_rail.position = Vector3(x_center, mezzanine_height * 0.5 + RAIL_HEIGHT, rail_z)
+	top_rail.rotation = Vector3(0.0, 0.0, side_sign * slope_angle)
 	_world.add_child(top_rail)
+
+	# Invisible inclined wall — the actual physics. Same long axis and rotation
+	# as the ramp, but RAIL_HEIGHT tall and centred half a rail-height above the
+	# tread midline. Aligned closely enough with the steps that the player can't
+	# slip under or jump over.
+	var rail_body: StaticBody3D = StaticBody3D.new()
+	rail_body.name = "StairRail_%s_%s" % [
+		"L" if side_sign < 0 else "R",
+		"front" if rail_z > STAIR_Z_CENTER else "back",
+	]
+	rail_body.collision_layer = 1 | 2
+	rail_body.collision_mask = 0
+	_world.add_child(rail_body)
+	var rail_cs: CollisionShape3D = CollisionShape3D.new()
+	var rail_shape: BoxShape3D = BoxShape3D.new()
+	rail_shape.size = Vector3(ramp_len, RAIL_HEIGHT, RAIL_THICKNESS)
+	rail_cs.shape = rail_shape
+	rail_cs.position = Vector3(x_center, mezzanine_height * 0.5 + RAIL_HEIGHT * 0.5, rail_z)
+	rail_cs.rotation = Vector3(0.0, 0.0, side_sign * slope_angle)
+	rail_body.add_child(rail_cs)
 
 
 func _build_gate_platform() -> void:
@@ -566,25 +663,26 @@ func _build_gate_platform() -> void:
 
 func _build_consoles() -> void:
 	# Two consoles on the deck-1 floor, facing the gate (i.e. looking +Z).
-	# Player walks down the front steps and reaches them between the dais and
-	# the centre of the room.
+	# Built procedurally rather than instancing computer.glb because the glTF
+	# import drops the baseColorTexture binding → meshes render pure white.
+	# Procedural also lets us color-code screens per console kind.
 	var half_z: float = room_size.y * 0.5
 	var z_console: float = half_z - 10.5
 	for spec in [
-		{"name": "GateControlConsole", "x": -3.5, "kind": "gate_control"},
-		{"name": "FTLConsole",         "x":  3.5, "kind": "ftl_countdown"},
+		{"name": "GateControlConsole", "x": -3.5, "kind": "gate_control",
+			"screen": Color(0.20, 0.85, 1.00, 1.0), "label": "GATE CONTROL"},
+		{"name": "FTLConsole",         "x":  3.5, "kind": "ftl_countdown",
+			"screen": Color(1.00, 0.55, 0.18, 1.0), "label": "FTL"},
 	]:
 		var holder: Node3D = Node3D.new()
 		holder.name = spec["name"]
 		holder.position = Vector3(spec["x"], 0.0, z_console)
-		# Make the console face +Z (toward the gate) so the player reads it
-		# from the gate-room side. Default console model points -Z.
-		holder.rotation = Vector3(0.0, PI, 0.0)
+		# Face -Z so the screen tips toward the player approaching from the
+		# gate-side, not back toward the gate.
+		holder.rotation = Vector3.ZERO
 		_world.add_child(holder)
 
-		var mesh: Node3D = CONSOLE_SCENE.instantiate()
-		mesh.scale = Vector3(1.4, 1.4, 1.4)
-		holder.add_child(mesh)
+		_build_console_mesh(holder, spec["screen"])
 
 		# Wrap with a StaticBody3D on the interactable layer.
 		var inter: StaticBody3D = StaticBody3D.new()
@@ -593,11 +691,77 @@ func _build_consoles() -> void:
 		inter.set("kind", spec["kind"])
 		var cs: CollisionShape3D = CollisionShape3D.new()
 		var shape: BoxShape3D = BoxShape3D.new()
-		shape.size = Vector3(1.8, 1.8, 1.4)
+		shape.size = Vector3(1.8, 1.6, 1.2)
 		cs.shape = shape
-		cs.position = Vector3(0.0, 0.9, 0.0)
+		cs.position = Vector3(0.0, 0.8, 0.0)
 		inter.add_child(cs)
 		holder.add_child(inter)
+
+
+func _build_console_mesh(holder: Node3D, screen_color: Color) -> void:
+	# Console silhouette: pedestal base + angled top deck with emissive screen,
+	# bronze trim along the front edge, and emissive accent stripes down the sides.
+	var body_mat: StandardMaterial3D = StandardMaterial3D.new()
+	body_mat.albedo_color = Color(0.16, 0.16, 0.19, 1.0)
+	body_mat.metallic = 0.55
+	body_mat.roughness = 0.45
+
+	var trim_mat: StandardMaterial3D = StandardMaterial3D.new()
+	trim_mat.albedo_color = Color(0.50, 0.30, 0.12, 1.0)
+	trim_mat.metallic = 0.85
+	trim_mat.roughness = 0.30
+	trim_mat.emission_enabled = true
+	trim_mat.emission = Color(1.0, 0.50, 0.15, 1.0)
+	trim_mat.emission_energy_multiplier = 0.4
+
+	var screen_mat: StandardMaterial3D = StandardMaterial3D.new()
+	screen_mat.albedo_color = screen_color * 0.4
+	screen_mat.metallic = 0.0
+	screen_mat.roughness = 0.25
+	screen_mat.emission_enabled = true
+	screen_mat.emission = screen_color
+	screen_mat.emission_energy_multiplier = 3.5
+
+	var accent_mat: StandardMaterial3D = StandardMaterial3D.new()
+	accent_mat.albedo_color = screen_color * 0.6
+	accent_mat.emission_enabled = true
+	accent_mat.emission = screen_color
+	accent_mat.emission_energy_multiplier = 2.5
+	accent_mat.metallic = 0.0
+	accent_mat.roughness = 0.4
+
+	# Pedestal base (1.5 × 0.9 × 0.7 m), centred on holder origin.
+	_attach_box(holder, Vector3(0.0, 0.45, 0.0), Vector3(1.5, 0.9, 0.7), body_mat)
+	# Wider sill on top of the pedestal (lip).
+	_attach_box(holder, Vector3(0.0, 0.93, 0.0), Vector3(1.7, 0.06, 0.85), trim_mat)
+	# Angled control deck on top — Box rotated so its front edge dips toward player.
+	# Place above the sill; rotation around X tips +Z end down.
+	var deck_pivot: Node3D = Node3D.new()
+	deck_pivot.position = Vector3(0.0, 1.08, 0.0)
+	deck_pivot.rotation = Vector3(deg_to_rad(-22.0), 0.0, 0.0)
+	holder.add_child(deck_pivot)
+	_attach_box(deck_pivot, Vector3(0.0, 0.0, 0.05), Vector3(1.55, 0.10, 0.75), body_mat)
+	# Screen surface (slightly inset, sits on deck top).
+	_attach_box(deck_pivot, Vector3(0.0, 0.06, 0.05), Vector3(1.35, 0.02, 0.60), screen_mat)
+	# Button row in front of screen (small dark strip with glowing dots).
+	_attach_box(deck_pivot, Vector3(0.0, 0.06, 0.32), Vector3(1.20, 0.025, 0.07), trim_mat)
+	for bx in [-0.45, -0.15, 0.15, 0.45]:
+		_attach_box(deck_pivot, Vector3(bx, 0.075, 0.32), Vector3(0.06, 0.02, 0.04), accent_mat)
+	# Side accent strips (vertical) — emissive bars running up the pedestal.
+	_attach_box(holder, Vector3(-0.78, 0.45, 0.0), Vector3(0.04, 0.7, 0.10), accent_mat)
+	_attach_box(holder, Vector3( 0.78, 0.45, 0.0), Vector3(0.04, 0.7, 0.10), accent_mat)
+	# Front kick-plate (darker, breaks the flat front face).
+	_attach_box(holder, Vector3(0.0, 0.08, 0.36), Vector3(1.4, 0.16, 0.04), trim_mat)
+
+
+func _attach_box(parent: Node3D, pos: Vector3, size: Vector3, mat: StandardMaterial3D) -> void:
+	var mi: MeshInstance3D = MeshInstance3D.new()
+	var box: BoxMesh = BoxMesh.new()
+	box.size = size
+	mi.mesh = box
+	mi.material_override = mat
+	mi.position = pos
+	parent.add_child(mi)
 
 
 func _build_lighting_props() -> void:
@@ -654,10 +818,44 @@ func _build_lighting_props() -> void:
 	# from above" feel even without a volumetric pass.
 	var key: DirectionalLight3D = DirectionalLight3D.new()
 	key.name = "KeyLight"
-	key.light_color = Color(0.78, 0.86, 1.0, 1.0)
-	key.light_energy = 0.45
+	key.light_color = Color(0.82, 0.88, 1.0, 1.0)
+	key.light_energy = 0.85
 	key.shadow_enabled = true
-	key.shadow_opacity = 0.45
+	key.shadow_opacity = 0.5
 	# Tilt to come "from above and front" (-Y mostly, slight +Z).
 	key.rotation = Vector3(deg_to_rad(-72.0), deg_to_rad(15.0), 0.0)
 	_world.add_child(key)
+
+	# Ceiling fill — 6 downward Omnis in a 2×3 grid below the ceiling. Wide range
+	# so each one washes a quadrant. Cool tint so warm uplights still pop on the
+	# walls without the whole room going flat-grey.
+	var ceiling_fill_y: float = ceiling_height - 0.8
+	var fill_positions: Array = [
+		Vector3(-half_x * 0.55, ceiling_fill_y,  half_z * 0.55),
+		Vector3( half_x * 0.55, ceiling_fill_y,  half_z * 0.55),
+		Vector3(-half_x * 0.55, ceiling_fill_y, 0.0),
+		Vector3( half_x * 0.55, ceiling_fill_y, 0.0),
+		Vector3(-half_x * 0.55, ceiling_fill_y, -half_z * 0.55),
+		Vector3( half_x * 0.55, ceiling_fill_y, -half_z * 0.55),
+	]
+	for p in fill_positions:
+		var fill: OmniLight3D = OmniLight3D.new()
+		fill.light_color = Color(0.86, 0.90, 1.0, 1.0)
+		fill.light_energy = 2.2
+		fill.omni_range = 14.0
+		fill.omni_attenuation = 1.4
+		fill.position = p
+		_world.add_child(fill)
+
+	# Door-archway pool — spotlight aimed straight down through the -Z arch so
+	# the exit reads as "lit doorway" instead of black hole. Player sees it from
+	# across the room and walks toward it.
+	var door_spot: SpotLight3D = SpotLight3D.new()
+	door_spot.name = "DoorArchSpot"
+	door_spot.light_color = Color(1.0, 0.78, 0.45, 1.0)
+	door_spot.light_energy = 5.5
+	door_spot.spot_range = 8.0
+	door_spot.spot_angle = 38.0
+	door_spot.position = Vector3(0.0, ceiling_height - 0.6, -half_z + 1.2)
+	_world.add_child(door_spot)
+	door_spot.look_at(Vector3(0.0, 0.0, -half_z + 0.2), Vector3.UP)

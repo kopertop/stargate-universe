@@ -27,6 +27,8 @@ func _ready() -> void:
 		_vent = get_node_or_null(vent_particles_path) as GPUParticles3D
 	if _vent != null:
 		_vent.emitting = not _sealed
+	if _sealed:
+		call_deferred("_apply_seal_feedback")
 	GameState.episode_completed.connect(_on_episode_complete)
 
 func _process(delta: float) -> void:
@@ -44,7 +46,18 @@ func _process(delta: float) -> void:
 		_sealed = true
 		if _vent != null:
 			_vent.emitting = false
+		_apply_seal_feedback()
 		GameState.add_log("Compartment 14B pressurized. Oxygen returning.")
+
+func _apply_seal_feedback() -> void:
+	# Decor publishes the emergency shutter + spark emitter via groups so this
+	# script doesn't need to know how the breach geometry is assembled.
+	var shutter: Node = get_tree().get_first_node_in_group("emergency_shutter")
+	if shutter is Node3D:
+		(shutter as Node3D).visible = true
+	var sparks: Node = get_tree().get_first_node_in_group("rupture_sparks")
+	if sparks is GPUParticles3D:
+		(sparks as GPUParticles3D).emitting = false
 
 func _on_episode_complete() -> void:
 	# Stop strobing once the player has reached the wrap-up.

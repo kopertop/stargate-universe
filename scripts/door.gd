@@ -13,6 +13,10 @@ extends Interactable
 # along X). Place the Door with a Y-rotation in the scene to face the right way.
 
 @export var target_scene: String = ""
+# When set, takes precedence over target_scene: door routes to scenes/room.tscn
+# with this id stashed in GameState.next_room_id. target_scene remains for
+# hand-authored scenes (gate_room.tscn).
+@export var target_room_id: String = ""
 @export var target_spawn: String = ""
 @export var locked: bool = false
 @export var lock_message: String = "LOCKED — power is offline."
@@ -22,22 +26,10 @@ extends Interactable
 @export var requires_kino_message: String = "I need the Kino Remote first."
 
 # Plaque shown above the door's frame: the destination room's display name.
-# Leave empty to auto-derive from target_scene (e.g. crew_quarters.tscn →
-# "Crew Quarters"). Set explicitly to override for canonical names like
-# "Gate Room" or "Hull Breach — Compartment 14B".
+# Leave empty to auto-derive — `target_room_id` looks up `ShipLayout.room(id).name`
+# (the canonical JSON name); `target_scene` falls back to title-casing the
+# basename. Set explicitly for overrides like "Hull Breach — Compartment 14B".
 @export var plaque_label: String = ""
-
-# Canonical display names for scenes whose snake_case filename doesn't title
-# -case cleanly. Keep in sync with the GameState.discover_room calls in each
-# scene's controller script.
-const PLAQUE_OVERRIDES: Dictionary = {
-	"destiny_corridor": "Main Corridor",
-	"gate_room": "Gate Room",
-	"hull_breach": "Hull Breach",
-	"eli_quarters": "Eli's Quarters",
-	"corridor_crew": "Crew Corridor",
-	"corridor_mess": "Mess Corridor",
-}
 
 # Visual tunables — kept in sync with the BoxShape3D on door.tscn (1.6 × 2.2 × 0.4).
 const FRAME_WIDTH: float = 1.8
@@ -71,7 +63,7 @@ func _refresh_prompt() -> void:
 		prompt = lock_message
 	elif requires_kino and not GameState.kino_acquired:
 		prompt = requires_kino_message
-	elif target_scene != "":
+	elif _is_transition_door():
 		prompt = transition_prompt
 	elif _is_open:
 		prompt = "Close"
@@ -83,10 +75,14 @@ func _on_interact(by: Node) -> void:
 		return
 	if requires_kino and not GameState.kino_acquired:
 		return
-	if target_scene != "":
+	if _is_transition_door():
 		_transition(by)
 	else:
 		_toggle()
+
+
+func _is_transition_door() -> bool:
+	return target_scene != "" or target_room_id != ""
 
 func _toggle() -> void:
 	_is_open = not _is_open
@@ -117,7 +113,7 @@ func _transition(by: Node) -> void:
 	if not (by is CharacterBody3D and by.has_method("auto_walk_to")):
 		if by is CharacterBody3D and by.has_method("set_input_locked"):
 			by.set_input_locked(true)
-		SceneRouter.change_to(target_scene, target_spawn)
+		_route_to_destination()
 		return
 	# Strip the player-blocker bit (1) off the collision layer so the capsule
 	# can pass through the door collider; keep layer 4 so the interact ray
@@ -143,25 +139,32 @@ func _transition(by: Node) -> void:
 	var to_door: Vector3 = global_position - player_n.global_position
 	to_door.y = 0.0
 	var dist_to_door: float = to_door.length()
-	# Rooms have SOLID exterior walls — the door's StaticBody3D sits as a
-	# decorative recess in front of the wall, not a hole through it. Walking
-	# PAST the door means slamming into the wall, which prevented auto_walk
-	# from ever finishing (signal never emitted → fade never started).
-	# Instead, walk UP TO the door (stop 0.5m short on the room side) and let
-	# the cross-fade sell the "step through" illusion. The receiving scene's
-	# spawn-marker walk handles the "step out into the next room" half.
+	# Walls behind doors are SOLID — walk UP TO the door (stop short on the
+	# room side) and let the cross-fade sell the "step through". The arrival
+	# scene's spawn-marker walk handles "step out into the next room".
 	const APPROACH_OFFSET: float = 0.5
 	if dist_to_door < APPROACH_OFFSET + 0.2:
-		SceneRouter.change_to(target_scene, target_spawn)
+		_route_to_destination()
 		return
 	var forward: Vector3 = to_door.normalized()
-	# Target = APPROACH_OFFSET metres BEFORE the door (room side), not past it.
-	# `forward` points from player toward door; subtracting puts the target on
-	# the player-side of the door, clear of the solid wall behind.
 	var target: Vector3 = global_position - forward * APPROACH_OFFSET
 	by.call("auto_walk_to", target, 5.5)
 	await by.auto_walk_finished
-	SceneRouter.change_to(target_scene, target_spawn)
+	_route_to_destination()
+
+
+# gate_room is the lone artisan scene — every other room_id routes through
+# the data-driven scenes/room.tscn. target_scene is the legacy fallback.
+func _route_to_destination() -> void:
+	if target_room_id != "":
+		if target_room_id == "gate_room":
+			SceneRouter.change_to("res://scenes/gate_room.tscn", target_spawn)
+		else:
+			GameState.next_room_id = target_room_id
+			SceneRouter.change_to("res://scenes/room.tscn", target_spawn)
+	else:
+		SceneRouter.change_to(target_scene, target_spawn)
+
 
 func unlock() -> void:
 	locked = false
@@ -238,8 +241,8 @@ func _build_visual() -> void:
 	_build_leaf(_right_leaf, leaf_mat, bronze_mat, -1.0)
 
 	# Destination plaque — only meaningful for transition doors. Toggle-only
-	# doors (target_scene blank) get no plaque.
-	if target_scene != "":
+	# doors (no target at all) get no plaque.
+	if _is_transition_door():
 		_add_plaque(visual, frame_mat)
 
 
@@ -283,17 +286,22 @@ func _add_plaque(visual: Node3D, frame_mat: StandardMaterial3D) -> void:
 		visual.add_child(label)
 
 
-# Auto-derive the plaque text from target_scene unless plaque_label was set
-# explicitly. Falls back to title-casing the snake_case filename.
+# Priority: explicit plaque_label → ShipLayout row name → title-cased id/scene.
 func _resolve_plaque_text() -> String:
 	if plaque_label != "":
 		return plaque_label
-	if target_scene == "":
-		return ""
-	var basename: String = target_scene.get_file().get_basename()
-	if PLAQUE_OVERRIDES.has(basename):
-		return PLAQUE_OVERRIDES[basename]
-	var parts: PackedStringArray = basename.split("_", false)
+	if target_room_id != "":
+		var row: Dictionary = ShipLayout.room(target_room_id)
+		if not row.is_empty() and row.has("name"):
+			return String(row["name"])
+		return _title_case_snake(target_room_id)
+	if target_scene != "":
+		return _title_case_snake(target_scene.get_file().get_basename())
+	return ""
+
+
+func _title_case_snake(s: String) -> String:
+	var parts: PackedStringArray = s.split("_", false)
 	var out: PackedStringArray = PackedStringArray()
 	for p in parts:
 		if p.length() == 0:
@@ -336,7 +344,7 @@ func _refresh_status_light() -> void:
 		c = Color(1.0, 0.20, 0.10, 1.0)    # red — locked
 	elif _is_open:
 		c = Color(0.30, 1.0, 0.55, 1.0)    # green — passable
-	elif target_scene != "":
+	elif _is_transition_door():
 		c = Color(0.30, 0.85, 1.0, 1.0)    # cyan — transition
 	else:
 		c = Color(1.0, 0.55, 0.18, 1.0)    # amber — closed, openable

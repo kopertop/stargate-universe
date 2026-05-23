@@ -21,10 +21,13 @@ environment = ExtResource("1_env")
 
 [node name="FromCorridor" type="Marker3D" parent="."]
 
+[node name="FromStargateCorridorEastConnector" type="Marker3D" parent="."]
+
 [node name="ExitDoor" parent="." groups=["interactable"] instance=ExtResource("8_door")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -16)
-target_scene = "res://scenes/destiny_corridor.tscn"
+target_room_id = "stargate_corridor_east_connector"
 target_spawn = "FromGateRoom"
+plaque_label = "East Corridor"
 open_prompt = "Step into the corridor"
 transition_prompt = "Step into the corridor"
 

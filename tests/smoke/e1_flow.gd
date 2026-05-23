@@ -55,6 +55,47 @@ func _initialize() -> void:
 	gs.discover_room("corridor", "Destiny Main Corridor")
 	_expect(gs.rooms_discovered.size() == 2, "second room discovered")
 
+	# Episode 1 mission-complete path: kino acquired + quarters found + at least
+	# one breach sealed should flip episode_complete to true and fire the
+	# episode_completed signal exactly once. We verify each flag in isolation
+	# then the combined gate.
+	var completed_emits: Array[bool] = []
+	var on_done := func() -> void: completed_emits.append(true)
+	gs.episode_completed.connect(on_done)
+
+	_expect(not gs.kino_acquired, "mission: kino starts unacquired")
+	gs.acquire_kino()
+	_expect(gs.kino_acquired, "mission: acquire_kino sets flag")
+	gs.check_episode_complete()
+	_expect(not gs.episode_complete, "mission: kino alone does not complete")
+
+	_expect(not gs.quarters_found, "mission: quarters starts unfound")
+	gs.mark_quarters_found()
+	_expect(gs.quarters_found, "mission: mark_quarters_found sets flag")
+	gs.check_episode_complete()
+	_expect(not gs.episode_complete, "mission: kino + quarters not enough")
+
+	_expect(gs.breaches_sealed.is_empty(), "mission: no breaches sealed yet")
+	gs.seal_breach("breach_a")
+	_expect(gs.breaches_sealed.has("breach_a"), "mission: seal_breach records id")
+	gs.seal_breach("breach_a")
+	_expect(gs.breaches_sealed.size() == 1, "mission: seal_breach is idempotent")
+	gs.check_episode_complete()
+	_expect(gs.episode_complete, "mission: all 3 flags fire completion")
+	_expect(completed_emits.size() == 1, "mission: episode_completed emitted once")
+
+	# Re-running check should not re-fire the signal.
+	gs.check_episode_complete()
+	_expect(completed_emits.size() == 1, "mission: completion is one-shot")
+
+	# Reset before the save tests so they observe a clean slate.
+	gs.episode_completed.disconnect(on_done)
+	gs.reset()
+	_expect(gs.episode_complete == false, "mission: reset clears completion")
+	_expect(gs.kino_acquired == false, "mission: reset clears kino")
+	_expect(gs.quarters_found == false, "mission: reset clears quarters")
+	_expect(gs.breaches_sealed.is_empty(), "mission: reset clears breaches")
+
 	# F5 quicksave path (no scene path set → save is refused, not silent failure).
 	gs.current_scene_path = ""
 	gs.save_game("", Vector3.ZERO, 0.0)

@@ -31,6 +31,7 @@ SceneRouter="*res://scripts/scene_router.gd"
 KinoRemote="*res://scripts/kino_remote.gd"
 EpisodeWrap="*res://scripts/episode_wrap.gd"
 Settings="*res://scripts/settings.gd"
+ShipLayout="*res://scripts/ship_layout.gd"
 
 [audio]
 

@@ -10,10 +10,12 @@ const TAB_STATUS: int = 1
 const TAB_OBJECTIVES: int = 2
 const TAB_INVENTORY: int = 3
 
-const ROOM_DEFS: Array = [
-	{"id": "gate_room", "label": "Gate Room", "x": 0.5, "y": 0.72},
-	{"id": "corridor", "label": "Main Corridor", "x": 0.5, "y": 0.32},
-]
+# Map projection padding: leaves a small margin around each deck's bounding box
+# so rooms at the edge don't render flush against the panel border.
+const MAP_PADDING: float = 0.04
+# Half-height of each deck panel inside the Map tab. Two decks stack vertically,
+# with floor 1 on top, floor 0 on the bottom.
+const DECK_SPAN_Y: float = 0.43
 
 var _layer: CanvasLayer
 var _root: Control
@@ -197,7 +199,6 @@ func _refresh() -> void:
 
 func _refresh_map() -> void:
 	var page: Control = _tabs.get_node("Map")
-	# Clear existing nodes.
 	for c in page.get_children():
 		c.queue_free()
 	var bg: ColorRect = ColorRect.new()
@@ -205,13 +206,59 @@ func _refresh_map() -> void:
 	bg.anchor_right = 1.0
 	bg.anchor_bottom = 1.0
 	page.add_child(bg)
-	# Plot each room.
-	for room in ROOM_DEFS:
+	# Floor 1 (upper) on top, floor 0 (main) below — matches deck stacking on Destiny.
+	_draw_deck(page, 1, MAP_PADDING, MAP_PADDING + DECK_SPAN_Y, "DECK 1 — UPPER")
+	_draw_deck(page, 0, 1.0 - DECK_SPAN_Y - MAP_PADDING, 1.0 - MAP_PADDING, "DECK 0 — MAIN")
+
+func _draw_deck(page: Control, floor_id: int, y_top: float, y_bot: float, title: String) -> void:
+	# Gather rooms on this deck and their bounding box in JSON-space.
+	var rooms: Array = []
+	var min_x: float = INF
+	var max_x: float = -INF
+	var min_y: float = INF
+	var max_y: float = -INF
+	for room in ShipLayout.all_rooms():
+		if int(room.get("floor", 0)) != floor_id:
+			continue
+		rooms.append(room)
+		min_x = min(min_x, float(room["startX"]))
+		max_x = max(max_x, float(room["endX"]))
+		min_y = min(min_y, float(room["startY"]))
+		max_y = max(max_y, float(room["endY"]))
+	if rooms.is_empty():
+		return
+	var span_x: float = max(1.0, max_x - min_x)
+	var span_y: float = max(1.0, max_y - min_y)
+
+	# Deck title strip
+	var header: Label = Label.new()
+	header.text = title
+	header.anchor_left = MAP_PADDING
+	header.anchor_right = 1.0 - MAP_PADDING
+	header.anchor_top = y_top
+	header.anchor_bottom = y_top
+	header.offset_bottom = 16
+	header.add_theme_font_size_override("font_size", 11)
+	header.add_theme_color_override("font_color", Color(0.55, 0.85, 1.0, 0.85))
+	page.add_child(header)
+
+	var deck_top: float = y_top + 0.04
+	var deck_bot: float = y_bot
+	var deck_left: float = MAP_PADDING
+	var deck_right: float = 1.0 - MAP_PADDING
+	var deck_w: float = deck_right - deck_left
+	var deck_h: float = deck_bot - deck_top
+
+	for room in rooms:
+		var rx0: float = (float(room["startX"]) - min_x) / span_x
+		var rx1: float = (float(room["endX"])   - min_x) / span_x
+		var ry0: float = (float(room["startY"]) - min_y) / span_y
+		var ry1: float = (float(room["endY"])   - min_y) / span_y
 		var rect: Panel = Panel.new()
-		rect.anchor_left = room["x"] - 0.06
-		rect.anchor_right = room["x"] + 0.06
-		rect.anchor_top = room["y"] - 0.05
-		rect.anchor_bottom = room["y"] + 0.05
+		rect.anchor_left   = deck_left + rx0 * deck_w
+		rect.anchor_right  = deck_left + rx1 * deck_w
+		rect.anchor_top    = deck_top  + ry0 * deck_h
+		rect.anchor_bottom = deck_top  + ry1 * deck_h
 		var discovered: bool = GameState.rooms_discovered.has(room["id"])
 		var sb: StyleBoxFlat = StyleBoxFlat.new()
 		if discovered:
@@ -220,26 +267,25 @@ func _refresh_map() -> void:
 		else:
 			sb.bg_color = Color(0.08, 0.1, 0.14, 0.55)
 			sb.border_color = Color(0.3, 0.4, 0.55, 0.5)
-		sb.border_width_left = 2
-		sb.border_width_top = 2
-		sb.border_width_right = 2
-		sb.border_width_bottom = 2
-		sb.corner_radius_top_left = 4
-		sb.corner_radius_top_right = 4
-		sb.corner_radius_bottom_right = 4
-		sb.corner_radius_bottom_left = 4
+		sb.border_width_left = 1
+		sb.border_width_top = 1
+		sb.border_width_right = 1
+		sb.border_width_bottom = 1
+		sb.corner_radius_top_left = 2
+		sb.corner_radius_top_right = 2
+		sb.corner_radius_bottom_right = 2
+		sb.corner_radius_bottom_left = 2
 		rect.add_theme_stylebox_override("panel", sb)
 		var l: Label = Label.new()
 		l.anchor_right = 1.0
 		l.anchor_bottom = 1.0
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		l.text = room["label"] if discovered else "??? "
-		l.add_theme_font_size_override("font_size", 11)
+		l.text = String(room.get("name", "???")) if discovered else "???"
+		l.add_theme_font_size_override("font_size", 9)
 		l.add_theme_color_override("font_color", Color.WHITE if discovered else Color(0.5, 0.55, 0.6, 0.9))
 		rect.add_child(l)
 		page.add_child(rect)
-	# Lines between adjacent rooms — simple visual hint.
 
 func _refresh_status() -> void:
 	var page: Node = _tabs.get_node("Status")

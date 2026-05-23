@@ -1,0 +1,47 @@
+{
+	"gate_room": [
+		{ "dir": "+x", "to": "stargate_corridor_east_connector",  "plaque": "East" },
+		{ "dir": "-z", "to": "stargate_corridor_north_connector", "plaque": "North" },
+		{ "dir": "+z", "to": "stargate_corridor_south_connector", "plaque": "South" }
+	],
+	"stargate_corridor_east_connector":  [{ "dir": "+x", "to": "east_corridor" }],
+	"stargate_corridor_north_connector": [{ "dir": "-z", "to": "north_corridor" }],
+	"stargate_corridor_south_connector": [{ "dir": "+z", "to": "south_corridor" }],
+
+	"east_corridor": [
+		{ "dir": "-z", "to": "north_corridor" },
+		{ "dir": "+z", "to": "south_corridor" }
+	],
+
+	"north_corridor": [
+		{ "dir": "+z", "to": "east_corridor_top",    "plaque": "Control Wing" },
+		{ "dir": "+x", "to": "elevator_north",       "plaque": "Elevator" },
+		{ "dir": "+z", "to": "cr_north"              }
+	],
+	"south_corridor": [
+		{ "dir": "-z", "to": "east_corridor_bottom", "plaque": "Control Wing" },
+		{ "dir": "-z", "to": "room_1751649578881"    }
+	],
+
+	"east_corridor_top":    [{ "dir": "+x", "to": "control_interface_room" }],
+	"east_corridor_bottom": [{ "dir": "+x", "to": "control_interface_room" }],
+	"cr_north":             [{ "dir": "+z", "to": "control_interface_room" }],
+	"room_1751649578881":   [{ "dir": "-z", "to": "control_interface_room" }],
+
+	"control_interface_room": [
+		{ "dir": "+x", "to": "cr_corridor_2", "plaque": "Kino Room" }
+	],
+	"cr_corridor_2": [{ "dir": "+x", "to": "kino_room" }],
+
+	"elevator_north":         [{ "dir": "elevator", "to": "elevator_room_floor_1", "plaque": "Lift to Upper Deck" }],
+	"elevator_room_floor_1":  [
+		{ "dir": "-x", "to": "room_1753576770763", "plaque": "Upper Corridor" }
+	],
+
+	"room_1753576770763": [
+		{ "dir": "+x", "to": "hydroponics" },
+		{ "dir": "+z", "to": "quarters_room_1" }
+	],
+	"hydroponics":     [{ "dir": "-x", "to": "room_1753576770763" }],
+	"quarters_room_1": [{ "dir": "-z", "to": "room_1753576770763" }]
+}

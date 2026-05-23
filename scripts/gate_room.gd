@@ -50,6 +50,7 @@ const STAIR_Z_CENTER: float = -10.0
 var _stargate: Node3D
 var _from_gate_marker: Marker3D
 var _from_corridor_marker: Marker3D
+var _from_east_connector_marker: Marker3D
 
 func _ready() -> void:
 	# Tell the save system this is a real gameplay scene.
@@ -107,6 +108,12 @@ func _create_spawn_markers() -> void:
 	_from_corridor_marker = $FromCorridor
 	_from_corridor_marker.position = Vector3(0.0, 0.05, -room_size.y * 0.5 + 2.5)
 	_from_corridor_marker.rotation = Vector3(0.0, PI, 0.0)  # face +Z (toward gate)
+	# Factory-routed reverse edge from `stargate_corridor_east_connector` —
+	# room.gd::_stamp_door auto-derives the spawn key as
+	# "From" + _to_camel(room_id). Same landing as FromCorridor.
+	_from_east_connector_marker = $FromStargateCorridorEastConnector
+	_from_east_connector_marker.position = _from_corridor_marker.position
+	_from_east_connector_marker.rotation = _from_corridor_marker.rotation
 
 func _apply_pending_save_spawn() -> void:
 	if _player == null:

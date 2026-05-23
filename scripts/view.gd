@@ -19,6 +19,14 @@ extends Node3D
 # Initial yaw offset behind the player (degrees). 0 = directly behind.
 @export var initial_yaw_offset: float = 0.0
 @export var follow_speed: float = 10.0
+# Pitch limits. PITCH_MAX > 0 lets the camera dip BELOW the character and
+# point UP at the ceiling. Negative = looking down; positive = looking up.
+@export var pitch_min: float = -80.0
+@export var pitch_max: float = 20.0
+# Above this pitch (i.e. as the rig swings under the horizon), the spring
+# arm interpolates from the player-chosen `zoom` toward `zoom_maximum` so
+# the character stays framed instead of receding to the bottom of screen.
+@export var pitch_zoom_in_threshold: float = -10.0
 
 var camera_rotation: Vector3
 var zoom: float = 10.0
@@ -62,14 +70,21 @@ func _input(event: InputEvent) -> void:
 		# screen_relative is resolution-independent; relative is viewport pixels.
 		camera_rotation.y -= event.screen_relative.x * mouse_sensitivity
 		camera_rotation.x -= event.screen_relative.y * mouse_sensitivity
-		camera_rotation.x = clampf(camera_rotation.x, -80.0, -10.0)
+		camera_rotation.x = clampf(camera_rotation.x, pitch_min, pitch_max)
 
 func _physics_process(delta: float) -> void:
 	if target != null:
 		position = position.lerp(target.position + Vector3.UP * follow_height, delta * follow_speed)
 	rotation_degrees = rotation_degrees.lerp(camera_rotation, delta * 6.0)
 	# SpringArm3D auto-raycasts to keep camera from clipping walls/ceiling.
-	spring.spring_length = lerpf(spring.spring_length, zoom, 8.0 * delta)
+	# When pitch swings above the horizon threshold (rig dipping under the
+	# player to look up), pull the spring in toward `zoom_maximum` so the
+	# character doesn't recede off-screen.
+	var target_spring: float = zoom
+	if camera_rotation.x > pitch_zoom_in_threshold:
+		var t: float = inverse_lerp(pitch_zoom_in_threshold, pitch_max, camera_rotation.x)
+		target_spring = lerpf(zoom, zoom_maximum, clampf(t, 0.0, 1.0))
+	spring.spring_length = lerpf(spring.spring_length, target_spring, 8.0 * delta)
 	handle_input(delta)
 
 func handle_input(delta: float) -> void:
@@ -78,7 +93,7 @@ func handle_input(delta: float) -> void:
 	input.x = Input.get_axis("camera_up", "camera_down")
 
 	camera_rotation += input.limit_length(1.0) * rotation_speed * delta
-	camera_rotation.x = clampf(camera_rotation.x, -80.0, -10.0)
+	camera_rotation.x = clampf(camera_rotation.x, pitch_min, pitch_max)
 
 	zoom += Input.get_axis("zoom_in", "zoom_out") * zoom_speed * delta
 	zoom = clampf(zoom, zoom_maximum, zoom_minimum)

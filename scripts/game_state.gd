@@ -25,6 +25,9 @@ var current_scene_path: String = ""
 # the room script reads this to know where to put the player, then clears it.
 var pending_spawn_position: Variant = null   # Vector3 or null
 var pending_spawn_yaw: float = 0.0
+# Cross-scene baton: door.gd sets this before SceneRouter.change_to(room.tscn);
+# room.gd::_ready() reads it to pick the right ShipLayout row, then clears it.
+var next_room_id: String = ""
 # True for the next room load only — tells the gate-room arrival cinematic
 # to skip itself because we're resuming, not arriving.
 var skip_arrival_cinematic: bool = false
@@ -87,11 +90,14 @@ func acquire_kino() -> void:
 	kino_acquired = true
 	kino_changed.emit(true)
 	add_log("Acquired the Kino Remote.")
-	set_objective("Use the Kino Remote (Tab) to view the ship map")
+	_recompute_objective()
 
 func mark_quarters_found() -> void:
+	if quarters_found:
+		return
 	quarters_found = true
 	add_log("Found Eli's quarters.")
+	_recompute_objective()
 
 func seal_breach(breach_id: String) -> void:
 	if breaches_sealed.has(breach_id):
@@ -99,6 +105,31 @@ func seal_breach(breach_id: String) -> void:
 	breaches_sealed.append(breach_id)
 	restore_oxygen(MAX_OXYGEN)
 	add_log("Hull breach sealed: " + breach_id)
+	_recompute_objective()
+
+# Joins the still-outstanding E1 tasks into a single objective line so the
+# HUD/Pip-Boy always tells the player what's left. Called by each mission
+# mutator after the flag flips.
+func _recompute_objective() -> void:
+	if episode_complete:
+		return
+	var todo: Array[String] = []
+	if not kino_acquired:
+		todo.append("find the Kino Remote")
+	if breaches_sealed.is_empty():
+		todo.append("seal the hull breach")
+	if not quarters_found:
+		todo.append("find your quarters")
+	if todo.is_empty():
+		check_episode_complete()
+		return
+	var first: String = todo[0]
+	# Capitalize first letter for the objective line.
+	first = first.substr(0, 1).to_upper() + first.substr(1)
+	if todo.size() == 1:
+		set_objective(first + ".")
+	else:
+		set_objective(first + " (" + str(todo.size()) + " tasks remain)")
 
 func set_objective(text: String) -> void:
 	current_objective = text

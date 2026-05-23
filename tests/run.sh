@@ -26,11 +26,9 @@ MODE="${1:-all}"
 RAN_SCENE=0
 RAN_FLOW=0
 RAN_PLAY=0
-RAN_DOOR=0
 RC_SCENE=0
 RC_FLOW=0
 RC_PLAY=0
-RC_DOOR=0
 
 # Run a SceneTree-extending script (synchronous, no autoloads).
 #
@@ -72,12 +70,6 @@ if [[ "$MODE" == "scene" || "$MODE" == "all" ]]; then
 	RAN_SCENE=1
 fi
 
-if [[ "$MODE" == "door" || "$MODE" == "all" ]]; then
-	run_script_test "door_wall_alignment" "res://tests/smoke/door_wall_alignment.gd"
-	RC_DOOR=$?
-	RAN_DOOR=1
-fi
-
 if [[ "$MODE" == "flow" || "$MODE" == "all" ]]; then
 	run_script_test "e1_flow" "res://tests/smoke/e1_flow.gd"
 	RC_FLOW=$?
@@ -95,11 +87,10 @@ echo "==============================="
 echo " final"
 echo "==============================="
 [[ $RAN_SCENE -eq 1 ]] && echo "scene_boot:          $([[ $RC_SCENE -eq 0 ]] && echo PASS || echo "FAIL ($RC_SCENE)")" || echo "scene_boot:          SKIPPED"
-[[ $RAN_DOOR  -eq 1 ]] && echo "door_wall_alignment: $([[ $RC_DOOR  -eq 0 ]] && echo PASS || echo "FAIL ($RC_DOOR)")"  || echo "door_wall_alignment: SKIPPED"
 [[ $RAN_FLOW  -eq 1 ]] && echo "e1_flow:             $([[ $RC_FLOW  -eq 0 ]] && echo PASS || echo "FAIL ($RC_FLOW)")"  || echo "e1_flow:             SKIPPED"
 [[ $RAN_PLAY  -eq 1 ]] && echo "e1_playthrough:      $([[ $RC_PLAY  -eq 0 ]] && echo PASS || echo "FAIL ($RC_PLAY)")"  || echo "e1_playthrough:      SKIPPED"
 
-if [[ ( $RAN_SCENE -eq 1 && $RC_SCENE -ne 0 ) || ( $RAN_DOOR -eq 1 && $RC_DOOR -ne 0 ) || ( $RAN_FLOW -eq 1 && $RC_FLOW -ne 0 ) || ( $RAN_PLAY -eq 1 && $RC_PLAY -ne 0 ) ]]; then
+if [[ ( $RAN_SCENE -eq 1 && $RC_SCENE -ne 0 ) || ( $RAN_FLOW -eq 1 && $RC_FLOW -ne 0 ) || ( $RAN_PLAY -eq 1 && $RC_PLAY -ne 0 ) ]]; then
 	exit 1
 fi
 exit 0

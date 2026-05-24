@@ -33,6 +33,10 @@ var _line_index: int = 0
 
 func _ready() -> void:
 	super()
+	# Interactable._ready() hard-sets collision_layer = 4 (interactable-only).
+	# OR in layer 1 so the player capsule (mask = 1) also collides with the
+	# console body — otherwise the player walks straight through the gate consoles.
+	collision_layer = 1 | 4
 	_apply_kind_defaults()
 	_build_readout()
 

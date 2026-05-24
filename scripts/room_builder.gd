@@ -20,12 +20,12 @@ extends Object
 # feel intimate and large rooms feel monumental without per-room tuning.
 const CEILING_BY_TEMPLATE: Dictionary = {
 	"gate-room-template": 9.0,
-	"corridor-template": 3.2,
-	"control-room-template": 4.5,
-	"kino-room-template": 3.0,
-	"quarters-template": 2.7,
-	"hydroponics-template": 5.0,
-	"elevator-template": 2.8,
+	"corridor-template": 6.4,
+	"control-room-template": 9.0,
+	"kino-room-template": 6.0,
+	"quarters-template": 5.4,
+	"hydroponics-template": 10.0,
+	"elevator-template": 5.6,
 }
 
 
@@ -42,6 +42,7 @@ static func build(world: Node3D, room_data: Dictionary) -> void:
 	var palette: Dictionary = _palette_for(template_id)
 	_build_shell(world, width_m, depth_m, ceiling_m, palette)
 	_add_template_accents(world, template_id, width_m, depth_m, ceiling_m, palette)
+	_add_fill_light(world, width_m, depth_m, ceiling_m, palette)
 
 
 # ----- shell (floor + walls + ceiling, identical structure across templates) --
@@ -51,9 +52,12 @@ static func _build_shell(world: Node3D, width: float, depth: float, height: floa
 	var half_z: float = depth * 0.5
 	var wall_thickness: float = 0.4
 
-	var floor_mat: StandardMaterial3D = _make_mat(palette["floor"], 0.3, 0.65)
-	var wall_mat: StandardMaterial3D = _make_mat(palette["wall"], 0.25, 0.7)
-	var ceil_mat: StandardMaterial3D = _make_mat(palette["ceiling"], 0.2, 0.75)
+	# Slightly more metallic + crisper roughness than the first pass — empty
+	# walls were reading flat next to the gate-room artisan walls. These values
+	# put the procedural rooms in the same finish range as gate_room.gd.
+	var floor_mat: StandardMaterial3D = _make_mat(palette["floor"], 0.35, 0.55)
+	var wall_mat: StandardMaterial3D = _make_mat(palette["wall"], 0.30, 0.58)
+	var ceil_mat: StandardMaterial3D = _make_mat(palette["ceiling"], 0.25, 0.65)
 
 	# Floor — single box + collider.
 	var floor_body: StaticBody3D = StaticBody3D.new()
@@ -156,8 +160,23 @@ static func _accent_corridor(world: Node3D, width: float, depth: float, height: 
 		for j in range(rib_count + 1):
 			var ts: float = -strip_len * 0.5 + spacing * (float(j) + 0.5)
 			for side_s in [1.0, -1.0]:
-				_corridor_place(world, sconce_mat, axis_z, side_s * (half_short - 0.025),
+				var perp_s: float = side_s * (half_short - 0.025)
+				_corridor_place(world, sconce_mat, axis_z, perp_s,
 					1.65, ts, 0.05, 0.32, 0.18)
+				# Sconces only GLOW without a real light; the wall stayed flat.
+				# A small OmniLight3D per sconce pool of warm bounce makes the
+				# rib geometry pop and gives the corridor genuine depth.
+				var lamp: OmniLight3D = OmniLight3D.new()
+				lamp.light_color = palette["accent"]
+				lamp.light_energy = 1.6
+				lamp.omni_range = 5.5
+				lamp.omni_attenuation = 1.8
+				lamp.shadow_enabled = false
+				if axis_z:
+					lamp.position = Vector3(perp_s - side_s * 0.25, 1.7, ts)
+				else:
+					lamp.position = Vector3(ts, 1.7, perp_s - side_s * 0.25)
+				world.add_child(lamp)
 
 	_corridor_place(world, conduit_mat, axis_z, 0.0, height - 0.18, 0.0, 0.22, 0.22, strip_len)
 
@@ -174,62 +193,39 @@ static func _corridor_place(world: Node3D, mat: StandardMaterial3D, axis_z: bool
 		_add_decor(world, mat, Vector3(along_off, y, perp_off), Vector3(along_size, h, perp_size))
 
 
-# Control room: tiered hologram spine at the centre, ringed by an amber floor
-# inlay + a matching ceiling pendant, four cardinal console stations facing
-# the spine, and a chest-height emissive band around all four walls.
+# Control room: industrial metal-grate floor overlay, a continuous amber band
+# at chest height around all four walls, a ceiling spotlight ring above the
+# work zone, and a curved arc of Kenney `desk_computer.glb` console GLBs along
+# the back (-Z) wall — these are the real Ancient consoles Rush is hunched over.
 static func _accent_control_room(world: Node3D, width: float, depth: float, height: float, palette: Dictionary) -> void:
 	var accent: Color = palette["accent"]
-	var spine_mat: StandardMaterial3D = _make_mat(accent, 0.7, 0.4)
-	spine_mat.emission_enabled = true
-	spine_mat.emission = accent
-	spine_mat.emission_energy_multiplier = 0.5
-	var ring_mat: StandardMaterial3D = _emissive_mat(accent, 1.4)
-	var holo_mat: StandardMaterial3D = _emissive_mat(accent, 2.6)
-	var console_mat: StandardMaterial3D = _make_mat((palette["wall"] as Color).darkened(0.3), 0.5, 0.5)
-	var screen_mat: StandardMaterial3D = _emissive_mat(accent, 2.5)
 	var band_mat: StandardMaterial3D = _emissive_mat(accent, 1.6)
+	var ring_mat: StandardMaterial3D = _emissive_mat(accent, 2.2)
 
-	# Tiered hologram spine: wide base, narrower mid, glowing tip.
-	_add_decor(world, spine_mat, Vector3(0.0, 0.5, 0.0), Vector3(1.6, 1.0, 1.6))
-	_add_decor(world, spine_mat, Vector3(0.0, 1.5, 0.0), Vector3(0.9, 1.0, 0.9))
-	_add_decor(world, holo_mat, Vector3(0.0, 2.2, 0.0), Vector3(0.55, 0.45, 0.55))
+	# --- Grate floor overlay -------------------------------------------------
+	# A second floor slab sitting 1 cm above the base floor, textured with a
+	# procedurally-generated grate pattern. Keeps the base floor collider
+	# untouched while giving the room a hard industrial read.
+	var grate_tex: Texture2D = _make_grate_texture()
+	var grate_mat: StandardMaterial3D = StandardMaterial3D.new()
+	grate_mat.albedo_texture = grate_tex
+	grate_mat.albedo_color = Color(0.92, 0.92, 0.95)
+	grate_mat.metallic = 0.75
+	grate_mat.roughness = 0.4
+	grate_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	# 0.5 m tile size — each 32-px grate square reads as one floor panel.
+	grate_mat.uv1_scale = Vector3(width / 0.5, depth / 0.5, 1.0)
+	var grate_mi: MeshInstance3D = MeshInstance3D.new()
+	var grate_box: BoxMesh = BoxMesh.new()
+	grate_box.size = Vector3(width - 0.5, 0.04, depth - 0.5)
+	grate_mi.mesh = grate_box
+	grate_mi.material_override = grate_mat
+	grate_mi.position = Vector3(0.0, 0.022, 0.0)
+	world.add_child(grate_mi)
 
-	for ring_def in [
-		{"y": 0.03, "ir": 2.6, "or": 2.9},
-		{"y": height - 0.20, "ir": 2.8, "or": 3.2},
-	]:
-		var ring: TorusMesh = TorusMesh.new()
-		ring.inner_radius = ring_def["ir"]
-		ring.outer_radius = ring_def["or"]
-		ring.ring_segments = 48
-		ring.rings = 6
-		var ring_mi: MeshInstance3D = MeshInstance3D.new()
-		ring_mi.mesh = ring
-		ring_mi.material_override = ring_mat
-		ring_mi.position = Vector3(0.0, ring_def["y"], 0.0)
-		world.add_child(ring_mi)
-
-	# Cardinal console stations — bodies axis-aligned, screen plates inset
-	# toward the room centre so the lit face reads from the spine.
-	var radius: float = min(width, depth) * 0.30
-	for cfg in [
-		{"pos": Vector3(radius, 0.5, 0.0), "wide_axis": "z", "inset": Vector3(-0.1, 0.55, 0.0)},
-		{"pos": Vector3(-radius, 0.5, 0.0), "wide_axis": "z", "inset": Vector3(0.1, 0.55, 0.0)},
-		{"pos": Vector3(0.0, 0.5, radius), "wide_axis": "x", "inset": Vector3(0.0, 0.55, -0.1)},
-		{"pos": Vector3(0.0, 0.5, -radius), "wide_axis": "x", "inset": Vector3(0.0, 0.55, 0.1)},
-	]:
-		var body_size: Vector3
-		var screen_size: Vector3
-		if cfg["wide_axis"] == "x":
-			body_size = Vector3(2.0, 1.0, 1.2)
-			screen_size = Vector3(1.8, 0.05, 1.0)
-		else:
-			body_size = Vector3(1.2, 1.0, 2.0)
-			screen_size = Vector3(1.0, 0.05, 1.8)
-		_add_decor(world, console_mat, cfg["pos"], body_size)
-		_add_decor(world, screen_mat, cfg["pos"] + cfg["inset"], screen_size)
-
-	# Continuous emissive band at chest height around all four walls.
+	# --- Wall band -----------------------------------------------------------
+	# Continuous emissive band at chest height around all four walls — the
+	# room's primary colour anchor.
 	var hx: float = width * 0.5 - 0.05
 	var hz: float = depth * 0.5 - 0.05
 	var band_t: float = 0.06
@@ -238,9 +234,120 @@ static func _accent_control_room(world: Node3D, width: float, depth: float, heig
 	_add_decor(world, band_mat, Vector3(0.0, 1.4, hz), Vector3(width - 0.6, band_t, band_t))
 	_add_decor(world, band_mat, Vector3(0.0, 1.4, -hz), Vector3(width - 0.6, band_t, band_t))
 
+	# --- Console arc along -Z wall -------------------------------------------
+	# Five Kenney Space-Kit `desk_computer.glb` instances in a shallow arc.
+	# Consoles face +Z (toward the player walking in from the +Z door). Front
+	# console rim sits 2 m off the -Z wall so Rush has room to stand behind.
+	var console_glb: PackedScene = load("res://models/props/space_kit/desk_computer.glb")
+	if console_glb != null:
+		var console_count: int = 5
+		var arc_width: float = min(width - 6.0, 16.0)
+		var base_z: float = -depth * 0.5 + 3.0
+		for i in console_count:
+			var t: float = 0.0 if console_count == 1 else float(i) / float(console_count - 1)
+			var cx: float = lerp(-arc_width * 0.5, arc_width * 0.5, t)
+			# Shallow inward arc: middle consoles step forward toward the room.
+			var bow: float = sin(t * PI) * 1.2
+			_spawn_kenney_console(world, console_glb, Vector3(cx, 0.0, base_z + bow), 0.0)
 
-# Kino room: two wall shelves stocked with dormant kino spheres, a centre
-# pedestal for the player's working kino, and a ceiling spotlight overhead.
+	# --- Ceiling spot ring over the console zone -----------------------------
+	# Marks the active workstation area from above without adding shadow lights.
+	var spot_z: float = -depth * 0.5 + 4.5
+	for sx_off in [-4.0, -2.0, 0.0, 2.0, 4.0]:
+		_add_decor(world, ring_mat,
+			Vector3(sx_off, height - 0.08, spot_z),
+			Vector3(0.7, 0.04, 0.7))
+
+	# Single warm OmniLight pooling around the consoles so they read lit
+	# against the brighter walls.
+	var work_light: OmniLight3D = OmniLight3D.new()
+	work_light.name = "ConsoleWorkLight"
+	work_light.light_color = accent.lerp(Color(1.0, 0.92, 0.78), 0.4)
+	work_light.light_energy = 2.4
+	work_light.omni_range = 12.0
+	work_light.omni_attenuation = 1.6
+	work_light.shadow_enabled = false
+	work_light.position = Vector3(0.0, 2.6, spot_z)
+	world.add_child(work_light)
+
+
+# Kenney Space-Kit GLBs have their materials stripped by the Godot importer
+# (the baseColorTexture binding is lost — see feedback_gltf_embedded_texture_lost).
+# We apply a flat brushed-metal override so the desk reads as a real console
+# instead of a white silhouette. Screens are highlighted in-engine via a small
+# emissive plate added in front of the model.
+static func _spawn_kenney_console(world: Node3D, glb: PackedScene, pos: Vector3, yaw: float) -> void:
+	var holder: Node3D = Node3D.new()
+	holder.name = "Console"
+	holder.position = pos
+	holder.rotation.y = yaw
+	# Space Kit assets are authored ~1u = 1m. A 2× upscale puts a desk at
+	# realistic console height (~1.6 m) without distorting proportions.
+	holder.scale = Vector3(2.0, 2.0, 2.0)
+	world.add_child(holder)
+
+	var inst: Node = glb.instantiate()
+	holder.add_child(inst)
+
+	var body_mat: StandardMaterial3D = StandardMaterial3D.new()
+	body_mat.albedo_color = Color(0.36, 0.38, 0.42)
+	body_mat.metallic = 0.7
+	body_mat.roughness = 0.45
+	_apply_material_recursive(inst, body_mat)
+
+	# Emissive screen plate floating just above the desk surface — gives every
+	# console a glowing readout that catches the eye from across the room.
+	var screen_mat: StandardMaterial3D = _emissive_mat(Color(1.0, 0.55, 0.18), 2.6)
+	var screen_mi: MeshInstance3D = MeshInstance3D.new()
+	var screen_box: BoxMesh = BoxMesh.new()
+	screen_box.size = Vector3(0.45, 0.02, 0.30)
+	screen_mi.mesh = screen_box
+	screen_mi.material_override = screen_mat
+	# Top of the GLB desk surface, in the model's local space (before scale).
+	screen_mi.position = Vector3(0.0, 0.55, 0.0)
+	holder.add_child(screen_mi)
+
+
+# Walk a GLB instance and stamp `mat` onto every surface of every MeshInstance3D.
+# Used to recover Kenney GLBs whose embedded textures were dropped by the
+# Godot glTF importer.
+static func _apply_material_recursive(root: Node, mat: StandardMaterial3D) -> void:
+	if root is MeshInstance3D:
+		var mi: MeshInstance3D = root
+		var surf_count: int = mi.mesh.get_surface_count() if mi.mesh != null else 0
+		for i in surf_count:
+			mi.set_surface_override_material(i, mat)
+	for child in root.get_children():
+		_apply_material_recursive(child, mat)
+
+
+# 32×32 procedural grate pattern — bright cross-lattice with dark holes in the
+# middle of each cell. Crisp pixel edges with TEXTURE_FILTER_NEAREST give a
+# hard industrial read; UV scale is set by the caller to tile per-metre.
+static func _make_grate_texture() -> Texture2D:
+	var img: Image = Image.create(32, 32, false, Image.FORMAT_RGBA8)
+	var bright: Color = Color(0.72, 0.74, 0.78, 1.0)
+	var mid: Color = Color(0.40, 0.42, 0.46, 1.0)
+	var hole: Color = Color(0.06, 0.07, 0.08, 1.0)
+	for y in 32:
+		for x in 32:
+			# Outer 2-pixel rim = bright frame; one mid-cross at the midline.
+			var on_rim: bool = (x < 2 or x > 29 or y < 2 or y > 29)
+			var on_mid: bool = (x >= 15 and x <= 16) or (y >= 15 and y <= 16)
+			if on_rim:
+				img.set_pixel(x, y, bright)
+			elif on_mid:
+				img.set_pixel(x, y, mid)
+			else:
+				img.set_pixel(x, y, hole)
+	return ImageTexture.create_from_image(img)
+
+
+# Kino room: a working drone bay. Two wall shelves of dormant kino spheres on
+# the -Z wall, a centre pedestal where the player's active kino rests, an
+# operator workbench (Kenney desk_computer + desk_chair) on the -X wall for the
+# kino remote pilot, and a row of storage barrels along the +X wall. A warm
+# pedestal light + a ceiling lamp panel keep the scene readable.
 static func _accent_kino_room(world: Node3D, width: float, depth: float, height: float, palette: Dictionary) -> void:
 	var shelf_mat: StandardMaterial3D = _make_mat(palette["accent"], 0.4, 0.55)
 	var body_mat: StandardMaterial3D = _make_mat(Color(0.18, 0.20, 0.24), 0.55, 0.35)
@@ -249,7 +356,10 @@ static func _accent_kino_room(world: Node3D, width: float, depth: float, height:
 	var pedestal_top_mat: StandardMaterial3D = _emissive_mat(palette["accent"], 1.8)
 	var lamp_mat: StandardMaterial3D = _emissive_mat(palette["accent"], 2.5)
 
+	var half_x: float = width * 0.5
 	var half_z: float = depth * 0.5
+
+	# --- Kino display shelves (signature: this is THE kino room) -----------
 	for shelf_y in [1.2, 1.9]:
 		_add_decor(world, shelf_mat,
 			Vector3(0.0, shelf_y, -half_z + 0.35),
@@ -260,9 +370,80 @@ static func _accent_kino_room(world: Node3D, width: float, depth: float, height:
 			_add_kino_ball(world, body_mat, eye_mat,
 				Vector3(x, shelf_y + 0.20, -half_z + 0.35))
 
+	# --- Centre pedestal — DO NOT MOVE. room.gd::_spawn_kino_pickup places
+	# the working kino + interactable hitbox at exactly (0, 1.05, 0).
 	_add_decor(world, pedestal_mat, Vector3(0.0, 0.5, 0.0), Vector3(0.9, 1.0, 0.9))
 	_add_decor(world, pedestal_top_mat, Vector3(0.0, 1.025, 0.0), Vector3(0.7, 0.05, 0.7))
+
+	# Soft warm pool around the pedestal so the working kino reads as the
+	# centerpiece — without this the eye drifts to the brighter shelf kinos.
+	var pedestal_light: OmniLight3D = OmniLight3D.new()
+	pedestal_light.name = "PedestalLight"
+	pedestal_light.light_color = (palette["accent"] as Color).lerp(Color(1.0, 0.92, 0.78), 0.4)
+	pedestal_light.light_energy = 1.8
+	pedestal_light.omni_range = 4.5
+	pedestal_light.omni_attenuation = 1.6
+	pedestal_light.shadow_enabled = false
+	pedestal_light.position = Vector3(0.0, 1.8, 0.0)
+	world.add_child(pedestal_light)
+
+	# --- Operator workbench against -X wall --------------------------------
+	# A Kenney `desk_computerCorner.glb` (L-shaped desk with screen) faces +X
+	# into the room, with a `desk_chair.glb` slid under it. This is where Eli
+	# (or whoever inherits kino-pilot duty) sits to fly a kino remotely.
+	var corner_glb: PackedScene = load("res://models/props/space_kit/desk_computerCorner.glb")
+	var chair_glb: PackedScene = load("res://models/props/space_kit/desk_chair.glb")
+	if corner_glb != null:
+		# Tucked into -X wall, facing +X. Yaw of PI/2 rotates the desk so its
+		# back-edge meets the wall.
+		_spawn_kenney_console(world, corner_glb,
+			Vector3(-half_x + 0.8, 0.0, 0.0), PI * 0.5)
+	if chair_glb != null:
+		var chair: Node3D = Node3D.new()
+		chair.name = "OperatorChair"
+		chair.position = Vector3(-half_x + 2.0, 0.0, 0.0)
+		chair.rotation.y = -PI * 0.5
+		chair.scale = Vector3(1.6, 1.6, 1.6)
+		world.add_child(chair)
+		var chair_inst: Node = chair_glb.instantiate()
+		chair.add_child(chair_inst)
+		var chair_mat: StandardMaterial3D = _make_mat(Color(0.22, 0.24, 0.28), 0.45, 0.55)
+		_apply_material_recursive(chair_inst, chair_mat)
+
+	# --- Storage barrels along +X wall -------------------------------------
+	# Sample crates / spare-parts barrels lined up. A `machine_wireless.glb`
+	# in the middle reads as a kino comms relay; the row of barrels around it
+	# fills the wall without crowding the path.
+	var barrels_glb: PackedScene = load("res://models/props/space_kit/barrels.glb")
+	var wireless_glb: PackedScene = load("res://models/props/space_kit/machine_wireless.glb")
+	if barrels_glb != null:
+		for off_z in [-half_z + 2.5, half_z - 2.5]:
+			_spawn_kenney_prop(world, barrels_glb,
+				Vector3(half_x - 0.7, 0.0, off_z), -PI * 0.5, 1.6,
+				Color(0.55, 0.45, 0.20))
+	if wireless_glb != null:
+		_spawn_kenney_prop(world, wireless_glb,
+			Vector3(half_x - 0.7, 0.0, 0.0), -PI * 0.5, 1.6,
+			Color(0.32, 0.36, 0.42))
+
+	# --- Ceiling lamp -------------------------------------------------------
 	_add_decor(world, lamp_mat, Vector3(0.0, height - 0.15, 0.0), Vector3(0.6, 0.05, 0.6))
+
+
+# Spawn a Kenney prop GLB with a flat material override (textures stripped on
+# import — see feedback_gltf_embedded_texture_lost). `tint` controls the body
+# colour; `scale` is a uniform multiplier (Kenney space-kit is ~1u = 1m).
+static func _spawn_kenney_prop(world: Node3D, glb: PackedScene, pos: Vector3, yaw: float, scale: float, tint: Color) -> void:
+	var holder: Node3D = Node3D.new()
+	holder.name = "KenneyProp"
+	holder.position = pos
+	holder.rotation.y = yaw
+	holder.scale = Vector3(scale, scale, scale)
+	world.add_child(holder)
+	var inst: Node = glb.instantiate()
+	holder.add_child(inst)
+	var mat: StandardMaterial3D = _make_mat(tint, 0.55, 0.55)
+	_apply_material_recursive(inst, mat)
 
 
 # Small Kino sphere: dark body with an emissive iris sphere protruding from
@@ -290,77 +471,178 @@ static func _add_kino_ball(world: Node3D, body: StandardMaterial3D, eye: Standar
 	world.add_child(eye_mi)
 
 
-# Quarters: bunk + bedding against the -Z wall, a nightstand with a warm lamp,
-# a wall locker on the opposite wall, and (in wider rooms) a side desk.
+# Quarters: a lived-in crew bunk. Kenney Furniture Kit `bedSingle.glb` against
+# the -Z wall (positioned to match the Bed interactable in room.gd::_spawn_quarters_bed),
+# a `lampSquareTable.glb` nightstand with a warm lamp glow, a tall
+# `bathroomCabinet.glb` locker on the opposite wall, and (in wider rooms) a
+# `desk.glb` + `chairDesk.glb` side workstation.
 static func _accent_quarters(world: Node3D, width: float, depth: float, height: float, palette: Dictionary) -> void:
-	var bunk_mat: StandardMaterial3D = _make_mat(palette["accent"], 0.1, 0.85)
-	var bedding_mat: StandardMaterial3D = _make_mat(Color(0.20, 0.30, 0.45), 0.0, 0.8)
-	var locker_mat: StandardMaterial3D = _make_mat((palette["wall"] as Color).darkened(0.25), 0.55, 0.45)
-	var desk_mat: StandardMaterial3D = _make_mat(palette["accent"], 0.2, 0.7)
-	var stand_mat: StandardMaterial3D = _make_mat(palette["accent"], 0.2, 0.7)
-	var lamp_mat: StandardMaterial3D = _emissive_mat(Color(1.0, 0.85, 0.55), 2.2)
-
 	var half_x: float = width * 0.5
 	var half_z: float = depth * 0.5
 	var bunk_w: float = min(width - 1.0, 2.0)
 	var bunk_x: float = -half_x * 0.3
 
-	_add_decor(world, bunk_mat,
-		Vector3(bunk_x, 0.4, -half_z + 1.1),
-		Vector3(bunk_w, 0.5, 1.8))
-	_add_decor(world, bedding_mat,
-		Vector3(bunk_x, 0.68, -half_z + 1.1),
-		Vector3(bunk_w - 0.15, 0.08, 1.7))
+	# --- Bed (must line up with the interactable hitbox in room.gd) --------
+	# room.gd::_spawn_quarters_bed places a 2.0 m × 1.0 m × 2.0 m hitbox at
+	# (bunk_x, 0.5, -half_z + 1.1). The Kenney bedSingle.glb is authored ~2 m
+	# long and ~1 m wide; we sit it on the floor (y=0) and yaw to face +Z so
+	# the headboard is against the -Z wall.
+	var bed_glb: PackedScene = load("res://models/props/furniture_kit/bedSingle.glb")
+	if bed_glb != null:
+		_spawn_kenney_prop(world, bed_glb,
+			Vector3(bunk_x, 0.0, -half_z + 1.1), 0.0, 1.5,
+			Color(0.62, 0.58, 0.52))
 
-	var stand_x: float = bunk_x + bunk_w * 0.5 + 0.35
-	if stand_x < half_x - 0.3:
-		_add_decor(world, stand_mat,
-			Vector3(stand_x, 0.3, -half_z + 0.55),
-			Vector3(0.5, 0.6, 0.5))
-		_add_decor(world, lamp_mat,
-			Vector3(stand_x, 0.75, -half_z + 0.55),
-			Vector3(0.25, 0.30, 0.25))
+	# --- Nightstand + lamp -------------------------------------------------
+	var stand_x: float = bunk_x + bunk_w * 0.5 + 0.55
+	if stand_x < half_x - 0.4:
+		var stand_glb: PackedScene = load("res://models/props/furniture_kit/cabinetBedDrawerTable.glb")
+		var lamp_glb: PackedScene = load("res://models/props/furniture_kit/lampSquareTable.glb")
+		if stand_glb != null:
+			_spawn_kenney_prop(world, stand_glb,
+				Vector3(stand_x, 0.0, -half_z + 0.55), 0.0, 1.2,
+				Color(0.42, 0.36, 0.30))
+		if lamp_glb != null:
+			_spawn_kenney_prop(world, lamp_glb,
+				Vector3(stand_x, 0.55, -half_z + 0.55), 0.0, 1.2,
+				Color(0.85, 0.78, 0.65))
+		# A warm bedside pool — sells the lamp as a real lit object and gives
+		# the bunk corner the cosy read it needs.
+		var bed_light: OmniLight3D = OmniLight3D.new()
+		bed_light.name = "BedsideLamp"
+		bed_light.light_color = Color(1.0, 0.78, 0.50)
+		bed_light.light_energy = 1.8
+		bed_light.omni_range = 3.5
+		bed_light.omni_attenuation = 1.8
+		bed_light.shadow_enabled = false
+		bed_light.position = Vector3(stand_x, 1.2, -half_z + 0.55)
+		world.add_child(bed_light)
 
-	_add_decor(world, locker_mat,
-		Vector3(bunk_x, 1.0, half_z - 0.3),
-		Vector3(min(width - 1.0, 1.6), 2.0, 0.5))
+	# --- Wall locker on +Z wall --------------------------------------------
+	var locker_glb: PackedScene = load("res://models/props/furniture_kit/bathroomCabinet.glb")
+	if locker_glb != null:
+		_spawn_kenney_prop(world, locker_glb,
+			Vector3(bunk_x, 0.0, half_z - 0.3), PI, 1.4,
+			Color(0.38, 0.40, 0.44))
 
+	# --- Side desk (wider rooms only) --------------------------------------
 	if width > 6.0:
-		_add_decor(world, desk_mat,
-			Vector3(half_x - 0.45, 0.4, 0.0),
-			Vector3(0.9, 0.8, min(1.8, depth - 1.0)))
+		var desk_glb: PackedScene = load("res://models/props/furniture_kit/desk.glb")
+		var chair_glb: PackedScene = load("res://models/props/furniture_kit/chairDesk.glb")
+		if desk_glb != null:
+			_spawn_kenney_prop(world, desk_glb,
+				Vector3(half_x - 0.7, 0.0, 0.0), -PI * 0.5, 1.4,
+				Color(0.45, 0.40, 0.35))
+		if chair_glb != null:
+			_spawn_kenney_prop(world, chair_glb,
+				Vector3(half_x - 1.6, 0.0, 0.0), -PI * 0.5, 1.3,
+				Color(0.30, 0.32, 0.36))
 
 
-# Hydroponics: ceiling-spanning grow-light array, four raised planter beds in
-# a 2×2 grid (each with a green crop layer), and a central nutrient column.
+# Hydroponics: working crop bay. Ceiling-spanning grow-light array (emissive
+# green slab), four raised planter beds in a 2×2 grid stocked with Kenney
+# Nature-Kit crops (corn, wheat, leafy, bushes), a central nutrient column,
+# and a row of nutrient barrels along one wall.
 static func _accent_hydroponics(world: Node3D, width: float, depth: float, height: float, palette: Dictionary) -> void:
 	var grow_mat: StandardMaterial3D = _emissive_mat(palette["accent"], 4.0)
 	var planter_mat: StandardMaterial3D = _make_mat((palette["wall"] as Color).darkened(0.3), 0.4, 0.55)
-	var crop_mat: StandardMaterial3D = _make_mat(Color(0.20, 0.65, 0.25), 0.0, 0.85)
+	var soil_mat: StandardMaterial3D = _make_mat(Color(0.18, 0.13, 0.09), 0.0, 0.9)
 	var column_mat: StandardMaterial3D = _make_mat(palette["accent"], 0.2, 0.4)
 
+	# --- Ceiling grow-light array (signature green wash) -------------------
 	_add_decor(world, grow_mat,
 		Vector3(0.0, height - 0.15, 0.0),
 		Vector3(width - 1.0, 0.05, depth - 1.0))
+
+	# Soft green fill light cast downward — the emissive ceiling slab alone
+	# doesn't actually illuminate the crops, so add one OmniLight per quadrant.
+	for sx_l in [1.0, -1.0]:
+		for sz_l in [1.0, -1.0]:
+			var grow_light: OmniLight3D = OmniLight3D.new()
+			grow_light.light_color = Color(0.55, 1.0, 0.65)
+			grow_light.light_energy = 2.2
+			grow_light.omni_range = max(width, depth) * 0.35
+			grow_light.omni_attenuation = 1.6
+			grow_light.shadow_enabled = false
+			grow_light.position = Vector3(sx_l * width * 0.22, height - 0.5, sz_l * depth * 0.22)
+			world.add_child(grow_light)
+
+	# --- Planter beds (2×2 grid) -------------------------------------------
+	var corn_glb: PackedScene = load("res://models/props/nature_kit/crops_cornStageD.glb")
+	var wheat_glb: PackedScene = load("res://models/props/nature_kit/crops_wheatStageB.glb")
+	var leaf_glb: PackedScene = load("res://models/props/nature_kit/crops_leafsStageB.glb")
+	var bush_glb: PackedScene = load("res://models/props/nature_kit/plant_bushDetailed.glb")
+	var pumpkin_glb: PackedScene = load("res://models/props/nature_kit/crop_pumpkin.glb")
+	var crop_palette: Array = [corn_glb, wheat_glb, leaf_glb, bush_glb]
+	var crop_tints: Array = [
+		Color(0.40, 0.75, 0.25),
+		Color(0.85, 0.78, 0.40),
+		Color(0.30, 0.70, 0.30),
+		Color(0.20, 0.55, 0.25),
+	]
 
 	var bed_w: float = min(width * 0.30, 8.0)
 	var bed_d: float = min(depth * 0.30, 6.0)
 	var off_x: float = width * 0.24
 	var off_z: float = depth * 0.24
+	var quad: int = 0
 	for sx in [1.0, -1.0]:
 		for sz in [1.0, -1.0]:
 			var bx: float = sx * off_x
 			var bz: float = sz * off_z
+			# Planter box (collider-less decor — RoomBuilder is decor-only).
 			_add_decor(world, planter_mat,
 				Vector3(bx, 0.35, bz),
 				Vector3(bed_w, 0.7, bed_d))
-			_add_decor(world, crop_mat,
-				Vector3(bx, 0.75, bz),
-				Vector3(bed_w - 0.20, 0.15, bed_d - 0.20))
+			# Dark soil cap sits 1 cm proud of the rim so crops appear rooted.
+			_add_decor(world, soil_mat,
+				Vector3(bx, 0.71, bz),
+				Vector3(bed_w - 0.25, 0.04, bed_d - 0.25))
+			# Crop fill: 3 rows × 4 cols of one crop type per bed, jittered for
+			# an organic look. Uniform crop per bed reads as a deliberate row.
+			var crop_glb: PackedScene = crop_palette[quad % 4]
+			var crop_tint: Color = crop_tints[quad % 4]
+			if crop_glb != null:
+				var rows: int = 3
+				var cols: int = 4
+				var inner_w: float = bed_w - 0.6
+				var inner_d: float = bed_d - 0.6
+				for r in rows:
+					for c in cols:
+						var rx: float = bx - inner_w * 0.5 + inner_w * (float(c) / float(cols - 1))
+						var rz: float = bz - inner_d * 0.5 + inner_d * (float(r) / float(rows - 1))
+						# A tiny deterministic jitter — different per cell but
+						# stable across runs (no RNG seeding needed).
+						var jitter_x: float = sin(float(quad * 17 + r * 3 + c)) * 0.08
+						var jitter_z: float = cos(float(quad * 13 + r * 5 + c * 2)) * 0.08
+						_spawn_kenney_prop(world, crop_glb,
+							Vector3(rx + jitter_x, 0.73, rz + jitter_z),
+							sin(float(quad + r + c)) * PI, 0.9, crop_tint)
+			# A single pumpkin accent at the bed's near edge gives each bed a
+			# focal point — like a "today's harvest" demonstration crop.
+			if pumpkin_glb != null and (quad % 2 == 0):
+				_spawn_kenney_prop(world, pumpkin_glb,
+					Vector3(bx, 0.78, bz - bed_d * 0.40),
+					sin(float(quad)) * PI, 1.1, Color(0.95, 0.55, 0.20))
+			quad += 1
 
+	# --- Central nutrient column -------------------------------------------
 	_add_decor(world, column_mat,
 		Vector3(0.0, height * 0.45, 0.0),
 		Vector3(0.6, height * 0.9, 0.6))
+
+	# --- Nutrient tanks along -X wall --------------------------------------
+	# Space-kit barrels lined up — reads as the chemical supply for the beds.
+	var barrels_glb: PackedScene = load("res://models/props/space_kit/barrels.glb")
+	if barrels_glb != null:
+		var half_x: float = width * 0.5
+		var slots: int = 3
+		for i in slots:
+			var t: float = 0.0 if slots == 1 else float(i) / float(slots - 1)
+			var bz_b: float = lerp(-depth * 0.3, depth * 0.3, t)
+			_spawn_kenney_prop(world, barrels_glb,
+				Vector3(-half_x + 0.8, 0.0, bz_b), PI * 0.5, 1.5,
+				Color(0.45, 0.55, 0.40))
 
 
 # Elevator: cyan-rimmed floor disc + ceiling cap, plus four corner light
@@ -406,10 +688,13 @@ static func _palette_for(template_id: String) -> Dictionary:
 			}
 		"control-room-template":
 			return {
-				"floor": Color(0.22, 0.20, 0.18, 1.0),
-				"wall": Color(0.36, 0.32, 0.26, 1.0),
-				"ceiling": Color(0.14, 0.13, 0.12, 1.0),
-				"accent": Color(1.0, 0.45, 0.10, 1.0),
+				# Brighter brushed-steel walls + cool dark floor so the orange
+				# accents (amber band, console screens) really pop. The grate
+				# overlay built in _accent_control_room sits on top of `floor`.
+				"floor": Color(0.16, 0.18, 0.20, 1.0),
+				"wall": Color(0.62, 0.66, 0.72, 1.0),
+				"ceiling": Color(0.22, 0.24, 0.27, 1.0),
+				"accent": Color(1.0, 0.55, 0.18, 1.0),
 			}
 		"kino-room-template":
 			return {
@@ -482,6 +767,21 @@ static func _make_mat(albedo: Color, metallic: float, roughness: float) -> Stand
 	m.metallic = metallic
 	m.roughness = roughness
 	return m
+
+
+# Every procedural room gets a single soft OmniLight pulled toward the ceiling
+# so wall normals catch real shading instead of relying on the world environment
+# alone. Without this the rooms read "flat" next to the artisan gate room.
+static func _add_fill_light(world: Node3D, width: float, depth: float, height: float, palette: Dictionary) -> void:
+	var light: OmniLight3D = OmniLight3D.new()
+	light.name = "FillLight"
+	light.light_color = (palette["accent"] as Color).lerp(Color(1.0, 0.92, 0.85), 0.55)
+	light.light_energy = 1.1
+	light.omni_range = max(width, depth) * 0.9 + 4.0
+	light.omni_attenuation = 1.4
+	light.shadow_enabled = false
+	light.position = Vector3(0.0, height - 0.6, 0.0)
+	world.add_child(light)
 
 
 static func _emissive_mat(tint: Color, energy: float) -> StandardMaterial3D:

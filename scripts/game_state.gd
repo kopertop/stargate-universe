@@ -12,6 +12,13 @@ signal episode_completed()
 signal log_added(line: String)
 signal save_written()
 signal save_wiped()
+# Fired by npc.gd each time a dialogue line is shown. The HUD listens and
+# renders the line inside the sci-fi dialog panel; log_added still captures
+# the same text for the journal.
+signal dialogue_shown(character_name: String, line: String)
+# Fired by npc.gd when a choice-tree dialog should open. The HUD listens
+# and shows the full-screen DialogScreen targeting `npc`.
+signal dialog_started(npc: Node3D, tree: Array)
 
 const MAX_HEALTH: float = 100.0
 const MAX_OXYGEN: float = 100.0
@@ -41,6 +48,13 @@ var breaches_sealed: Array[String] = []
 var current_objective: String = "Explore the Destiny"
 var episode_complete: bool = false
 var log_entries: Array[String] = []
+# E1 story milestones — set by NPC interacts (npc.gd via met_flag).
+# met_scott: Lt Scott briefs the player on arrival; gates objective priority
+# to "Find a Map" once true.
+# met_rush: Player reaches Dr Rush in the control interface room; combined
+# with kino + quarters + breach, this is the E1 completion gate.
+var met_scott: bool = false
+var met_rush: bool = false
 
 func reset() -> void:
 	health = MAX_HEALTH
@@ -52,6 +66,8 @@ func reset() -> void:
 	current_objective = "Explore the Destiny"
 	episode_complete = false
 	log_entries.clear()
+	met_scott = false
+	met_rush = false
 	health_changed.emit(health)
 	oxygen_changed.emit(oxygen)
 	objective_changed.emit(current_objective)
@@ -107,24 +123,37 @@ func seal_breach(breach_id: String) -> void:
 	add_log("Hull breach sealed: " + breach_id)
 	_recompute_objective()
 
-# Joins the still-outstanding E1 tasks into a single objective line so the
-# HUD/Pip-Boy always tells the player what's left. Called by each mission
-# mutator after the flag flips.
+# Quest-gated objective. Each story beat unlocks the next, so the HUD only
+# ever names tasks the player has been told to do.
+#
+# Story spine (sprint-005 redesign, 2026-05-23 — see
+# project_quest_line_redesign.md):
+#   Act 1: Talk to Scott (auto-greet) → Find Dr Rush
+#   Act 2: After meeting Rush → quarters + storage (map) + hull breach unlock
+# Future acts (FTL jump cinematic, gate-room debrief, leak crisis, lime
+# planet trip) will introduce their own gating flags; the elif ladder below
+# is the place to extend.
 func _recompute_objective() -> void:
 	if episode_complete:
 		return
+	# Act 1: until Rush is found, the only objective is reaching him.
+	if not met_rush:
+		set_objective("Find Dr Rush.")
+		return
+	# Act 2: after Rush, the survival ladder unlocks. Tasks list in priority
+	# order — rest first (drives the player out of the gate room toward the
+	# storage room where the Kino sits on a desk), then the breach.
 	var todo: Array[String] = []
+	if not quarters_found:
+		todo.append("find a place to rest")
 	if not kino_acquired:
-		todo.append("find the Kino Remote")
+		todo.append("find a way to map this deck")
 	if breaches_sealed.is_empty():
 		todo.append("seal the hull breach")
-	if not quarters_found:
-		todo.append("find your quarters")
 	if todo.is_empty():
 		check_episode_complete()
 		return
 	var first: String = todo[0]
-	# Capitalize first letter for the objective line.
 	first = first.substr(0, 1).to_upper() + first.substr(1)
 	if todo.size() == 1:
 		set_objective(first + ".")
@@ -139,11 +168,13 @@ func add_log(line: String) -> void:
 	log_entries.append(line)
 	log_added.emit(line)
 
-# Episode 1 completion: Kino acquired, quarters found, at least one breach sealed.
+# Episode 1 completion: Map (kino) + Dr Rush met + quarters found + at least
+# one hull breach sealed. The Rush meeting is the story climax — without it,
+# Scott's briefing never resolves and the episode stays in progress.
 func check_episode_complete() -> void:
 	if episode_complete:
 		return
-	if kino_acquired and quarters_found and breaches_sealed.size() > 0:
+	if kino_acquired and met_rush and quarters_found and breaches_sealed.size() > 0:
 		episode_complete = true
 		set_objective("Episode 1: Air — Complete")
 		episode_completed.emit()

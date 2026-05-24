@@ -1,0 +1,161 @@
+[gd_scene load_steps=12 format=3 uid="uid://b1dlgscreen01"]
+
+[ext_resource type="Script" path="res://scripts/dialog_screen.gd" id="1_dlgscript"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_dlg_speaker"]
+font_size = 26
+font_color = Color(0.18, 0.1, 0.05, 1)
+outline_size = 2
+outline_color = Color(0.95, 0.88, 0.7, 0.8)
+
+[sub_resource type="LabelSettings" id="LabelSettings_dlg_line"]
+font_size = 18
+font_color = Color(0.2, 0.12, 0.06, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_window_bg"]
+bg_color = Color(0.93, 0.86, 0.69, 0.98)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.35, 0.22, 0.1, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+shadow_color = Color(0, 0, 0, 0.55)
+shadow_size = 14
+shadow_offset = Vector2(3, 4)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_portrait_frame"]
+bg_color = Color(0.18, 0.12, 0.07, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.62, 0.45, 0.22, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_separator"]
+bg_color = Color(0.5, 0.34, 0.18, 0.8)
+content_margin_top = 1.0
+content_margin_bottom = 1.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_body_panel"]
+bg_color = Color(0.97, 0.91, 0.76, 0.6)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.55, 0.4, 0.2, 0.55)
+content_margin_left = 10.0
+content_margin_top = 10.0
+content_margin_right = 10.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_normal"]
+bg_color = Color(0.85, 0.74, 0.5, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.42, 0.28, 0.12, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_left = 14.0
+content_margin_top = 8.0
+content_margin_right = 14.0
+content_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_focus"]
+bg_color = Color(0.95, 0.83, 0.55, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(1, 0.78, 0.35, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_left = 14.0
+content_margin_top = 8.0
+content_margin_right = 14.0
+content_margin_bottom = 8.0
+
+[sub_resource type="Theme" id="Theme_choices"]
+default_font_size = 16
+Button/colors/font_color = Color(0.18, 0.1, 0.05, 1)
+Button/colors/font_focus_color = Color(0.12, 0.06, 0.02, 1)
+Button/colors/font_hover_color = Color(0.12, 0.06, 0.02, 1)
+Button/styles/normal = SubResource("StyleBoxFlat_btn_normal")
+Button/styles/hover = SubResource("StyleBoxFlat_btn_focus")
+Button/styles/pressed = SubResource("StyleBoxFlat_btn_focus")
+Button/styles/focus = SubResource("StyleBoxFlat_btn_focus")
+
+[node name="DialogScreen" type="Control"]
+process_mode = 3
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("1_dlgscript")
+
+[node name="Window" type="PanelContainer" parent="."]
+offset_left = 48.0
+offset_top = 90.0
+offset_right = 528.0
+offset_bottom = 630.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_window_bg")
+mouse_filter = 1
+
+[node name="Margin" type="MarginContainer" parent="Window"]
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 16
+
+[node name="VBox" type="VBoxContainer" parent="Window/Margin"]
+theme_override_constants/separation = 12
+
+[node name="Header" type="HBoxContainer" parent="Window/Margin/VBox"]
+theme_override_constants/separation = 14
+
+[node name="PortraitFrame" type="PanelContainer" parent="Window/Margin/VBox/Header"]
+custom_minimum_size = Vector2(96, 128)
+theme_override_styles/panel = SubResource("StyleBoxFlat_portrait_frame")
+
+[node name="Portrait" type="TextureRect" parent="Window/Margin/VBox/Header/PortraitFrame"]
+expand_mode = 1
+stretch_mode = 6
+
+[node name="SpeakerName" type="Label" parent="Window/Margin/VBox/Header"]
+size_flags_horizontal = 3
+size_flags_vertical = 5
+text = "Speaker"
+label_settings = SubResource("LabelSettings_dlg_speaker")
+vertical_alignment = 1
+
+[node name="HeaderSep" type="HSeparator" parent="Window/Margin/VBox"]
+theme_override_styles/separator = SubResource("StyleBoxFlat_separator")
+
+[node name="BodyPanel" type="PanelContainer" parent="Window/Margin/VBox"]
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_body_panel")
+
+[node name="BodyScroll" type="ScrollContainer" parent="Window/Margin/VBox/BodyPanel"]
+horizontal_scroll_mode = 0
+
+[node name="Line" type="Label" parent="Window/Margin/VBox/BodyPanel/BodyScroll"]
+custom_minimum_size = Vector2(404, 0)
+size_flags_horizontal = 3
+text = "Dialog line goes here."
+autowrap_mode = 3
+label_settings = SubResource("LabelSettings_dlg_line")
+
+[node name="ChoicesSep" type="HSeparator" parent="Window/Margin/VBox"]
+theme_override_styles/separator = SubResource("StyleBoxFlat_separator")
+
+[node name="ChoicesVBox" type="VBoxContainer" parent="Window/Margin/VBox"]
+theme_override_constants/separation = 6
+theme = SubResource("Theme_choices")

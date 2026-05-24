@@ -16,6 +16,7 @@ extends Node3D
 const STARGATE_SCENE: PackedScene = preload("res://objects/stargate.tscn")
 const FLOOR_SCENE: PackedScene = preload("res://models/sci-fi/space-station/floor.glb")
 const GATE_CONSOLE_SCRIPT: Script = preload("res://scripts/gate_console.gd")
+const NPC_SCRIPT: Script = preload("res://scripts/npc.gd")
 
 # Railings are tall enough that the player's 0.6 m jump (jump² / 2·g ≈ 0.6 m
 # given the player's tunables) can't clear them. Combined with the per-rail
@@ -63,6 +64,7 @@ func _ready() -> void:
 	_build_staircases()
 	_build_gate_platform()
 	_build_consoles()
+	_build_npcs()
 	_build_lighting_props()
 
 	# Spawn the gate model on the dais.
@@ -125,8 +127,9 @@ func _apply_pending_save_spawn() -> void:
 
 func _run_arrival() -> void:
 	# Player spawns on the dais facing outward; gate active behind them.
-	GameState.set_objective("Find a way off this ship")
+	GameState.set_objective("Talk to Lt Scott.")
 	GameState.add_log("Eli: Okay… where am I?")
+	GameState.add_log("Lt Scott: Hey — over here. We need to figure out where we are.")
 	if _player != null and _player.has_method("set_input_locked"):
 		_player.set_input_locked(true)
 	if _stargate != null and "active" in _stargate:
@@ -666,6 +669,355 @@ func _build_gate_platform() -> void:
 	ramp_cs.position = Vector3(0.0, ramp_rise * 0.5, platform_z - 3.0 - ramp_run * 0.5)
 	ramp_cs.rotation = Vector3(-ramp_angle, 0.0, 0.0)
 	dais_ramp.add_child(ramp_cs)
+
+
+# Lt Scott waits down the dais ramp from the arrival platform and walks up to
+# the player to brief them. The body uses Kenney "Mini Characters 1" so Scott
+# reads as a different humanoid than the platformer-mascot player. Collision
+# capsule + Label3D nametag are still procedural — the GLB is purely visual.
+func _build_npcs() -> void:
+	var half_z: float = room_size.y * 0.5
+	var spawn: Vector3 = Vector3(1.5, 0.0, half_z - 9.0)
+	var scott: StaticBody3D = StaticBody3D.new()
+	scott.set_script(NPC_SCRIPT)
+	scott.name = "LtScott"
+	scott.position = spawn
+	# Face -Z (toward the dais) so the player arriving on the dais sees his face.
+	scott.rotation.y = 0.0
+	scott.set("character_name", "Lt Scott")
+	scott.set("prompt", "Talk to Lt Scott")
+	# Choice-tree dialog (renders via objects/dialog_screen.tscn — full-screen
+	# Fable-style portrait + branching choices). Indexes refer to positions in
+	# this same array; "exit" closes the conversation.
+	# New quest opening (sprint-005, 2026-05-23): Scott has no answers — he kicks
+	# the player toward Rush, who's the one who'll actually know what's going on.
+	# All other E1 objectives (quarters, map, hull breach) are gated in
+	# GameState._recompute_objective behind met_rush so Scott's opening doesn't
+	# promise tasks the player hasn't been told about yet.
+	scott.set("dialogue_tree", [
+		{
+			"speaker": "Lt Scott",
+			"text": "Eli! Hey — you alright? What the hell just happened?",
+			"choices": [
+				{"text": "Where are we?", "next": 1},
+				{"text": "What happened?", "next": 2},
+			],
+		},
+		{
+			"speaker": "Lt Scott",
+			"text": "Hell if I know. We just came through the gate, and... this isn't earth. This isn't anywhere I've ever heard of.",
+			"choices": [
+				{"text": "Where's Rush?", "next": 3},
+			],
+		},
+		{
+			"speaker": "Lt Scott",
+			"text": "Gate dialed an unknown address. Rush yelled GO, and we went — next thing we know, we're here. Wherever 'here' is.",
+			"choices": [
+				{"text": "Where's Rush?", "next": 3},
+			],
+		},
+		{
+			"speaker": "Lt Scott",
+			"text": "I think he went through that door. Catch up to him — he'll know what's happening. He always does, even when he won't say.",
+			"choices": [
+				{"text": "On it.", "next": "exit"},
+			],
+		},
+	])
+	scott.set("met_flag", "met_scott")
+	scott.set("first_meet_recompute_objective", true)
+	# Walk up to the player and trigger the briefing automatically — no E-press.
+	scott.set("auto_greet", true)
+	scott.set("auto_greet_distance", 2.6)
+	scott.set("auto_greet_delay", 1.5)
+	scott.set("auto_greet_speed", 1.9)
+
+	# Collision capsule — blocks the player and acts as interactable hitbox.
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var cap: CapsuleShape3D = CapsuleShape3D.new()
+	cap.radius = 0.35
+	cap.height = 1.8
+	cs.shape = cap
+	cs.position = Vector3(0.0, 0.9, 0.0)
+	scott.add_child(cs)
+
+	# Visual body — Kenney "Mini Characters 1" GLB. Wrapped in a Node3D so we
+	# can tune scale/yaw without touching the imported scene's transform.
+	var model_holder: Node3D = Node3D.new()
+	model_holder.name = "Model"
+	model_holder.position = Vector3(0.0, 0.0, 0.0)
+	model_holder.scale = Vector3(2.6, 2.6, 2.6)
+	# Kenney mini characters export with +Z forward (look at the spine in the
+	# import preview), so rotate 180° to align with Godot's -Z forward
+	# convention — otherwise Scott walks/auto-greets facing the wrong way.
+	model_holder.rotation.y = PI
+	var scott_glb: PackedScene = load("res://models/characters/scott.glb")
+	if scott_glb != null:
+		var scott_model: Node = scott_glb.instantiate()
+		model_holder.add_child(scott_model)
+		# Kenney GLBs reference an external colormap.png that the Godot importer
+		# doesn't bind to the material — without this override Scott renders as
+		# a solid white silhouette. (See feedback-kenney-mini-chars-colormap.)
+		var colormap: Texture2D = load("res://models/characters/Textures/colormap.png")
+		Npc.apply_kenney_colormap(scott_model, colormap)
+		# Start the GLB's idle animation so Scott isn't a statue.
+		Npc.play_idle_animation(scott_model)
+	scott.add_child(model_holder)
+
+	# Floating nametag billboard so the player can ID him from across the room.
+	var tag: Label3D = Label3D.new()
+	tag.name = "Nametag"
+	tag.text = "Lt Scott"
+	tag.pixel_size = 0.0042
+	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	tag.outline_size = 6
+	tag.shaded = false
+	tag.modulate = Color(0.95, 0.92, 0.78, 1.0)
+	tag.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
+	tag.position = Vector3(0.0, 2.05, 0.0)
+	scott.add_child(tag)
+
+	_world.add_child(scott)
+
+	# Medic tableau: Colonel Young laid out on his back, Dr James and Dr Park
+	# kneeling beside him trying to stabilise him. Clustered well away from the
+	# gate at the -X / -Z corner so the player walks past on their way to the
+	# south corridor exit and can't miss it.
+	_build_medic_tableau()
+
+
+# Three-NPC vignette near the -X wall, behind the staircases:
+#   • Young (uniform) lying face-up on the floor.
+#   • James, Park kneeling on opposite sides of him.
+# Each is interactable — short concerned lines about Young's state that point
+# the player toward Rush.
+func _build_medic_tableau() -> void:
+	var tableau_center: Vector3 = Vector3(-9.0, 0.0, -6.0)
+
+	# --- Colonel Young — laid out on his back ----
+	_build_tableau_npc(
+		"ColonelYoung",
+		"Colonel Young",
+		tableau_center + Vector3(0.0, 0.0, 0.0),
+		0.0,
+		"res://models/characters/scott.glb",
+		_young_tableau_dialog(),
+		"met_young",
+		"down",
+	)
+
+	# --- Dr James — kneeling on Young's left (player's right) ----
+	_build_tableau_npc(
+		"DrJames",
+		"Dr James",
+		tableau_center + Vector3(-0.9, 0.0, 0.4),
+		PI * 0.5,
+		"res://models/characters/eli.glb",
+		_james_tableau_dialog(),
+		"met_james",
+		"kneel",
+	)
+
+	# --- Dr Park — kneeling on Young's right ----
+	_build_tableau_npc(
+		"DrPark",
+		"Dr Park",
+		tableau_center + Vector3(0.9, 0.0, 0.4),
+		-PI * 0.5,
+		"res://models/characters/eli.glb",
+		_park_tableau_dialog(),
+		"met_park",
+		"kneel",
+	)
+
+
+# Tableau NPC builder — supports two poses beyond standing:
+#   • "down"  — rotated 90° around X so the model lies face-up on the floor.
+#   • "kneel" — Y-axis squashed so the model reads as crouched / kneeling.
+# The collision capsule + nametag are repositioned to suit each pose.
+func _build_tableau_npc(
+		npc_name: String,
+		character: String,
+		pos: Vector3,
+		yaw: float,
+		glb_path: String,
+		dialog_tree: Array,
+		met_flag: String,
+		pose: String,
+	) -> void:
+	var body: StaticBody3D = StaticBody3D.new()
+	body.set_script(NPC_SCRIPT)
+	body.name = npc_name
+	body.position = pos
+	body.rotation.y = yaw
+	body.set("character_name", character)
+	body.set("prompt", "Talk to %s" % character)
+	body.set("dialogue_tree", dialog_tree)
+	body.set("met_flag", met_flag)
+	body.set("first_meet_recompute_objective", true)
+
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var cap: CapsuleShape3D = CapsuleShape3D.new()
+	if pose == "down":
+		# Wide flat hitbox at floor height — capsule oriented horizontally.
+		cap.radius = 0.4
+		cap.height = 1.8
+		cs.shape = cap
+		cs.position = Vector3(0.0, 0.25, 0.0)
+		# Capsule's long axis is Y; rotate so it lies along the body's local Z.
+		cs.rotation = Vector3(PI * 0.5, 0.0, 0.0)
+	elif pose == "kneel":
+		cap.radius = 0.36
+		cap.height = 1.2
+		cs.shape = cap
+		cs.position = Vector3(0.0, 0.6, 0.0)
+	else:
+		cap.radius = 0.32
+		cap.height = 1.75
+		cs.shape = cap
+		cs.position = Vector3(0.0, 0.88, 0.0)
+	body.add_child(cs)
+
+	var model_holder: Node3D = Node3D.new()
+	model_holder.name = "Model"
+	if pose == "down":
+		# Lay character on their back: tip the holder forward 90° so what was up
+		# (head along +Y) now extends along +Z away from the feet anchor.
+		# Lift slightly so the back doesn't z-fight with the floor.
+		model_holder.rotation = Vector3(-PI * 0.5, PI, 0.0)
+		model_holder.position = Vector3(0.0, 0.18, 0.7)
+		model_holder.scale = Vector3(2.6, 2.6, 2.6)
+	elif pose == "kneel":
+		# Compress the standing model vertically — reads as crouched/kneeling
+		# without needing a separate rig. Slight forward tilt sells the lean.
+		model_holder.rotation = Vector3(deg_to_rad(-20.0), PI, 0.0)
+		model_holder.position = Vector3(0.0, 0.0, 0.0)
+		model_holder.scale = Vector3(2.6, 1.5, 2.6)
+	else:
+		model_holder.rotation.y = PI
+		model_holder.scale = Vector3(2.6, 2.6, 2.6)
+
+	var glb: PackedScene = load(glb_path)
+	if glb != null:
+		var inst: Node = glb.instantiate()
+		model_holder.add_child(inst)
+		var colormap: Texture2D = load("res://models/characters/Textures/colormap.png")
+		Npc.apply_kenney_colormap(inst, colormap)
+		# Down characters DON'T idle-loop — the breathe-anim makes "unconscious"
+		# read as "stretching." Kneelers do, so they feel busy with their hands.
+		if pose != "down":
+			Npc.play_idle_animation(inst)
+	body.add_child(model_holder)
+
+	var tag: Label3D = Label3D.new()
+	tag.name = "Nametag"
+	tag.text = character
+	tag.pixel_size = 0.0042
+	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	tag.outline_size = 6
+	tag.shaded = false
+	tag.modulate = Color(0.95, 0.92, 0.78, 1.0)
+	tag.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
+	# Pull the nametag closer to the floor for the prone character so it floats
+	# above his chest rather than way up where his head used to be.
+	if pose == "down":
+		tag.position = Vector3(0.0, 0.9, 0.3)
+	elif pose == "kneel":
+		tag.position = Vector3(0.0, 1.5, 0.0)
+	else:
+		tag.position = Vector3(0.0, 2.05, 0.0)
+	body.add_child(tag)
+
+	_world.add_child(body)
+
+
+# Young dialog is the only one where he speaks at all — half-conscious,
+# disoriented. Confirms the player should find Rush.
+func _young_tableau_dialog() -> Array:
+	return [
+		{
+			"speaker": "Colonel Young",
+			"text": "…hnh. Who's there? Can't… focus.",
+			"choices": [
+				{"text": "Sir, are you okay?", "next": 1},
+				{"text": "What happened?", "next": 2},
+				{"text": "Hang in there.", "next": "exit"},
+			],
+		},
+		{
+			"speaker": "Colonel Young",
+			"text": "Hit the deck when we came through. Banged my head, I think. James and Park are… handling it. Just need a minute.",
+			"choices": [
+				{"text": "What should I do?", "next": 3},
+				{"text": "Rest, sir.", "next": "exit"},
+			],
+		},
+		{
+			"speaker": "Colonel Young",
+			"text": "Gate took us… somewhere it shouldn't have. Find Rush. He's the one who'll know.",
+			"choices": [
+				{"text": "Where is Rush?", "next": 3},
+				{"text": "On it.", "next": "exit"},
+			],
+		},
+		{
+			"speaker": "Colonel Young",
+			"text": "Control room. Through the south corridor… east… consoles. Tell him I said get moving.",
+			"choices": [
+				{"text": "Yes, sir.", "next": "exit"},
+			],
+		},
+	]
+
+
+func _james_tableau_dialog() -> Array:
+	return [
+		{
+			"speaker": "Dr James",
+			"text": "Hold on — give me space, please. Colonel Young took a hard fall when we landed. I don't think it's a concussion, but I can't be sure.",
+			"choices": [
+				{"text": "Will he be okay?", "next": 1},
+				{"text": "Can I help?", "next": 2},
+				{"text": "I'll keep moving.", "next": "exit"},
+			],
+		},
+		{
+			"speaker": "Dr James",
+			"text": "He should be. Pulse is steady. Park's running a basic neuro check. We just need him still until we know more.",
+			"choices": [
+				{"text": "Can I help?", "next": 2},
+				{"text": "Glad to hear it.", "next": "exit"},
+			],
+		},
+		{
+			"speaker": "Dr James",
+			"text": "Yes — find Dr Rush. He's the one who needs to know what state the Colonel is in, and he's the only one of us who might be able to read these consoles. He went through to the control room.",
+			"choices": [
+				{"text": "Heading there now.", "next": "exit"},
+			],
+		},
+	]
+
+
+func _park_tableau_dialog() -> Array:
+	return [
+		{
+			"speaker": "Dr Park",
+			"text": "Pupils responsive, breathing okay. He's just out of it for now. Sorry, I don't want to be rude — can you give us a second?",
+			"choices": [
+				{"text": "What can I do?", "next": 1},
+				{"text": "Sorry — I'll go.", "next": "exit"},
+			],
+		},
+		{
+			"speaker": "Dr Park",
+			"text": "Honestly? Find someone in charge who isn't on the floor. Rush is in the control room, that way through the corridors — east, I think. Tell him James and I have Young handled, but he needs to lead.",
+			"choices": [
+				{"text": "Got it.", "next": "exit"},
+			],
+		},
+	]
 
 
 func _build_consoles() -> void:

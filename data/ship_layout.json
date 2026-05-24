@@ -46,11 +46,11 @@
 		"updated_at": 1753826516
 	},
 	{
-		"id": "cr_north",
+		"id": "control_approach_north",
 		"template_id": "corridor-template",
 		"layout_id": "destiny",
 		"type": "corridor",
-		"name": "Corridor",
+		"name": "Control Approach (North)",
 		"description": "",
 		"startX": 1100,
 		"endX": 1200,
@@ -234,7 +234,7 @@
 		"template_id": "kino-room-template",
 		"layout_id": "destiny",
 		"type": "kino_room",
-		"name": "Kino Room",
+		"name": "Storage",
 		"description": "",
 		"startX": 1900,
 		"endX": 2100,
@@ -299,11 +299,11 @@
 		"updated_at": 1753826516
 	},
 	{
-		"id": "room_1751649578881",
+		"id": "control_approach_south",
 		"template_id": "corridor-template",
 		"layout_id": "destiny",
 		"type": "corridor",
-		"name": "Corridor",
+		"name": "Control Approach (South)",
 		"description": "",
 		"startX": 1100,
 		"endX": 1200,

@@ -63,6 +63,7 @@ const ROOM_INTERACTABLE_REQUIRES: Dictionary = {
 	"quarters_room_1": ["Bed"],
 	"kino_room": ["KinoPickup"],
 	"east_corridor": ["HullBreach", "HullSealSwitch"],
+	"control_interface_room": ["DrRush"],
 }
 
 var _failures: Array[String] = []
@@ -100,6 +101,7 @@ func _run_checks() -> void:
 		var requires: Array = spec["requires"]
 		_check_scene(path, requires)
 	await _check_procedural_rooms()
+	_check_connection_reachability()
 	_report()
 
 
@@ -215,6 +217,13 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 		"kino_room":
 			var kino: Node = inst.get_node("KinoPickup")
 			kino.call("interact", null)
+			# KinoPickup.interact awaits Eli's naming monologue before flipping
+			# the flag. Headless short-circuits the waits but the await still
+			# yields one frame; poll briefly so we see the flip after resume.
+			var waited: int = 0
+			while not bool(_game_state.get("kino_acquired")) and waited < 30:
+				await process_frame
+				waited += 1
 			if bool(_game_state.get("kino_acquired")):
 				print("  OK (KinoPickup.interact → kino_acquired=true)")
 				_passes += 1
@@ -231,6 +240,58 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 			else:
 				_fail("%s [east_corridor]" % ROOM_SCENE,
 					"HullSealSwitch.interact() did not record a sealed breach")
+
+
+# BFS the connection graph (data/room_connections.json) from gate_room and
+# assert every mission-critical destination is reachable. Catches data-level
+# regressions like the one where east_corridor → north_corridor was misdeclared
+# as "-z" instead of "+x", silently making the Kino room unreachable.
+func _check_connection_reachability() -> void:
+	print("\n=== connection graph reachability ===")
+	const MUST_REACH: Array[String] = [
+		"east_corridor",                # hull breach lives here
+		"control_interface_room",       # Dr Rush
+		"kino_room",                    # kino pickup
+		"quarters_room_1",              # Eli's bunk
+	]
+	var connections: Dictionary = _load_connections()
+	if connections.is_empty():
+		_fail("connections", "data/room_connections.json missing or unparseable")
+		return
+	# Build an undirected adjacency map — room.gd auto-stamps reverse edges, so
+	# traversal must mirror that to model in-game reachability.
+	var graph: Dictionary = {}
+	for from_id: String in connections.keys():
+		for edge: Dictionary in connections[from_id] as Array:
+			var to_id: String = String(edge.get("to", ""))
+			if to_id == "":
+				continue
+			graph.get_or_add(from_id, []).append(to_id)
+			graph.get_or_add(to_id, []).append(from_id)
+	# BFS from gate_room.
+	var seen: Dictionary = {"gate_room": true}
+	var queue: Array[String] = ["gate_room"]
+	while not queue.is_empty():
+		var node: String = queue.pop_front()
+		for neighbour: String in graph.get(node, []) as Array:
+			if not seen.has(neighbour):
+				seen[neighbour] = true
+				queue.append(neighbour)
+	for target: String in MUST_REACH:
+		if seen.has(target):
+			print("  OK  ", target, " reachable from gate_room")
+			_passes += 1
+		else:
+			_fail("connections", "%s unreachable from gate_room (broken adjacency)" % target)
+
+
+func _load_connections() -> Dictionary:
+	var f: FileAccess = FileAccess.open("res://data/room_connections.json", FileAccess.READ)
+	if f == null:
+		return {}
+	var parsed: Variant = JSON.parse_string(f.get_as_text())
+	f.close()
+	return parsed if parsed is Dictionary else {}
 
 
 func _fail(scene: String, reason: String) -> void:

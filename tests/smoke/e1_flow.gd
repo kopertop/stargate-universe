@@ -81,7 +81,15 @@ func _initialize() -> void:
 	gs.seal_breach("breach_a")
 	_expect(gs.breaches_sealed.size() == 1, "mission: seal_breach is idempotent")
 	gs.check_episode_complete()
-	_expect(gs.episode_complete, "mission: all 3 flags fire completion")
+	_expect(not gs.episode_complete, "mission: kino+quarters+breach alone do NOT complete (Rush gate)")
+
+	# Story climax: meeting Dr Rush is the final completion flag. npc.gd sets
+	# met_rush via GameState.set() then calls check_episode_complete() — we
+	# replay that path directly here.
+	_expect(not gs.met_rush, "mission: Rush starts un-met")
+	gs.met_rush = true
+	gs.check_episode_complete()
+	_expect(gs.episode_complete, "mission: all 4 flags (kino+quarters+breach+rush) fire completion")
 	_expect(completed_emits.size() == 1, "mission: episode_completed emitted once")
 
 	# Re-running check should not re-fire the signal.
@@ -95,6 +103,8 @@ func _initialize() -> void:
 	_expect(gs.kino_acquired == false, "mission: reset clears kino")
 	_expect(gs.quarters_found == false, "mission: reset clears quarters")
 	_expect(gs.breaches_sealed.is_empty(), "mission: reset clears breaches")
+	_expect(gs.met_scott == false, "mission: reset clears met_scott")
+	_expect(gs.met_rush == false, "mission: reset clears met_rush")
 
 	# F5 quicksave path (no scene path set → save is refused, not silent failure).
 	gs.current_scene_path = ""

@@ -13,8 +13,14 @@ extends Control
 @onready var _interact_label: Label = $InteractPrompt
 @onready var _kino_hint: Label = $KinoHint
 @onready var _log_box: VBoxContainer = $Log
+@onready var _dialog_panel: NinePatchRect = $DialogPanel
+@onready var _dialog_name: Label = $DialogPanel/Nameplate/Name
+@onready var _dialog_line: Label = $DialogPanel/Line
 
 var _player: Node = null
+# Active dialog auto-hide tween. Held so a follow-up line can cancel the old
+# fade — otherwise rapid talking would leave the panel half-faded.
+var _dialog_tween: Tween = null
 
 func _ready() -> void:
 	GameState.objective_changed.connect(_on_objective_changed)
@@ -22,11 +28,14 @@ func _ready() -> void:
 	GameState.oxygen_changed.connect(_on_oxygen_changed)
 	GameState.kino_changed.connect(_on_kino_changed)
 	GameState.log_added.connect(_on_log_added)
+	GameState.dialogue_shown.connect(_on_dialogue_shown)
+	GameState.dialog_started.connect(_on_dialog_started)
 	_on_objective_changed(GameState.current_objective)
 	_on_health_changed(GameState.health)
 	_on_oxygen_changed(GameState.oxygen)
 	_on_kino_changed(GameState.kino_acquired)
 	_interact_label.text = ""
+	_dialog_panel.visible = false
 	# Defer player lookup so the scene tree is settled.
 	call_deferred("_bind_player")
 
@@ -59,6 +68,38 @@ func _on_oxygen_changed(v: float) -> void:
 func _on_kino_changed(acquired: bool) -> void:
 	_kino_hint.visible = acquired
 	_kino_hint.text = "[Tab]  Kino Remote"
+
+func _on_dialogue_shown(character_name: String, line: String) -> void:
+	_dialog_name.text = character_name
+	_dialog_line.text = line
+	_dialog_panel.modulate = Color(1.0, 1.0, 1.0, 1.0)
+	_dialog_panel.visible = true
+	# Cancel a still-running fade from the previous line so the new one shows
+	# at full opacity even if the player triggered them in quick succession.
+	if _dialog_tween != null and _dialog_tween.is_running():
+		_dialog_tween.kill()
+	_dialog_tween = create_tween()
+	_dialog_tween.tween_interval(6.5)
+	_dialog_tween.tween_property(_dialog_panel, "modulate:a", 0.0, 0.8)
+	_dialog_tween.tween_callback(Callable(self, "_hide_dialog_panel"))
+
+func _hide_dialog_panel() -> void:
+	_dialog_panel.visible = false
+
+# Choice-tree dialog: instance the full-screen DialogScreen as our child so it
+# inherits the HUD's CanvasLayer (above the world, below pause overlays). The
+# screen pauses the tree itself and frees itself on close; we just hand it the
+# target NPC + tree and forget about it.
+func _on_dialog_started(npc: Node3D, tree: Array) -> void:
+	if tree.is_empty() or npc == null:
+		return
+	var scene: PackedScene = load("res://objects/dialog_screen.tscn")
+	if scene == null:
+		return
+	var screen: Control = scene.instantiate()
+	add_child(screen)
+	# DialogScreen.start() shares world_3d + frames the portrait camera.
+	screen.call("start", npc, tree)
 
 func _on_log_added(line: String) -> void:
 	var lbl: Label = Label.new()

@@ -15,6 +15,7 @@ const RoomBuilderRef: Script = preload("res://scripts/room_builder.gd")
 const BedScript: Script = preload("res://scripts/bed.gd")
 const KinoPickupScript: Script = preload("res://scripts/kino_pickup.gd")
 const HullSealSwitchScript: Script = preload("res://scripts/hull_seal_switch.gd")
+const NpcScript: Script = preload("res://scripts/npc.gd")
 
 # Set this in the editor to preview a specific room when running the scene
 # standalone (F6). At runtime, GameState.next_room_id takes precedence.
@@ -41,6 +42,13 @@ func _ready() -> void:
 	if _room_data.is_empty():
 		push_error("room.gd: ShipLayout has no row for '%s'" % room_id)
 		return
+
+	# Some JSON corridors are 3.5 m short-axis (cr_north, room_1751649578881)
+	# which reads as a closet, not a Destiny corridor. Widen the short axis to
+	# a 6 m minimum for corridor-template rooms; the JSON adjacency math still
+	# uses the original rectangle so door alignment between rooms is preserved
+	# (overlap midpoints fall inside the widened walls).
+	_apply_corridor_min_short_axis(6.0)
 
 	# Geometry first so doors can sit against real walls.
 	RoomBuilderRef.build(world, _room_data)
@@ -99,20 +107,21 @@ func _stamp_door(edge: Dictionary, half_x: float, half_z: float) -> void:
 	if dir == "elevator":
 		dir = "-z"
 
+	var along: float = _door_along_offset(target_id, dir)
 	var pos: Vector3 = Vector3.ZERO
 	var face_yaw: float = 0.0
 	match dir:
 		"+x":
-			pos = Vector3(half_x, 0.0, 0.0)
+			pos = Vector3(half_x, 0.0, along)
 			face_yaw = -PI * 0.5
 		"-x":
-			pos = Vector3(-half_x, 0.0, 0.0)
+			pos = Vector3(-half_x, 0.0, along)
 			face_yaw = PI * 0.5
 		"+z":
-			pos = Vector3(0.0, 0.0, half_z)
+			pos = Vector3(along, 0.0, half_z)
 			face_yaw = PI
 		"-z":
-			pos = Vector3(0.0, 0.0, -half_z)
+			pos = Vector3(along, 0.0, -half_z)
 			face_yaw = 0.0
 		_:
 			return
@@ -150,6 +159,41 @@ func _stamp_door(edge: Dictionary, half_x: float, half_z: float) -> void:
 	markers.add_child(marker)
 
 
+# Where along the wall (perpendicular to `dir`) the door should sit. Returns
+# the overlap midpoint between this room and the target room's JSON rect,
+# converted to metres relative to this room's local origin. Falls back to 0
+# (wall centre) when there's no overlap (elevator pairs across floors).
+func _door_along_offset(target_id: String, dir: String) -> float:
+	var target: Dictionary = ShipLayout.room(target_id)
+	if target.is_empty() or _room_data.is_empty():
+		return 0.0
+	var my_sx: float = float(_room_data.get("startX", 0))
+	var my_ex: float = float(_room_data.get("endX", 0))
+	var my_sy: float = float(_room_data.get("startY", 0))
+	var my_ey: float = float(_room_data.get("endY", 0))
+	var t_sx: float = float(target.get("startX", 0))
+	var t_ex: float = float(target.get("endX", 0))
+	var t_sy: float = float(target.get("startY", 0))
+	var t_ey: float = float(target.get("endY", 0))
+	var lo: float = 0.0
+	var hi: float = 0.0
+	var my_center: float = 0.0
+	if dir == "+x" or dir == "-x":
+		# Wall faces along JSON-Y (world Z). Find overlap on Y.
+		lo = max(my_sy, t_sy)
+		hi = min(my_ey, t_ey)
+		my_center = (my_sy + my_ey) * 0.5
+	else:
+		# +z/-z wall — find overlap on X.
+		lo = max(my_sx, t_sx)
+		hi = min(my_ex, t_ex)
+		my_center = (my_sx + my_ex) * 0.5
+	if hi <= lo:
+		return 0.0
+	var mid: float = (lo + hi) * 0.5
+	return (mid - my_center) * ShipLayout.SCALE
+
+
 func _place_player() -> void:
 	# Save-restored spawn wins. SceneRouter handles marker-by-name placement
 	# AFTER _ready() returns (it walks the tree looking for the spawn key it
@@ -178,6 +222,15 @@ func _spawn_interactables() -> void:
 			_spawn_kino_pickup()
 		"east_corridor":
 			_spawn_hull_breach()
+			_spawn_sgt_greer()
+		"control_interface_room":
+			# Only Rush — Young, James, Park have moved to the gate room with the
+			# unconscious-tableau (Young laid out, James + Park treating him).
+			_spawn_dr_rush()
+		"south_corridor":
+			_spawn_chloe()
+		"north_corridor":
+			_spawn_soldier()
 
 
 # Bed against the -Z wall, matching the position used by RoomBuilder._accent_quarters.
@@ -398,7 +451,438 @@ func _spawn_hull_breach() -> void:
 	add_child(btn_mi)
 
 
+# Dr Rush in the control interface room. Stands in front of the centre console
+# in the arc that RoomBuilder._accent_control_room builds along the -Z wall,
+# facing -Z (toward the console). First interact flips `met_rush` and re-checks
+# episode completion — together with Kino + Quarters + Breach, this is the E1
+# story climax.
+func _spawn_dr_rush() -> void:
+	# Middle console of the 5-station arc: z = -depth/2 + 3 + bow(t=0.5).
+	# RoomBuilder uses `bow = sin(t * PI) * 1.2` so middle bow = 1.2.
+	# Stand Rush 1.2 m in front of the console, looking down at it (rot.y = 0
+	# = -Z facing in Godot convention).
+	var d_m: float = float(_room_data.get("height", 200)) * ShipLayout.SCALE
+	var console_z: float = -d_m * 0.5 + 3.0 + 1.2
+	var pos: Vector3 = Vector3(0.0, 0.0, console_z + 1.4)
+	var rush: StaticBody3D = StaticBody3D.new()
+	rush.set_script(NpcScript)
+	rush.name = "DrRush"
+	rush.position = pos
+	rush.rotation.y = 0.0
+	rush.set("character_name", "Dr Rush")
+	rush.set("prompt", "Talk to Dr Rush")
+	# Choice-tree dialog — branches into ship lore, mission guidance, or a
+	# brusque exit. Mirrors the Fable-style format used for Scott.
+	rush.set("dialogue_tree", [
+		{
+			"speaker": "Dr Rush",
+			"text": "You found me. Good — now stop interrupting. I'm trying to read what this ship is doing. What is it?",
+			"choices": [
+				{"text": "What is this ship?", "next": 1},
+				{"text": "Scott sent me.", "next": 2},
+				{"text": "Where are we?", "next": 3},
+				{"text": "I'll leave you to it.", "next": "exit"},
+			],
+		},
+		{
+			"speaker": "Dr Rush",
+			"text": "Destiny. An Ancient seed ship — they launched it tens of thousands of years before Atlantis. It's on a fixed FTL sequence, jumping from galaxy to galaxy, mapping. We're along for the ride.",
+			"choices": [
+				{"text": "Can we control it?", "next": 4},
+				{"text": "What's our priority?", "next": 5},
+				{"text": "Where are we now?", "next": 3},
+				{"text": "Back to work, then.", "next": "exit"},
+			],
+		},
+		{
+			"speaker": "Dr Rush",
+			"text": "Of course he did. Tell Scott the consoles are partially responsive — that's the best I can offer. The rest is going to take time, and I don't have any of it to spare.",
+			"choices": [
+				{"text": "What CAN you do?", "next": 4},
+				{"text": "Anything I can help with?", "next": 5},
+				{"text": "I'll let him know.", "next": "exit"},
+			],
+		},
+		{
+			"speaker": "Dr Rush",
+			"text": "Several billion light years from Earth, if my early readings are correct. The ship doesn't know we're here, and frankly, that's the only reason we're still alive.",
+			"choices": [
+				{"text": "Can we go home?", "next": 4},
+				{"text": "What should I focus on?", "next": 5},
+				{"text": "Right. Carrying on.", "next": "exit"},
+			],
+		},
+		{
+			"speaker": "Dr Rush",
+			"text": "Not yet. The master code is locked, and the gate diallers are on a one-way preset. If we want to dial out, we need power — which we don't have. So: be patient.",
+			"choices": [
+				{"text": "What should I do?", "next": 5},
+				{"text": "Back to the start.", "next": 0},
+				{"text": "Understood.", "next": "exit"},
+			],
+		},
+		{
+			"speaker": "Dr Rush",
+			"text": "Stay alive. Find a hull breach — there will be one — and seal it before the air gets any thinner. After that, find your quarters and stop hovering. I'll send for you when I have something.",
+			"choices": [
+				{"text": "Back to the start.", "next": 0},
+				{"text": "I'll handle it.", "next": "exit"},
+			],
+		},
+	])
+	rush.set("met_flag", "met_rush")
+	rush.set("first_meet_recompute_objective", true)
+
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var cap: CapsuleShape3D = CapsuleShape3D.new()
+	cap.radius = 0.32
+	cap.height = 1.75
+	cs.shape = cap
+	cs.position = Vector3(0.0, 0.88, 0.0)
+	rush.add_child(cs)
+
+	# Visual body — Kenney "Mini Characters 1" GLB (character-male-f), distinct
+	# from Scott's character-male-d so the two NPCs read differently at a glance.
+	var model_holder: Node3D = Node3D.new()
+	model_holder.name = "Model"
+	model_holder.position = Vector3(0.0, 0.0, 0.0)
+	model_holder.scale = Vector3(2.6, 2.6, 2.6)
+	# Kenney mini characters export with +Z forward; rotate 180° so the model
+	# faces the same direction as its parent StaticBody3D's -Z forward.
+	model_holder.rotation.y = PI
+	var rush_glb: PackedScene = load("res://models/characters/rush.glb")
+	if rush_glb != null:
+		var rush_model: Node = rush_glb.instantiate()
+		model_holder.add_child(rush_model)
+		var colormap: Texture2D = load("res://models/characters/Textures/colormap.png")
+		Npc.apply_kenney_colormap(rush_model, colormap)
+		Npc.play_idle_animation(rush_model)
+	rush.add_child(model_holder)
+
+	var tag: Label3D = Label3D.new()
+	tag.name = "Nametag"
+	tag.text = "Dr Rush"
+	tag.pixel_size = 0.0042
+	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	tag.outline_size = 6
+	tag.shaded = false
+	tag.modulate = Color(0.95, 0.92, 0.78, 1.0)
+	tag.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
+	tag.position = Vector3(0.0, 2.00, 0.0)
+	rush.add_child(tag)
+
+	add_child(rush)
+
+
+# Generic NPC spawn — mirrors the manual _spawn_dr_rush construction so the
+# six secondary crew members can share a single code path. Returns the
+# StaticBody3D so callers can tweak post-hoc if needed.
+func _spawn_npc(
+		npc_name: String,
+		character_name: String,
+		pos: Vector3,
+		yaw: float,
+		glb_path: String,
+		dialog_tree: Array,
+		met_flag: String = ""
+	) -> StaticBody3D:
+	var body: StaticBody3D = StaticBody3D.new()
+	body.set_script(NpcScript)
+	body.name = npc_name
+	body.position = pos
+	body.rotation.y = yaw
+	body.set("character_name", character_name)
+	body.set("prompt", "Talk to %s" % character_name)
+	body.set("dialogue_tree", dialog_tree)
+	if met_flag != "":
+		body.set("met_flag", met_flag)
+		body.set("first_meet_recompute_objective", true)
+
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var cap: CapsuleShape3D = CapsuleShape3D.new()
+	cap.radius = 0.32
+	cap.height = 1.75
+	cs.shape = cap
+	cs.position = Vector3(0.0, 0.88, 0.0)
+	body.add_child(cs)
+
+	var model_holder: Node3D = Node3D.new()
+	model_holder.name = "Model"
+	model_holder.scale = Vector3(2.6, 2.6, 2.6)
+	# Kenney mini chars export +Z forward; rotate so model faces -Z (parent forward).
+	model_holder.rotation.y = PI
+	var glb: PackedScene = load(glb_path)
+	if glb != null:
+		var inst: Node = glb.instantiate()
+		model_holder.add_child(inst)
+		var colormap: Texture2D = load("res://models/characters/Textures/colormap.png")
+		Npc.apply_kenney_colormap(inst, colormap)
+		Npc.play_idle_animation(inst)
+	body.add_child(model_holder)
+
+	var tag: Label3D = Label3D.new()
+	tag.name = "Nametag"
+	tag.text = character_name
+	tag.pixel_size = 0.0042
+	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	tag.outline_size = 6
+	tag.shaded = false
+	tag.modulate = Color(0.95, 0.92, 0.78, 1.0)
+	tag.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
+	tag.position = Vector3(0.0, 2.00, 0.0)
+	body.add_child(tag)
+
+	add_child(body)
+	return body
+
+
+# Senior officer in the control interface room — pacing near a console east of the
+# central hologram spine, watching readouts. Stoic, command-school cadence.
+func _spawn_colonel_young() -> void:
+	_spawn_npc(
+		"ColonelYoung",
+		"Colonel Young",
+		Vector3(5.5, 0.0, -1.5),
+		-PI * 0.75,  # face back toward spine / Rush
+		"res://models/characters/scott.glb",
+		[
+			{
+				"speaker": "Colonel Young",
+				"text": "Stay sharp, son. We don't know what we're standing on yet. Have a question, or are you just walking the deck?",
+				"choices": [
+					{"text": "What's our situation?", "next": 1},
+					{"text": "What can I do, sir?", "next": 2},
+					{"text": "Just passing through.", "next": "exit"},
+				],
+			},
+			{
+				"speaker": "Colonel Young",
+				"text": "Best estimate: we're on an Ancient ship a very long way from home. Atmosphere holds for now. Power's marginal. Rush is reading the consoles. The rest of us are buying him time.",
+				"choices": [
+					{"text": "What can I do, sir?", "next": 2},
+					{"text": "Acknowledged.", "next": "exit"},
+				],
+			},
+			{
+				"speaker": "Colonel Young",
+				"text": "Listen for the radio. If a hull alarm goes off, you move. Otherwise, get rested — I need everyone able to think when this ship decides to surprise us.",
+				"choices": [
+					{"text": "Yes, sir.", "next": "exit"},
+				],
+			},
+		],
+		"met_young",
+	)
+
+
+# Civilian scientist in the control room — tracking power systems on a side console.
+func _spawn_dr_james() -> void:
+	_spawn_npc(
+		"DrJames",
+		"Dr James",
+		Vector3(-4.5, 0.0, 3.8),
+		PI * 0.25,
+		"res://models/characters/eli.glb",
+		[
+			{
+				"speaker": "Dr James",
+				"text": "Reactor's pulling more than it's giving — I can see the curve, I just can't read what's draining it. Did you need something?",
+				"choices": [
+					{"text": "What are you working on?", "next": 1},
+					{"text": "Should I be worried?", "next": 2},
+					{"text": "Sorry to interrupt.", "next": "exit"},
+				],
+			},
+			{
+				"speaker": "Dr James",
+				"text": "Power balance. The Ancients ran this ship on something like a stellar tap — and we're stuck on whatever's left in the cells. If we can't refuel, we drift.",
+				"choices": [
+					{"text": "Should I be worried?", "next": 2},
+					{"text": "Hope you crack it.", "next": "exit"},
+				],
+			},
+			{
+				"speaker": "Dr James",
+				"text": "Worried, yes. Panicked, no. Rush is on the master code, Colonel Young's keeping people calm. Your job is to keep yourself alive — patch leaks, eat, sleep.",
+				"choices": [
+					{"text": "Will do.", "next": "exit"},
+				],
+			},
+		],
+		"met_james",
+	)
+
+
+# Civilian scientist on the opposite side of the control room. Quieter than James;
+# focused on environmental systems.
+func _spawn_dr_park() -> void:
+	_spawn_npc(
+		"DrPark",
+		"Dr Park",
+		Vector3(3.2, 0.0, 5.0),
+		-PI * 0.25,
+		"res://models/characters/eli.glb",
+		[
+			{
+				"speaker": "Dr Park",
+				"text": "Hey. I'm trying to figure out which vents actually scrub and which ones are decorative. So far it's about half and half. Need anything?",
+				"choices": [
+					{"text": "Is the air safe?", "next": 1},
+					{"text": "Need help?", "next": 2},
+					{"text": "I'll let you work.", "next": "exit"},
+				],
+			},
+			{
+				"speaker": "Dr Park",
+				"text": "Safe-ish. The CO₂ readings are climbing slowly. Not dangerous yet, but if we lose a scrubber we'll feel it within a day. Hence the half-and-half audit.",
+				"choices": [
+					{"text": "Need help?", "next": 2},
+					{"text": "Good to know.", "next": "exit"},
+				],
+			},
+			{
+				"speaker": "Dr Park",
+				"text": "Not from you, not yet — I need a multimeter that hasn't shown up on this ship. If you find one in a storage locker, bring it back. Otherwise: stay healthy, breathe shallow.",
+				"choices": [
+					{"text": "I'll keep an eye out.", "next": "exit"},
+				],
+			},
+		],
+		"met_park",
+	)
+
+
+# Sergeant pulling corridor watch in the east corridor — alongside the hull
+# breach that the player is meant to seal. Direct, blunt, useful.
+func _spawn_sgt_greer() -> void:
+	_spawn_npc(
+		"SgtGreer",
+		"Sgt Greer",
+		Vector3(0.0, 0.0, 8.0),
+		PI,  # face north (-z) so he's watching back toward the gate room
+		"res://models/characters/scott.glb",
+		[
+			{
+				"speaker": "Sgt Greer",
+				"text": "You see that breach down the hall? Don't walk past it. Seal it, then come back through this way. Got me?",
+				"choices": [
+					{"text": "Where's the switch?", "next": 1},
+					{"text": "What if it gets worse?", "next": 2},
+					{"text": "Copy that.", "next": "exit"},
+				],
+			},
+			{
+				"speaker": "Sgt Greer",
+				"text": "Opposite wall from the breach. Big yellow handle. You can't miss it unless you're trying. Hit it, panel slams down, problem stops.",
+				"choices": [
+					{"text": "What if it gets worse?", "next": 2},
+					{"text": "On it.", "next": "exit"},
+				],
+			},
+			{
+				"speaker": "Sgt Greer",
+				"text": "Then we lose the corridor and probably anyone in it. So don't make me come do it for you. Move.",
+				"choices": [
+					{"text": "Moving.", "next": "exit"},
+				],
+			},
+		],
+		"met_greer",
+	)
+
+
+# Civilian along the south corridor — Chloe, the IOA daughter. She's already
+# been through the gate-room briefing and is wandering, trying to be useful.
+func _spawn_chloe() -> void:
+	_spawn_npc(
+		"Chloe",
+		"Chloe Armstrong",
+		Vector3(12.0, 0.0, 0.0),
+		-PI * 0.5,  # face -x, back toward gate room
+		"res://models/characters/eli.glb",
+		[
+			{
+				"speaker": "Chloe Armstrong",
+				"text": "Hi. I — sorry, I don't actually know what I'm supposed to be doing. Are you with the military, or…?",
+				"choices": [
+					{"text": "Civilian, same as you.", "next": 1},
+					{"text": "Did you know your father…?", "next": 2},
+					{"text": "I should keep moving.", "next": "exit"},
+				],
+			},
+			{
+				"speaker": "Chloe Armstrong",
+				"text": "Oh. Good. I keep apologising to people in uniform. I came through the gate with my dad — Senator Armstrong. He's resting. They said it was bad.",
+				"choices": [
+					{"text": "I'm sorry.", "next": 2},
+					{"text": "Hang in there.", "next": "exit"},
+				],
+			},
+			{
+				"speaker": "Chloe Armstrong",
+				"text": "He's stable. That's what they say. I want to believe it. If you see Colonel Young, tell him I'm not in the way — I just don't want to sit in a room and wait.",
+				"choices": [
+					{"text": "I'll tell him.", "next": "exit"},
+				],
+			},
+		],
+		"met_chloe",
+	)
+
+
+# Anonymous soldier on north-corridor patrol. Short, professional exchange —
+# reinforces that there's a chain of command beyond the named officers.
+func _spawn_soldier() -> void:
+	_spawn_npc(
+		"Soldier",
+		"Soldier",
+		Vector3(-15.0, 0.0, 0.0),
+		PI * 0.5,  # face +x, walking east
+		"res://models/characters/scott.glb",
+		[
+			{
+				"speaker": "Soldier",
+				"text": "Ma'am. Sir. Sorry — half of us don't know who's who yet. Need directions?",
+				"choices": [
+					{"text": "What's down this corridor?", "next": 1},
+					{"text": "Everything okay up here?", "next": 2},
+					{"text": "I'm good. Carry on.", "next": "exit"},
+				],
+			},
+			{
+				"speaker": "Soldier",
+				"text": "Control room east of us, an elevator further along, and the crew quarters around the corner. Stick to lit hallways — the ship's still showing us new sections.",
+				"choices": [
+					{"text": "Everything okay up here?", "next": 2},
+					{"text": "Thanks.", "next": "exit"},
+				],
+			},
+			{
+				"speaker": "Soldier",
+				"text": "Quiet so far. Couple of hull alarms south of here earlier. Sergeant Greer's down there if you need to report something.",
+				"choices": [
+					{"text": "Good to know.", "next": "exit"},
+				],
+			},
+		],
+		"met_soldier",
+	)
+
+
 # -------- helpers ----------------------------------------------------------
+
+func _apply_corridor_min_short_axis(min_metres: float) -> void:
+	if String(_room_data.get("template_id", "")) != "corridor-template":
+		return
+	var min_units: float = min_metres / ShipLayout.SCALE
+	var w: float = float(_room_data.get("width", 0))
+	var h: float = float(_room_data.get("height", 0))
+	# Widen whichever axis is the short axis (preserving "long" vs "short" identity).
+	if w <= h:
+		_room_data["width"] = maxf(w, min_units)
+	else:
+		_room_data["height"] = maxf(h, min_units)
+
 
 func _load_connections() -> Dictionary:
 	var f: FileAccess = FileAccess.open(CONNECTIONS_PATH, FileAccess.READ)

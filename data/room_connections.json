@@ -1,40 +1,40 @@
 {
 	"gate_room": [
-		{ "dir": "-x", "to": "stargate_corridor_east_connector", "plaque": "Destiny Corridor" }
+		{ "dir": "-x", "to": "stargate_corridor_east_connector", "plaque": "Destiny Corridor — Rush / Breach" }
 	],
 
 	"stargate_corridor_east_connector": [
-		{ "dir": "-x", "to": "east_corridor", "plaque": "East Corridor" }
+		{ "dir": "-x", "to": "east_corridor", "plaque": "East Corridor — Breach" }
 	],
 
 	"east_corridor": [
-		{ "dir": "+x", "to": "north_corridor", "plaque": "North Wing" },
-		{ "dir": "+x", "to": "south_corridor", "plaque": "South Wing" }
+		{ "dir": "+x", "to": "north_corridor", "plaque": "North Wing — Rush / Quarters" },
+		{ "dir": "+x", "to": "south_corridor", "plaque": "South Wing — Control" }
 	],
 
 	"north_corridor": [
 		{ "dir": "+x", "to": "elevator_north", "plaque": "Elevator" },
-		{ "dir": "+z", "to": "control_approach_north", "plaque": "To Control" }
+		{ "dir": "+z", "to": "control_approach_north", "plaque": "To Control / Rush" }
 	],
 
 	"south_corridor": [
-		{ "dir": "-z", "to": "control_approach_south", "plaque": "To Control" }
+		{ "dir": "-z", "to": "control_approach_south", "plaque": "To Control / Rush" }
 	],
 
 	"control_approach_north": [
-		{ "dir": "+z", "to": "control_interface_room", "plaque": "Control Room" }
+		{ "dir": "+z", "to": "control_interface_room", "plaque": "Control Room — Dr Rush" }
 	],
 
 	"control_approach_south": [
-		{ "dir": "-z", "to": "control_interface_room", "plaque": "Control Room" }
+		{ "dir": "-z", "to": "control_interface_room", "plaque": "Control Room — Dr Rush" }
 	],
 
 	"control_interface_room": [
-		{ "dir": "+x", "to": "cr_corridor_2", "plaque": "Kino Storage" }
+		{ "dir": "+x", "to": "cr_corridor_2", "plaque": "Kino Storage Route" }
 	],
 
 	"cr_corridor_2": [
-		{ "dir": "+x", "to": "kino_room", "plaque": "Storage" }
+		{ "dir": "+x", "to": "kino_room", "plaque": "Storage — Kino Remote" }
 	],
 
 	"elevator_north": [
@@ -43,10 +43,10 @@
 
 	"elevator_room_floor_1": [
 		{ "dir": "-x", "to": "room_1753576770763", "plaque": "Quarters Corridor" },
-		{ "dir": "+x", "to": "hydroponics", "plaque": "Hydroponics" }
+		{ "dir": "+x", "to": "hydroponics", "plaque": "Hydroponics — CO2 Scrubber" }
 	],
 
 	"room_1753576770763": [
-		{ "dir": "+z", "to": "quarters_room_1", "plaque": "Crew Quarters" }
+		{ "dir": "+z", "to": "quarters_room_1", "plaque": "Crew Quarters — Eli" }
 	]
 }

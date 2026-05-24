@@ -61,11 +61,11 @@ func _build_and_show() -> void:
 	stack.add_child(sub)
 
 	var summary: Label = Label.new()
-	summary.text = ("You sealed Compartment 14B. The Destiny holds.\n"
-		+ "You found your quarters. You can rest.\n"
-		+ "You have a Kino Remote. The ship's secrets are no longer one-way.\n\n"
-		+ "More of the Destiny is dark. More of it is wrong.\n"
-		+ "But, for now: you can breathe.")
+	summary.text = ("You sealed the exposed section.\n"
+		+ "You reached the lime planet and brought back what life support needed.\n"
+		+ "The CO2 scrubber is repaired. Destiny can breathe again.\n\n"
+		+ "More of the ship is dark. More of it is wrong.\n"
+		+ "But Episode 1 is no longer just survival — it is a way forward.")
 	summary.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	summary.add_theme_font_size_override("font_size", 14)
 	summary.add_theme_color_override("font_color", Color(0.78, 0.85, 0.95, 0.9))

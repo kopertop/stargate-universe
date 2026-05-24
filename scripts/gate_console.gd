@@ -41,19 +41,28 @@ func _ready() -> void:
 	_build_readout()
 
 func _process(delta: float) -> void:
+	if _readout != null:
+		_readout.text = _readout_text()
+	_apply_kind_defaults()
 	if kind != "ftl_countdown":
 		return
 	ftl_seconds_remaining = maxf(0.0, ftl_seconds_remaining - delta)
-	if _readout != null:
-		_readout.text = "NEXT FTL DROP\n" + _format_countdown(ftl_seconds_remaining)
 
 func _apply_kind_defaults() -> void:
 	# Each kind gets its own interact prompt — the player doesn't have to walk
 	# up to know which one they're aiming at.
 	if kind == "ftl_countdown":
 		prompt = "Read FTL status"
+		if GameState.quest_step == GameState.QUEST_WAIT_FTL:
+			prompt = "Trigger FTL drop"
 	else:
 		prompt = "Read Eli's notes"
+		if GameState.quest_step == GameState.QUEST_DIAGNOSE_LIFE_SUPPORT:
+			prompt = "Diagnose life support"
+		elif GameState.quest_step == GameState.QUEST_DIAL_LIME_PLANET:
+			prompt = "Dial lime planet"
+		elif GameState.is_lime_gate_open():
+			prompt = "Gate active: lime planet"
 
 func _build_readout() -> void:
 	_readout = Label3D.new()
@@ -69,18 +78,25 @@ func _build_readout() -> void:
 	_readout.position = Vector3(0.0, 1.85, 0.0)
 	add_child(_readout)
 	# Set initial text immediately so the first frame already reads.
-	if kind == "ftl_countdown":
-		_readout.text = "NEXT FTL DROP\n" + _format_countdown(ftl_seconds_remaining)
-	else:
-		_readout.text = "GATE CONTROL\nSTANDBY"
+	_readout.text = _readout_text()
 
 func _on_interact(_by: Node) -> void:
 	if kind == "ftl_countdown":
-		GameState.add_log("Console: Next FTL drop in %s." % _format_countdown(ftl_seconds_remaining))
-		GameState.add_log(_ftl_lines[_line_index % _ftl_lines.size()])
+		if GameState.quest_step == GameState.QUEST_WAIT_FTL:
+			GameState.trigger_ftl_drop()
+		else:
+			GameState.add_log("Console: Next FTL drop in %s." % _format_countdown(ftl_seconds_remaining))
+			GameState.add_log(_ftl_lines[_line_index % _ftl_lines.size()])
 	else:
-		GameState.add_log("Console: Gate is in standby. Address book empty.")
-		GameState.add_log(_gate_lines[_line_index % _gate_lines.size()])
+		if GameState.quest_step == GameState.QUEST_DIAGNOSE_LIFE_SUPPORT:
+			GameState.diagnose_life_support()
+		elif GameState.quest_step == GameState.QUEST_DIAL_LIME_PLANET:
+			GameState.dial_lime_planet()
+		elif GameState.is_lime_gate_open():
+			GameState.add_log("Console: Wormhole active to the lime planet. Step through the gate.")
+		else:
+			GameState.add_log("Console: Gate is in standby. Address book empty.")
+			GameState.add_log(_gate_lines[_line_index % _gate_lines.size()])
 	_line_index += 1
 
 func _format_countdown(total_seconds: float) -> String:
@@ -89,3 +105,18 @@ func _format_countdown(total_seconds: float) -> String:
 	var m: int = (t % 3600) / 60
 	var s: int = t % 60
 	return "%dh %02dm %02ds" % [h, m, s]
+
+func _readout_text() -> String:
+	if kind == "ftl_countdown":
+		if GameState.quest_step == GameState.QUEST_WAIT_FTL:
+			return "FTL WINDOW\nDROP NOW"
+		if GameState.ftl_drop_triggered:
+			return "FTL STATUS\nNORMAL SPACE"
+		return "NEXT FTL DROP\n" + _format_countdown(ftl_seconds_remaining)
+	if GameState.quest_step == GameState.QUEST_DIAGNOSE_LIFE_SUPPORT:
+		return "LIFE SUPPORT\nDIAGNOSTIC READY"
+	if GameState.quest_step == GameState.QUEST_DIAL_LIME_PLANET:
+		return "GATE CONTROL\nLIME WORLD LOCK"
+	if GameState.is_lime_gate_open():
+		return "GATE ACTIVE\nLIME WORLD"
+	return "GATE CONTROL\nSTANDBY"

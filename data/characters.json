@@ -36,6 +36,11 @@
 		"role": "civilian",
 		"short_name": "James"
 	},
+	"Lt James": {
+		"portrait": "res://sprites/portraits/dr-james.png",
+		"role": "military",
+		"short_name": "James"
+	},
 	"Dr Park": {
 		"portrait": "res://sprites/portraits/dr-park.png",
 		"role": "civilian",

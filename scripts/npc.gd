@@ -19,6 +19,9 @@ extends Interactable
 # Each node is a Dictionary { speaker, text, choices: [{ text, next }] }.
 # `next` is an integer index into the same tree, or the string "exit".
 @export var dialogue_tree: Array = []
+# Optional replacement after `met_flag` is already true. This keeps stateful
+# NPCs from replaying first-meet exposition after a save/load or re-interact.
+@export var repeat_dialogue_tree: Array = []
 @export var met_flag: String = ""
 @export var first_meet_objective: String = ""
 # When set, the first interact also recomputes the objective via the
@@ -75,11 +78,12 @@ func _process(delta: float) -> void:
 func _on_interact(_by: Node) -> void:
 	# Choice-tree dialog takes precedence. The DialogScreen pauses the game,
 	# zooms a portrait-camera onto this node, and routes choice picks back.
-	if not dialogue_tree.is_empty():
-		if _line_index == 0:
+	var active_tree: Array = _active_dialogue_tree()
+	if not active_tree.is_empty():
+		if _line_index == 0 and not _has_met():
 			_handle_first_meet()
 		_line_index += 1
-		GameState.dialog_started.emit(self, dialogue_tree)
+		GameState.dialog_started.emit(self, active_tree)
 		return
 	if dialogue_lines.is_empty():
 		return
@@ -157,3 +161,11 @@ func _handle_first_meet() -> void:
 		# Rush completes the story arc — re-check episode completion.
 		if GameState.has_method("check_episode_complete"):
 			GameState.check_episode_complete()
+
+func _has_met() -> bool:
+	return met_flag != "" and bool(GameState.get(met_flag))
+
+func _active_dialogue_tree() -> Array:
+	if _has_met() and not repeat_dialogue_tree.is_empty():
+		return repeat_dialogue_tree
+	return dialogue_tree

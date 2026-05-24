@@ -38,6 +38,20 @@ const STATIC_SCENES: Array = [
 			"GateShutdown",
 		],
 	},
+	{
+		"path": "res://scenes/planet.tscn",
+		"requires": [
+			"Player",
+			"View/SpringArm/Camera",
+			"HUDLayer/HUD",
+			"World",
+			"FromShipGate",
+			"World/PlanetGround",
+			"World/PlanetReturnStargate",
+			"World/PlanetReturnGate",
+			"World/LimeNode1",
+		],
+	},
 ]
 
 const ROOM_SCENE: String = "res://scenes/room.tscn"
@@ -64,6 +78,7 @@ const ROOM_INTERACTABLE_REQUIRES: Dictionary = {
 	"kino_room": ["KinoPickup"],
 	"east_corridor": ["HullBreach", "HullSealSwitch"],
 	"control_interface_room": ["DrRush"],
+	"hydroponics": ["CO2Scrubber"],
 }
 
 var _failures: Array[String] = []
@@ -129,8 +144,93 @@ func _check_scene(path: String, required_paths: Array) -> void:
 	else:
 		print("  OK (", required_paths.size(), " nodes resolved)")
 		_passes += 1
+		if path == "res://scenes/gate_room.tscn":
+			_check_gate_room_spawn(inst)
+			_check_gate_room_tableau(inst)
+			_check_scott_repeat_dialogue(inst)
 	root.remove_child(inst)
 	inst.free()
+
+
+func _check_gate_room_spawn(inst: Node) -> void:
+	var player := inst.get_node_or_null("Player") as Node3D
+	if player == null:
+		_fail("res://scenes/gate_room.tscn", "Player is not a Node3D")
+		return
+	var forward: Vector3 = -player.global_transform.basis.z
+	forward.y = 0.0
+	if forward.length() < 0.01:
+		_fail("res://scenes/gate_room.tscn", "Player forward vector is zero")
+		return
+	var dot: float = forward.normalized().dot(Vector3(0.0, 0.0, -1.0))
+	if dot > 0.8:
+		print("  OK (FromGate default spawn faces away from gate)")
+		_passes += 1
+	else:
+		_fail("res://scenes/gate_room.tscn",
+			"FromGate default spawn faces the wrong way (dot=%.2f)" % dot)
+
+
+func _check_gate_room_tableau(inst: Node) -> void:
+	var young := inst.get_node_or_null("World/ColonelYoung") as Node3D
+	var james := inst.get_node_or_null("World/LtJames") as Node3D
+	var park := inst.get_node_or_null("World/DrPark") as Node3D
+	if young == null:
+		_fail("res://scenes/gate_room.tscn", "Colonel Young tableau node missing")
+		return
+	if james == null:
+		_fail("res://scenes/gate_room.tscn", "Lt James tableau node missing")
+		return
+	if park != null:
+		_fail("res://scenes/gate_room.tscn", "Dr Park should not be in the gate-room medic tableau")
+		return
+	if young.is_in_group("interactable"):
+		_fail("res://scenes/gate_room.tscn", "Colonel Young should not be interactable while unconscious")
+		return
+	if not james.is_in_group("interactable"):
+		_fail("res://scenes/gate_room.tscn", "Lt James should be the talkable medic")
+		return
+	if String(james.get("met_flag")) != "":
+		_fail("res://scenes/gate_room.tscn", "Lt James should not write undefined quest flags")
+		return
+	if young.get_node_or_null("FaceOverride") == null:
+		_fail("res://scenes/gate_room.tscn", "Colonel Young X_X face override missing")
+		return
+	var to_young: Vector3 = young.global_position - james.global_position
+	to_young.y = 0.0
+	var forward: Vector3 = -james.global_transform.basis.z
+	forward.y = 0.0
+	if to_young.length() < 0.01 or forward.length() < 0.01:
+		_fail("res://scenes/gate_room.tscn", "Lt James facing check has zero vector")
+		return
+	var dot: float = forward.normalized().dot(to_young.normalized())
+	if dot <= 0.8:
+		_fail("res://scenes/gate_room.tscn",
+			"Lt James should face Colonel Young (dot=%.2f)" % dot)
+		return
+	print("  OK (medic tableau: Young unconscious, Lt James only talkable and facing him)")
+	_passes += 1
+
+
+func _check_scott_repeat_dialogue(inst: Node) -> void:
+	var scott := inst.get_node_or_null("World/LtScott")
+	if scott == null:
+		_fail("res://scenes/gate_room.tscn", "Lt Scott node missing")
+		return
+	var was_met: bool = bool(_game_state.get("met_scott"))
+	_game_state.set("met_scott", true)
+	var tree: Array = scott.call("_active_dialogue_tree")
+	_game_state.set("met_scott", was_met)
+	if tree.is_empty():
+		_fail("res://scenes/gate_room.tscn", "Lt Scott repeat dialogue tree missing")
+		return
+	var line: String = String((tree[0] as Dictionary).get("text", ""))
+	if line != "Hurry up Eli, find Rush!":
+		_fail("res://scenes/gate_room.tscn",
+			"Lt Scott repeat line wrong: %s" % line)
+		return
+	print("  OK (Lt Scott repeat dialogue respects met_scott state)")
+	_passes += 1
 
 
 # Boot scenes/room.tscn once per non-gate ShipLayout row, asserting World/
@@ -240,6 +340,23 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 			else:
 				_fail("%s [east_corridor]" % ROOM_SCENE,
 					"HullSealSwitch.interact() did not record a sealed breach")
+		"hydroponics":
+			_game_state.set("met_scott", true)
+			_game_state.set("met_rush", true)
+			_game_state.set("quarters_found", true)
+			_game_state.set("kino_acquired", true)
+			_game_state.call("advance_air_quest")
+			_game_state.call("start_air_crisis")
+			_game_state.call("diagnose_life_support")
+			_game_state.call("seal_breach", "breach_a")
+			var scrubber: Node = inst.get_node("CO2Scrubber")
+			scrubber.call("interact", null)
+			if bool(_game_state.get("scrubber_diagnosed")):
+				print("  OK (CO2Scrubber.interact → scrubber_diagnosed=true)")
+				_passes += 1
+			else:
+				_fail("%s [hydroponics]" % ROOM_SCENE,
+					"CO2Scrubber.interact() did not diagnose the scrubber")
 
 
 # BFS the connection graph (data/room_connections.json) from gate_room and
@@ -253,6 +370,7 @@ func _check_connection_reachability() -> void:
 		"control_interface_room",       # Dr Rush
 		"kino_room",                    # kino pickup
 		"quarters_room_1",              # Eli's bunk
+		"hydroponics",                  # CO2 scrubber
 	]
 	var connections: Dictionary = _load_connections()
 	if connections.is_empty():

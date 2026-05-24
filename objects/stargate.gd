@@ -19,12 +19,10 @@ extends Node3D
 @export var active: bool = false:
 	set(value):
 		active = value
-		if _horizon != null:
-			_horizon.visible = value
-		if _horizon_light != null:
-			_horizon_light.visible = value
+		_set_horizon_visible(value)
 
 var _horizon: MeshInstance3D
+var _horizon_ripples: Array[MeshInstance3D] = []
 var _horizon_light: OmniLight3D
 
 func _ready() -> void:
@@ -32,11 +30,25 @@ func _ready() -> void:
 	_build_inner_glyph_band()
 	_build_chevrons()
 	_build_event_horizon()
-	# Apply the active flag in case it was set in the editor.
+	_set_horizon_visible(active)
+
+func _process(delta: float) -> void:
+	if not active:
+		return
 	if _horizon != null:
-		_horizon.visible = active
+		var pulse: float = 1.0 + sin(Time.get_ticks_msec() * 0.006) * 0.015
+		_horizon.scale = Vector3(pulse, pulse, 1.0)
+	for i in _horizon_ripples.size():
+		var ripple: MeshInstance3D = _horizon_ripples[i]
+		ripple.rotation.z += delta * (0.25 + float(i) * 0.18)
+
+func _set_horizon_visible(is_visible: bool) -> void:
+	if _horizon != null:
+		_horizon.visible = is_visible
+	for ripple in _horizon_ripples:
+		ripple.visible = is_visible
 	if _horizon_light != null:
-		_horizon_light.visible = active
+		_horizon_light.visible = is_visible
 
 func _build_outer_ring() -> void:
 	var mi: MeshInstance3D = MeshInstance3D.new()
@@ -137,33 +149,61 @@ func _build_chevrons() -> void:
 		pivot.add_child(tip)
 
 func _build_event_horizon() -> void:
-	# Center plane: emissive blue puddle for the active gate. Slightly smaller
-	# than the inner radius so the ring frames it cleanly.
+	# Center plane: emissive blue puddle for the active gate. Use a thin
+	# cylinder rotated onto the gate's Z axis so it reads as a vertical disc.
 	_horizon = MeshInstance3D.new()
 	_horizon.name = "EventHorizon"
-	var disk: SphereMesh = SphereMesh.new()
-	# Flatten a sphere to a thick disk — gives the puddle a touch of curvature.
-	disk.radius = radius_inner - 0.05
-	disk.height = 0.30
-	disk.radial_segments = 64
-	disk.rings = 6
+	var disk: CylinderMesh = CylinderMesh.new()
+	disk.top_radius = radius_inner - 0.08
+	disk.bottom_radius = radius_inner - 0.08
+	disk.height = 0.08
+	disk.radial_segments = 96
+	disk.rings = 2
 	_horizon.mesh = disk
+	_horizon.rotation_degrees = Vector3(90.0, 0.0, 0.0)
 	var mat: StandardMaterial3D = StandardMaterial3D.new()
-	mat.albedo_color = Color(0.45, 0.78, 1.0, 1.0)
+	mat.albedo_color = Color(0.28, 0.75, 1.0, 0.72)
 	mat.metallic = 0.0
-	mat.roughness = 0.6
+	mat.roughness = 0.35
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mat.emission_enabled = true
-	mat.emission = Color(0.45, 0.78, 1.0, 1.0)
-	mat.emission_energy_multiplier = 1.8
+	mat.emission = Color(0.32, 0.84, 1.0, 1.0)
+	mat.emission_energy_multiplier = 2.6
 	_horizon.material_override = mat
 	_horizon.visible = active
 	add_child(_horizon)
+
+	for i in 2:
+		var ripple: MeshInstance3D = MeshInstance3D.new()
+		ripple.name = "EventHorizonRipple%d" % i
+		var ring: TorusMesh = TorusMesh.new()
+		var outer: float = radius_inner * (0.50 + float(i) * 0.20)
+		ring.inner_radius = outer - 0.035
+		ring.outer_radius = outer + 0.035
+		ring.ring_segments = 96
+		ring.rings = 8
+		ripple.mesh = ring
+		ripple.rotation_degrees = Vector3(90.0, 0.0, 0.0)
+		var ripple_mat: StandardMaterial3D = StandardMaterial3D.new()
+		ripple_mat.albedo_color = Color(0.58, 0.90, 1.0, 0.48)
+		ripple_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		ripple_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		ripple_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		ripple_mat.emission_enabled = true
+		ripple_mat.emission = Color(0.52, 0.92, 1.0, 1.0)
+		ripple_mat.emission_energy_multiplier = 1.8
+		ripple.material_override = ripple_mat
+		ripple.visible = active
+		_horizon_ripples.append(ripple)
+		add_child(ripple)
 
 	# Soft light spilling from the puddle so the room lights up when active.
 	_horizon_light = OmniLight3D.new()
 	_horizon_light.name = "HorizonLight"
 	_horizon_light.light_color = Color(0.55, 0.80, 1.0, 1.0)
-	_horizon_light.light_energy = 3.5
+	_horizon_light.light_energy = 4.6
 	_horizon_light.omni_range = 16.0
 	_horizon_light.position = Vector3(0.0, 0.0, 0.6)
 	_horizon_light.visible = active

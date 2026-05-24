@@ -74,8 +74,12 @@ func _place_player_at_spawn() -> void:
 	if player == null or not (player is Node3D):
 		return
 	var marker_n: Node3D = marker as Node3D
-	# Different scenes authored spawn markers with different (or zero) basis
-	# rotation, so we cannot trust `marker_n.basis` for the player's facing.
+	# Most room-to-room markers are door-adjacent, so derive facing from the
+	# nearest door. Stargate arrivals are explicit: their marker faces out from
+	# the event horizon, as if the player just stepped through it.
+	#
+	# Different non-gate scenes authored spawn markers with different (or zero)
+	# basis rotation, so we cannot blindly trust `marker_n.basis` everywhere.
 	# Derive "into the room" from geometry — nearest Door to the marker — and
 	# build a fresh transform that always places the player AT the door,
 	# facing away from it, so the camera lands behind them and continuing
@@ -112,12 +116,17 @@ func _find_marker(node: Node, target_name: String) -> Node:
 # behind the player, so we walk away from it. Falls back to the marker's local
 # -Z when no door is found (e.g. test scenes without any doors).
 func _direction_into_room(root: Node, marker_n: Node3D) -> Vector3:
+	if marker_n.name == "FromGate":
+		return _marker_forward(marker_n)
 	var nearest_door: Node3D = _find_nearest_door(root, marker_n.global_position)
 	if nearest_door != null:
 		var away: Vector3 = marker_n.global_position - nearest_door.global_position
 		away.y = 0.0
 		if away.length() > 0.01:
 			return away.normalized()
+	return _marker_forward(marker_n)
+
+func _marker_forward(marker_n: Node3D) -> Vector3:
 	var fallback: Vector3 = -marker_n.global_transform.basis.z
 	fallback.y = 0.0
 	if fallback.length() < 0.01:

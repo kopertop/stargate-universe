@@ -180,6 +180,39 @@ static func _accent_corridor(world: Node3D, width: float, depth: float, height: 
 
 	_corridor_place(world, conduit_mat, axis_z, 0.0, height - 0.18, 0.0, 0.22, 0.22, strip_len)
 
+	# --- Floor walkway stripe -----------------------------------------------
+	# Pair of dim emissive strips inset from the floor edges, framing a
+	# pedestrian lane down the corridor's center. Only worth adding when the
+	# corridor is wide enough that the lane reads as intentional.
+	if short_len >= 2.5:
+		var lane_mat: StandardMaterial3D = _emissive_mat(palette["accent"], 0.9)
+		var lane_inset: float = 0.50
+		for lane_side in [1.0, -1.0]:
+			_corridor_place(world, lane_mat, axis_z,
+				lane_side * (half_short - lane_inset),
+				0.025, 0.0,
+				0.06, 0.02, strip_len)
+
+	# --- Wall service panels -------------------------------------------------
+	# Small dark recessed rectangles set into the wall between sconces — a
+	# silent storytelling beat: "this corridor has working systems behind it."
+	# Each panel gets a tiny accent indicator dot. Only emit when the rib
+	# spacing is wide enough to fit them between ribs without crowding.
+	if rib_count >= 1 and short_len > 2.0:
+		var panel_mat: StandardMaterial3D = _make_mat((palette["wall"] as Color).darkened(0.55), 0.5, 0.55)
+		var indicator_mat: StandardMaterial3D = _emissive_mat(palette["accent"], 3.0)
+		var spacing_p: float = strip_len / float(rib_count + 1)
+		for j in range(rib_count + 1):
+			var ts_p: float = -strip_len * 0.5 + spacing_p * (float(j) + 0.5)
+			# Panel sits ~0.85 m off the floor — hip height. Slim recess look.
+			for side_p in [1.0, -1.0]:
+				_corridor_place(world, panel_mat, axis_z,
+					side_p * (half_short - 0.02),
+					0.85, ts_p, 0.03, 0.45, 0.30)
+				_corridor_place(world, indicator_mat, axis_z,
+					side_p * (half_short - 0.04),
+					1.02, ts_p + 0.10, 0.02, 0.04, 0.04)
+
 
 # Place a decor box inside a corridor whose long axis is +Z (axis_z=true) or
 # +X (axis_z=false). perp_off/along_off are positions in the corridor's short
@@ -647,32 +680,116 @@ static func _accent_hydroponics(world: Node3D, width: float, depth: float, heigh
 
 # Elevator: cyan-rimmed floor disc + ceiling cap, plus four corner light
 # columns running floor-to-ceiling and a wall-mounted control panel on +X.
+# Elevator / transport bay: central glowing transport pad with a Kenney
+# `machine_generator.glb` lift mechanism against the -X wall and a
+# `machine_wireless.glb` call console on the +X wall. Cyan strip-lights climb
+# the four corner pillars so the geometry reads as an active lift shaft, and
+# warm cyan Omni lights pool on the pad and ceiling cap.
 static func _accent_elevator(world: Node3D, width: float, depth: float, height: float, palette: Dictionary) -> void:
-	var disc_mat: StandardMaterial3D = _emissive_mat(palette["accent"], 2.0)
-	var cap_mat: StandardMaterial3D = _emissive_mat(palette["accent"], 1.8)
-	var col_mat: StandardMaterial3D = _emissive_mat(palette["accent"], 2.6)
+	var accent: Color = palette["accent"]
+	var disc_mat: StandardMaterial3D = _emissive_mat(accent, 2.4)
+	var ring_mat: StandardMaterial3D = _emissive_mat(accent, 3.4)
+	var cap_mat: StandardMaterial3D = _emissive_mat(accent, 2.0)
+	var strip_mat: StandardMaterial3D = _emissive_mat(accent, 2.8)
+	var pillar_mat: StandardMaterial3D = _make_mat((palette["wall"] as Color).darkened(0.45), 0.55, 0.5)
 	var panel_mat: StandardMaterial3D = _make_mat((palette["wall"] as Color).darkened(0.25), 0.55, 0.4)
-	var panel_screen_mat: StandardMaterial3D = _emissive_mat(palette["accent"], 3.0)
+	var panel_screen_mat: StandardMaterial3D = _emissive_mat(accent, 3.2)
 
-	_add_decor(world, disc_mat, Vector3(0.0, 0.02, 0.0), Vector3(width - 0.8, 0.04, depth - 0.8))
+	# --- Transport pad ------------------------------------------------------
+	# Inner glowing disc + bright outer ring frame. Ring frame is 4 thin slabs
+	# inset around the disc to read as a beveled platform edge.
+	var pad_w: float = width - 1.4
+	var pad_d: float = depth - 1.4
+	_add_decor(world, disc_mat, Vector3(0.0, 0.025, 0.0), Vector3(pad_w, 0.05, pad_d))
+	var rim_t: float = 0.10
+	var rim_y: float = 0.07
+	_add_decor(world, ring_mat,
+		Vector3(0.0, rim_y, pad_d * 0.5 + rim_t * 0.5),
+		Vector3(pad_w + rim_t * 2.0, 0.04, rim_t))
+	_add_decor(world, ring_mat,
+		Vector3(0.0, rim_y, -pad_d * 0.5 - rim_t * 0.5),
+		Vector3(pad_w + rim_t * 2.0, 0.04, rim_t))
+	_add_decor(world, ring_mat,
+		Vector3(pad_w * 0.5 + rim_t * 0.5, rim_y, 0.0),
+		Vector3(rim_t, 0.04, pad_d))
+	_add_decor(world, ring_mat,
+		Vector3(-pad_w * 0.5 - rim_t * 0.5, rim_y, 0.0),
+		Vector3(rim_t, 0.04, pad_d))
+
+	# --- Ceiling cap --------------------------------------------------------
 	_add_decor(world, cap_mat,
 		Vector3(0.0, height - 0.10, 0.0),
 		Vector3(width - 1.2, 0.06, depth - 1.2))
 
-	var hx: float = width * 0.5 - 0.12
-	var hz: float = depth * 0.5 - 0.12
+	# --- Corner pillars with vertical light strips --------------------------
+	# Dark metal pillars frame the bay; a thin cyan strip up the inner face of
+	# each pillar reads as a lift-shaft "rails-lit" effect from any angle.
+	var hx: float = width * 0.5 - 0.14
+	var hz: float = depth * 0.5 - 0.14
 	for sx in [1.0, -1.0]:
 		for sz in [1.0, -1.0]:
-			_add_decor(world, col_mat,
+			_add_decor(world, pillar_mat,
 				Vector3(sx * hx, height * 0.5, sz * hz),
-				Vector3(0.08, height - 0.1, 0.08))
+				Vector3(0.18, height - 0.12, 0.18))
+			# Cyan strip on the inner faces (-X and -Z direction from the pillar).
+			_add_decor(world, strip_mat,
+				Vector3(sx * (hx - 0.10), height * 0.5, sz * hz),
+				Vector3(0.04, height - 0.5, 0.04))
+			_add_decor(world, strip_mat,
+				Vector3(sx * hx, height * 0.5, sz * (hz - 0.10)),
+				Vector3(0.04, height - 0.5, 0.04))
 
+	# --- Lift machinery against -X wall -------------------------------------
+	# `machine_generator.glb` is a chunky pipe-and-housing unit that sells the
+	# room as a real elevator shaft rather than an empty cube.
+	var gen_glb: PackedScene = load("res://models/props/space_kit/machine_generator.glb")
+	if gen_glb != null:
+		_spawn_kenney_prop(world, gen_glb,
+			Vector3(-width * 0.5 + 0.5, 0.0, -depth * 0.5 + 0.6),
+			PI * 0.5, 1.4,
+			Color(0.55, 0.58, 0.62))
+		_spawn_kenney_prop(world, gen_glb,
+			Vector3(-width * 0.5 + 0.5, 0.0, depth * 0.5 - 0.6),
+			PI * 0.5, 1.4,
+			Color(0.55, 0.58, 0.62))
+
+	# --- Call console on +X wall --------------------------------------------
+	# Wall-mounted `machine_wireless.glb` as the floor-selector console plus a
+	# small emissive readout plate above it.
+	var wireless_glb: PackedScene = load("res://models/props/space_kit/machine_wireless.glb")
+	if wireless_glb != null:
+		_spawn_kenney_prop(world, wireless_glb,
+			Vector3(width * 0.5 - 0.5, 0.0, 0.0),
+			-PI * 0.5, 1.0,
+			Color(0.50, 0.55, 0.60))
 	_add_decor(world, panel_mat,
-		Vector3(width * 0.5 - 0.05, 1.3, 0.0),
-		Vector3(0.08, 0.6, 0.45))
+		Vector3(width * 0.5 - 0.06, 1.55, 0.0),
+		Vector3(0.06, 0.45, 0.55))
 	_add_decor(world, panel_screen_mat,
-		Vector3(width * 0.5 - 0.08, 1.4, 0.0),
-		Vector3(0.04, 0.3, 0.35))
+		Vector3(width * 0.5 - 0.09, 1.60, 0.0),
+		Vector3(0.04, 0.22, 0.40))
+
+	# --- Lights --------------------------------------------------------------
+	# Floor pool — the transport-pad glow.
+	var pad_light: OmniLight3D = OmniLight3D.new()
+	pad_light.name = "PadLight"
+	pad_light.light_color = accent
+	pad_light.light_energy = 1.8
+	pad_light.omni_range = 4.5
+	pad_light.omni_attenuation = 1.6
+	pad_light.shadow_enabled = false
+	pad_light.position = Vector3(0.0, 0.4, 0.0)
+	world.add_child(pad_light)
+	# Ceiling pool — picks out the cap and machinery housing.
+	var cap_light: OmniLight3D = OmniLight3D.new()
+	cap_light.name = "CapLight"
+	cap_light.light_color = accent
+	cap_light.light_energy = 2.0
+	cap_light.omni_range = 6.0
+	cap_light.omni_attenuation = 1.4
+	cap_light.shadow_enabled = false
+	cap_light.position = Vector3(0.0, height - 0.5, 0.0)
+	world.add_child(cap_light)
 
 
 # ----- palette ---------------------------------------------------------------

@@ -1,0 +1,11 @@
+[
+	{
+		"id": "air_lime_world",
+		"name": "Lime World",
+		"seed": 104729,
+		"radius": 34.0,
+		"lime_nodes": 4,
+		"lime_per_node": 1,
+		"description": "A dry lime-rich planet dialed during the first Air crisis."
+	}
+]

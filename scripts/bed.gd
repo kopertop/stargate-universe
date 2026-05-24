@@ -15,7 +15,14 @@ func _on_interact(_by: Node) -> void:
 	if not GameState.quarters_found:
 		GameState.add_log(first_time_log)
 		GameState.mark_quarters_found()
+	if GameState.air_crisis_started and not GameState.scrubber_repaired:
+		GameState.add_log("No chance of sleeping with CO2 alarms rising.")
+		return
 	GameState.heal_full()
+	if GameState.can_start_air_crisis():
+		GameState.add_log("You sleep hard enough to miss the jump timer.")
+		GameState.start_air_crisis()
+		return
 	GameState.restore_oxygen(GameState.MAX_OXYGEN)
 	GameState.add_log(sleep_message)
-	GameState.check_episode_complete()
+	GameState.advance_air_quest()

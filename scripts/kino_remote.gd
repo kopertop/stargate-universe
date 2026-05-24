@@ -123,12 +123,18 @@ func _build_status_tab() -> void:
 	_label(page, "  Crew member: Eli Wallace", 14, Color.WHITE)
 	_label(page, "  Vessel: Destiny (Ancient)", 14, Color.WHITE)
 	_label(page, "  Status: stranded, ambulatory", 14, Color.WHITE)
+	var q: Label = _label(page, "  Quest: —", 14, Color.WHITE)
+	q.name = "QuestStepLabel"
 	page.add_child(HSeparator.new())
 	_label(page, "READINGS", 16, Color(0.55, 0.85, 1.0, 1.0))
 	var h: Label = _label(page, "  Health: —", 14, Color.WHITE)
 	h.name = "HealthLabel"
 	var o: Label = _label(page, "  Oxygen: —", 14, Color.WHITE)
 	o.name = "OxygenLabel"
+	var r: Label = _label(page, "  Lime: —", 14, Color.WHITE)
+	r.name = "LimeLabel"
+	var scan: Label = _label(page, "  Planet scan: —", 14, Color(0.82, 0.92, 1.0, 0.9))
+	scan.name = "PlanetScanLabel"
 
 func _build_objectives_tab() -> void:
 	var page: VBoxContainer = VBoxContainer.new()
@@ -291,16 +297,33 @@ func _refresh_status() -> void:
 	var page: Node = _tabs.get_node("Status")
 	var h: Label = page.get_node_or_null("HealthLabel") as Label
 	var o: Label = page.get_node_or_null("OxygenLabel") as Label
+	var q: Label = page.get_node_or_null("QuestStepLabel") as Label
+	var r: Label = page.get_node_or_null("LimeLabel") as Label
+	var scan: Label = page.get_node_or_null("PlanetScanLabel") as Label
+	if q != null:
+		q.text = "  Quest:  %s" % GameState.quest_step_label()
 	if h != null:
 		h.text = "  Health:  %d / 100" % int(GameState.health)
 	if o != null:
 		o.text = "  Oxygen:  %d / 100" % int(GameState.oxygen)
+	if r != null:
+		r.text = "  Lime:  %d / %d" % [
+			GameState.resource_count(GameState.AIR_LIME_RESOURCE),
+			GameState.AIR_LIME_REQUIRED,
+		]
+	if scan != null:
+		if GameState.lime_planet_dialed:
+			scan.text = "  Planet scan: air_lime_world — lime deposits confirmed"
+		elif GameState.ftl_drop_triggered:
+			scan.text = "  Planet scan: viable address pending gate dial"
+		else:
+			scan.text = "  Planet scan: no active offworld scan"
 
 func _refresh_objectives() -> void:
 	var page: Node = _tabs.get_node("Objectives")
 	var cur: Label = page.get_node_or_null("CurrentObjective") as Label
 	if cur != null:
-		cur.text = "  " + GameState.current_objective
+		cur.text = "  [%s] %s" % [GameState.quest_step_label(), GameState.current_objective]
 	var box: VBoxContainer = page.get_node_or_null("LogBox") as VBoxContainer
 	if box != null:
 		for c in box.get_children():
@@ -320,5 +343,9 @@ func _refresh_inventory() -> void:
 			_label(box, "  • Kino Remote", 14, Color.WHITE)
 		if GameState.breaches_sealed.size() > 0:
 			_label(box, "  • Emergency Seal — used (%d)" % GameState.breaches_sealed.size(), 14, Color.WHITE)
+		for resource_type in GameState.resources.keys():
+			var count: int = GameState.resource_count(String(resource_type))
+			if count > 0:
+				_label(box, "  • %s × %d" % [String(resource_type).capitalize(), count], 14, Color.WHITE)
 		if box.get_child_count() == 0:
 			_label(box, "  (empty)", 14, Color(0.7, 0.7, 0.7, 0.85))

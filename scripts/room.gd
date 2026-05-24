@@ -16,6 +16,7 @@ const BedScript: Script = preload("res://scripts/bed.gd")
 const KinoPickupScript: Script = preload("res://scripts/kino_pickup.gd")
 const HullSealSwitchScript: Script = preload("res://scripts/hull_seal_switch.gd")
 const NpcScript: Script = preload("res://scripts/npc.gd")
+const Co2ScrubberScript: Script = preload("res://scripts/co2_scrubber.gd")
 
 # Set this in the editor to preview a specific room when running the scene
 # standalone (F6). At runtime, GameState.next_room_id takes precedence.
@@ -55,6 +56,9 @@ func _ready() -> void:
 	_setup_doors()
 	_spawn_interactables()
 	_place_player()
+	GameState.discover_room(room_id, String(_room_data.get("name", room_id)))
+	if room_id == "quarters_room_1":
+		GameState.mark_quarters_found()
 
 	# Persist for save/load — F5 reloads this scene with the same room_id.
 	GameState.current_scene_path = "res://scenes/room.tscn"
@@ -227,6 +231,8 @@ func _spawn_interactables() -> void:
 			# Only Rush — Young, James, Park have moved to the gate room with the
 			# unconscious-tableau (Young laid out, James + Park treating him).
 			_spawn_dr_rush()
+		"hydroponics":
+			_spawn_co2_scrubber()
 		"south_corridor":
 			_spawn_chloe()
 		"north_corridor":
@@ -449,6 +455,68 @@ func _spawn_hull_breach() -> void:
 	btn_mi.material_override = btn_mat
 	btn_mi.position = switch.position + Vector3(0.02, 0.0, 0.0)
 	add_child(btn_mi)
+
+
+func _spawn_co2_scrubber() -> void:
+	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
+	var d_m: float = float(_room_data.get("height", 200)) * ShipLayout.SCALE
+	var half_z: float = d_m * 0.5
+	var scrubber: StaticBody3D = StaticBody3D.new()
+	scrubber.set_script(Co2ScrubberScript)
+	scrubber.name = "CO2Scrubber"
+	scrubber.position = Vector3(-w_m * 0.22, 0.0, half_z - 3.0)
+
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = Vector3(1.6, 1.8, 1.1)
+	cs.shape = box
+	cs.position = Vector3(0.0, 0.9, 0.0)
+	scrubber.add_child(cs)
+
+	var housing_mat: StandardMaterial3D = StandardMaterial3D.new()
+	housing_mat.albedo_color = Color(0.18, 0.20, 0.22)
+	housing_mat.metallic = 0.65
+	housing_mat.roughness = 0.38
+	var warning_mat: StandardMaterial3D = StandardMaterial3D.new()
+	warning_mat.albedo_color = Color(1.0, 0.42, 0.12)
+	warning_mat.emission_enabled = true
+	warning_mat.emission = Color(1.0, 0.35, 0.10)
+	warning_mat.emission_energy_multiplier = 2.6
+	var lime_mat: StandardMaterial3D = StandardMaterial3D.new()
+	lime_mat.albedo_color = Color(0.72, 0.92, 0.38)
+	lime_mat.emission_enabled = true
+	lime_mat.emission = Color(0.42, 0.78, 0.18)
+	lime_mat.emission_energy_multiplier = 0.9
+
+	_add_mesh_box(scrubber, Vector3(0.0, 0.85, 0.0), Vector3(1.4, 1.5, 0.8), housing_mat)
+	_add_mesh_box(scrubber, Vector3(0.0, 1.52, -0.43), Vector3(1.1, 0.14, 0.08), warning_mat)
+	_add_mesh_box(scrubber, Vector3(-0.42, 0.72, -0.46), Vector3(0.24, 0.56, 0.08), lime_mat)
+	_add_mesh_box(scrubber, Vector3(0.0, 0.72, -0.46), Vector3(0.24, 0.56, 0.08), lime_mat)
+	_add_mesh_box(scrubber, Vector3(0.42, 0.72, -0.46), Vector3(0.24, 0.56, 0.08), lime_mat)
+
+	var label: Label3D = Label3D.new()
+	label.name = "Label"
+	label.text = "CO2 SCRUBBER"
+	label.pixel_size = 0.004
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.outline_size = 6
+	label.shaded = false
+	label.modulate = Color(0.75, 0.95, 1.0, 1.0)
+	label.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
+	label.position = Vector3(0.0, 2.0, 0.0)
+	scrubber.add_child(label)
+
+	add_child(scrubber)
+
+
+func _add_mesh_box(parent: Node3D, pos: Vector3, size: Vector3, mat: StandardMaterial3D) -> void:
+	var mi: MeshInstance3D = MeshInstance3D.new()
+	var mesh: BoxMesh = BoxMesh.new()
+	mesh.size = size
+	mi.mesh = mesh
+	mi.material_override = mat
+	mi.position = pos
+	parent.add_child(mi)
 
 
 # Dr Rush in the control interface room. Stands in front of the centre console

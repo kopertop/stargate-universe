@@ -17,6 +17,7 @@ const STARGATE_SCENE: PackedScene = preload("res://objects/stargate.tscn")
 const FLOOR_SCENE: PackedScene = preload("res://models/sci-fi/space-station/floor.glb")
 const GATE_CONSOLE_SCRIPT: Script = preload("res://scripts/gate_console.gd")
 const NPC_SCRIPT: Script = preload("res://scripts/npc.gd")
+const PLANET_GATE_SCRIPT: Script = preload("res://scripts/planet_gate.gd")
 
 # Railings are tall enough that the player's 0.6 m jump (jump² / 2·g ≈ 0.6 m
 # given the player's tunables) can't clear them. Combined with the per-rail
@@ -52,6 +53,8 @@ var _stargate: Node3D
 var _from_gate_marker: Marker3D
 var _from_corridor_marker: Marker3D
 var _from_east_connector_marker: Marker3D
+var _gate_portal: Area3D
+var _arrival_running: bool = false
 
 func _ready() -> void:
 	# Tell the save system this is a real gameplay scene.
@@ -73,6 +76,7 @@ func _ready() -> void:
 	# Gate diameter 6 m → centre at y = 4 means bottom rim at y = 1 (on the dais).
 	_stargate.position = Vector3(0.0, 4.0, room_size.y * 0.5 - 3.8)
 	_world.add_child(_stargate)
+	_build_ship_gate_portal()
 
 	# Place the spawn markers now that the room geometry is in place.
 	_create_spawn_markers()
@@ -97,6 +101,9 @@ func _ready() -> void:
 		if _stargate != null and "active" in _stargate:
 			_stargate.active = false
 		_start_ambient()
+
+func _process(_delta: float) -> void:
+	_refresh_lime_gate_state()
 
 # ----- spawn -----------------------------------------------------------------
 
@@ -126,6 +133,7 @@ func _apply_pending_save_spawn() -> void:
 # ----- arrival ---------------------------------------------------------------
 
 func _run_arrival() -> void:
+	_arrival_running = true
 	# Player spawns on the dais facing outward; gate active behind them.
 	GameState.set_objective("Talk to Lt Scott.")
 	GameState.add_log("Eli: Okay… where am I?")
@@ -153,6 +161,32 @@ func _run_arrival() -> void:
 	_start_ambient()
 	if _player != null and _player.has_method("set_input_locked"):
 		_player.set_input_locked(false)
+	_arrival_running = false
+
+func _build_ship_gate_portal() -> void:
+	_gate_portal = Area3D.new()
+	_gate_portal.set_script(PLANET_GATE_SCRIPT)
+	_gate_portal.name = "ShipGatePortal"
+	_gate_portal.position = Vector3(0.0, 2.35, room_size.y * 0.5 - 3.8)
+	_gate_portal.set("mode", "to_planet")
+	_gate_portal.set("target_scene", "res://scenes/planet.tscn")
+	_gate_portal.set("target_spawn", "FromShipGate")
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var shape: BoxShape3D = BoxShape3D.new()
+	shape.size = Vector3(4.4, 3.2, 1.2)
+	cs.shape = shape
+	_gate_portal.add_child(cs)
+	_world.add_child(_gate_portal)
+	_gate_portal.monitoring = false
+
+func _refresh_lime_gate_state() -> void:
+	if _arrival_running:
+		return
+	var gate_open: bool = GameState.is_lime_gate_open()
+	if _stargate != null and "active" in _stargate:
+		_stargate.active = gate_open
+	if _gate_portal != null:
+		_gate_portal.monitoring = gate_open
 
 func _start_ambient() -> void:
 	if _ambient_sfx != null and not _ambient_sfx.playing:
@@ -725,10 +759,19 @@ func _build_npcs() -> void:
 			],
 		},
 	])
+	scott.set("repeat_dialogue_tree", [
+		{
+			"speaker": "Lt Scott",
+			"text": "Hurry up Eli, find Rush!",
+			"choices": [
+				{"text": "On it.", "next": "exit"},
+			],
+		},
+	])
 	scott.set("met_flag", "met_scott")
 	scott.set("first_meet_recompute_objective", true)
 	# Walk up to the player and trigger the briefing automatically — no E-press.
-	scott.set("auto_greet", true)
+	scott.set("auto_greet", not GameState.met_scott)
 	scott.set("auto_greet_distance", 2.6)
 	scott.set("auto_greet_delay", 1.5)
 	scott.set("auto_greet_speed", 1.9)
@@ -780,18 +823,17 @@ func _build_npcs() -> void:
 
 	_world.add_child(scott)
 
-	# Medic tableau: Colonel Young laid out on his back, Dr James and Dr Park
-	# kneeling beside him trying to stabilise him. Clustered well away from the
+	# Medic tableau: Colonel Young laid out unconscious with Lt James kneeling
+	# beside him trying to stabilise him. Clustered well away from the
 	# gate at the -X / -Z corner so the player walks past on their way to the
 	# south corridor exit and can't miss it.
 	_build_medic_tableau()
 
 
-# Three-NPC vignette near the -X wall, behind the staircases:
-#   • Young (uniform) lying face-up on the floor.
-#   • James, Park kneeling on opposite sides of him.
-# Each is interactable — short concerned lines about Young's state that point
-# the player toward Rush.
+# Medic vignette near the -X wall, behind the staircases:
+#   • Young lying face-up on the floor, unconscious and not interactable.
+#   • Lt James kneeling on the gate-side of him, facing Young.
+# James is the only talkable NPC in this cluster.
 func _build_medic_tableau() -> void:
 	var tableau_center: Vector3 = Vector3(-9.0, 0.0, -6.0)
 
@@ -802,32 +844,24 @@ func _build_medic_tableau() -> void:
 		tableau_center + Vector3(0.0, 0.0, 0.0),
 		0.0,
 		"res://models/characters/scott.glb",
-		_young_tableau_dialog(),
+		[],
 		"met_young",
 		"down",
+		false,
+		"X_X",
 	)
 
-	# --- Dr James — kneeling on Young's left (player's right) ----
+	# --- Lt James — kneeling BESIDE Young by his head (gate-side of him),
+	# facing him so she reads as a medic mid-triage. Offset on +X to clear
+	# his body; her yaw turns her -90° so she looks toward -X (at Young).
 	_build_tableau_npc(
-		"DrJames",
-		"Dr James",
-		tableau_center + Vector3(-0.9, 0.0, 0.4),
+		"LtJames",
+		"Lt James",
+		tableau_center + Vector3(0.85, 0.0, 0.4),
 		PI * 0.5,
-		"res://models/characters/eli.glb",
+		"res://models/characters/lt_james.glb",
 		_james_tableau_dialog(),
-		"met_james",
-		"kneel",
-	)
-
-	# --- Dr Park — kneeling on Young's right ----
-	_build_tableau_npc(
-		"DrPark",
-		"Dr Park",
-		tableau_center + Vector3(0.9, 0.0, 0.4),
-		-PI * 0.5,
-		"res://models/characters/eli.glb",
-		_park_tableau_dialog(),
-		"met_park",
+		"",
 		"kneel",
 	)
 
@@ -845,17 +879,24 @@ func _build_tableau_npc(
 		dialog_tree: Array,
 		met_flag: String,
 		pose: String,
+		talkable: bool = true,
+		face_override: String = "",
 	) -> void:
 	var body: StaticBody3D = StaticBody3D.new()
-	body.set_script(NPC_SCRIPT)
+	if talkable:
+		body.set_script(NPC_SCRIPT)
 	body.name = npc_name
 	body.position = pos
 	body.rotation.y = yaw
-	body.set("character_name", character)
-	body.set("prompt", "Talk to %s" % character)
-	body.set("dialogue_tree", dialog_tree)
-	body.set("met_flag", met_flag)
-	body.set("first_meet_recompute_objective", true)
+	if talkable:
+		body.set("character_name", character)
+		body.set("prompt", "Talk to %s" % character)
+		body.set("dialogue_tree", dialog_tree)
+		body.set("met_flag", met_flag)
+		body.set("first_meet_recompute_objective", true)
+	else:
+		body.collision_layer = 1
+		body.collision_mask = 0
 
 	var cs: CollisionShape3D = CollisionShape3D.new()
 	var cap: CapsuleShape3D = CapsuleShape3D.new()
@@ -909,6 +950,8 @@ func _build_tableau_npc(
 		if pose != "down":
 			Npc.play_idle_animation(inst)
 	body.add_child(model_holder)
+	if face_override != "":
+		_add_face_override(body, face_override, pose)
 
 	var tag: Label3D = Label3D.new()
 	tag.name = "Nametag"
@@ -932,50 +975,25 @@ func _build_tableau_npc(
 	_world.add_child(body)
 
 
-# Young dialog is the only one where he speaks at all — half-conscious,
-# disoriented. Confirms the player should find Rush.
-func _young_tableau_dialog() -> Array:
-	return [
-		{
-			"speaker": "Colonel Young",
-			"text": "…hnh. Who's there? Can't… focus.",
-			"choices": [
-				{"text": "Sir, are you okay?", "next": 1},
-				{"text": "What happened?", "next": 2},
-				{"text": "Hang in there.", "next": "exit"},
-			],
-		},
-		{
-			"speaker": "Colonel Young",
-			"text": "Hit the deck when we came through. Banged my head, I think. James and Park are… handling it. Just need a minute.",
-			"choices": [
-				{"text": "What should I do?", "next": 3},
-				{"text": "Rest, sir.", "next": "exit"},
-			],
-		},
-		{
-			"speaker": "Colonel Young",
-			"text": "Gate took us… somewhere it shouldn't have. Find Rush. He's the one who'll know.",
-			"choices": [
-				{"text": "Where is Rush?", "next": 3},
-				{"text": "On it.", "next": "exit"},
-			],
-		},
-		{
-			"speaker": "Colonel Young",
-			"text": "Control room. Through the south corridor… east… consoles. Tell him I said get moving.",
-			"choices": [
-				{"text": "Yes, sir.", "next": "exit"},
-			],
-		},
-	]
+func _add_face_override(body: Node3D, text: String, pose: String) -> void:
+	var face: Label3D = Label3D.new()
+	face.name = "FaceOverride"
+	face.text = text
+	face.pixel_size = 0.0068
+	face.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	face.outline_size = 2
+	face.shaded = false
+	face.modulate = Color(0.03, 0.035, 0.04, 1.0)
+	face.outline_modulate = Color(0.85, 0.62, 0.46, 0.85)
+	face.position = Vector3(0.0, 0.78, 1.35) if pose == "down" else Vector3(0.0, 1.7, 0.0)
+	body.add_child(face)
 
 
 func _james_tableau_dialog() -> Array:
 	return [
 		{
-			"speaker": "Dr James",
-			"text": "Hold on — give me space, please. Colonel Young took a hard fall when we landed. I don't think it's a concussion, but I can't be sure.",
+			"speaker": "Lt James",
+			"text": "Hold on — give me space, please. Colonel Young took a hard fall when we landed. He's unconscious, but his pulse is steady.",
 			"choices": [
 				{"text": "Will he be okay?", "next": 1},
 				{"text": "Can I help?", "next": 2},
@@ -983,38 +1001,18 @@ func _james_tableau_dialog() -> Array:
 			],
 		},
 		{
-			"speaker": "Dr James",
-			"text": "He should be. Pulse is steady. Park's running a basic neuro check. We just need him still until we know more.",
+			"speaker": "Lt James",
+			"text": "I need him still until I can finish checking him. He's breathing, and that's the part that matters right now.",
 			"choices": [
 				{"text": "Can I help?", "next": 2},
 				{"text": "Glad to hear it.", "next": "exit"},
 			],
 		},
 		{
-			"speaker": "Dr James",
+			"speaker": "Lt James",
 			"text": "Yes — find Dr Rush. He's the one who needs to know what state the Colonel is in, and he's the only one of us who might be able to read these consoles. He went through to the control room.",
 			"choices": [
 				{"text": "Heading there now.", "next": "exit"},
-			],
-		},
-	]
-
-
-func _park_tableau_dialog() -> Array:
-	return [
-		{
-			"speaker": "Dr Park",
-			"text": "Pupils responsive, breathing okay. He's just out of it for now. Sorry, I don't want to be rude — can you give us a second?",
-			"choices": [
-				{"text": "What can I do?", "next": 1},
-				{"text": "Sorry — I'll go.", "next": "exit"},
-			],
-		},
-		{
-			"speaker": "Dr Park",
-			"text": "Honestly? Find someone in charge who isn't on the floor. Rush is in the control room, that way through the corridors — east, I think. Tell him James and I have Young handled, but he needs to lead.",
-			"choices": [
-				{"text": "Got it.", "next": "exit"},
 			],
 		},
 	]

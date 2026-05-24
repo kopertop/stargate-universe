@@ -24,6 +24,41 @@ const MAX_HEALTH: float = 100.0
 const MAX_OXYGEN: float = 100.0
 const SAVE_PATH: String = "user://save.json"
 
+const EPISODE_AIR: String = "air"
+const QUEST_TALK_SCOTT: String = "talk_scott"
+const QUEST_FIND_RUSH: String = "find_rush"
+const QUEST_FIND_QUARTERS: String = "find_quarters"
+const QUEST_FIND_KINO: String = "find_kino"
+const QUEST_SLEEP: String = "sleep"
+const QUEST_DIAGNOSE_LIFE_SUPPORT: String = "diagnose_life_support"
+const QUEST_SEAL_BREACH: String = "seal_breach"
+const QUEST_FIND_SCRUBBER: String = "find_scrubber"
+const QUEST_WAIT_FTL: String = "wait_ftl"
+const QUEST_DIAL_LIME_PLANET: String = "dial_lime_planet"
+const QUEST_MINE_LIME: String = "mine_lime"
+const QUEST_RETURN_DESTINY: String = "return_destiny"
+const QUEST_REPAIR_SCRUBBER: String = "repair_scrubber"
+const QUEST_COMPLETE: String = "complete"
+const AIR_LIME_RESOURCE: String = "lime"
+const AIR_LIME_REQUIRED: int = 3
+
+const QUEST_LABELS: Dictionary = {
+	QUEST_TALK_SCOTT: "Talk to Scott",
+	QUEST_FIND_RUSH: "Find Rush",
+	QUEST_FIND_QUARTERS: "Find quarters",
+	QUEST_FIND_KINO: "Find Kino Remote",
+	QUEST_SLEEP: "Sleep",
+	QUEST_DIAGNOSE_LIFE_SUPPORT: "Diagnose life support",
+	QUEST_SEAL_BREACH: "Lock off exposed section",
+	QUEST_FIND_SCRUBBER: "Find CO2 scrubber",
+	QUEST_WAIT_FTL: "Trigger FTL drop",
+	QUEST_DIAL_LIME_PLANET: "Dial lime planet",
+	QUEST_MINE_LIME: "Mine lime",
+	QUEST_RETURN_DESTINY: "Return to Destiny",
+	QUEST_REPAIR_SCRUBBER: "Repair CO2 scrubber",
+	QUEST_COMPLETE: "Episode complete",
+}
+
 # Set by scene scripts (currently only gate_room.gd) when the player is
 # in a scene that should be considered "in-world" for save purposes. Title
 # screen / cutscenes leave this empty so F5 doesn't write garbage.
@@ -41,6 +76,8 @@ var skip_arrival_cinematic: bool = false
 
 var health: float = MAX_HEALTH
 var oxygen: float = MAX_OXYGEN
+var current_episode: String = EPISODE_AIR
+var quest_step: String = QUEST_TALK_SCOTT
 var kino_acquired: bool = false
 var quarters_found: bool = false
 var rooms_discovered: Array[String] = []
@@ -48,6 +85,15 @@ var breaches_sealed: Array[String] = []
 var current_objective: String = "Explore the Destiny"
 var episode_complete: bool = false
 var log_entries: Array[String] = []
+var prologue_complete: bool = false
+var air_crisis_started: bool = false
+var life_support_diagnosed: bool = false
+var scrubber_diagnosed: bool = false
+var scrubber_repaired: bool = false
+var ftl_drop_triggered: bool = false
+var lime_planet_dialed: bool = false
+var returned_from_lime_planet: bool = false
+var resources: Dictionary = {AIR_LIME_RESOURCE: 0}
 # E1 story milestones — set by NPC interacts (npc.gd via met_flag).
 # met_scott: Lt Scott briefs the player on arrival; gates objective priority
 # to "Find a Map" once true.
@@ -59,19 +105,30 @@ var met_rush: bool = false
 func reset() -> void:
 	health = MAX_HEALTH
 	oxygen = MAX_OXYGEN
+	current_episode = EPISODE_AIR
+	quest_step = QUEST_TALK_SCOTT
 	kino_acquired = false
 	quarters_found = false
 	rooms_discovered.clear()
 	breaches_sealed.clear()
-	current_objective = "Explore the Destiny"
 	episode_complete = false
 	log_entries.clear()
+	prologue_complete = false
+	air_crisis_started = false
+	life_support_diagnosed = false
+	scrubber_diagnosed = false
+	scrubber_repaired = false
+	ftl_drop_triggered = false
+	lime_planet_dialed = false
+	returned_from_lime_planet = false
+	resources.clear()
+	resources[AIR_LIME_RESOURCE] = 0
 	met_scott = false
 	met_rush = false
 	health_changed.emit(health)
 	oxygen_changed.emit(oxygen)
-	objective_changed.emit(current_objective)
 	kino_changed.emit(kino_acquired)
+	advance_air_quest()
 
 func damage(amount: float) -> void:
 	health = clampf(health - amount, 0.0, MAX_HEALTH)
@@ -106,59 +163,107 @@ func acquire_kino() -> void:
 	kino_acquired = true
 	kino_changed.emit(true)
 	add_log("Acquired the Kino Remote.")
-	_recompute_objective()
+	advance_air_quest()
 
 func mark_quarters_found() -> void:
 	if quarters_found:
 		return
 	quarters_found = true
 	add_log("Found Eli's quarters.")
-	_recompute_objective()
+	advance_air_quest()
 
 func seal_breach(breach_id: String) -> void:
 	if breaches_sealed.has(breach_id):
 		return
 	breaches_sealed.append(breach_id)
-	restore_oxygen(MAX_OXYGEN)
-	add_log("Hull breach sealed: " + breach_id)
-	_recompute_objective()
-
-# Quest-gated objective. Each story beat unlocks the next, so the HUD only
-# ever names tasks the player has been told to do.
-#
-# Story spine (sprint-005 redesign, 2026-05-23 — see
-# project_quest_line_redesign.md):
-#   Act 1: Talk to Scott (auto-greet) → Find Dr Rush
-#   Act 2: After meeting Rush → quarters + storage (map) + hull breach unlock
-# Future acts (FTL jump cinematic, gate-room debrief, leak crisis, lime
-# planet trip) will introduce their own gating flags; the elif ladder below
-# is the place to extend.
-func _recompute_objective() -> void:
-	if episode_complete:
-		return
-	# Act 1: until Rush is found, the only objective is reaching him.
-	if not met_rush:
-		set_objective("Find Dr Rush.")
-		return
-	# Act 2: after Rush, the survival ladder unlocks. Tasks list in priority
-	# order — rest first (drives the player out of the gate room toward the
-	# storage room where the Kino sits on a desk), then the breach.
-	var todo: Array[String] = []
-	if not quarters_found:
-		todo.append("find a place to rest")
-	if not kino_acquired:
-		todo.append("find a way to map this deck")
-	if breaches_sealed.is_empty():
-		todo.append("seal the hull breach")
-	if todo.is_empty():
-		check_episode_complete()
-		return
-	var first: String = todo[0]
-	first = first.substr(0, 1).to_upper() + first.substr(1)
-	if todo.size() == 1:
-		set_objective(first + ".")
+	if air_crisis_started and not scrubber_repaired:
+		restore_oxygen(8.0)
+		add_log("Exposed section locked down. Pressure is steadier, but CO2 is still climbing.")
 	else:
-		set_objective(first + " (" + str(todo.size()) + " tasks remain)")
+		restore_oxygen(MAX_OXYGEN)
+	add_log("Hull breach sealed: " + breach_id)
+	advance_air_quest()
+
+# Quest-gated objective. Each story beat unlocks a single concrete destination
+# so the HUD never asks the player to solve a vague checklist.
+func _recompute_objective() -> void:
+	advance_air_quest()
+
+func advance_air_quest() -> void:
+	_set_quest_step(_next_air_quest_step())
+
+func _next_air_quest_step() -> String:
+	if episode_complete or scrubber_repaired:
+		return QUEST_COMPLETE
+	if not met_scott:
+		return QUEST_TALK_SCOTT
+	if not met_rush:
+		return QUEST_FIND_RUSH
+	if not quarters_found:
+		return QUEST_FIND_QUARTERS
+	if not kino_acquired:
+		return QUEST_FIND_KINO
+	prologue_complete = true
+	if not air_crisis_started:
+		return QUEST_SLEEP
+	if not life_support_diagnosed:
+		return QUEST_DIAGNOSE_LIFE_SUPPORT
+	if breaches_sealed.is_empty():
+		return QUEST_SEAL_BREACH
+	if not scrubber_diagnosed:
+		return QUEST_FIND_SCRUBBER
+	if not ftl_drop_triggered:
+		return QUEST_WAIT_FTL
+	if not lime_planet_dialed:
+		return QUEST_DIAL_LIME_PLANET
+	if not has_resource(AIR_LIME_RESOURCE, AIR_LIME_REQUIRED):
+		return QUEST_MINE_LIME
+	if not returned_from_lime_planet:
+		return QUEST_RETURN_DESTINY
+	if not scrubber_repaired:
+		return QUEST_REPAIR_SCRUBBER
+	return QUEST_COMPLETE
+
+func _set_quest_step(step: String) -> void:
+	quest_step = step
+	set_objective(_objective_for_step(step))
+
+func _objective_for_step(step: String) -> String:
+	match step:
+		QUEST_TALK_SCOTT:
+			return "Talk to Lt Scott in the Gate Room."
+		QUEST_FIND_RUSH:
+			return "Find Dr Rush in the Control Interface Room."
+		QUEST_FIND_QUARTERS:
+			return "Find your quarters on the upper deck: Crew Quarters Alpha."
+		QUEST_FIND_KINO:
+			return "Find the Kino Remote in Kino Storage."
+		QUEST_SLEEP:
+			return "Return to Crew Quarters Alpha and sleep."
+		QUEST_DIAGNOSE_LIFE_SUPPORT:
+			return "Diagnose failing life support at the Gate Room console."
+		QUEST_SEAL_BREACH:
+			return "Lock off the exposed ship section in the East Corridor."
+		QUEST_FIND_SCRUBBER:
+			return "Find the broken CO2 scrubber in Hydroponics."
+		QUEST_WAIT_FTL:
+			return "Return to the Gate Room and trigger the FTL drop."
+		QUEST_DIAL_LIME_PLANET:
+			return "Use Gate Control in the Gate Room to dial the lime planet."
+		QUEST_MINE_LIME:
+			return "Step through the Stargate and mine lime on the planet."
+		QUEST_RETURN_DESTINY:
+			return "Return through the planet gate to Destiny."
+		QUEST_REPAIR_SCRUBBER:
+			return "Bring lime to the CO2 scrubber in Hydroponics."
+		QUEST_COMPLETE:
+			return "Episode 1: Air — Complete"
+		_:
+			return "Explore the Destiny."
+
+func quest_step_label(step: String = "") -> String:
+	var key: String = quest_step if step == "" else step
+	return String(QUEST_LABELS.get(key, key))
 
 func set_objective(text: String) -> void:
 	current_objective = text
@@ -168,16 +273,143 @@ func add_log(line: String) -> void:
 	log_entries.append(line)
 	log_added.emit(line)
 
-# Episode 1 completion: Map (kino) + Dr Rush met + quarters found + at least
-# one hull breach sealed. The Rush meeting is the story climax — without it,
-# Scott's briefing never resolves and the episode stays in progress.
+func resource_count(type: String) -> int:
+	return int(resources.get(type, 0))
+
+func add_resource(type: String, amount: int, source: String = "") -> bool:
+	if amount <= 0:
+		return false
+	var next_amount: int = resource_count(type) + amount
+	resources[type] = next_amount
+	var source_suffix: String = "" if source == "" else " from " + source
+	add_log("Collected %d %s%s. Total: %d." % [amount, type, source_suffix, next_amount])
+	advance_air_quest()
+	return true
+
+func has_resource(type: String, amount: int) -> bool:
+	return resource_count(type) >= amount
+
+func spend_resource(type: String, amount: int, reason: String = "") -> bool:
+	if amount <= 0:
+		return true
+	var current: int = resource_count(type)
+	if current < amount:
+		add_log("Need %d %s for %s. Current: %d." % [amount, type, reason, current])
+		return false
+	resources[type] = current - amount
+	var reason_suffix: String = "" if reason == "" else " for " + reason
+	add_log("Spent %d %s%s. Remaining: %d." % [amount, type, reason_suffix, resource_count(type)])
+	advance_air_quest()
+	return true
+
+func can_start_air_crisis() -> bool:
+	return met_rush and quarters_found and kino_acquired and not air_crisis_started
+
+func start_air_crisis() -> void:
+	if air_crisis_started or episode_complete:
+		return
+	if not can_start_air_crisis():
+		add_log("Sleep can wait. Rush, quarters, and the Kino Remote come first.")
+		advance_air_quest()
+		return
+	prologue_complete = true
+	air_crisis_started = true
+	oxygen = minf(oxygen, 62.0)
+	oxygen_changed.emit(oxygen)
+	add_log("Destiny drops out of FTL. Alarms report rising CO2 in life support.")
+	dialogue_shown.emit("Eli", "That's not a normal alarm. The air just got worse.")
+	advance_air_quest()
+
+func diagnose_life_support() -> void:
+	if not air_crisis_started:
+		add_log("Life support is nominal enough for now. Rush still wants priorities handled.")
+		advance_air_quest()
+		return
+	if life_support_diagnosed:
+		add_log("Life support diagnostic already flagged the exposed section and scrubber failure.")
+		return
+	life_support_diagnosed = true
+	add_log("Life support diagnostic: exposed section must be locked off before repairs can hold.")
+	advance_air_quest()
+
+func diagnose_scrubber() -> void:
+	if not air_crisis_started:
+		add_log("The scrubber bank is idle. No emergency repair queued yet.")
+		advance_air_quest()
+		return
+	if scrubber_diagnosed:
+		add_log("CO2 scrubber diagnosis confirmed: lime is required for the cartridge mix.")
+		return
+	scrubber_diagnosed = true
+	add_log("CO2 scrubber is cracked. It needs lime before the cartridge bed can reset.")
+	advance_air_quest()
+
+func trigger_ftl_drop() -> void:
+	if not scrubber_diagnosed:
+		add_log("FTL controls stay locked until the scrubber fault is identified.")
+		advance_air_quest()
+		return
+	if ftl_drop_triggered:
+		add_log("Destiny is already out of FTL. Gate systems are available.")
+		return
+	ftl_drop_triggered = true
+	add_log("FTL drop triggered. Destiny falls into normal space near a viable gate address.")
+	advance_air_quest()
+
+func dial_lime_planet() -> void:
+	if not ftl_drop_triggered:
+		add_log("The gate will not dial until Destiny drops from FTL.")
+		advance_air_quest()
+		return
+	if lime_planet_dialed:
+		add_log("Lime planet address is already active.")
+		return
+	lime_planet_dialed = true
+	add_log("Gate Control locks a viable address: lime deposits detected near the landing zone.")
+	advance_air_quest()
+
+func is_lime_gate_open() -> bool:
+	return lime_planet_dialed and not returned_from_lime_planet and not scrubber_repaired
+
+func can_travel_to_lime_planet() -> bool:
+	return is_lime_gate_open() and (quest_step == QUEST_MINE_LIME or quest_step == QUEST_RETURN_DESTINY)
+
+func return_from_lime_planet() -> void:
+	if returned_from_lime_planet:
+		return
+	returned_from_lime_planet = true
+	add_log("Returned to Destiny with lime from the planet.")
+	advance_air_quest()
+
+func repair_scrubber_with_lime() -> bool:
+	if scrubber_repaired:
+		add_log("CO2 scrubber is already repaired.")
+		return true
+	if not scrubber_diagnosed:
+		diagnose_scrubber()
+		return false
+	if not spend_resource(AIR_LIME_RESOURCE, AIR_LIME_REQUIRED, "CO2 scrubber repair"):
+		return false
+	scrubber_repaired = true
+	restore_oxygen(MAX_OXYGEN)
+	add_log("CO2 scrubber repaired. Life support is stabilising across this section.")
+	complete_episode_air()
+	return true
+
+# Episode 1 completion now happens after the Air crisis loop resolves, not at
+# the old Rush + Kino + quarters + breach milestone.
 func check_episode_complete() -> void:
+	if scrubber_repaired:
+		complete_episode_air()
+
+func complete_episode_air() -> void:
 	if episode_complete:
 		return
-	if kino_acquired and met_rush and quarters_found and breaches_sealed.size() > 0:
-		episode_complete = true
-		set_objective("Episode 1: Air — Complete")
-		episode_completed.emit()
+	quest_step = QUEST_COMPLETE
+	episode_complete = true
+	set_objective(_objective_for_step(QUEST_COMPLETE))
+	add_log("Episode 1 complete: Destiny can breathe again.")
+	episode_completed.emit()
 
 # --- save / wipe -------------------------------------------------------------
 #
@@ -219,6 +451,8 @@ func save_game(scene_path: String, pos: Vector3, yaw: float) -> void:
 		"yaw": yaw,
 		"health": health,
 		"oxygen": oxygen,
+		"current_episode": current_episode,
+		"quest_step": quest_step,
 		"kino_acquired": kino_acquired,
 		"quarters_found": quarters_found,
 		"rooms_discovered": rooms_discovered,
@@ -226,6 +460,17 @@ func save_game(scene_path: String, pos: Vector3, yaw: float) -> void:
 		"objective": current_objective,
 		"episode_complete": episode_complete,
 		"log_entries": log_entries,
+		"met_scott": met_scott,
+		"met_rush": met_rush,
+		"prologue_complete": prologue_complete,
+		"air_crisis_started": air_crisis_started,
+		"life_support_diagnosed": life_support_diagnosed,
+		"scrubber_diagnosed": scrubber_diagnosed,
+		"scrubber_repaired": scrubber_repaired,
+		"ftl_drop_triggered": ftl_drop_triggered,
+		"lime_planet_dialed": lime_planet_dialed,
+		"returned_from_lime_planet": returned_from_lime_planet,
+		"resources": resources,
 	}
 	var file: FileAccess = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file == null:
@@ -257,10 +502,29 @@ func load_and_resume() -> bool:
 	# Hydrate persistent state.
 	health = float(data.get("health", MAX_HEALTH))
 	oxygen = float(data.get("oxygen", MAX_OXYGEN))
+	current_episode = String(data.get("current_episode", EPISODE_AIR))
+	quest_step = String(data.get("quest_step", QUEST_TALK_SCOTT))
 	kino_acquired = bool(data.get("kino_acquired", false))
 	quarters_found = bool(data.get("quarters_found", false))
 	episode_complete = bool(data.get("episode_complete", false))
 	current_objective = String(data.get("objective", current_objective))
+	met_scott = bool(data.get("met_scott", false))
+	met_rush = bool(data.get("met_rush", false))
+	prologue_complete = bool(data.get("prologue_complete", false))
+	air_crisis_started = bool(data.get("air_crisis_started", false))
+	life_support_diagnosed = bool(data.get("life_support_diagnosed", false))
+	scrubber_diagnosed = bool(data.get("scrubber_diagnosed", false))
+	scrubber_repaired = bool(data.get("scrubber_repaired", false))
+	ftl_drop_triggered = bool(data.get("ftl_drop_triggered", false))
+	lime_planet_dialed = bool(data.get("lime_planet_dialed", false))
+	returned_from_lime_planet = bool(data.get("returned_from_lime_planet", false))
+	resources.clear()
+	var loaded_resources: Variant = data.get("resources", {})
+	if loaded_resources is Dictionary:
+		for key in (loaded_resources as Dictionary).keys():
+			resources[String(key)] = int((loaded_resources as Dictionary)[key])
+	if not resources.has(AIR_LIME_RESOURCE):
+		resources[AIR_LIME_RESOURCE] = 0
 	rooms_discovered.clear()
 	for r in data.get("rooms_discovered", []):
 		rooms_discovered.append(String(r))
@@ -270,6 +534,7 @@ func load_and_resume() -> bool:
 	log_entries.clear()
 	for l in data.get("log_entries", []):
 		log_entries.append(String(l))
+	advance_air_quest()
 	# Fire signals so the HUD picks the loaded values up.
 	health_changed.emit(health)
 	oxygen_changed.emit(oxygen)

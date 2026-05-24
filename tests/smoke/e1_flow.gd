@@ -55,25 +55,43 @@ func _initialize() -> void:
 	gs.discover_room("corridor", "Destiny Main Corridor")
 	_expect(gs.rooms_discovered.size() == 2, "second room discovered")
 
-	# Episode 1 mission-complete path: kino acquired + quarters found + at least
-	# one breach sealed should flip episode_complete to true and fire the
-	# episode_completed signal exactly once. We verify each flag in isolation
-	# then the combined gate.
+	# Episode 1 / Air path: the old Rush + Kino + quarters + breach gate is now
+	# only the prologue. Completion fires after the lime planet run repairs the
+	# CO2 scrubber.
 	var completed_emits: Array[bool] = []
 	var on_done := func() -> void: completed_emits.append(true)
 	gs.episode_completed.connect(on_done)
 
+	_expect(gs.quest_step == gs.QUEST_TALK_SCOTT, "air: starts at Talk to Scott")
+	gs.met_scott = true
+	gs.advance_air_quest()
+	_expect(gs.quest_step == gs.QUEST_FIND_RUSH, "air: Scott -> find Rush")
+
+	_expect(not gs.met_rush, "air: Rush starts un-met")
+	gs.met_rush = true
+	gs.advance_air_quest()
+	_expect(gs.quest_step == gs.QUEST_FIND_QUARTERS, "air: Rush -> find quarters")
+
+	_expect(not gs.quarters_found, "air: quarters start unfound")
+	gs.mark_quarters_found()
+	_expect(gs.quarters_found, "air: mark_quarters_found sets flag")
+	_expect(gs.quest_step == gs.QUEST_FIND_KINO, "air: quarters -> find Kino Remote")
+
 	_expect(not gs.kino_acquired, "mission: kino starts unacquired")
 	gs.acquire_kino()
 	_expect(gs.kino_acquired, "mission: acquire_kino sets flag")
+	_expect(gs.prologue_complete, "air: Rush + quarters + Kino marks prologue complete")
+	_expect(gs.quest_step == gs.QUEST_SLEEP, "air: prologue -> sleep")
 	gs.check_episode_complete()
-	_expect(not gs.episode_complete, "mission: kino alone does not complete")
+	_expect(not gs.episode_complete, "air: prologue does not complete episode")
 
-	_expect(not gs.quarters_found, "mission: quarters starts unfound")
-	gs.mark_quarters_found()
-	_expect(gs.quarters_found, "mission: mark_quarters_found sets flag")
-	gs.check_episode_complete()
-	_expect(not gs.episode_complete, "mission: kino + quarters not enough")
+	gs.start_air_crisis()
+	_expect(gs.air_crisis_started, "air: sleep starts crisis")
+	_expect(gs.quest_step == gs.QUEST_DIAGNOSE_LIFE_SUPPORT, "air: crisis -> diagnose life support")
+
+	gs.diagnose_life_support()
+	_expect(gs.life_support_diagnosed, "air: life support diagnostic records flag")
+	_expect(gs.quest_step == gs.QUEST_SEAL_BREACH, "air: diagnostic -> seal breach")
 
 	_expect(gs.breaches_sealed.is_empty(), "mission: no breaches sealed yet")
 	gs.seal_breach("breach_a")
@@ -81,15 +99,44 @@ func _initialize() -> void:
 	gs.seal_breach("breach_a")
 	_expect(gs.breaches_sealed.size() == 1, "mission: seal_breach is idempotent")
 	gs.check_episode_complete()
-	_expect(not gs.episode_complete, "mission: kino+quarters+breach alone do NOT complete (Rush gate)")
+	_expect(not gs.episode_complete, "air: breach seal does not complete episode")
+	_expect(gs.quest_step == gs.QUEST_FIND_SCRUBBER, "air: breach -> find scrubber")
 
-	# Story climax: meeting Dr Rush is the final completion flag. npc.gd sets
-	# met_rush via GameState.set() then calls check_episode_complete() — we
-	# replay that path directly here.
-	_expect(not gs.met_rush, "mission: Rush starts un-met")
-	gs.met_rush = true
-	gs.check_episode_complete()
-	_expect(gs.episode_complete, "mission: all 4 flags (kino+quarters+breach+rush) fire completion")
+	gs.diagnose_scrubber()
+	_expect(gs.scrubber_diagnosed, "air: scrubber diagnosis records flag")
+	_expect(gs.quest_step == gs.QUEST_WAIT_FTL, "air: scrubber diagnosis -> wait FTL")
+
+	gs.trigger_ftl_drop()
+	_expect(gs.ftl_drop_triggered, "air: FTL drop records flag")
+	_expect(gs.quest_step == gs.QUEST_DIAL_LIME_PLANET, "air: FTL -> dial lime planet")
+
+	gs.dial_lime_planet()
+	_expect(gs.lime_planet_dialed, "air: lime planet dialed")
+	_expect(gs.is_lime_gate_open(), "air: Stargate opens after lime dial")
+	_expect(gs.quest_step == gs.QUEST_MINE_LIME, "air: dial -> mine lime")
+
+	_expect(gs.resource_count(gs.AIR_LIME_RESOURCE) == 0, "resources: lime starts at zero")
+	gs.add_resource(gs.AIR_LIME_RESOURCE, 2, "test planet")
+	_expect(gs.resource_count(gs.AIR_LIME_RESOURCE) == 2, "resources: add_resource accumulates")
+	_expect(not gs.has_resource(gs.AIR_LIME_RESOURCE, gs.AIR_LIME_REQUIRED), "resources: 2 lime is below repair requirement")
+	_expect(not gs.spend_resource(gs.AIR_LIME_RESOURCE, 3, "overdraft test"), "resources: overspend returns false")
+	_expect(gs.resource_count(gs.AIR_LIME_RESOURCE) == 2, "resources: failed spend leaves lime unchanged")
+	gs.add_resource(gs.AIR_LIME_RESOURCE, 1, "test planet")
+	_expect(gs.has_resource(gs.AIR_LIME_RESOURCE, gs.AIR_LIME_REQUIRED), "resources: lime reaches repair requirement")
+	_expect(gs.quest_step == gs.QUEST_RETURN_DESTINY, "air: enough lime -> return to Destiny")
+
+	gs.return_from_lime_planet()
+	_expect(gs.returned_from_lime_planet, "air: return from planet records flag")
+	_expect(gs.quest_step == gs.QUEST_REPAIR_SCRUBBER, "air: return -> repair scrubber")
+	_expect(not gs.episode_complete, "air: return with lime does not complete before repair")
+
+	_expect(gs.repair_scrubber_with_lime(), "air: repair scrubber spends lime")
+	_expect(gs.resource_count(gs.AIR_LIME_RESOURCE) == 0, "resources: repair spends all required lime")
+	_expect(not gs.spend_resource(gs.AIR_LIME_RESOURCE, 1, "post-repair overdraft"), "resources: lime cannot go negative")
+	_expect(gs.resource_count(gs.AIR_LIME_RESOURCE) == 0, "resources: lime remains zero after failed spend")
+	_expect(gs.scrubber_repaired, "air: scrubber repaired flag set")
+	_expect(gs.episode_complete, "air: scrubber repair completes Episode 1")
+	_expect(gs.quest_step == gs.QUEST_COMPLETE, "air: quest step is complete")
 	_expect(completed_emits.size() == 1, "mission: episode_completed emitted once")
 
 	# Re-running check should not re-fire the signal.
@@ -105,6 +152,10 @@ func _initialize() -> void:
 	_expect(gs.breaches_sealed.is_empty(), "mission: reset clears breaches")
 	_expect(gs.met_scott == false, "mission: reset clears met_scott")
 	_expect(gs.met_rush == false, "mission: reset clears met_rush")
+	_expect(gs.quest_step == gs.QUEST_TALK_SCOTT, "mission: reset returns to first quest step")
+	_expect(gs.resource_count(gs.AIR_LIME_RESOURCE) == 0, "mission: reset clears resources")
+	_expect(gs.air_crisis_started == false, "mission: reset clears air crisis")
+	_expect(gs.scrubber_repaired == false, "mission: reset clears scrubber repair")
 
 	# F5 quicksave path (no scene path set → save is refused, not silent failure).
 	gs.current_scene_path = ""
@@ -119,8 +170,11 @@ func _initialize() -> void:
 	# JSON parser path (load_and_resume schedules a scene change, so we call
 	# the parser pieces directly here for the smoke test).
 	gs.discover_room("gate_room", "Gate Room")
+	gs.met_scott = true
+	gs.advance_air_quest()
 	gs.set_objective("Find a way off this ship")
 	gs.add_log("Quicksave round-trip line")
+	gs.add_resource(gs.AIR_LIME_RESOURCE, 2, "save test")
 	gs.save_game("res://scenes/gate_room.tscn", Vector3(1.5, 1.05, 10.0), 0.5)
 	_expect(gs.has_save(), "save_game writes payload")
 
@@ -140,6 +194,10 @@ func _initialize() -> void:
 			var pos: Array = data.get("pos", [])
 			_expect(pos.size() == 3 and float(pos[0]) == 1.5, "saved position preserved")
 			_expect(float(data.get("yaw", 0.0)) == 0.5, "saved yaw preserved")
+			_expect(String(data.get("quest_step", "")) == gs.QUEST_FIND_RUSH, "saved quest step preserved")
+			_expect(bool(data.get("met_scott", false)), "saved Scott quest flag preserved")
+			var saved_resources: Dictionary = data.get("resources", {})
+			_expect(int(saved_resources.get(gs.AIR_LIME_RESOURCE, 0)) == 2, "saved resources preserved")
 			var log_arr: Array = data.get("log_entries", [])
 			_expect(log_arr.size() >= 1, "saved log entries preserved")
 

@@ -51,6 +51,16 @@ extends Node3D
 		text_local_position = value
 		_refresh_position()
 
+# TextMesh's text plane is its local XY (facing -Z by default). As a child
+# of the tilted plate, the text would render EDGE-ON without an extra
+# rotation. -90° around X lays it flat against the plate's surface so the
+# operator reads the text "off the screen".
+# If text reads upside-down, flip the X sign or add 180° to Z.
+@export var text_local_rotation_deg: Vector3 = Vector3(-90.0, 0.0, 0.0):
+	set(value):
+		text_local_rotation_deg = value
+		_refresh_position()
+
 # Color the plate's BACKGROUND becomes (dark, so the text glow pops).
 @export var plate_bg_color: Color = Color(0.04, 0.06, 0.10):
 	set(value):
@@ -133,6 +143,7 @@ func _refresh_position() -> void:
 	if _text_mi == null:
 		return
 	_text_mi.position = text_local_position
+	_text_mi.rotation_degrees = text_local_rotation_deg
 
 
 # Replace the plate's bright emissive blue with a darker background so

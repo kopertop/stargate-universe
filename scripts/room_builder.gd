@@ -477,6 +477,9 @@ static func attach_console_mesh(parent: Node3D, screen_color: Color = CONSOLE_SC
 
 	var screen_mat: StandardMaterial3D = _emissive_mat(screen_color, CONSOLE_SCREEN_EMISSION)
 	var screen_mi: MeshInstance3D = MeshInstance3D.new()
+	# Named so external scripts (gate_console.gd) can find the plate and
+	# swap in a SubViewport-rendered text texture as the emission_texture.
+	screen_mi.name = "ScreenPlate"
 	var screen_box: BoxMesh = BoxMesh.new()
 	screen_box.size = CONSOLE_SCREEN_SIZE
 	screen_mi.mesh = screen_box

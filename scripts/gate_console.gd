@@ -5,9 +5,10 @@ extends Interactable
 #   • "gate_control"   — Eli reads his notes; address book empty; gate is dormant.
 #   • "ftl_countdown"  — live countdown to next FTL drop; ticks every frame.
 #
-# Both consoles render a small Label3D floating just above their model so the
-# readout is legible from across the room. The interact handler dumps a longer
-# block of flavor text to the HUD log so the player can read Eli's thinking.
+# The console's text readout is rendered into a SubViewport (Label inside a
+# ColorRect background) and then applied to the screen plate's emission
+# texture — so the text appears AS the screen content, not as a floating label
+# on top. Updating _vp_label.text every frame ticks the countdown live.
 
 @export var kind: String = "gate_control"
 
@@ -15,9 +16,12 @@ extends Interactable
 # arrival cinematic — feel free to tweak per scene if you want a different beat).
 @export var ftl_seconds_remaining: float = 63738.0
 
-# Floating readout above the console mesh. Built procedurally so the .tscn /
-# instancer doesn't have to know about it.
-var _readout: Label3D
+# Off-screen viewport that renders the readout text. Its output texture is
+# wired into the screen plate's emission_texture so the text IS the screen.
+const SCREEN_TEX_SIZE: Vector2i = Vector2i(640, 280)
+const TEXT_FONT_SIZE: int = 64
+var _viewport: SubViewport
+var _vp_label: Label
 # Cached interact-flavour lines so repeated reads cycle instead of repeating.
 var _gate_lines: Array[String] = [
 	"Eli: \"Gate's in standby. No active wormhole, no address dialed.\"",
@@ -38,11 +42,11 @@ func _ready() -> void:
 	# console body — otherwise the player walks straight through the gate consoles.
 	collision_layer = 1 | 4
 	_apply_kind_defaults()
-	_build_readout()
+	_build_screen_readout()
 
 func _process(delta: float) -> void:
-	if _readout != null:
-		_readout.text = _readout_text()
+	if _vp_label != null:
+		_vp_label.text = _readout_text()
 	_apply_kind_defaults()
 	if kind != "ftl_countdown":
 		return
@@ -64,52 +68,80 @@ func _apply_kind_defaults() -> void:
 		elif GameState.is_lime_gate_open():
 			prompt = "Gate active: lime planet"
 
-func _build_readout() -> void:
-	_readout = Label3D.new()
-	_readout.name = "Readout"
-	# Glue the readout to the screen plate (no billboard) so the text reads
-	# AS the console's display rather than a floating tag above the unit.
-	_readout.billboard = BaseMaterial3D.BILLBOARD_DISABLED
-	# Combo that solves both occlusion problems:
-	#   • no_depth_test = true → front face renders ON TOP of player body
-	#     silhouette + emissive plate. Without this, the player blocks the
-	#     screen-center area where the label sits in third-person view.
-	#   • double_sided = false → back face is CULLED so the through-wall
-	#     mirrored-text artifact from image #7 doesn't appear.
-	# Net effect: text is visible only when looking at the operator side of
-	# the console, and renders cleanly on top of the bright emissive plate.
-	_readout.no_depth_test = true
-	_readout.double_sided = false
-	_readout.shaded = false
-	_readout.pixel_size = 0.007
-	_readout.outline_size = 8
-	_readout.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_readout.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_readout.modulate = Color(0.55, 0.92, 1.0, 1.0) if kind == "ftl_countdown" else Color(1.0, 0.74, 0.32, 1.0)
-	_readout.outline_modulate = Color(0.0, 0.0, 0.0, 1.0)
-	# Pin the readout to the screen plate's transform — derive from RoomBuilder's
-	# shared CONSOLE_* constants so retuning the plate auto-retunes the label.
-	# Plate is at stage-local (CONSOLE_SCREEN_PLATE_Y, CONSOLE_SCREEN_PLATE_Z)
-	# scaled by CONSOLE_SCALE = holder-local position. Normal direction follows
-	# the plate's tilt (Godot's +X rotation: +Y → (0, cos, -sin)).
-	# Label's text plane (default normal +Z) needs `tilt - 90°` rotation around
-	# X so its -Z (text-visible side) aligns with the plate's +Y (surface normal).
-	var plate_y: float = RoomBuilder.CONSOLE_SCREEN_PLATE_Y * RoomBuilder.CONSOLE_SCALE
-	var plate_z: float = RoomBuilder.CONSOLE_SCREEN_PLATE_Z * RoomBuilder.CONSOLE_SCALE
-	var tilt_rad: float = deg_to_rad(RoomBuilder.CONSOLE_SCREEN_TILT_DEG)
-	# 5 cm outward along the plate normal — generous offset so the label
-	# clearly sits on TOP of the emissive plate (no z-fight) but stays within
-	# the housing's occlusion volume so the back wall hides it from behind.
-	var proud: float = 0.05
-	_readout.position = Vector3(
-		0.0,
-		plate_y + cos(tilt_rad) * proud,
-		plate_z - sin(tilt_rad) * proud,
-	)
-	_readout.rotation_degrees = Vector3(RoomBuilder.CONSOLE_SCREEN_TILT_DEG - 90.0, 0.0, 0.0)
-	add_child(_readout)
-	# Set initial text immediately so the first frame already reads.
-	_readout.text = _readout_text()
+func _build_screen_readout() -> void:
+	# Build an off-screen SubViewport that renders the readout text on a
+	# blue background. Then apply the viewport's render texture as the
+	# screen plate's emission_texture so the text becomes part of the
+	# screen's emissive surface (not a floating label on top).
+	_viewport = SubViewport.new()
+	_viewport.name = "ReadoutViewport"
+	_viewport.size = SCREEN_TEX_SIZE
+	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	_viewport.disable_3d = true
+	# Opaque background — we want the WHOLE screen plate to glow blue with
+	# the text rendered AS the screen content (not a translucent overlay).
+	_viewport.transparent_bg = false
+	add_child(_viewport)
+
+	# Solid blue background filling the viewport — this is the "screen color"
+	# the player sees on the plate. Pulled from the shared console palette.
+	var bg: ColorRect = ColorRect.new()
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.color = RoomBuilder.CONSOLE_SCREEN_COLOR_DEFAULT
+	_viewport.add_child(bg)
+
+	# Foreground Label — the actual text. Dark high-contrast color so it
+	# reads on the bright emissive screen background.
+	_vp_label = Label.new()
+	_vp_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_vp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_vp_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_vp_label.add_theme_font_size_override("font_size", TEXT_FONT_SIZE)
+	# Dark navy text on bright cyan background — reads clearly even when the
+	# plate's emission energy washes the surface toward white.
+	_vp_label.add_theme_color_override("font_color", Color(0.06, 0.10, 0.22, 1.0))
+	_vp_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.85))
+	_vp_label.add_theme_constant_override("outline_size", 6)
+	_vp_label.text = _readout_text()
+	_viewport.add_child(_vp_label)
+
+	# Wait one frame so the viewport has actually rendered before we sample
+	# its texture (otherwise the plate flashes black on first frame).
+	await get_tree().process_frame
+	_apply_text_to_plate()
+
+
+# Find the screen plate built by RoomBuilder.attach_console_mesh and swap
+# its material so the emission samples our SubViewport texture. The plate
+# was named "ScreenPlate" by attach_console_mesh specifically so we can
+# find it here.
+func _apply_text_to_plate() -> void:
+	var holder: Node = get_parent()
+	if holder == null:
+		return
+	var stage: Node = holder.get_node_or_null("ConsoleMesh")
+	if stage == null:
+		return
+	var plate: Node = stage.get_node_or_null("ScreenPlate")
+	if plate == null or not (plate is MeshInstance3D):
+		return
+	var plate_mi: MeshInstance3D = plate
+	var existing: Material = plate_mi.material_override
+	if existing == null or not (existing is StandardMaterial3D):
+		return
+	var src: StandardMaterial3D = existing
+	var mat: StandardMaterial3D = src.duplicate()
+	# Sample the viewport for BOTH albedo (the plate's base color in non-emissive
+	# light) and emission (the bright self-lit content). albedo_color stays white
+	# so the texture passes through unmodified; emission picks up the plate's
+	# energy multiplier so the screen glows.
+	var tex: Texture = _viewport.get_texture()
+	mat.albedo_color = Color.WHITE
+	mat.albedo_texture = tex
+	mat.emission = Color.WHITE
+	mat.emission_texture = tex
+	mat.emission_energy_multiplier = RoomBuilder.CONSOLE_SCREEN_EMISSION
+	plate_mi.material_override = mat
 
 func _on_interact(_by: Node) -> void:
 	if kind == "ftl_countdown":

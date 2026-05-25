@@ -70,12 +70,17 @@ func _build_readout() -> void:
 	# Glue the readout to the screen plate (no billboard) so the text reads
 	# AS the console's display rather than a floating tag above the unit.
 	_readout.billboard = BaseMaterial3D.BILLBOARD_DISABLED
-	# Skip depth test — the screen plate's emissive material has no depth
-	# override, so without this the label would sometimes z-fight or get
-	# culled behind the plate. Standard nameplate / signage trick.
-	_readout.no_depth_test = true
+	# Depth test ON so the console housing properly occludes the label when
+	# the camera is on the WRONG side of the console (was rendering through
+	# the back as mirrored text). render_priority breaks ties with the plate
+	# from the front side so the label doesn't z-fight.
+	_readout.no_depth_test = false
+	_readout.render_priority = 1
 	_readout.shaded = false
-	_readout.double_sided = true
+	# Single-sided so the back of the quad doesn't render mirrored text when
+	# the camera is behind the console — the screen is meant to be read only
+	# from the operator's side.
+	_readout.double_sided = false
 	_readout.pixel_size = 0.007
 	_readout.outline_size = 8
 	_readout.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -92,9 +97,10 @@ func _build_readout() -> void:
 	var plate_y: float = RoomBuilder.CONSOLE_SCREEN_PLATE_Y * RoomBuilder.CONSOLE_SCALE
 	var plate_z: float = RoomBuilder.CONSOLE_SCREEN_PLATE_Z * RoomBuilder.CONSOLE_SCALE
 	var tilt_rad: float = deg_to_rad(RoomBuilder.CONSOLE_SCREEN_TILT_DEG)
-	# 4 cm outward along the plate normal — generous offset so the label
-	# clearly sits on TOP of the emissive plate, not buried inside it.
-	var proud: float = 0.04
+	# 5 cm outward along the plate normal — generous offset so the label
+	# clearly sits on TOP of the emissive plate (no z-fight) but stays within
+	# the housing's occlusion volume so the back wall hides it from behind.
+	var proud: float = 0.05
 	_readout.position = Vector3(
 		0.0,
 		plate_y + cos(tilt_rad) * proud,

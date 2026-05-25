@@ -1,22 +1,7 @@
-[gd_scene load_steps=15 format=3 uid="uid://b2qrwm5pq8tcv"]
+[gd_scene format=3 uid="uid://b2qrwm5pq8tcv"]
 
-; Quarters furniture workbench — V3.
-;
-; Every furniture piece is a real instanced node — click in the Scene
-; tree and drag with W (move) / E (rotate) / R (scale). Read the final
-; Transform values off the Inspector and paste back to Claude to bake
-; into RoomBuilder._accent_quarters.
-;
-; Bed switched to Kenney Space Station Kit's bed-single.OBJ (loaded as a
-; Mesh resource into a MeshInstance3D). Nightstand + lamp removed —
-; replaced with two wall-mounted sconces (emissive plate + OmniLight3D)
-; on the back wall flanking the bed.
-;
-; Walls + floor are 10×12 m placeholder geometry matching Eli's Quarters
-; (half_x = 5, half_z = 6).
-
-[ext_resource type="Script" path="res://scripts/quarters_preview_tint.gd" id="1_tint"]
-[ext_resource type="Mesh" uid="uid://drnskcwlcyxeh" path="res://models/props/space_station_kit/bed-single.obj" id="2_bed"]
+[ext_resource type="Script" uid="uid://c8q5lkxvgnwqb" path="res://scripts/quarters_preview_tint.gd" id="1_tint"]
+[ext_resource type="ArrayMesh" uid="uid://drnskcwlcyxeh" path="res://models/props/space_station_kit/bed-single.obj" id="2_bed"]
 [ext_resource type="PackedScene" uid="uid://chvqsrmx34grc" path="res://models/props/space_station_kit/container-tall.glb" id="5_locker"]
 [ext_resource type="PackedScene" uid="uid://b70i8fs5ikpva" path="res://models/props/space_station_kit/table.glb" id="6_desk"]
 [ext_resource type="PackedScene" uid="uid://ngn8l67dmp13" path="res://models/props/space_station_kit/chair-cushion.glb" id="7_chair"]
@@ -32,119 +17,117 @@ ambient_light_energy = 0.4
 albedo_color = Color(0.24, 0.23, 0.25, 1)
 roughness = 0.6
 
-[sub_resource type="StandardMaterial3D" id="WallMat"]
-albedo_color = Color(0.40, 0.35, 0.34, 1)
-roughness = 0.58
-
-[sub_resource type="StandardMaterial3D" id="SconcePlateMat"]
-albedo_color = Color(1.0, 0.78, 0.50, 1)
-emission_enabled = true
-emission = Color(1.0, 0.78, 0.50, 1)
-emission_energy_multiplier = 3.0
-metallic = 0.0
-roughness = 0.4
-
-[sub_resource type="StandardMaterial3D" id="SconceHousingMat"]
-albedo_color = Color(0.20, 0.20, 0.22, 1)
-metallic = 0.5
-roughness = 0.45
-
 [sub_resource type="BoxMesh" id="FloorBox"]
 size = Vector3(10, 0.1, 12)
+
+[sub_resource type="StandardMaterial3D" id="WallMat"]
+albedo_color = Color(0.4, 0.35, 0.34, 1)
+roughness = 0.58
 
 [sub_resource type="BoxMesh" id="WallBox"]
 size = Vector3(0.2, 5.4, 12)
 
-[sub_resource type="BoxMesh" id="SconcePlateBox"]
-size = Vector3(0.32, 0.6, 0.08)
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_2mlku"]
+albedo_color = Color(0.62, 0.58, 0.52, 1)
+roughness = 0.55
+
+[sub_resource type="StandardMaterial3D" id="SconceHousingMat"]
+albedo_color = Color(0.2, 0.2, 0.22, 1)
+metallic = 0.5
+roughness = 0.45
 
 [sub_resource type="BoxMesh" id="SconceHousingBox"]
 size = Vector3(0.46, 0.74, 0.16)
 
-[node name="QuartersTest" type="Node3D"]
+[sub_resource type="StandardMaterial3D" id="SconcePlateMat"]
+albedo_color = Color(1, 0.78, 0.5, 1)
+roughness = 0.4
+emission_enabled = true
+emission = Color(1, 0.78, 0.5, 1)
+emission_energy_multiplier = 3.0
+
+[sub_resource type="BoxMesh" id="SconcePlateBox"]
+size = Vector3(0.32, 0.6, 0.08)
+
+[node name="QuartersTest" type="Node3D" unique_id=359857797]
 script = ExtResource("1_tint")
 
-[node name="Camera3D" type="Camera3D" parent="."]
-transform = Transform3D(0.766, -0.42, 0.485, 0, 0.755, 0.656, -0.643, -0.503, 0.578, 4.0, 6.0, 4.0)
+[node name="Camera3D" type="Camera3D" parent="." unique_id=1285032247]
+transform = Transform3D(0.766, -0.42, 0.485, 0, 0.755, 0.656, -0.643, -0.503, 0.578, 4, 6, 4)
 
-[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=758245458]
 transform = Transform3D(0.766, -0.643, 0, 0.5, 0.595, -0.628, 0.404, 0.481, 0.778, -2, 4, 2)
 light_energy = 0.7
 
-[node name="Environment" type="WorldEnvironment" parent="."]
+[node name="Environment" type="WorldEnvironment" parent="." unique_id=1930127137]
 environment = SubResource("EnvFill")
 
-[node name="Floor" type="MeshInstance3D" parent="."]
+[node name="Floor" type="MeshInstance3D" parent="." unique_id=1324791876]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.05, 0)
-mesh = SubResource("FloorBox")
 material_override = SubResource("FloorMat")
+mesh = SubResource("FloorBox")
 
-[node name="BackWall" type="MeshInstance3D" parent="."]
+[node name="BackWall" type="MeshInstance3D" parent="." unique_id=2074941877]
 transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 0, 2.7, -6.05)
-mesh = SubResource("WallBox")
 material_override = SubResource("WallMat")
+mesh = SubResource("WallBox")
 
-[node name="SideWallEast" type="MeshInstance3D" parent="."]
+[node name="SideWallEast" type="MeshInstance3D" parent="." unique_id=423924055]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.05, 2.7, 0)
-mesh = SubResource("WallBox")
 material_override = SubResource("WallMat")
+mesh = SubResource("WallBox")
 
-[node name="Bed" type="MeshInstance3D" parent="."]
-transform = Transform3D(2.5, 0, 0, 0, 2.5, 0, 0, 0, 2.5, -1.5, 0, -4.0)
+[node name="Bed" type="MeshInstance3D" parent="." unique_id=902767139]
+transform = Transform3D(2.5, 0, 0, 0, 2.5, 0, 0, 0, 2.5, -1.5, 0, -4)
 mesh = ExtResource("2_bed")
+surface_material_override/0 = SubResource("StandardMaterial3D_2mlku")
+surface_material_override/1 = SubResource("StandardMaterial3D_2mlku")
 
-[node name="Locker" parent="." instance=ExtResource("5_locker")]
-transform = Transform3D(-2.5, 0, -3.0616e-7, 0, 2.5, 0, 3.0616e-7, 0, -2.5, -1.5, 0, 5.3)
+[node name="Locker" parent="." unique_id=1361107435 instance=ExtResource("5_locker")]
+transform = Transform3D(-2.5, 0, -3.0616e-07, 0, 2.5, 0, 3.0616e-07, 0, -2.5, -1.5, 0, 5.3)
 
-[node name="Desk" parent="." instance=ExtResource("6_desk")]
-transform = Transform3D(-1.0928e-7, 0, -2.5, 0, 2.5, 0, 2.5, 0, -1.0928e-7, 3.6, 0, 0)
+[node name="Desk" parent="." unique_id=761215471 instance=ExtResource("6_desk")]
+transform = Transform3D(-1.0928e-07, 0, -2.5, 0, 2.5, 0, 2.5, 0, -1.0928e-07, 3.6, 0, 0)
 
-[node name="Chair" parent="." instance=ExtResource("7_chair")]
-transform = Transform3D(-1.0928e-7, 0, -2.5, 0, 2.5, 0, 2.5, 0, -1.0928e-7, 2.0, 0, 0)
+[node name="Chair" parent="." unique_id=593026701 instance=ExtResource("7_chair")]
+transform = Transform3D(1.767767, 0, 1.767767, 0, 2.5, 0, -1.767767, 0, 1.767767, 2, 0, 0)
 
-; Two wall-mounted sconces flanking the bed on the back (-Z) wall.
-; Each sconce: dark housing box + bright emissive amber plate + warm
-; OmniLight3D for the light spill. Drag any of the WallLight* nodes
-; in the editor to reposition them on the wall.
-
-[node name="WallLightLeft" type="Node3D" parent="."]
+[node name="WallLightLeft" type="Node3D" parent="." unique_id=1790582917]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.2, 2.6, -5.85)
 
-[node name="Housing" type="MeshInstance3D" parent="WallLightLeft"]
+[node name="Housing" type="MeshInstance3D" parent="WallLightLeft" unique_id=953266599]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.08)
-mesh = SubResource("SconceHousingBox")
 material_override = SubResource("SconceHousingMat")
+mesh = SubResource("SconceHousingBox")
 
-[node name="Plate" type="MeshInstance3D" parent="WallLightLeft"]
+[node name="Plate" type="MeshInstance3D" parent="WallLightLeft" unique_id=1808343379]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.16)
-mesh = SubResource("SconcePlateBox")
 material_override = SubResource("SconcePlateMat")
+mesh = SubResource("SconcePlateBox")
 
-[node name="Glow" type="OmniLight3D" parent="WallLightLeft"]
+[node name="Glow" type="OmniLight3D" parent="WallLightLeft" unique_id=1335460803]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.3)
 light_color = Color(1, 0.78, 0.5, 1)
 light_energy = 2.4
 omni_range = 4.5
 omni_attenuation = 1.8
-shadow_enabled = false
 
-[node name="WallLightRight" type="Node3D" parent="."]
+[node name="WallLightRight" type="Node3D" parent="." unique_id=670838873]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.6, 2.6, -5.85)
 
-[node name="Housing" type="MeshInstance3D" parent="WallLightRight"]
+[node name="Housing" type="MeshInstance3D" parent="WallLightRight" unique_id=280573911]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.08)
-mesh = SubResource("SconceHousingBox")
 material_override = SubResource("SconceHousingMat")
+mesh = SubResource("SconceHousingBox")
 
-[node name="Plate" type="MeshInstance3D" parent="WallLightRight"]
+[node name="Plate" type="MeshInstance3D" parent="WallLightRight" unique_id=2116275828]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.16)
-mesh = SubResource("SconcePlateBox")
 material_override = SubResource("SconcePlateMat")
+mesh = SubResource("SconcePlateBox")
 
-[node name="Glow" type="OmniLight3D" parent="WallLightRight"]
+[node name="Glow" type="OmniLight3D" parent="WallLightRight" unique_id=1814491104]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.3)
 light_color = Color(1, 0.78, 0.5, 1)
 light_energy = 2.4
 omni_range = 4.5
 omni_attenuation = 1.8
-shadow_enabled = false

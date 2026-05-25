@@ -334,79 +334,28 @@ func _spawn_quarters_bed(first_time_log: String = "") -> void:
 # room is wider than 6 m. eli_quarters is 10 m × 12 m so the desk always spawns.
 # Kino prop sits on the desktop, pickup hitbox alongside.
 func _spawn_eli_kino_pickup() -> void:
-	# SGU Kino Remote: a flat handheld device with a rounded oval body,
-	# bright amber screen on top, and a strip of blue accent buttons on the
-	# right edge. Built procedurally to match the silhouette of the show prop
-	# without needing a custom GLB.
+	# Meshy-generated GLB authored at 1.91 m × 0.26 m × 1.19 m raw — scale
+	# 0.13 brings it to ~25 cm long × 3 cm tall × 15 cm wide, matching the
+	# real SGU prop dimensions.
+	const KINO_GLB_PATH: String = "res://models/props/kino_remote.glb"
+	const KINO_SCALE: float = 0.13
+
 	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
 	var desk_top: Vector3 = Vector3(w_m * 0.5 - 0.7, 0.85, 0.0)
 	var holder: Node3D = Node3D.new()
 	holder.name = "KinoProp"
-	# Sit just above the desk surface — the remote lies flat on the table.
 	holder.position = desk_top + Vector3(0.0, 0.03, 0.0)
+	holder.scale = Vector3.ONE * KINO_SCALE
 	add_child(holder)
 
-	var body_mat: StandardMaterial3D = StandardMaterial3D.new()
-	body_mat.albedo_color = Color(0.05, 0.05, 0.07)
-	body_mat.metallic = 0.30
-	body_mat.roughness = 0.60
-	var screen_mat: StandardMaterial3D = StandardMaterial3D.new()
-	screen_mat.albedo_color = Color(1.0, 0.55, 0.18)
-	screen_mat.emission_enabled = true
-	screen_mat.emission = Color(1.0, 0.55, 0.18)
-	screen_mat.emission_energy_multiplier = 1.8
-	var btn_mat: StandardMaterial3D = StandardMaterial3D.new()
-	btn_mat.albedo_color = Color(0.30, 0.78, 1.0)
-	btn_mat.emission_enabled = true
-	btn_mat.emission = Color(0.30, 0.78, 1.0)
-	btn_mat.emission_energy_multiplier = 2.4
-
-	# Body — flat black slab. Real SGU prop is ~25cm long, ~13cm wide, ~3cm thick.
-	var body_mi: MeshInstance3D = MeshInstance3D.new()
-	var body_mesh: BoxMesh = BoxMesh.new()
-	body_mesh.size = Vector3(0.26, 0.04, 0.14)
-	body_mi.mesh = body_mesh
-	body_mi.material_override = body_mat
-	holder.add_child(body_mi)
-
-	# Rounded end caps — small flattened ellipsoids to soften the rectangle
-	# into the oval silhouette of the show prop.
-	for end_x in [-0.13, 0.13]:
-		var cap_mi: MeshInstance3D = MeshInstance3D.new()
-		var cap_mesh: SphereMesh = SphereMesh.new()
-		cap_mesh.radius = 0.07
-		cap_mesh.height = 0.04
-		cap_mesh.radial_segments = 16
-		cap_mesh.rings = 6
-		cap_mi.mesh = cap_mesh
-		cap_mi.material_override = body_mat
-		cap_mi.position = Vector3(end_x, 0.0, 0.0)
-		holder.add_child(cap_mi)
-
-	# Amber screen on the left half of the top face (matching where the
-	# Ancient-text display sits on the real prop).
-	var screen_mi: MeshInstance3D = MeshInstance3D.new()
-	var screen_mesh: BoxMesh = BoxMesh.new()
-	screen_mesh.size = Vector3(0.16, 0.005, 0.095)
-	screen_mi.mesh = screen_mesh
-	screen_mi.material_override = screen_mat
-	screen_mi.position = Vector3(-0.03, 0.023, 0.0)
-	holder.add_child(screen_mi)
-
-	# Five blue accent buttons running along the right edge — the side
-	# control strip the operator's thumb sits on.
-	for i in 5:
-		var t: float = float(i) / 4.0
-		var z: float = lerp(-0.045, 0.045, t)
-		var pip_mi: MeshInstance3D = MeshInstance3D.new()
-		var pip_mesh: BoxMesh = BoxMesh.new()
-		pip_mesh.size = Vector3(0.022, 0.006, 0.018)
-		pip_mi.mesh = pip_mesh
-		pip_mi.material_override = btn_mat
-		pip_mi.position = Vector3(0.10, 0.023, z)
-		holder.add_child(pip_mi)
+	var glb: PackedScene = load(KINO_GLB_PATH)
+	if glb != null:
+		var inst: Node = glb.instantiate()
+		holder.add_child(inst)
 
 	# Pickup hitbox — generous interact zone since the remote itself is small.
+	# Sized in world space (NOT scaled by the holder), so set as a SIBLING of
+	# the visual prop rather than a child.
 	var pickup: StaticBody3D = StaticBody3D.new()
 	pickup.set_script(KinoPickupScript)
 	pickup.name = "KinoPickup"

@@ -33,10 +33,6 @@ EpisodeWrap="*res://scripts/episode_wrap.gd"
 Settings="*res://scripts/settings.gd"
 ShipLayout="*res://scripts/ship_layout.gd"
 
-[audio]
-
-buses/default_bus_layout="res://default_bus_layout.tres"
-
 [display]
 
 window/size/viewport_width=1280

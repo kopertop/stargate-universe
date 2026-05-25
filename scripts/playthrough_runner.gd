@@ -110,50 +110,29 @@ func _drive() -> void:
 	])
 	await _interact_node(_find_node_named("DrRush"), "Rush briefing")
 	_expect(GameState.met_rush, "quest: talked to Rush")
-	_expect(GameState.quest_step == GameState.QUEST_FIND_KINO, "quest: Rush sends player to find the Kino")
+	_expect(GameState.quest_step == GameState.QUEST_FIND_REST, "quest: Rush sends Eli to rest")
 
-	# === STEP 3: find Kino in Eli's quarters (no elevator needed) ===
+	# === STEP 3: head to Eli's quarters, inspect strange device, sleep into Air crisis ===
 	await _travel_path([
 		"cr_corridor_2",
 		"eli_quarters",
 	])
+	_expect(GameState.eli_quarters_visited, "quest: entering Eli's quarters flips the flag")
+	_expect(GameState.quest_step == GameState.QUEST_FIND_KINO, "quest: in quarters -> inspect strange device")
 	await _interact_node(_find_node_named("KinoPickup"), "Kino pickup")
 	var kino_wait_frames: int = 900 if _demo_mode else 90
 	await _wait_until(func() -> bool: return GameState.kino_acquired, "Kino acquisition", kino_wait_frames)
-	_expect(GameState.quest_step == GameState.QUEST_RESTORE_POWER, "quest: Kino -> restore power")
-
-	# === STEP 4: restore main power at the Engineering Bay ===
-	await _travel_path([
-		"cr_corridor_2",
-		"engineering_bay",
-	])
-	await _interact_node(_find_node_named("PowerConsole"), "Power console")
-	var power_wait_frames: int = 900 if _demo_mode else 90
-	await _wait_until(func() -> bool: return GameState.elevator_repaired, "Power restoration", power_wait_frames)
-	_expect(GameState.quest_step == GameState.QUEST_FIND_QUARTERS, "quest: power -> find Crew Quarters Alpha")
-
-	# === STEP 5: ride elevator up, find Crew Quarters Alpha, sleep into Air crisis ===
-	await _travel_path([
-		"cr_corridor_2",
-		"control_interface_room",
-		"control_approach_north",
-		"north_corridor",
-		"elevator_north",
-		"elevator_room_floor_1",
-		"room_1753576770763",
-		"quarters_room_1",
-	])
-	_expect(GameState.quarters_found, "quest: entering Crew Quarters Alpha marks quarters found")
-	_expect(GameState.quest_step == GameState.QUEST_SLEEP, "quest: quarters -> sleep")
+	_expect(GameState.quest_step == GameState.QUEST_SLEEP, "quest: device inspected -> sleep")
 	await _interact_node(_find_node_named("Bed"), "sleep")
 	_expect(GameState.air_crisis_started, "quest: sleep starts Air crisis")
 	_expect(GameState.quest_step == GameState.QUEST_DIAGNOSE_LIFE_SUPPORT, "quest: crisis -> diagnose life support")
 
 	# === STEP 6: diagnose life support in gate room ===
+	# Leaves from Eli's quarters now (not Crew Quarters Alpha on the upper floor).
 	await _travel_path([
-		"room_1753576770763",
-		"elevator_room_floor_1",
-		"elevator_north",
+		"cr_corridor_2",
+		"control_interface_room",
+		"control_approach_north",
 		"north_corridor",
 		"east_corridor",
 		"stargate_corridor_east_connector",

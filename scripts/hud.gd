@@ -22,6 +22,16 @@ var _player: Node = null
 # fade — otherwise rapid talking would leave the panel half-faded.
 var _dialog_tween: Tween = null
 
+# Quest-waypoint edge arrow: a Polygon2D triangle that lives at the centre of
+# this Control's coordinate space. When the waypoint Node3D (group
+# "quest_waypoint") is offscreen, the arrow shows at the viewport edge along
+# the direction from screen-centre to its projected position and rotates to
+# point at it. When the waypoint is onscreen — or doesn't exist — the arrow
+# hides. Built programmatically so the .tscn stays unchanged.
+const EDGE_ARROW_ACCENT: Color = Color(0.55, 0.85, 1.0, 0.95)
+const EDGE_ARROW_MARGIN: float = 64.0
+var _edge_arrow: Polygon2D = null
+
 func _ready() -> void:
 	GameState.objective_changed.connect(_on_objective_changed)
 	GameState.health_changed.connect(_on_health_changed)
@@ -36,8 +46,82 @@ func _ready() -> void:
 	_on_kino_changed(GameState.kino_acquired)
 	_interact_label.text = ""
 	_dialog_panel.visible = false
+	_build_edge_arrow()
 	# Defer player lookup so the scene tree is settled.
 	call_deferred("_bind_player")
+
+
+func _build_edge_arrow() -> void:
+	_edge_arrow = Polygon2D.new()
+	_edge_arrow.name = "QuestEdgeArrow"
+	# Isoceles triangle pointing up (-Y in 2D). Local origin = visual centre so
+	# rotation pivots around the tip's centroid.
+	_edge_arrow.polygon = PackedVector2Array([
+		Vector2(0.0, -16.0),
+		Vector2(12.0, 10.0),
+		Vector2(-12.0, 10.0),
+	])
+	_edge_arrow.color = EDGE_ARROW_ACCENT
+	_edge_arrow.visible = false
+	_edge_arrow.z_index = 100
+	add_child(_edge_arrow)
+
+
+func _process(_delta: float) -> void:
+	_update_edge_arrow()
+
+
+# Polled each frame because the player + camera move continuously and there's
+# no signal that says "the camera matrix changed". Cheap — single unproject
+# call and one viewport-rect check per frame, no allocations.
+func _update_edge_arrow() -> void:
+	if _edge_arrow == null:
+		return
+	var waypoint: Node = get_tree().get_first_node_in_group("quest_waypoint")
+	if waypoint == null or not (waypoint is Node3D):
+		_edge_arrow.visible = false
+		return
+	var camera: Camera3D = get_viewport().get_camera_3d()
+	if camera == null:
+		_edge_arrow.visible = false
+		return
+	var world_pos: Vector3 = (waypoint as Node3D).global_position
+	var viewport_size: Vector2 = get_viewport_rect().size
+	var centre: Vector2 = viewport_size * 0.5
+	var behind: bool = camera.is_position_behind(world_pos)
+	var screen_pos: Vector2 = camera.unproject_position(world_pos)
+	var onscreen: bool = (
+		not behind
+		and screen_pos.x >= 0.0 and screen_pos.x <= viewport_size.x
+		and screen_pos.y >= 0.0 and screen_pos.y <= viewport_size.y
+	)
+	if onscreen:
+		_edge_arrow.visible = false
+		return
+
+	# Compute the direction from screen-centre toward the projected waypoint.
+	# When the waypoint is behind the camera, unproject_position returns a
+	# point reflected across the centre, so flip the direction in that case.
+	var direction: Vector2 = (screen_pos - centre)
+	if behind:
+		direction = -direction
+	if direction.length() < 0.001:
+		direction = Vector2(0.0, -1.0)
+	direction = direction.normalized()
+
+	# Clamp the arrow to a rectangle inside the viewport so it never sits on
+	# the literal pixel edge. Intersect the ray (centre + t*direction) with
+	# the bounds rect.
+	var bound_x: float = max(centre.x - EDGE_ARROW_MARGIN, 1.0)
+	var bound_y: float = max(centre.y - EDGE_ARROW_MARGIN, 1.0)
+	var t_x: float = bound_x / max(abs(direction.x), 0.0001)
+	var t_y: float = bound_y / max(abs(direction.y), 0.0001)
+	var t: float = min(t_x, t_y)
+	_edge_arrow.position = centre + direction * t
+	# Polygon points up by default; rotation of 0 ↔ point up (-Y direction).
+	# Convert "direction vector" to "rotation about Z" so the tip faces direction.
+	_edge_arrow.rotation = direction.angle() + PI * 0.5
+	_edge_arrow.visible = true
 
 func _bind_player() -> void:
 	_player = get_tree().get_first_node_in_group("player")

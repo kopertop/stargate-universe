@@ -28,7 +28,7 @@ roughness = 0.58
 [sub_resource type="BoxMesh" id="WallBox"]
 size = Vector3(0.2, 5.4, 12)
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_2mlku"]
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ch4vr"]
 albedo_color = Color(0.62, 0.58, 0.52, 1)
 roughness = 0.55
 
@@ -81,8 +81,8 @@ mesh = SubResource("WallBox")
 [node name="Bed" type="MeshInstance3D" parent="." unique_id=902767139]
 transform = Transform3D(2.5, 0, 0, 0, 2.5, 0, 0, 0, 2.5, -1.5, 0, -4)
 mesh = ExtResource("2_bed")
-surface_material_override/0 = SubResource("StandardMaterial3D_2mlku")
-surface_material_override/1 = SubResource("StandardMaterial3D_2mlku")
+surface_material_override/0 = SubResource("StandardMaterial3D_ch4vr")
+surface_material_override/1 = SubResource("StandardMaterial3D_ch4vr")
 
 [node name="Locker" parent="." unique_id=1361107435 instance=ExtResource("5_locker")]
 transform = Transform3D(-2.5, 0, -3.0616e-07, 0, 2.5, 0, 3.0616e-07, 0, -2.5, -1.5, 0, 5.3)
@@ -93,12 +93,8 @@ transform = Transform3D(-1.0928e-07, 0, -2.5, 0, 2.5, 0, 2.5, 0, -1.0928e-07, 3.
 [node name="Chair" parent="." unique_id=593026701 instance=ExtResource("7_chair")]
 transform = Transform3D(1.767767, 0, 1.767767, 0, 2.5, 0, -1.767767, 0, 1.767767, 2, 0, 0)
 
-; Meshy Kino Remote — scale 0.13 (raw 1.9 m → ~25 cm SGU prop dimensions).
-; Placed centered on the desktop: world Y = 1.02 sits the kino's bottom
-; flush with the desk top (table.glb is 0.4 m tall raw × 2.5 scale = 1.0 m,
-; kino is 0.034 m tall, center pivot → 0.017 m offset).
-[node name="KinoRemote" parent="." instance=ExtResource("8_kino")]
-transform = Transform3D(0.13, 0, 0, 0, 0.13, 0, 0, 0, 0.13, 3.6, 1.02, 0)
+[node name="KinoRemote" parent="." unique_id=487050392 instance=ExtResource("8_kino")]
+transform = Transform3D(0.2, 0, 0, 0, 0.2, 0, 0, 0, 0.2, 3.6, 1.02, 0)
 
 [node name="WallLightLeft" type="Node3D" parent="." unique_id=1790582917]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.2, 2.6, -5.85)

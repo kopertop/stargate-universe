@@ -65,6 +65,15 @@ character pipelines in Godot are battle-tested and the Kenney kit ships a workin
 | `production/` | Sprint plans, milestone tracking |
 | `docs/` | Narrative reference, audio inventory |
 
+## Navigation aids
+
+Every meaningful directory has its own `AGENTS.md` cheatsheet: a one-page
+summary of what lives there, project-specific conventions, and links back
+to CLAUDE.md + related docs. Read the local `AGENTS.md` FIRST when entering
+a new directory — it's faster than grepping ten files. CLAUDE.md remains
+the project-wide source of truth; the per-directory files defer to it for
+anything they don't override.
+
 ## Dev Conventions
 
 - **Language:** GDScript (kit's idiom); C# only if a system genuinely requires it

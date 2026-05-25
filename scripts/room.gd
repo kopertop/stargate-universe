@@ -79,7 +79,7 @@ func _ready() -> void:
 	GameState.set_current_room(room_id)
 	if room_id == "quarters_room_1":
 		GameState.mark_quarters_found()
-	elif room_id == "eli_quarters" and not GameState.kino_acquired:
+	elif room_id == "eli_quarters":
 		GameState.mark_eli_quarters_found()
 
 	# Persist for save/load — F5 reloads this scene with the same room_id.
@@ -274,12 +274,10 @@ func _spawn_interactables() -> void:
 		"quarters_room_1":
 			_spawn_quarters_bed()
 		"eli_quarters":
-			# Eli's room — uses the quarters template (bed + locker + desk via
-			# RoomBuilder), houses the Kino Remote pickup, AND has its own
-			# Bed interactable so the player can lay down to rest right here
-			# instead of trekking up to Crew Quarters Alpha first.
+			# Eli's room — Eli IS the player. Houses the Kino Remote pickup on
+			# the desk and his bed for the FIND_REST → SLEEP quest beat.
 			_spawn_eli_kino_pickup()
-			_spawn_quarters_bed("Eli won't mind if I rest here a minute.")
+			_spawn_quarters_bed("My bed. Time to crash.")
 		"east_corridor":
 			_spawn_hull_breach()
 			_spawn_sgt_greer()
@@ -306,13 +304,14 @@ func _spawn_quarters_bed(first_time_log: String = "") -> void:
 	var d_m: float = float(_room_data.get("height", 200)) * ShipLayout.SCALE
 	var half_x: float = w_m * 0.5
 	var half_z: float = d_m * 0.5
-	# Hitbox sized for the scaled-up bed prop (scale 2.5 → ~5m × ~2.5m footprint
-	# in RoomBuilder._accent_quarters). Generous so the interact ray hits anywhere
-	# on top of the bed.
-	var bunk_w: float = min(w_m - 1.0, 3.0)
 	var bunk_x: float = -half_x * 0.3
-	var bunk_pos: Vector3 = Vector3(bunk_x, 0.6, -half_z + 1.8)
+	var bunk_pos: Vector3 = Vector3(bunk_x, 0.5, -half_z + 2.0)
 
+	# Interact body — Interactable._ready() hard-sets collision_layer = 4, so
+	# this one ONLY handles the E-prompt. Walk-blocking is a separate body below.
+	# Shrunk to the actual mattress footprint so the prompt doesn't fire across
+	# half the room.
+	const BED_FOOTPRINT: Vector3 = Vector3(1.8, 0.7, 3.4)
 	var bed: StaticBody3D = StaticBody3D.new()
 	bed.set_script(BedScript)
 	bed.name = "Bed"
@@ -321,12 +320,25 @@ func _spawn_quarters_bed(first_time_log: String = "") -> void:
 		bed.set("first_time_log", first_time_log)
 	var cs: CollisionShape3D = CollisionShape3D.new()
 	var box: BoxShape3D = BoxShape3D.new()
-	# Match the scaled bunk footprint so the interact ray hits anywhere on it.
-	# At scale 2.5 the bedSingle.glb is ~5 m long × ~2.5 m wide.
-	box.size = Vector3(bunk_w + 0.3, 1.2, 4.0)
+	box.size = BED_FOOTPRINT
 	cs.shape = box
 	bed.add_child(cs)
 	add_child(bed)
+
+	# Walk-blocker — sibling StaticBody on world layer 1 so the player can't
+	# stroll through the mattress. Sized to match the bed footprint; lowered so
+	# its top sits at mattress height (~1 m) rather than mid-pillow.
+	var bed_block: StaticBody3D = StaticBody3D.new()
+	bed_block.name = "BedBlocker"
+	bed_block.position = bunk_pos + Vector3(0.0, -0.05, 0.0)
+	bed_block.collision_layer = 1
+	bed_block.collision_mask = 0
+	var block_cs: CollisionShape3D = CollisionShape3D.new()
+	var block_box: BoxShape3D = BoxShape3D.new()
+	block_box.size = BED_FOOTPRINT
+	block_cs.shape = block_box
+	bed_block.add_child(block_cs)
+	add_child(bed_block)
 
 
 # Eli left his Kino Remote on the desk in his quarters — RoomBuilder's
@@ -334,17 +346,17 @@ func _spawn_quarters_bed(first_time_log: String = "") -> void:
 # room is wider than 6 m. eli_quarters is 10 m × 12 m so the desk always spawns.
 # Kino prop sits on the desktop, pickup hitbox alongside.
 func _spawn_eli_kino_pickup() -> void:
-	# Meshy-generated GLB authored at 1.91 m × 0.26 m × 1.19 m raw — scale
-	# 0.13 brings it to ~25 cm long × 3 cm tall × 15 cm wide, matching the
-	# real SGU prop dimensions.
+	# Position + scale baked from scenes/quarters_test.tscn workbench. RoomBuilder
+	# spawns the desk at (half_x - 1.4, 0, 0); the remote sits centred on that desktop.
 	const KINO_GLB_PATH: String = "res://models/props/kino_remote.glb"
-	const KINO_SCALE: float = 0.13
+	const KINO_SCALE: float = 0.2
 
 	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
-	var desk_top: Vector3 = Vector3(w_m * 0.5 - 0.7, 0.85, 0.0)
+	var half_x: float = w_m * 0.5
+	var kino_pos: Vector3 = Vector3(half_x - 1.4, 1.02, 0.0)
 	var holder: Node3D = Node3D.new()
 	holder.name = "KinoProp"
-	holder.position = desk_top + Vector3(0.0, 0.03, 0.0)
+	holder.position = kino_pos
 	holder.scale = Vector3.ONE * KINO_SCALE
 	add_child(holder)
 
@@ -650,62 +662,50 @@ func _spawn_dr_rush() -> void:
 	rush.rotation.y = -PI * 0.5
 	rush.set("character_name", "Dr Rush")
 	rush.set("prompt", "Talk to Dr Rush")
-	# Choice-tree dialog — branches into ship lore, mission guidance, or a
-	# brusque exit. Mirrors the Fable-style format used for Scott.
+	# Choice-tree dialog — Rush brushes Eli off. The only useful instruction is
+	# the closer: "nothing for now, get some rest." That advances the player's
+	# quest to FIND_REST (eli_quarters).
 	rush.set("dialogue_tree", [
 		{
 			"speaker": "Dr Rush",
-			"text": "You found me. Good — now stop interrupting. I'm trying to read what this ship is doing. What is it?",
+			"text": "Eli. I'm in the middle of something. What do you need?",
 			"choices": [
-				{"text": "What is this ship?", "next": 1},
-				{"text": "Scott sent me.", "next": 2},
-				{"text": "Where are we?", "next": 3},
+				{"text": "Scott sent me. What should I do?", "next": 1},
+				{"text": "Where are we?", "next": 2},
+				{"text": "What is this ship?", "next": 3},
 				{"text": "I'll leave you to it.", "next": "exit"},
 			],
 		},
 		{
 			"speaker": "Dr Rush",
-			"text": "Destiny. An Ancient seed ship — they launched it tens of thousands of years before Atlantis. It's on a fixed FTL sequence, jumping from galaxy to galaxy, mapping. We're along for the ride.",
+			"text": "Nothing for now. Honestly. You look exhausted — go get some rest. I'll send for you when I have something.",
 			"choices": [
-				{"text": "Can we control it?", "next": 4},
-				{"text": "What's our priority?", "next": 5},
-				{"text": "Where are we now?", "next": 3},
-				{"text": "Back to work, then.", "next": "exit"},
-			],
-		},
-		{
-			"speaker": "Dr Rush",
-			"text": "Of course he did. Tell Scott the consoles are partially responsive — that's the best I can offer. The rest is going to take time, and I don't have any of it to spare.",
-			"choices": [
-				{"text": "What CAN you do?", "next": 4},
-				{"text": "Anything I can help with?", "next": 5},
-				{"text": "I'll let him know.", "next": "exit"},
-			],
-		},
-		{
-			"speaker": "Dr Rush",
-			"text": "Several billion light years from Earth, if my early readings are correct. The ship doesn't know we're here, and frankly, that's the only reason we're still alive.",
-			"choices": [
-				{"text": "Can we go home?", "next": 4},
-				{"text": "What should I focus on?", "next": 5},
-				{"text": "Right. Carrying on.", "next": "exit"},
-			],
-		},
-		{
-			"speaker": "Dr Rush",
-			"text": "Not yet. The master code is locked, and the gate diallers are on a one-way preset. If we want to dial out, we need power — which we don't have. So: be patient.",
-			"choices": [
-				{"text": "What should I do?", "next": 5},
-				{"text": "Back to the start.", "next": 0},
+				{"text": "Where would I even go?", "next": 4},
 				{"text": "Understood.", "next": "exit"},
 			],
 		},
 		{
 			"speaker": "Dr Rush",
-			"text": "Stay alive. Find a hull breach — there will be one — and seal it before the air gets any thinner. After that, find your quarters and stop hovering. I'll send for you when I have something.",
+			"text": "Several billion light years from Earth, if my early readings are right. The ship doesn't know we're aboard — that's the only reason we're still breathing. Now: rest. Go.",
 			"choices": [
+				{"text": "Where would I even go?", "next": 4},
+				{"text": "Right. Carrying on.", "next": "exit"},
+			],
+		},
+		{
+			"speaker": "Dr Rush",
+			"text": "An Ancient seed ship. Launched long before Atlantis, on a fixed FTL sequence. We're along for the ride. There — that's your briefing. Nothing for you to do right now except sleep.",
+			"choices": [
+				{"text": "Where would I even go?", "next": 4},
 				{"text": "Back to the start.", "next": 0},
-				{"text": "I'll handle it.", "next": "exit"},
+				{"text": "Got it.", "next": "exit"},
+			],
+		},
+		{
+			"speaker": "Dr Rush",
+			"text": "Your quarters, Eli. Down the corridor, past Control. Find them. Lay down. Stop hovering over my shoulder.",
+			"choices": [
+				{"text": "On my way.", "next": "exit"},
 			],
 		},
 	])

@@ -70,25 +70,29 @@ func _initialize() -> void:
 	_expect(not gs.met_rush, "air: Rush starts un-met")
 	gs.met_rush = true
 	gs.advance_air_quest()
-	_expect(gs.quest_step == gs.QUEST_FIND_KINO, "air: Rush -> find Kino Remote in Eli's Quarters")
+	_expect(gs.quest_step == gs.QUEST_FIND_REST, "air: Rush dismisses Eli -> find a place to rest")
+
+	_expect(not gs.eli_quarters_visited, "air: Eli's quarters start un-visited")
+	gs.mark_eli_quarters_found()
+	_expect(gs.eli_quarters_visited, "air: mark_eli_quarters_found flips the flag")
+	_expect(gs.quest_step == gs.QUEST_FIND_KINO, "air: in quarters -> inspect strange device")
 
 	_expect(not gs.kino_acquired, "mission: kino starts unacquired")
 	gs.acquire_kino()
 	_expect(gs.kino_acquired, "mission: acquire_kino sets flag")
-	_expect(gs.quest_step == gs.QUEST_RESTORE_POWER, "air: Kino -> restore power at Engineering Bay")
+	_expect(gs.prologue_complete, "air: Rush + quarters + device marks prologue complete")
+	_expect(gs.quest_step == gs.QUEST_SLEEP, "air: device inspected -> sleep")
+	gs.check_episode_complete()
+	_expect(not gs.episode_complete, "air: prologue does not complete episode")
 
+	# Optional prologue flags — still mutable for save compatibility but not on
+	# the critical quest path.
 	_expect(not gs.elevator_repaired, "air: elevator starts broken")
 	gs.unlock_elevator()
 	_expect(gs.elevator_repaired, "air: unlock_elevator sets flag")
-	_expect(gs.quest_step == gs.QUEST_FIND_QUARTERS, "air: power restored -> find Crew Quarters Alpha")
-
-	_expect(not gs.quarters_found, "air: quarters start unfound")
+	_expect(not gs.quarters_found, "air: Crew Quarters Alpha start unfound")
 	gs.mark_quarters_found()
 	_expect(gs.quarters_found, "air: mark_quarters_found sets flag")
-	_expect(gs.prologue_complete, "air: Rush + Kino + power + quarters marks prologue complete")
-	_expect(gs.quest_step == gs.QUEST_SLEEP, "air: prologue -> sleep")
-	gs.check_episode_complete()
-	_expect(not gs.episode_complete, "air: prologue does not complete episode")
 
 	gs.start_air_crisis()
 	_expect(gs.air_crisis_started, "air: sleep starts crisis")
@@ -154,6 +158,7 @@ func _initialize() -> void:
 	_expect(gs.episode_complete == false, "mission: reset clears completion")
 	_expect(gs.kino_acquired == false, "mission: reset clears kino")
 	_expect(gs.quarters_found == false, "mission: reset clears quarters")
+	_expect(gs.eli_quarters_visited == false, "mission: reset clears eli_quarters_visited")
 	_expect(gs.elevator_repaired == false, "mission: reset clears elevator_repaired")
 	_expect(gs.breaches_sealed.is_empty(), "mission: reset clears breaches")
 	_expect(gs.met_scott == false, "mission: reset clears met_scott")

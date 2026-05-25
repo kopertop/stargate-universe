@@ -49,6 +49,7 @@ func _ready() -> void:
 	# drop mouselook + un-capture the cursor so dialog choices are clickable.
 	GameState.dialog_started.connect(_on_dialog_started)
 	GameState.dialog_closed.connect(_on_dialog_closed)
+	GameState.kino_closed.connect(_on_dialog_closed)
 
 
 func _on_dialog_started(_npc: Node3D, _tree: Array) -> void:

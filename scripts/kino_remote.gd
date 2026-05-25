@@ -365,6 +365,10 @@ func _close() -> void:
 	if _root != null:
 		_root.visible = false
 	get_tree().paused = false
+	# Reset mouselook through view.gd — closing the Kino doesn't restore
+	# Input.mouse_mode on its own, so RMB-held-during-open leaves the cursor
+	# visible until the next RMB tap.
+	GameState.kino_closed.emit()
 
 func _refresh() -> void:
 	_refresh_map()

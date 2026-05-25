@@ -689,6 +689,25 @@ static func _spawn_kenney_prop(world: Node3D, glb: PackedScene, pos: Vector3, ya
 	_apply_material_recursive(inst, mat)
 
 
+# Procedural walk-blocker. `pos` is the prop's floor anchor; the body is auto-
+# raised by size.y/2 so the box sits flush with the floor. Layer 1 only — camera
+# spring-arm (layer 2) can still see over so the third-person view isn't pulled
+# in tight whenever it grazes a chair.
+static func _add_walk_blocker(world: Node3D, pos: Vector3, yaw: float, size: Vector3, body_name: String) -> void:
+	var body: StaticBody3D = StaticBody3D.new()
+	body.name = body_name
+	body.position = pos + Vector3(0.0, size.y * 0.5, 0.0)
+	body.rotation.y = yaw
+	body.collision_layer = 1
+	body.collision_mask = 0
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = size
+	cs.shape = box
+	body.add_child(cs)
+	world.add_child(body)
+
+
 # Small Kino sphere: dark body with an emissive iris sphere protruding from
 # its front. Used by the kino-room shelf display.
 static func _add_kino_ball(world: Node3D, body: StandardMaterial3D, eye: StandardMaterial3D, pos: Vector3) -> void:
@@ -720,91 +739,114 @@ static func _add_kino_ball(world: Node3D, body: StandardMaterial3D, eye: Standar
 # `bathroomCabinet.glb` locker on the opposite wall, and (in wider rooms) a
 # `desk.glb` + `chairDesk.glb` side workstation.
 static func _accent_quarters(world: Node3D, width: float, depth: float, height: float, palette: Dictionary) -> void:
-	# Furniture scales bumped to match the Kenney mini-character scale 2.6 so
-	# Eli/the player can actually lie in the bed, sit in the chair, and reach
-	# the desk surface. Previous scales (1.3–1.5) made everything doll-house
-	# sized relative to the character.
+	# Values dialled in via scenes/quarters_test.tscn workbench and then
+	# generalised into half-axis formulas so the layout works in both
+	# Eli's Quarters (10×12 m) and Crew Quarters Alpha (12.8×4.4 m).
+	# Furniture switched to Kenney Space Station Kit (sleek sci-fi pieces
+	# matching the Ancient ship aesthetic) — the Furniture-Kit domestic
+	# pieces previously used didn't fit the visual story.
 	const BED_SCALE: float = 2.5
-	const NIGHTSTAND_SCALE: float = 2.0
-	const LAMP_SCALE: float = 2.0
 	const LOCKER_SCALE: float = 2.5
 	const DESK_SCALE: float = 2.5
 	const CHAIR_SCALE: float = 2.5
 
 	var half_x: float = width * 0.5
 	var half_z: float = depth * 0.5
-	# Bed footprint (X-axis width). Bumped cap from 2.0→3.0 so the bigger
-	# bed (≈2.5m wide after scale) has room without clipping into the wall.
 	var bunk_w: float = min(width - 1.0, 3.0)
 	var bunk_x: float = -half_x * 0.3
 
-	# --- Bed -----------------------------------------------------------------
-	# Kenney bedSingle.glb authored ~2 m long × ~1 m wide × ~0.5 m tall raw.
-	# At scale 2.5 → 5 m × 2.5 m × 1.25 m. The pivot is at the foot of the
-	# bed centerline, so position z so the bed extends from the wall outward.
-	# scenes/quarters_test.tscn workbench is the right place to dial this in
-	# visually — paste tuned values back here.
-	var bed_glb: PackedScene = load("res://models/props/furniture_kit/bedSingle.glb")
-	if bed_glb != null:
-		_spawn_kenney_prop(world, bed_glb,
-			Vector3(bunk_x, 0.0, -half_z + 2.6), 0.0, BED_SCALE,
-			Color(0.62, 0.58, 0.52))
+	# --- Bed (Space Station Kit bed-single.obj as Mesh resource) ----------
+	# OBJ imports as a Mesh resource (not a PackedScene), so we instantiate
+	# a MeshInstance3D and assign the mesh. Surface material override gives
+	# the bed a warm cream tint that reads against the dark Ancient walls.
+	var bed_mesh: Mesh = load("res://models/props/space_station_kit/bed-single.obj")
+	if bed_mesh != null:
+		var bed_mi: MeshInstance3D = MeshInstance3D.new()
+		bed_mi.name = "BedProp"
+		bed_mi.mesh = bed_mesh
+		bed_mi.position = Vector3(bunk_x, 0.0, -half_z + 2.0)
+		bed_mi.scale = Vector3.ONE * BED_SCALE
+		var bed_mat: StandardMaterial3D = _make_mat(Color(0.62, 0.58, 0.52), 0.0, 0.55)
+		# bed-single.obj exposes two surfaces (frame + mattress) — paint both
+		# so we don't see the white default fallback on one of them.
+		var surf_count: int = bed_mesh.get_surface_count()
+		for i in surf_count:
+			bed_mi.set_surface_override_material(i, bed_mat)
+		world.add_child(bed_mi)
 
-	# --- Nightstand + lamp -------------------------------------------------
-	# Sit beside the headboard. Bed at scale 2.5 is ~2.5m wide so the
-	# nightstand offset from bunk_x is bunk_w/2 + nightstand_half_width.
-	var stand_x: float = bunk_x + bunk_w * 0.5 + 0.85
-	if stand_x < half_x - 0.6:
-		var stand_glb: PackedScene = load("res://models/props/furniture_kit/cabinetBedDrawerTable.glb")
-		var lamp_glb: PackedScene = load("res://models/props/furniture_kit/lampSquareTable.glb")
-		if stand_glb != null:
-			_spawn_kenney_prop(world, stand_glb,
-				Vector3(stand_x, 0.0, -half_z + 0.9), 0.0, NIGHTSTAND_SCALE,
-				Color(0.42, 0.36, 0.30))
-		if lamp_glb != null:
-			# Lamp sits ON the nightstand. Nightstand at scale 2.0 is ~1 m
-			# tall (raw 0.5 m × scale 2.0), so the lamp's BASE should be at
-			# y=1.0. Tune via scenes/quarters_test.tscn if pivot differs.
-			_spawn_kenney_prop(world, lamp_glb,
-				Vector3(stand_x, 1.0, -half_z + 0.9), 0.0, LAMP_SCALE,
-				Color(0.85, 0.78, 0.65))
-		# A warm bedside pool — sells the lamp as a real lit object and gives
-		# the bunk corner the cosy read it needs.
-		var bed_light: OmniLight3D = OmniLight3D.new()
-		bed_light.name = "BedsideLamp"
-		bed_light.light_color = Color(1.0, 0.78, 0.50)
-		bed_light.light_energy = 1.8
-		bed_light.omni_range = 4.5
-		bed_light.omni_attenuation = 1.8
-		bed_light.shadow_enabled = false
-		bed_light.position = Vector3(stand_x, 1.8, -half_z + 0.9)
-		world.add_child(bed_light)
-
-	# --- Wall locker on +Z wall --------------------------------------------
-	# Locker at scale 2.5 → ~1.75m wide × ~1.75m tall. Offset further from
-	# the wall (0.7 instead of 0.3) so the chunky base doesn't intersect it.
-	var locker_glb: PackedScene = load("res://models/props/furniture_kit/bathroomCabinet.glb")
+	# --- Wall locker on +Z wall (Space Station Kit container-tall) --------
+	var locker_glb: PackedScene = load("res://models/props/space_station_kit/container-tall.glb")
 	if locker_glb != null:
 		_spawn_kenney_prop(world, locker_glb,
 			Vector3(bunk_x, 0.0, half_z - 0.7), PI, LOCKER_SCALE,
 			Color(0.38, 0.40, 0.44))
 
-	# --- Side desk + chair (only in wider rooms) ----------------------------
-	# Desk at scale 2.5 → ~2.5m × ~1.25m × ~1.75m tall. Move it further from
-	# the wall so the chair has room to slide out into the room.
+	# --- Side desk + chair (Space Station Kit table + chair-cushion) ------
+	# Workbench yaws: desk -90° so its long axis runs +Z; chair +45° for the
+	# casual "pulled out a bit" angle the user dialled in.
 	if width > 6.0:
-		var desk_glb: PackedScene = load("res://models/props/furniture_kit/desk.glb")
-		var chair_glb: PackedScene = load("res://models/props/furniture_kit/chairDesk.glb")
+		var desk_glb: PackedScene = load("res://models/props/space_station_kit/table.glb")
+		var chair_glb: PackedScene = load("res://models/props/space_station_kit/chair-cushion.glb")
 		if desk_glb != null:
-			_spawn_kenney_prop(world, desk_glb,
-				Vector3(half_x - 1.4, 0.0, 0.0), -PI * 0.5, DESK_SCALE,
+			var desk_pos: Vector3 = Vector3(half_x - 1.4, 0.0, 0.0)
+			_spawn_kenney_prop(world, desk_glb, desk_pos, -PI * 0.5, DESK_SCALE,
 				Color(0.45, 0.40, 0.35))
+			# Desk box: long axis follows yaw -90° → world Z. 2.4 m × 0.95 m tall ×
+			# 1.0 m deep at scale 2.5.
+			_add_walk_blocker(world, desk_pos, -PI * 0.5,
+				Vector3(1.0, 0.95, 2.4), "DeskBlocker")
 		if chair_glb != null:
-			# Chair sits in front of the desk (toward the room interior) with
-			# its front facing the desk so the operator sits looking at it.
-			_spawn_kenney_prop(world, chair_glb,
-				Vector3(half_x - 3.0, 0.0, 0.0), -PI * 0.5, CHAIR_SCALE,
+			var chair_pos: Vector3 = Vector3(half_x - 3.0, 0.0, 0.0)
+			_spawn_kenney_prop(world, chair_glb, chair_pos, PI * 0.25, CHAIR_SCALE,
 				Color(0.30, 0.32, 0.36))
+			# Chair: ~1.1 m square seat-block footprint, 0.95 m to seat back. Yaw
+			# +45° but the near-square box makes that visually irrelevant.
+			_add_walk_blocker(world, chair_pos, PI * 0.25,
+				Vector3(1.1, 0.95, 1.1), "ChairBlocker")
+
+	# --- Wall sconces (replace the old nightstand-lamp combo) -------------
+	# Two warm amber sconces flanking the bed on the back (-Z) wall, mounted
+	# 2.6 m up so they read at standing-eye-level. Each sconce: dark housing
+	# box + bright emissive plate + OmniLight3D pool.
+	_add_wall_sconce(world, Vector3(-3.2, 2.6, -half_z + 0.15))
+	_add_wall_sconce(world, Vector3(0.6, 2.6, -half_z + 0.15))
+
+
+# Procedural wall sconce — a Node3D parent with a dark housing box, bright
+# amber emissive plate, and OmniLight3D for the spill. Sized to match the
+# scenes/quarters_test.tscn workbench placement so values stay portable.
+static func _add_wall_sconce(world: Node3D, pos: Vector3) -> void:
+	var sconce: Node3D = Node3D.new()
+	sconce.name = "WallSconce"
+	sconce.position = pos
+	world.add_child(sconce)
+
+	var housing_mat: StandardMaterial3D = _make_mat(Color(0.20, 0.20, 0.22), 0.5, 0.45)
+	var housing_mi: MeshInstance3D = MeshInstance3D.new()
+	var housing_box: BoxMesh = BoxMesh.new()
+	housing_box.size = Vector3(0.46, 0.74, 0.16)
+	housing_mi.mesh = housing_box
+	housing_mi.material_override = housing_mat
+	housing_mi.position = Vector3(0.0, 0.0, 0.08)
+	sconce.add_child(housing_mi)
+
+	var plate_mat: StandardMaterial3D = _emissive_mat(Color(1.0, 0.78, 0.50), 3.0)
+	var plate_mi: MeshInstance3D = MeshInstance3D.new()
+	var plate_box: BoxMesh = BoxMesh.new()
+	plate_box.size = Vector3(0.32, 0.6, 0.08)
+	plate_mi.mesh = plate_box
+	plate_mi.material_override = plate_mat
+	plate_mi.position = Vector3(0.0, 0.0, 0.16)
+	sconce.add_child(plate_mi)
+
+	var glow: OmniLight3D = OmniLight3D.new()
+	glow.light_color = Color(1.0, 0.78, 0.50)
+	glow.light_energy = 2.4
+	glow.omni_range = 4.5
+	glow.omni_attenuation = 1.8
+	glow.shadow_enabled = false
+	glow.position = Vector3(0.0, 0.0, 0.3)
+	sconce.add_child(glow)
 
 
 # Hydroponics: working crop bay. Ceiling-spanning grow-light array (emissive

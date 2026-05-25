@@ -1,7 +1,8 @@
-[gd_scene load_steps=2 format=3 uid="uid://c1b54351xjhp2"]
+[gd_scene format=3 uid="uid://c1b54351xjhp2"]
 
 [ext_resource type="PackedScene" uid="uid://c0flovcp3vnlq" path="res://models/props/space_station_kit/computer-wide.glb" id="1_glb"]
-[ext_resource type="Script" path="res://scripts/console_preview.gd" id="2_preview"]
+[ext_resource type="Script" uid="uid://kgypdhkqhc3f" path="res://scripts/console_preview.gd" id="2_preview"]
+[ext_resource type="Texture2D" uid="uid://jtlom4cyowfk" path="res://textures/split/a_panel_plain.png" id="4_mdxcu"]
 
 [sub_resource type="Environment" id="EnvFill"]
 background_mode = 1
@@ -10,18 +11,25 @@ ambient_light_source = 2
 ambient_light_color = Color(0.6, 0.7, 0.9, 1)
 ambient_light_energy = 0.4
 
-[sub_resource type="StandardMaterial3D" id="ScreenMat"]
-albedo_color = Color(0.32, 0.72, 1, 1)
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_luslq"]
+albedo_color = Color(0.04, 0.06, 0.1, 1)
 roughness = 0.25
 emission_enabled = true
-emission = Color(0.32, 0.72, 1, 1)
-emission_energy_multiplier = 3.2
+emission = Color(0.04, 0.06, 0.1, 1)
+emission_energy_multiplier = 0.4
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_nl0sk"]
+albedo_texture = ExtResource("4_mdxcu")
 
 [sub_resource type="BoxMesh" id="ScreenBox"]
 size = Vector3(0.62, 0.015, 0.3)
 
 [node name="ConsoleTest" type="Node3D" unique_id=1292343740]
 script = ExtResource("2_preview")
+emission_energy = 1.5
+font_size = 16
+text_depth = 0.0
+text_local_position = Vector3(0, 0, 0)
 
 [node name="Camera3D" type="Camera3D" parent="." unique_id=132734240]
 transform = Transform3D(0.866, -0.25, 0.433, 0, 0.866, 0.5, -0.5, -0.433, 0.75, 2.5, 2.5, 3)
@@ -40,5 +48,7 @@ transform = Transform3D(2.2, 0, 0, 0, 2.2, 0, 0, 0, 2.2, 0, 0, 0)
 
 [node name="ScreenPlate" type="MeshInstance3D" parent="Stage" unique_id=1420321022]
 transform = Transform3D(1.2, 0, 0, 0, 0.88424253, -0.6543051, 0, 0.6543051, 0.88424253, 0, 0.36500302, -0.022982696)
-material_override = SubResource("ScreenMat")
+material_override = SubResource("StandardMaterial3D_luslq")
+material_overlay = SubResource("StandardMaterial3D_nl0sk")
+cast_shadow = 0
 mesh = SubResource("ScreenBox")

@@ -64,7 +64,7 @@ func _apply_kind_defaults() -> void:
 		if GameState.quest_step == GameState.QUEST_WAIT_FTL:
 			prompt = "Trigger FTL drop"
 	else:
-		prompt = "Read Eli's notes"
+		prompt = "Read your notes"
 		if GameState.quest_step == GameState.QUEST_DIAGNOSE_LIFE_SUPPORT:
 			prompt = "Diagnose life support"
 		elif GameState.quest_step == GameState.QUEST_DIAL_LIME_PLANET:

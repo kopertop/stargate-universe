@@ -7,6 +7,9 @@ signal health_changed(value: float)
 signal oxygen_changed(value: float)
 signal objective_changed(text: String)
 signal room_discovered(room_id: String)
+# Fired when the player enters a new room. Drives the Kino Remote player
+# marker and the in-world quest-waypoint diamond's re-targeting.
+signal current_room_changed(room_id: String)
 signal kino_changed(acquired: bool)
 signal episode_completed()
 signal log_added(line: String)
@@ -65,6 +68,29 @@ const QUEST_LABELS: Dictionary = {
 	QUEST_COMPLETE: "Episode complete",
 }
 
+# Where each quest step's diamond should anchor. The room field names a row in
+# data/ship_layout.json; the anchor field names a Node already spawned by
+# room.gd / gate_room.gd (matched by Node.name). When `anchor` is empty the
+# waypoint pins to the room itself (door of entry); when both fields are empty
+# the waypoint is hidden (off-ship or completion states).
+const QUEST_TARGETS: Dictionary = {
+	QUEST_TALK_SCOTT: {"room": "gate_room", "anchor": "LtScott"},
+	QUEST_FIND_RUSH: {"room": "control_interface_room", "anchor": "DrRush"},
+	QUEST_FIND_KINO: {"room": "eli_quarters", "anchor": "KinoPickup"},
+	QUEST_RESTORE_POWER: {"room": "engineering_bay", "anchor": "PowerConsole"},
+	QUEST_FIND_QUARTERS: {"room": "quarters_room_1", "anchor": ""},
+	QUEST_SLEEP: {"room": "quarters_room_1", "anchor": "Bed"},
+	QUEST_DIAGNOSE_LIFE_SUPPORT: {"room": "gate_room", "anchor": "GateControlConsole"},
+	QUEST_SEAL_BREACH: {"room": "east_corridor", "anchor": "HullSealSwitch"},
+	QUEST_FIND_SCRUBBER: {"room": "hydroponics", "anchor": "CO2Scrubber"},
+	QUEST_WAIT_FTL: {"room": "gate_room", "anchor": "FTLConsole"},
+	QUEST_DIAL_LIME_PLANET: {"room": "gate_room", "anchor": "GateControlConsole"},
+	QUEST_MINE_LIME: {"room": "", "anchor": ""},  # offworld — hide waypoint
+	QUEST_RETURN_DESTINY: {"room": "", "anchor": ""},  # offworld — hide waypoint
+	QUEST_REPAIR_SCRUBBER: {"room": "hydroponics", "anchor": "CO2Scrubber"},
+	QUEST_COMPLETE: {"room": "", "anchor": ""},
+}
+
 # Set by scene scripts (currently only gate_room.gd) when the player is
 # in a scene that should be considered "in-world" for save purposes. Title
 # screen / cutscenes leave this empty so F5 doesn't write garbage.
@@ -93,6 +119,11 @@ var quarters_found: bool = false
 var elevator_repaired: bool = false
 var rooms_discovered: Array[String] = []
 var breaches_sealed: Array[String] = []
+# Last room the player physically entered. Set by room.gd / gate_room.gd in
+# _ready() and emitted via current_room_changed. Drives the Kino Remote map
+# player-marker and the quest waypoint's "which door points toward the
+# target" computation.
+var current_room_id: String = ""
 var current_objective: String = "Explore the Destiny"
 var episode_complete: bool = false
 var log_entries: Array[String] = []
@@ -123,6 +154,7 @@ func reset() -> void:
 	elevator_repaired = false
 	rooms_discovered.clear()
 	breaches_sealed.clear()
+	current_room_id = ""
 	episode_complete = false
 	log_entries.clear()
 	prologue_complete = false
@@ -177,11 +209,11 @@ func acquire_kino() -> void:
 	add_log("Acquired the Kino Remote.")
 	advance_air_quest()
 
-func mark_quarters_found() -> void:
+func mark_quarters_found(log_msg: String = "Found Crew Quarters Alpha.") -> void:
 	if quarters_found:
 		return
 	quarters_found = true
-	add_log("Found Crew Quarters Alpha.")
+	add_log(log_msg)
 	advance_air_quest()
 
 func mark_eli_quarters_found() -> void:
@@ -292,6 +324,24 @@ func _objective_for_step(step: String) -> String:
 func quest_step_label(step: String = "") -> String:
 	var key: String = quest_step if step == "" else step
 	return String(QUEST_LABELS.get(key, key))
+
+
+# Anchor data for the in-world quest diamond and the Kino Remote target
+# marker. Returns {} when the active step has no on-ship target (offworld
+# planet steps + completion).
+func quest_target(step: String = "") -> Dictionary:
+	var key: String = quest_step if step == "" else step
+	var entry: Variant = QUEST_TARGETS.get(key, null)
+	if entry is Dictionary:
+		return entry
+	return {}
+
+
+func set_current_room(room_id: String) -> void:
+	if room_id == "" or room_id == current_room_id:
+		return
+	current_room_id = room_id
+	current_room_changed.emit(room_id)
 
 func set_objective(text: String) -> void:
 	current_objective = text
@@ -486,6 +536,7 @@ func save_game(scene_path: String, pos: Vector3, yaw: float) -> void:
 		"elevator_repaired": elevator_repaired,
 		"rooms_discovered": rooms_discovered,
 		"breaches_sealed": breaches_sealed,
+		"current_room_id": current_room_id,
 		"objective": current_objective,
 		"episode_complete": episode_complete,
 		"log_entries": log_entries,
@@ -537,6 +588,7 @@ func load_and_resume() -> bool:
 	quarters_found = bool(data.get("quarters_found", false))
 	elevator_repaired = bool(data.get("elevator_repaired", false))
 	episode_complete = bool(data.get("episode_complete", false))
+	current_room_id = String(data.get("current_room_id", ""))
 	current_objective = String(data.get("objective", current_objective))
 	met_scott = bool(data.get("met_scott", false))
 	met_rush = bool(data.get("met_rush", false))

@@ -720,34 +720,48 @@ static func _add_kino_ball(world: Node3D, body: StandardMaterial3D, eye: Standar
 # `bathroomCabinet.glb` locker on the opposite wall, and (in wider rooms) a
 # `desk.glb` + `chairDesk.glb` side workstation.
 static func _accent_quarters(world: Node3D, width: float, depth: float, height: float, palette: Dictionary) -> void:
+	# Furniture scales bumped to match the Kenney mini-character scale 2.6 so
+	# Eli/the player can actually lie in the bed, sit in the chair, and reach
+	# the desk surface. Previous scales (1.3–1.5) made everything doll-house
+	# sized relative to the character.
+	const BED_SCALE: float = 2.5
+	const NIGHTSTAND_SCALE: float = 2.0
+	const LAMP_SCALE: float = 2.0
+	const LOCKER_SCALE: float = 2.5
+	const DESK_SCALE: float = 2.5
+	const CHAIR_SCALE: float = 2.5
+
 	var half_x: float = width * 0.5
 	var half_z: float = depth * 0.5
-	var bunk_w: float = min(width - 1.0, 2.0)
+	# Bed footprint (X-axis width). Bumped cap from 2.0→3.0 so the bigger
+	# bed (≈2.5m wide after scale) has room without clipping into the wall.
+	var bunk_w: float = min(width - 1.0, 3.0)
 	var bunk_x: float = -half_x * 0.3
 
-	# --- Bed (must line up with the interactable hitbox in room.gd) --------
-	# room.gd::_spawn_quarters_bed places a 2.0 m × 1.0 m × 2.0 m hitbox at
-	# (bunk_x, 0.5, -half_z + 1.1). The Kenney bedSingle.glb is authored ~2 m
-	# long and ~1 m wide; we sit it on the floor (y=0) and yaw to face +Z so
-	# the headboard is against the -Z wall.
+	# --- Bed -----------------------------------------------------------------
+	# Kenney bedSingle.glb authored ~2 m long × ~1 m wide × ~0.5 m tall raw.
+	# At scale 2.5 → 5 m × 2.5 m × 1.25 m. The pivot is at the foot of the
+	# bed centerline, so position z so the bed extends from the wall outward.
 	var bed_glb: PackedScene = load("res://models/props/furniture_kit/bedSingle.glb")
 	if bed_glb != null:
 		_spawn_kenney_prop(world, bed_glb,
-			Vector3(bunk_x, 0.0, -half_z + 1.1), 0.0, 1.5,
+			Vector3(bunk_x, 0.0, -half_z + 0.6), 0.0, BED_SCALE,
 			Color(0.62, 0.58, 0.52))
 
 	# --- Nightstand + lamp -------------------------------------------------
-	var stand_x: float = bunk_x + bunk_w * 0.5 + 0.55
-	if stand_x < half_x - 0.4:
+	# Sit beside the headboard. Bed at scale 2.5 is ~2.5m wide so the
+	# nightstand offset from bunk_x is bunk_w/2 + nightstand_half_width.
+	var stand_x: float = bunk_x + bunk_w * 0.5 + 0.85
+	if stand_x < half_x - 0.6:
 		var stand_glb: PackedScene = load("res://models/props/furniture_kit/cabinetBedDrawerTable.glb")
 		var lamp_glb: PackedScene = load("res://models/props/furniture_kit/lampSquareTable.glb")
 		if stand_glb != null:
 			_spawn_kenney_prop(world, stand_glb,
-				Vector3(stand_x, 0.0, -half_z + 0.55), 0.0, 1.2,
+				Vector3(stand_x, 0.0, -half_z + 0.9), 0.0, NIGHTSTAND_SCALE,
 				Color(0.42, 0.36, 0.30))
 		if lamp_glb != null:
 			_spawn_kenney_prop(world, lamp_glb,
-				Vector3(stand_x, 0.55, -half_z + 0.55), 0.0, 1.2,
+				Vector3(stand_x, 1.0, -half_z + 0.9), 0.0, LAMP_SCALE,
 				Color(0.85, 0.78, 0.65))
 		# A warm bedside pool — sells the lamp as a real lit object and gives
 		# the bunk corner the cosy read it needs.
@@ -755,30 +769,36 @@ static func _accent_quarters(world: Node3D, width: float, depth: float, height: 
 		bed_light.name = "BedsideLamp"
 		bed_light.light_color = Color(1.0, 0.78, 0.50)
 		bed_light.light_energy = 1.8
-		bed_light.omni_range = 3.5
+		bed_light.omni_range = 4.5
 		bed_light.omni_attenuation = 1.8
 		bed_light.shadow_enabled = false
-		bed_light.position = Vector3(stand_x, 1.2, -half_z + 0.55)
+		bed_light.position = Vector3(stand_x, 1.8, -half_z + 0.9)
 		world.add_child(bed_light)
 
 	# --- Wall locker on +Z wall --------------------------------------------
+	# Locker at scale 2.5 → ~1.75m wide × ~1.75m tall. Offset further from
+	# the wall (0.7 instead of 0.3) so the chunky base doesn't intersect it.
 	var locker_glb: PackedScene = load("res://models/props/furniture_kit/bathroomCabinet.glb")
 	if locker_glb != null:
 		_spawn_kenney_prop(world, locker_glb,
-			Vector3(bunk_x, 0.0, half_z - 0.3), PI, 1.4,
+			Vector3(bunk_x, 0.0, half_z - 0.7), PI, LOCKER_SCALE,
 			Color(0.38, 0.40, 0.44))
 
-	# --- Side desk (wider rooms only) --------------------------------------
+	# --- Side desk + chair (only in wider rooms) ----------------------------
+	# Desk at scale 2.5 → ~2.5m × ~1.25m × ~1.75m tall. Move it further from
+	# the wall so the chair has room to slide out into the room.
 	if width > 6.0:
 		var desk_glb: PackedScene = load("res://models/props/furniture_kit/desk.glb")
 		var chair_glb: PackedScene = load("res://models/props/furniture_kit/chairDesk.glb")
 		if desk_glb != null:
 			_spawn_kenney_prop(world, desk_glb,
-				Vector3(half_x - 0.7, 0.0, 0.0), -PI * 0.5, 1.4,
+				Vector3(half_x - 1.4, 0.0, 0.0), -PI * 0.5, DESK_SCALE,
 				Color(0.45, 0.40, 0.35))
 		if chair_glb != null:
+			# Chair sits in front of the desk (toward the room interior) with
+			# its front facing the desk so the operator sits looking at it.
 			_spawn_kenney_prop(world, chair_glb,
-				Vector3(half_x - 1.6, 0.0, 0.0), -PI * 0.5, 1.3,
+				Vector3(half_x - 3.0, 0.0, 0.0), -PI * 0.5, CHAIR_SCALE,
 				Color(0.30, 0.32, 0.36))
 
 

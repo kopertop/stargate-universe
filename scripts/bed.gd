@@ -9,12 +9,14 @@ extends Interactable
 
 func _ready() -> void:
 	super()
-	prompt = "Sleep"
+	prompt = "Lay down and rest"
 
 func _on_interact(_by: Node) -> void:
 	if not GameState.quarters_found:
-		GameState.add_log(first_time_log)
-		GameState.mark_quarters_found()
+		# mark_quarters_found logs the first-time message itself; passing
+		# `first_time_log` here lets each bed instance show its own flavour
+		# (Eli's quarters vs Crew Quarters Alpha) without a duplicate log.
+		GameState.mark_quarters_found(first_time_log)
 	if GameState.air_crisis_started and not GameState.scrubber_repaired:
 		GameState.add_log("No chance of sleeping with CO2 alarms rising.")
 		return

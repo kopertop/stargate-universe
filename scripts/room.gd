@@ -275,9 +275,11 @@ func _spawn_interactables() -> void:
 			_spawn_quarters_bed()
 		"eli_quarters":
 			# Eli's room — uses the quarters template (bed + locker + desk via
-			# RoomBuilder), but ALSO houses the Kino Remote pickup so the player
-			# finds it where its owner left it.
+			# RoomBuilder), houses the Kino Remote pickup, AND has its own
+			# Bed interactable so the player can lay down to rest right here
+			# instead of trekking up to Crew Quarters Alpha first.
 			_spawn_eli_kino_pickup()
+			_spawn_quarters_bed("Eli won't mind if I rest here a minute.")
 		"east_corridor":
 			_spawn_hull_breach()
 			_spawn_sgt_greer()
@@ -296,23 +298,32 @@ func _spawn_interactables() -> void:
 
 
 # Bed against the -Z wall, matching the position used by RoomBuilder._accent_quarters.
-func _spawn_quarters_bed() -> void:
+# `first_time_log` overrides bed.gd's default flavor message for the FIRST
+# interact (e.g. so resting in Eli's quarters reads differently than resting
+# in the player's own Crew Quarters Alpha).
+func _spawn_quarters_bed(first_time_log: String = "") -> void:
 	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
 	var d_m: float = float(_room_data.get("height", 200)) * ShipLayout.SCALE
 	var half_x: float = w_m * 0.5
 	var half_z: float = d_m * 0.5
-	var bunk_w: float = min(w_m - 1.0, 2.0)
+	# Hitbox sized for the scaled-up bed prop (scale 2.5 → ~5m × ~2.5m footprint
+	# in RoomBuilder._accent_quarters). Generous so the interact ray hits anywhere
+	# on top of the bed.
+	var bunk_w: float = min(w_m - 1.0, 3.0)
 	var bunk_x: float = -half_x * 0.3
-	var bunk_pos: Vector3 = Vector3(bunk_x, 0.5, -half_z + 1.1)
+	var bunk_pos: Vector3 = Vector3(bunk_x, 0.6, -half_z + 1.8)
 
 	var bed: StaticBody3D = StaticBody3D.new()
 	bed.set_script(BedScript)
 	bed.name = "Bed"
 	bed.position = bunk_pos
+	if first_time_log != "":
+		bed.set("first_time_log", first_time_log)
 	var cs: CollisionShape3D = CollisionShape3D.new()
 	var box: BoxShape3D = BoxShape3D.new()
-	# Match the visible bunk footprint so the interact ray hits anywhere on it.
-	box.size = Vector3(bunk_w + 0.2, 1.0, 2.0)
+	# Match the scaled bunk footprint so the interact ray hits anywhere on it.
+	# At scale 2.5 the bedSingle.glb is ~5 m long × ~2.5 m wide.
+	box.size = Vector3(bunk_w + 0.3, 1.2, 4.0)
 	cs.shape = box
 	bed.add_child(cs)
 	add_child(bed)

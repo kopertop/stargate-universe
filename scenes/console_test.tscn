@@ -1,6 +1,7 @@
-[gd_scene format=3 uid="uid://c1b54351xjhp2"]
+[gd_scene load_steps=2 format=3 uid="uid://c1b54351xjhp2"]
 
 [ext_resource type="PackedScene" uid="uid://c0flovcp3vnlq" path="res://models/props/space_station_kit/computer-wide.glb" id="1_glb"]
+[ext_resource type="Script" path="res://scripts/console_preview.gd" id="2_preview"]
 
 [sub_resource type="Environment" id="EnvFill"]
 background_mode = 1
@@ -20,6 +21,7 @@ emission_energy_multiplier = 3.2
 size = Vector3(0.62, 0.015, 0.3)
 
 [node name="ConsoleTest" type="Node3D" unique_id=1292343740]
+script = ExtResource("2_preview")
 
 [node name="Camera3D" type="Camera3D" parent="." unique_id=132734240]
 transform = Transform3D(0.866, -0.25, 0.433, 0, 0.866, 0.5, -0.5, -0.433, 0.75, 2.5, 2.5, 3)

@@ -1,18 +1,30 @@
-[gd_scene load_steps=7 format=3 uid="uid://b2qrwm5pq8tcv"]
+[gd_scene load_steps=12 format=3 uid="uid://b2qrwm5pq8tcv"]
 
-; Quarters furniture workbench. Same pattern as scenes/console_test.tscn —
-; the @tool script attached to the root exposes per-prop @export knobs in
-; the Inspector. Walls + floor are placeholder geometry sized to match
-; Eli's Quarters (10 m × 12 m → half_x=5, half_z=6).
+; Quarters furniture workbench — V2.
 ;
-; Workflow:
-;   1. Click "QuartersTest" root node.
-;   2. Adjust the per-prop @export groups (Bed, Nightstand, Lamp, Locker,
-;      Desk, Chair) in the Inspector — Position / Yaw deg / Scale.
-;   3. When the layout looks right, paste the values back to Claude and
-;      they get baked into RoomBuilder._accent_quarters in room_builder.gd.
+; Every furniture piece is a real instanced node in the scene tree, NOT
+; procedurally spawned. Click any node (Bed / Nightstand / Lamp / Locker /
+; Desk / Chair) in the Scene tree, then drag in the 3D viewport with
+; W (move), E (rotate), R (scale). Read the final Transform values off
+; the Inspector panel and paste them back to Claude — they'll bake into
+; RoomBuilder._accent_quarters in room_builder.gd.
+;
+; Furniture pieces are Kenney Space Station Kit (sleek sci-fi for the
+; Ancient ship aesthetic) + a domestic lamp from Furniture Kit. Walls +
+; floor are 10×12 m placeholder geometry matching Eli's Quarters
+; (half_x = 5, half_z = 6).
+;
+; A tiny @tool script (quarters_preview_tint.gd) walks the furniture
+; children on _ready and paints them with a brushed-steel tint so the
+; props read as something other than white blobs in the editor.
 
-[ext_resource type="Script" path="res://scripts/quarters_preview.gd" id="1_preview"]
+[ext_resource type="Script" path="res://scripts/quarters_preview_tint.gd" id="1_tint"]
+[ext_resource type="PackedScene" uid="uid://t1bghge1ttf7" path="res://models/props/space_station_kit/bed-single-cover.glb" id="2_bed"]
+[ext_resource type="PackedScene" uid="uid://dhac2cvr6awsf" path="res://models/props/space_station_kit/table-inset-small.glb" id="3_night"]
+[ext_resource type="PackedScene" uid="uid://btx0x5xpfk5n2" path="res://models/props/furniture_kit/lampSquareTable.glb" id="4_lamp"]
+[ext_resource type="PackedScene" uid="uid://chvqsrmx34grc" path="res://models/props/space_station_kit/container-tall.glb" id="5_locker"]
+[ext_resource type="PackedScene" uid="uid://b70i8fs5ikpva" path="res://models/props/space_station_kit/table.glb" id="6_desk"]
+[ext_resource type="PackedScene" uid="uid://ngn8l67dmp13" path="res://models/props/space_station_kit/chair-cushion.glb" id="7_chair"]
 
 [sub_resource type="Environment" id="EnvFill"]
 background_mode = 1
@@ -36,7 +48,7 @@ size = Vector3(10, 0.1, 12)
 size = Vector3(0.2, 5.4, 12)
 
 [node name="QuartersTest" type="Node3D"]
-script = ExtResource("1_preview")
+script = ExtResource("1_tint")
 
 [node name="Camera3D" type="Camera3D" parent="."]
 transform = Transform3D(0.766, -0.42, 0.485, 0, 0.755, 0.656, -0.643, -0.503, 0.578, 4.0, 6.0, 4.0)
@@ -62,3 +74,21 @@ material_override = SubResource("WallMat")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.05, 2.7, 0)
 mesh = SubResource("WallBox")
 material_override = SubResource("WallMat")
+
+[node name="Bed" parent="." instance=ExtResource("2_bed")]
+transform = Transform3D(2.5, 0, 0, 0, 2.5, 0, 0, 0, 2.5, -1.5, 0, -4.0)
+
+[node name="Nightstand" parent="." instance=ExtResource("3_night")]
+transform = Transform3D(2.0, 0, 0, 0, 2.0, 0, 0, 0, 2.0, 0.85, 0, -5.1)
+
+[node name="Lamp" parent="." instance=ExtResource("4_lamp")]
+transform = Transform3D(2.0, 0, 0, 0, 2.0, 0, 0, 0, 2.0, 0.85, 1.0, -5.1)
+
+[node name="Locker" parent="." instance=ExtResource("5_locker")]
+transform = Transform3D(-2.5, 0, -3.0616e-7, 0, 2.5, 0, 3.0616e-7, 0, -2.5, -1.5, 0, 5.3)
+
+[node name="Desk" parent="." instance=ExtResource("6_desk")]
+transform = Transform3D(-1.0928e-7, 0, -2.5, 0, 2.5, 0, 2.5, 0, -1.0928e-7, 3.6, 0, 0)
+
+[node name="Chair" parent="." instance=ExtResource("7_chair")]
+transform = Transform3D(-1.0928e-7, 0, -2.5, 0, 2.5, 0, 2.5, 0, -1.0928e-7, 2.0, 0, 0)

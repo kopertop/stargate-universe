@@ -70,15 +70,18 @@ func _build_readout() -> void:
 	# Glue the readout to the screen plate (no billboard) so the text reads
 	# AS the console's display rather than a floating tag above the unit.
 	_readout.billboard = BaseMaterial3D.BILLBOARD_DISABLED
-	_readout.no_depth_test = false
+	# Skip depth test — the screen plate's emissive material has no depth
+	# override, so without this the label would sometimes z-fight or get
+	# culled behind the plate. Standard nameplate / signage trick.
+	_readout.no_depth_test = true
 	_readout.shaded = false
 	_readout.double_sided = true
-	_readout.pixel_size = 0.005
-	_readout.outline_size = 6
+	_readout.pixel_size = 0.007
+	_readout.outline_size = 8
 	_readout.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_readout.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_readout.modulate = Color(0.55, 0.92, 1.0, 1.0) if kind == "ftl_countdown" else Color(1.0, 0.74, 0.32, 1.0)
-	_readout.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
+	_readout.outline_modulate = Color(0.0, 0.0, 0.0, 1.0)
 	# Pin the readout to the screen plate's transform — derive from RoomBuilder's
 	# shared CONSOLE_* constants so retuning the plate auto-retunes the label.
 	# Plate is at stage-local (CONSOLE_SCREEN_PLATE_Y, CONSOLE_SCREEN_PLATE_Z)
@@ -89,8 +92,9 @@ func _build_readout() -> void:
 	var plate_y: float = RoomBuilder.CONSOLE_SCREEN_PLATE_Y * RoomBuilder.CONSOLE_SCALE
 	var plate_z: float = RoomBuilder.CONSOLE_SCREEN_PLATE_Z * RoomBuilder.CONSOLE_SCALE
 	var tilt_rad: float = deg_to_rad(RoomBuilder.CONSOLE_SCREEN_TILT_DEG)
-	# 1 cm outward along the plate normal — proud enough to avoid z-fighting.
-	var proud: float = 0.012
+	# 4 cm outward along the plate normal — generous offset so the label
+	# clearly sits on TOP of the emissive plate, not buried inside it.
+	var proud: float = 0.04
 	_readout.position = Vector3(
 		0.0,
 		plate_y + cos(tilt_rad) * proud,

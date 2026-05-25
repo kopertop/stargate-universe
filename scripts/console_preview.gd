@@ -53,6 +53,13 @@ extends Node3D
 		viewport_height = value
 		_refresh_viewport_size()
 
+# Toggle this in the Inspector to force a full rebuild + texture re-apply.
+# Useful when the @tool auto-refresh misses a SubViewport draw frame.
+@export var refresh_now: bool = false:
+	set(value):
+		refresh_now = false  # acts like a button — always reset
+		_full_rebuild()
+
 var _viewport: SubViewport
 var _bg: ColorRect
 var _label: Label
@@ -60,10 +67,25 @@ var _plate: MeshInstance3D
 
 
 func _ready() -> void:
+	_full_rebuild()
+
+
+func _full_rebuild() -> void:
+	# Tear down any previous viewport so we always start clean — important
+	# in @tool mode where _ready may fire multiple times across script reloads.
+	if _viewport != null and is_instance_valid(_viewport):
+		_viewport.queue_free()
+	_viewport = null
+	_bg = null
+	_label = null
+
 	_build_viewport()
 	_find_plate()
-	# Wait for first viewport frame so we don't sample an empty texture.
-	await get_tree().process_frame
+	# Force a viewport frame to render BEFORE sampling its texture.
+	# RenderingServer.frame_post_draw is a signal that fires after every
+	# rendered frame, in BOTH editor and runtime contexts (where
+	# get_tree().process_frame is unreliable in @tool mode).
+	await RenderingServer.frame_post_draw
 	_refresh_material()
 
 
@@ -111,6 +133,7 @@ func _find_plate() -> void:
 func _refresh_bg() -> void:
 	if _bg != null:
 		_bg.color = bg_color
+	_schedule_material_resync()
 
 
 func _refresh_label() -> void:
@@ -119,11 +142,24 @@ func _refresh_label() -> void:
 	_label.text = screen_text
 	_label.add_theme_color_override("font_color", text_color)
 	_label.add_theme_font_size_override("font_size", font_size)
+	_schedule_material_resync()
 
 
 func _refresh_viewport_size() -> void:
 	if _viewport != null:
 		_viewport.size = Vector2i(viewport_width, viewport_height)
+	_schedule_material_resync()
+
+
+# After any Inspector change, the ColorRect/Label update visually but the
+# ViewportTexture sampled by the plate's material may need a fresh frame.
+# Wait one more rendered frame then poke the plate's material so the
+# texture reference stays live in editor.
+func _schedule_material_resync() -> void:
+	if _plate == null or _viewport == null:
+		return
+	await RenderingServer.frame_post_draw
+	_refresh_material()
 
 
 func _refresh_material() -> void:

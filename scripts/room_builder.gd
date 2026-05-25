@@ -47,8 +47,24 @@ const CONSOLE_SCREEN_PLATE_Y: float = 0.365
 const CONSOLE_SCREEN_PLATE_Z: float = -0.02
 const CONSOLE_SCREEN_TILT_DEG: float = 36.5
 const CONSOLE_SCREEN_SIZE: Vector3 = Vector3(0.744, 0.0165, 0.33)
-const CONSOLE_SCREEN_COLOR_DEFAULT: Color = Color(0.32, 0.72, 1.0)  # Ancient tech blue
-const CONSOLE_SCREEN_EMISSION: float = 3.2
+# Dimly emissive dark blue — workbench-tuned defaults (scenes/console_test.tscn).
+# Bright tech-blue glow now comes from the TextMesh on top of the plate, not
+# the plate itself.
+const CONSOLE_SCREEN_COLOR_DEFAULT: Color = Color(0.04, 0.06, 0.10)
+const CONSOLE_SCREEN_EMISSION: float = 0.4
+# Albedo texture overlaid on the plate so it reads as a weathered steel
+# display rather than a flat-coloured rectangle. Rusted-metal pattern gives
+# the plate that Ancient-ship "millennia-old wall panel" feel.
+const CONSOLE_SCREEN_OVERLAY_TEX: String = "res://textures/rusted-metal.png"
+# Tech-blue text that lives on top of the screen plate (production gate-room
+# consoles add this via gate_console.gd; control-room consoles leave it
+# absent for a clean "powered-down screen" decorative look).
+const CONSOLE_TEXT_COLOR: Color = Color(0.32, 0.72, 1.0)
+const CONSOLE_TEXT_EMISSION: float = 1.5
+const CONSOLE_TEXT_FONT_SIZE: int = 16
+const CONSOLE_TEXT_PIXEL_SIZE: float = 0.005
+const CONSOLE_TEXT_DEPTH: float = 0.0
+const CONSOLE_TEXT_LOCAL_ROTATION_DEG: Vector3 = Vector3(-90.0, 0.0, 0.0)
 
 
 # Default ceiling height per template (metres). Picked to make small rooms
@@ -476,14 +492,25 @@ static func attach_console_mesh(parent: Node3D, screen_color: Color = CONSOLE_SC
 		_apply_material_recursive(inst, body_mat)
 
 	var screen_mat: StandardMaterial3D = _emissive_mat(screen_color, CONSOLE_SCREEN_EMISSION)
+	screen_mat.roughness = 0.25
+	# Overlay material: a second layer drawn on top of material_override that
+	# adds the panel-texture detail. Lets the plate read as a real steel-panel
+	# display rather than a flat rectangle. No emission on the overlay — only
+	# the base material contributes the dim background glow.
+	var overlay_mat: StandardMaterial3D = StandardMaterial3D.new()
+	overlay_mat.albedo_texture = load(CONSOLE_SCREEN_OVERLAY_TEX)
 	var screen_mi: MeshInstance3D = MeshInstance3D.new()
 	# Named so external scripts (gate_console.gd) can find the plate and
-	# swap in a SubViewport-rendered text texture as the emission_texture.
+	# attach a TextMesh child for the readout.
 	screen_mi.name = "ScreenPlate"
 	var screen_box: BoxMesh = BoxMesh.new()
 	screen_box.size = CONSOLE_SCREEN_SIZE
 	screen_mi.mesh = screen_box
 	screen_mi.material_override = screen_mat
+	screen_mi.material_overlay = overlay_mat
+	# Plate is dimly emissive — no shadow casting (would just darken the
+	# console housing beneath it with a tiny crisp box silhouette).
+	screen_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	screen_mi.position = Vector3(0.0, CONSOLE_SCREEN_PLATE_Y, CONSOLE_SCREEN_PLATE_Z)
 	screen_mi.rotation = Vector3(deg_to_rad(CONSOLE_SCREEN_TILT_DEG), 0.0, 0.0)
 	stage.add_child(screen_mi)

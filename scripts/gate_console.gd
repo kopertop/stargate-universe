@@ -5,10 +5,10 @@ extends Interactable
 #   • "gate_control"   — Eli reads his notes; address book empty; gate is dormant.
 #   • "ftl_countdown"  — live countdown to next FTL drop; ticks every frame.
 #
-# The console's text readout is rendered into a SubViewport (Label inside a
-# ColorRect background) and then applied to the screen plate's emission
-# texture — so the text appears AS the screen content, not as a floating label
-# on top. Updating _vp_label.text every frame ticks the countdown live.
+# The console's text readout is rendered as a TextMesh child of the screen
+# plate (see RoomBuilder.attach_console_mesh which builds the plate). The
+# TextMesh inherits the plate's tilt automatically, glows tech-blue against
+# the plate's dim background, and updates live for the FTL countdown.
 
 @export var kind: String = "gate_control"
 
@@ -16,12 +16,13 @@ extends Interactable
 # arrival cinematic — feel free to tweak per scene if you want a different beat).
 @export var ftl_seconds_remaining: float = 63738.0
 
-# Off-screen viewport that renders the readout text. Its output texture is
-# wired into the screen plate's emission_texture so the text IS the screen.
-const SCREEN_TEX_SIZE: Vector2i = Vector2i(640, 280)
-const TEXT_FONT_SIZE: int = 64
-var _viewport: SubViewport
-var _vp_label: Label
+# Live readout — TextMesh as child of the ScreenPlate. TextMesh geometry
+# regenerates when .text changes, so we track _last_text and only update
+# when the displayed string actually differs (avoids re-meshing 60×/sec
+# during FTL countdown).
+var _text_mi: MeshInstance3D
+var _text_mesh: TextMesh
+var _last_text: String = ""
 # Cached interact-flavour lines so repeated reads cycle instead of repeating.
 var _gate_lines: Array[String] = [
 	"Eli: \"Gate's in standby. No active wormhole, no address dialed.\"",
@@ -45,8 +46,11 @@ func _ready() -> void:
 	_build_screen_readout()
 
 func _process(delta: float) -> void:
-	if _vp_label != null:
-		_vp_label.text = _readout_text()
+	if _text_mesh != null:
+		var current: String = _readout_text()
+		if current != _last_text:
+			_text_mesh.text = current
+			_last_text = current
 	_apply_kind_defaults()
 	if kind != "ftl_countdown":
 		return
@@ -69,54 +73,9 @@ func _apply_kind_defaults() -> void:
 			prompt = "Gate active: lime planet"
 
 func _build_screen_readout() -> void:
-	# Build an off-screen SubViewport that renders the readout text on a
-	# blue background. Then apply the viewport's render texture as the
-	# screen plate's emission_texture so the text becomes part of the
-	# screen's emissive surface (not a floating label on top).
-	_viewport = SubViewport.new()
-	_viewport.name = "ReadoutViewport"
-	_viewport.size = SCREEN_TEX_SIZE
-	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
-	_viewport.disable_3d = true
-	# Opaque background — we want the WHOLE screen plate to glow blue with
-	# the text rendered AS the screen content (not a translucent overlay).
-	_viewport.transparent_bg = false
-	add_child(_viewport)
-
-	# DARK background — near-black so only the text glows. Inverts the
-	# previous treatment (bright blue + dark text) per user direction. With
-	# emission_energy_multiplier in play, "dark" stays dark (0.04 × 3.2 = 0.13)
-	# while the bright tech-blue text clips toward white = looks like a glowing
-	# Ancient CRT readout.
-	var bg: ColorRect = ColorRect.new()
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	bg.color = Color(0.03, 0.04, 0.06, 1.0)
-	_viewport.add_child(bg)
-
-	# Tech-blue text — the same color the screen background USED to be.
-	# Now the wording IS the bright element on the screen.
-	_vp_label = Label.new()
-	_vp_label.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_vp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_vp_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_vp_label.add_theme_font_size_override("font_size", TEXT_FONT_SIZE)
-	_vp_label.add_theme_color_override("font_color", RoomBuilder.CONSOLE_SCREEN_COLOR_DEFAULT)
-	_vp_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.9))
-	_vp_label.add_theme_constant_override("outline_size", 4)
-	_vp_label.text = _readout_text()
-	_viewport.add_child(_vp_label)
-
-	# Wait one frame so the viewport has actually rendered before we sample
-	# its texture (otherwise the plate flashes black on first frame).
-	await get_tree().process_frame
-	_apply_text_to_plate()
-
-
-# Find the screen plate built by RoomBuilder.attach_console_mesh and swap
-# its material so the emission samples our SubViewport texture. The plate
-# was named "ScreenPlate" by attach_console_mesh specifically so we can
-# find it here.
-func _apply_text_to_plate() -> void:
+	# Find the ScreenPlate built procedurally by RoomBuilder.attach_console_mesh
+	# (named for exactly this purpose) and attach a TextMesh as its child so
+	# the text inherits the plate's tilt automatically.
 	var holder: Node = get_parent()
 	if holder == null:
 		return
@@ -127,25 +86,31 @@ func _apply_text_to_plate() -> void:
 	if plate == null or not (plate is MeshInstance3D):
 		return
 	var plate_mi: MeshInstance3D = plate
-	var existing: Material = plate_mi.material_override
-	if existing == null or not (existing is StandardMaterial3D):
-		return
-	var src: StandardMaterial3D = existing
-	var mat: StandardMaterial3D = src.duplicate()
-	# Sample the viewport for BOTH albedo (the plate's base color in non-emissive
-	# light) and emission (the bright self-lit content). albedo_color stays white
-	# so the texture passes through unmodified.
-	# Drop emission_energy_multiplier to 1.5 so the tech-blue text doesn't
-	# saturate to white — at the shared 3.2 the green+blue channels clip and
-	# the text reads as washed white instead of blue. 1.5 keeps it glowy
-	# while preserving the source colour.
-	var tex: Texture = _viewport.get_texture()
-	mat.albedo_color = Color.WHITE
-	mat.albedo_texture = tex
-	mat.emission = Color.WHITE
-	mat.emission_texture = tex
-	mat.emission_energy_multiplier = 1.5
-	plate_mi.material_override = mat
+
+	_text_mesh = TextMesh.new()
+	_text_mesh.text = _readout_text()
+	_text_mesh.font_size = RoomBuilder.CONSOLE_TEXT_FONT_SIZE
+	_text_mesh.depth = RoomBuilder.CONSOLE_TEXT_DEPTH
+	_text_mesh.pixel_size = RoomBuilder.CONSOLE_TEXT_PIXEL_SIZE
+	_text_mesh.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_text_mesh.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_last_text = _text_mesh.text
+
+	var text_mat: StandardMaterial3D = StandardMaterial3D.new()
+	text_mat.albedo_color = RoomBuilder.CONSOLE_TEXT_COLOR
+	text_mat.emission_enabled = true
+	text_mat.emission = RoomBuilder.CONSOLE_TEXT_COLOR
+	text_mat.emission_energy_multiplier = RoomBuilder.CONSOLE_TEXT_EMISSION
+	text_mat.no_depth_test = true
+
+	_text_mi = MeshInstance3D.new()
+	_text_mi.name = "ScreenText"
+	_text_mi.mesh = _text_mesh
+	_text_mi.material_override = text_mat
+	_text_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_text_mi.position = Vector3.ZERO
+	_text_mi.rotation_degrees = RoomBuilder.CONSOLE_TEXT_LOCAL_ROTATION_DEG
+	plate_mi.add_child(_text_mi)
 
 func _on_interact(_by: Node) -> void:
 	if kind == "ftl_countdown":

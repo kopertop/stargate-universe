@@ -13,8 +13,6 @@ extends Node3D
 
 const TINTS: Dictionary = {
 	"Bed":        Color(0.62, 0.58, 0.52),
-	"Nightstand": Color(0.42, 0.36, 0.30),
-	"Lamp":       Color(0.85, 0.78, 0.65),
 	"Locker":     Color(0.38, 0.40, 0.44),
 	"Desk":       Color(0.45, 0.40, 0.35),
 	"Chair":      Color(0.30, 0.32, 0.36),

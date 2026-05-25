@@ -23,6 +23,13 @@ func _ready() -> void:
 	if not _capture_requested():
 		queue_free()
 		return
+	# Autoloads run their _ready BEFORE the main scene's _ready, so setting
+	# GameState.next_room_id here is read in time by room.gd::_ready when we
+	# launch with `godot res://scenes/room.tscn --cli-arg room_id=<id>`.
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("room_id="):
+			GameState.next_room_id = arg.substr(8)
+			print("[test_capture] room_id=", GameState.next_room_id)
 	print("[test_capture] active")
 
 func _process(_delta: float) -> void:

@@ -17,6 +17,7 @@ const KinoPickupScript: Script = preload("res://scripts/kino_pickup.gd")
 const HullSealSwitchScript: Script = preload("res://scripts/hull_seal_switch.gd")
 const NpcScript: Script = preload("res://scripts/npc.gd")
 const Co2ScrubberScript: Script = preload("res://scripts/co2_scrubber.gd")
+const PowerConsoleScript: Script = preload("res://scripts/power_console.gd")
 
 # Set this in the editor to preview a specific room when running the scene
 # standalone (F6). At runtime, GameState.next_room_id takes precedence.
@@ -59,6 +60,8 @@ func _ready() -> void:
 	GameState.discover_room(room_id, String(_room_data.get("name", room_id)))
 	if room_id == "quarters_room_1":
 		GameState.mark_quarters_found()
+	elif room_id == "eli_quarters" and not GameState.kino_acquired:
+		GameState.mark_eli_quarters_found()
 
 	# Persist for save/load — F5 reloads this scene with the same room_id.
 	GameState.current_scene_path = "res://scenes/room.tscn"
@@ -108,7 +111,8 @@ func _stamp_door(edge: Dictionary, half_x: float, half_z: float) -> void:
 	# Elevator pairs aren't physically adjacent — present them as a lift door on
 	# the -Z wall (deterministic so the reverse edge lands on the matching wall
 	# in the other elevator). Everything else follows wall-axis literally.
-	if dir == "elevator":
+	var is_elevator: bool = (dir == "elevator")
+	if is_elevator:
 		dir = "-z"
 
 	var along: float = _door_along_offset(target_id, dir)
@@ -143,6 +147,12 @@ func _stamp_door(edge: Dictionary, half_x: float, half_z: float) -> void:
 	door.set("plaque_label", plaque)
 	door.set("open_prompt", "Step through to %s" % plaque)
 	door.set("transition_prompt", "Step through to %s" % plaque)
+	# Elevator doors stay locked until Engineering Bay power is restored.
+	# Sets the legacy `locked` + `lock_message` exports on door.gd — its
+	# _on_interact() short-circuits when locked.
+	if is_elevator and not GameState.elevator_repaired:
+		door.set("locked", true)
+		door.set("lock_message", "LOCKED — power offline. Restore power at the Engineering Bay (south of cr corridor).")
 	door.add_to_group("interactable")
 	add_child(door)
 
@@ -210,8 +220,23 @@ func _place_player() -> void:
 			view.snap_to_target()
 		return
 
-	# Default: room centre, looking +Z. SceneRouter will overwrite this if a
-	# matching Marker3D was found.
+	# Default: drop the player at the first arrival marker (any door's
+	# "From<src>" Marker3D). This avoids spawning inside center geometry like
+	# the control-room pillar or kino-room pedestal when the scene is loaded
+	# standalone without a `pending_spawn_position`. SceneRouter still
+	# overwrites this when a named spawn key was passed in.
+	if markers != null and markers.get_child_count() > 0:
+		var first: Node = markers.get_child(0)
+		if first is Marker3D:
+			var m: Marker3D = first
+			player.global_position = m.global_position
+			player.rotation.y = m.rotation.y
+			if view.has_method("snap_to_target"):
+				view.snap_to_target()
+			return
+
+	# Fallback: room centre, looking +Z (used for rooms with no connections,
+	# i.e. an isolated test scene).
 	player.global_position = Vector3.ZERO
 	player.rotation.y = 0.0
 	if view.has_method("snap_to_target"):
@@ -222,8 +247,11 @@ func _spawn_interactables() -> void:
 	match room_id:
 		"quarters_room_1":
 			_spawn_quarters_bed()
-		"kino_room":
-			_spawn_kino_pickup()
+		"eli_quarters":
+			# Eli's room — uses the quarters template (bed + locker + desk via
+			# RoomBuilder), but ALSO houses the Kino Remote pickup so the player
+			# finds it where its owner left it.
+			_spawn_eli_kino_pickup()
 		"east_corridor":
 			_spawn_hull_breach()
 			_spawn_sgt_greer()
@@ -231,6 +259,8 @@ func _spawn_interactables() -> void:
 			# Only Rush — Young, James, Park have moved to the gate room with the
 			# unconscious-tableau (Young laid out, James + Park treating him).
 			_spawn_dr_rush()
+		"engineering_bay":
+			_spawn_power_console()
 		"hydroponics":
 			_spawn_co2_scrubber()
 		"south_corridor":
@@ -262,14 +292,16 @@ func _spawn_quarters_bed() -> void:
 	add_child(bed)
 
 
-# Kino remote sits on the centre pedestal built by RoomBuilder._accent_kino_room.
-# A visible kino sphere is parented to the room (NOT the pickup) so the pickup
-# can hide it via NodePath after acquisition.
-func _spawn_kino_pickup() -> void:
-	var pedestal_top: Vector3 = Vector3(0.0, 1.05, 0.0)
+# Eli left his Kino Remote on the desk in his quarters — RoomBuilder's
+# quarters-template builds a Kenney desk at (half_x - 0.7, 0.0, 0.0) when the
+# room is wider than 6 m. eli_quarters is 10 m × 12 m so the desk always spawns.
+# Kino prop sits on the desktop, pickup hitbox alongside.
+func _spawn_eli_kino_pickup() -> void:
+	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
+	var desk_top: Vector3 = Vector3(w_m * 0.5 - 0.7, 0.85, 0.0)
 	var holder: Node3D = Node3D.new()
 	holder.name = "KinoProp"
-	holder.position = pedestal_top + Vector3(0.0, 0.18, 0.0)
+	holder.position = desk_top + Vector3(0.0, 0.18, 0.0)
 	add_child(holder)
 
 	var body_mat: StandardMaterial3D = StandardMaterial3D.new()
@@ -457,6 +489,64 @@ func _spawn_hull_breach() -> void:
 	add_child(btn_mi)
 
 
+# Engineering Bay power console — wall-mounted breaker switch on the -X wall.
+# Modeled visually after the hull-seal switch: dark housing + bright emissive
+# button that flips from red (offline) to green (restored). One-shot.
+func _spawn_power_console() -> void:
+	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
+	var half_x: float = w_m * 0.5
+	var restored: bool = GameState.elevator_repaired
+
+	var console: StaticBody3D = StaticBody3D.new()
+	console.set_script(PowerConsoleScript)
+	console.name = "PowerConsole"
+	console.position = Vector3(-half_x + 0.25, 1.4, 0.0)
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var s_box: BoxShape3D = BoxShape3D.new()
+	s_box.size = Vector3(0.5, 0.8, 0.7)
+	cs.shape = s_box
+	console.add_child(cs)
+	add_child(console)
+
+	var housing_mat: StandardMaterial3D = StandardMaterial3D.new()
+	housing_mat.albedo_color = Color(0.20, 0.20, 0.22)
+	housing_mat.metallic = 0.55
+	housing_mat.roughness = 0.42
+	var housing_mi: MeshInstance3D = MeshInstance3D.new()
+	var housing_box: BoxMesh = BoxMesh.new()
+	housing_box.size = Vector3(0.06, 0.75, 0.65)
+	housing_mi.mesh = housing_box
+	housing_mi.material_override = housing_mat
+	housing_mi.position = console.position
+	add_child(housing_mi)
+
+	var btn_mat: StandardMaterial3D = StandardMaterial3D.new()
+	var btn_color: Color = Color(0.35, 1.0, 0.55) if restored else Color(1.0, 0.30, 0.10)
+	btn_mat.albedo_color = btn_color
+	btn_mat.emission_enabled = true
+	btn_mat.emission = btn_color
+	btn_mat.emission_energy_multiplier = 3.2
+	var btn_mi: MeshInstance3D = MeshInstance3D.new()
+	var btn_box: BoxMesh = BoxMesh.new()
+	btn_box.size = Vector3(0.04, 0.32, 0.32)
+	btn_mi.mesh = btn_box
+	btn_mi.material_override = btn_mat
+	btn_mi.position = console.position + Vector3(0.02, 0.0, 0.0)
+	add_child(btn_mi)
+
+	var label: Label3D = Label3D.new()
+	label.name = "PowerLabel"
+	label.text = "MAIN POWER\n(Elevator)"
+	label.pixel_size = 0.0045
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.outline_size = 6
+	label.shaded = false
+	label.modulate = Color(0.95, 0.92, 0.78, 1.0)
+	label.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
+	label.position = console.position + Vector3(0.05, 0.6, 0.0)
+	add_child(label)
+
+
 func _spawn_co2_scrubber() -> void:
 	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
 	var d_m: float = float(_room_data.get("height", 200)) * ShipLayout.SCALE
@@ -519,24 +609,25 @@ func _add_mesh_box(parent: Node3D, pos: Vector3, size: Vector3, mat: StandardMat
 	parent.add_child(mi)
 
 
-# Dr Rush in the control interface room. Stands in front of the centre console
-# in the arc that RoomBuilder._accent_control_room builds along the -Z wall,
-# facing -Z (toward the console). First interact flips `met_rush` and re-checks
-# episode completion — together with Kino + Quarters + Breach, this is the E1
-# story climax.
+# Dr Rush in the control interface room. Stands at the NW console (one of four
+# arranged around the central power pillar by RoomBuilder._accent_control_pillar),
+# body facing -X toward the console so he reads as "focused on his work" when
+# the player walks in — he ignores Eli until interacted with (Interactable
+# already gates on E + proximity, auto_greet stays off by default).
+# First interact flips `met_rush` and re-checks episode completion.
 func _spawn_dr_rush() -> void:
-	# Middle console of the 5-station arc: z = -depth/2 + 3 + bow(t=0.5).
-	# RoomBuilder uses `bow = sin(t * PI) * 1.2` so middle bow = 1.2.
-	# Stand Rush 1.2 m in front of the console, looking down at it (rot.y = 0
-	# = -Z facing in Godot convention).
-	var d_m: float = float(_room_data.get("height", 200)) * ShipLayout.SCALE
-	var console_z: float = -d_m * 0.5 + 3.0 + 1.2
-	var pos: Vector3 = Vector3(0.0, 0.0, console_z + 1.4)
+	# NW console position (mirrors RoomBuilder._accent_control_room):
+	#   west_x = -width/2 + 1.6, z = -4.0, yaw = PI/2 (desk front faces +X).
+	# Rush stands 1.0 m in front of the desk (close — leaning over it) on the
+	# +X side, body rotation -PI/2 so his -Z forward points at -X (the console).
+	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
+	var console_x: float = -w_m * 0.5 + 1.6
+	var pos: Vector3 = Vector3(console_x + 1.0, 0.0, -4.0)
 	var rush: StaticBody3D = StaticBody3D.new()
 	rush.set_script(NpcScript)
 	rush.name = "DrRush"
 	rush.position = pos
-	rush.rotation.y = 0.0
+	rush.rotation.y = -PI * 0.5
 	rush.set("character_name", "Dr Rush")
 	rush.set("prompt", "Talk to Dr Rush")
 	# Choice-tree dialog — branches into ship lore, mission guidance, or a

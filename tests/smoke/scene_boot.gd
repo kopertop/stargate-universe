@@ -75,7 +75,8 @@ const PROCEDURAL_ROOM_REQUIRES: Array = [
 # can't be marked, kino can't be picked up, the breach can't be sealed.
 const ROOM_INTERACTABLE_REQUIRES: Dictionary = {
 	"quarters_room_1": ["Bed"],
-	"kino_room": ["KinoPickup"],
+	"eli_quarters": ["KinoPickup"],
+	"engineering_bay": ["PowerConsole"],
 	"east_corridor": ["HullBreach", "HullSealSwitch"],
 	"control_interface_room": ["DrRush"],
 	"hydroponics": ["CO2Scrubber"],
@@ -314,7 +315,7 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 			else:
 				_fail("%s [quarters_room_1]" % ROOM_SCENE,
 					"Bed.interact() did not set GameState.quarters_found")
-		"kino_room":
+		"eli_quarters":
 			var kino: Node = inst.get_node("KinoPickup")
 			kino.call("interact", null)
 			# KinoPickup.interact awaits Eli's naming monologue before flipping
@@ -328,8 +329,17 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 				print("  OK (KinoPickup.interact → kino_acquired=true)")
 				_passes += 1
 			else:
-				_fail("%s [kino_room]" % ROOM_SCENE,
+				_fail("%s [eli_quarters]" % ROOM_SCENE,
 					"KinoPickup.interact() did not set GameState.kino_acquired")
+		"engineering_bay":
+			var console: Node = inst.get_node("PowerConsole")
+			console.call("interact", null)
+			if bool(_game_state.get("elevator_repaired")):
+				print("  OK (PowerConsole.interact → elevator_repaired=true)")
+				_passes += 1
+			else:
+				_fail("%s [engineering_bay]" % ROOM_SCENE,
+					"PowerConsole.interact() did not set GameState.elevator_repaired")
 		"east_corridor":
 			var switch: Node = inst.get_node("HullSealSwitch")
 			switch.call("interact", null)
@@ -368,8 +378,9 @@ func _check_connection_reachability() -> void:
 	const MUST_REACH: Array[String] = [
 		"east_corridor",                # hull breach lives here
 		"control_interface_room",       # Dr Rush
-		"kino_room",                    # kino pickup
-		"quarters_room_1",              # Eli's bunk
+		"eli_quarters",                 # kino pickup (Eli's room)
+		"engineering_bay",              # power console — gates upper deck
+		"quarters_room_1",              # Crew Quarters Alpha (upper deck)
 		"hydroponics",                  # CO2 scrubber
 	]
 	var connections: Dictionary = _load_connections()

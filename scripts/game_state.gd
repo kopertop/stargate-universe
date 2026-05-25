@@ -19,6 +19,10 @@ signal dialogue_shown(character_name: String, line: String)
 # Fired by npc.gd when a choice-tree dialog should open. The HUD listens
 # and shows the full-screen DialogScreen targeting `npc`.
 signal dialog_started(npc: Node3D, tree: Array)
+# Fired by dialog_screen.gd::close() — lets one-shot triggers (e.g.
+# kino_pickup) await a dialog's natural end without having to track the
+# DialogScreen instance directly.
+signal dialog_closed()
 
 const MAX_HEALTH: float = 100.0
 const MAX_OXYGEN: float = 100.0
@@ -27,8 +31,9 @@ const SAVE_PATH: String = "user://save.json"
 const EPISODE_AIR: String = "air"
 const QUEST_TALK_SCOTT: String = "talk_scott"
 const QUEST_FIND_RUSH: String = "find_rush"
-const QUEST_FIND_QUARTERS: String = "find_quarters"
 const QUEST_FIND_KINO: String = "find_kino"
+const QUEST_RESTORE_POWER: String = "restore_power"
+const QUEST_FIND_QUARTERS: String = "find_quarters"
 const QUEST_SLEEP: String = "sleep"
 const QUEST_DIAGNOSE_LIFE_SUPPORT: String = "diagnose_life_support"
 const QUEST_SEAL_BREACH: String = "seal_breach"
@@ -45,8 +50,9 @@ const AIR_LIME_REQUIRED: int = 3
 const QUEST_LABELS: Dictionary = {
 	QUEST_TALK_SCOTT: "Talk to Scott",
 	QUEST_FIND_RUSH: "Find Rush",
-	QUEST_FIND_QUARTERS: "Find quarters",
 	QUEST_FIND_KINO: "Find Kino Remote",
+	QUEST_RESTORE_POWER: "Restore main power",
+	QUEST_FIND_QUARTERS: "Find quarters",
 	QUEST_SLEEP: "Sleep",
 	QUEST_DIAGNOSE_LIFE_SUPPORT: "Diagnose life support",
 	QUEST_SEAL_BREACH: "Lock off exposed section",
@@ -80,6 +86,11 @@ var current_episode: String = EPISODE_AIR
 var quest_step: String = QUEST_TALK_SCOTT
 var kino_acquired: bool = false
 var quarters_found: bool = false
+# Main power is offline at E1 start: the elevator door north of cr_corridor_2 is
+# locked until the player flips the Engineering Bay power console. Crew Quarters
+# Alpha (floor 1) is gated by this — Eli's Quarters (floor 0) is reachable
+# without power so the Kino Remote is still findable first.
+var elevator_repaired: bool = false
 var rooms_discovered: Array[String] = []
 var breaches_sealed: Array[String] = []
 var current_objective: String = "Explore the Destiny"
@@ -109,6 +120,7 @@ func reset() -> void:
 	quest_step = QUEST_TALK_SCOTT
 	kino_acquired = false
 	quarters_found = false
+	elevator_repaired = false
 	rooms_discovered.clear()
 	breaches_sealed.clear()
 	episode_complete = false
@@ -169,7 +181,19 @@ func mark_quarters_found() -> void:
 	if quarters_found:
 		return
 	quarters_found = true
-	add_log("Found Eli's quarters.")
+	add_log("Found Crew Quarters Alpha.")
+	advance_air_quest()
+
+func mark_eli_quarters_found() -> void:
+	# Logged on first entry. The Kino-pickup interaction still drives the quest
+	# advance — finding the room alone doesn't tick the objective.
+	add_log("Found Eli's quarters. A Kino Remote is on the nightstand.")
+
+func unlock_elevator() -> void:
+	if elevator_repaired:
+		return
+	elevator_repaired = true
+	add_log("Main power restored. The elevator north of the corridor is online.")
 	advance_air_quest()
 
 func seal_breach(breach_id: String) -> void:
@@ -199,10 +223,12 @@ func _next_air_quest_step() -> String:
 		return QUEST_TALK_SCOTT
 	if not met_rush:
 		return QUEST_FIND_RUSH
-	if not quarters_found:
-		return QUEST_FIND_QUARTERS
 	if not kino_acquired:
 		return QUEST_FIND_KINO
+	if not elevator_repaired:
+		return QUEST_RESTORE_POWER
+	if not quarters_found:
+		return QUEST_FIND_QUARTERS
 	prologue_complete = true
 	if not air_crisis_started:
 		return QUEST_SLEEP
@@ -234,10 +260,12 @@ func _objective_for_step(step: String) -> String:
 			return "Talk to Lt Scott in the Gate Room."
 		QUEST_FIND_RUSH:
 			return "Find Dr Rush in the Control Interface Room."
-		QUEST_FIND_QUARTERS:
-			return "Find your quarters on the upper deck: Crew Quarters Alpha."
 		QUEST_FIND_KINO:
-			return "Find the Kino Remote in Kino Storage."
+			return "Find the Kino Remote in Eli's Quarters, just past Control."
+		QUEST_RESTORE_POWER:
+			return "Restore main power at the Engineering Bay (south of cr corridor)."
+		QUEST_FIND_QUARTERS:
+			return "Take the elevator to the upper deck: find Crew Quarters Alpha."
 		QUEST_SLEEP:
 			return "Return to Crew Quarters Alpha and sleep."
 		QUEST_DIAGNOSE_LIFE_SUPPORT:
@@ -455,6 +483,7 @@ func save_game(scene_path: String, pos: Vector3, yaw: float) -> void:
 		"quest_step": quest_step,
 		"kino_acquired": kino_acquired,
 		"quarters_found": quarters_found,
+		"elevator_repaired": elevator_repaired,
 		"rooms_discovered": rooms_discovered,
 		"breaches_sealed": breaches_sealed,
 		"objective": current_objective,
@@ -506,6 +535,7 @@ func load_and_resume() -> bool:
 	quest_step = String(data.get("quest_step", QUEST_TALK_SCOTT))
 	kino_acquired = bool(data.get("kino_acquired", false))
 	quarters_found = bool(data.get("quarters_found", false))
+	elevator_repaired = bool(data.get("elevator_repaired", false))
 	episode_complete = bool(data.get("episode_complete", false))
 	current_objective = String(data.get("objective", current_objective))
 	met_scott = bool(data.get("met_scott", false))

@@ -43,6 +43,25 @@ func _ready() -> void:
 	# in _physics_process doesn't crash-zoom out to the 10.0 default on entry.
 	if spring != null:
 		zoom = spring.spring_length
+	# Dialog/pause hook: _input stops firing once the tree is paused, so a player
+	# who hits E while holding RMB never gets the RMB-release event delivered.
+	# We listen for the dialog lifecycle directly (signals are pause-immune) and
+	# drop mouselook + un-capture the cursor so dialog choices are clickable.
+	GameState.dialog_started.connect(_on_dialog_started)
+	GameState.dialog_closed.connect(_on_dialog_closed)
+
+
+func _on_dialog_started(_npc: Node3D, _tree: Array) -> void:
+	_release_mouselook()
+
+
+func _on_dialog_closed() -> void:
+	_release_mouselook()
+
+
+func _release_mouselook() -> void:
+	mouselook_active = false
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 # Snap the camera rig to sit directly behind the target with the authored pitch.
 # Called from _ready() at scene load, and from SceneRouter after a cross-scene

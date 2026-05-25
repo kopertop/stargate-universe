@@ -70,17 +70,22 @@ func _initialize() -> void:
 	_expect(not gs.met_rush, "air: Rush starts un-met")
 	gs.met_rush = true
 	gs.advance_air_quest()
-	_expect(gs.quest_step == gs.QUEST_FIND_QUARTERS, "air: Rush -> find quarters")
-
-	_expect(not gs.quarters_found, "air: quarters start unfound")
-	gs.mark_quarters_found()
-	_expect(gs.quarters_found, "air: mark_quarters_found sets flag")
-	_expect(gs.quest_step == gs.QUEST_FIND_KINO, "air: quarters -> find Kino Remote")
+	_expect(gs.quest_step == gs.QUEST_FIND_KINO, "air: Rush -> find Kino Remote in Eli's Quarters")
 
 	_expect(not gs.kino_acquired, "mission: kino starts unacquired")
 	gs.acquire_kino()
 	_expect(gs.kino_acquired, "mission: acquire_kino sets flag")
-	_expect(gs.prologue_complete, "air: Rush + quarters + Kino marks prologue complete")
+	_expect(gs.quest_step == gs.QUEST_RESTORE_POWER, "air: Kino -> restore power at Engineering Bay")
+
+	_expect(not gs.elevator_repaired, "air: elevator starts broken")
+	gs.unlock_elevator()
+	_expect(gs.elevator_repaired, "air: unlock_elevator sets flag")
+	_expect(gs.quest_step == gs.QUEST_FIND_QUARTERS, "air: power restored -> find Crew Quarters Alpha")
+
+	_expect(not gs.quarters_found, "air: quarters start unfound")
+	gs.mark_quarters_found()
+	_expect(gs.quarters_found, "air: mark_quarters_found sets flag")
+	_expect(gs.prologue_complete, "air: Rush + Kino + power + quarters marks prologue complete")
 	_expect(gs.quest_step == gs.QUEST_SLEEP, "air: prologue -> sleep")
 	gs.check_episode_complete()
 	_expect(not gs.episode_complete, "air: prologue does not complete episode")
@@ -149,6 +154,7 @@ func _initialize() -> void:
 	_expect(gs.episode_complete == false, "mission: reset clears completion")
 	_expect(gs.kino_acquired == false, "mission: reset clears kino")
 	_expect(gs.quarters_found == false, "mission: reset clears quarters")
+	_expect(gs.elevator_repaired == false, "mission: reset clears elevator_repaired")
 	_expect(gs.breaches_sealed.is_empty(), "mission: reset clears breaches")
 	_expect(gs.met_scott == false, "mission: reset clears met_scott")
 	_expect(gs.met_rush == false, "mission: reset clears met_rush")

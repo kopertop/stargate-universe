@@ -227,9 +227,10 @@ static func _corridor_place(world: Node3D, mat: StandardMaterial3D, axis_z: bool
 
 
 # Control room: industrial metal-grate floor overlay, a continuous amber band
-# at chest height around all four walls, a ceiling spotlight ring above the
-# work zone, and a curved arc of Kenney `desk_computer.glb` console GLBs along
-# the back (-Z) wall — these are the real Ancient consoles Rush is hunched over.
+# at chest height around all four walls, a massive floor-to-ceiling central
+# pillar (Ancient power column with pipe and conduit cladding), and 4 Kenney
+# `desk_computer.glb` consoles arranged 2-east / 2-west, all facing the pillar.
+# Rush (placed by room.gd::_spawn_dr_rush) stands at the NW console.
 static func _accent_control_room(world: Node3D, width: float, depth: float, height: float, palette: Dictionary) -> void:
 	var accent: Color = palette["accent"]
 	var band_mat: StandardMaterial3D = _emissive_mat(accent, 1.6)
@@ -267,48 +268,200 @@ static func _accent_control_room(world: Node3D, width: float, depth: float, heig
 	_add_decor(world, band_mat, Vector3(0.0, 1.4, hz), Vector3(width - 0.6, band_t, band_t))
 	_add_decor(world, band_mat, Vector3(0.0, 1.4, -hz), Vector3(width - 0.6, band_t, band_t))
 
-	# --- Console arc along -Z wall -------------------------------------------
-	# Five Kenney Space-Kit `desk_computer.glb` instances in a shallow arc.
-	# Consoles face +Z (toward the player walking in from the +Z door). Front
-	# console rim sits 2 m off the -Z wall so Rush has room to stand behind.
-	var console_glb: PackedScene = load("res://models/props/space_kit/desk_computer.glb")
+	# --- Central power pillar -----------------------------------------------
+	# SGU control-room signature: a circular column running floor-to-ceiling
+	# with cladding pipes + emissive conduit bands. Doubles as a navigation
+	# anchor (player can't walk through it — see PillarCollider).
+	_accent_control_pillar(world, height, accent)
+
+	# --- Four consoles flanking the pillar (NW / NE / SW / SE) ---------------
+	# Each console faces the pillar so operators (Rush at NW) work with their
+	# backs to the wall. Z = ±4 m straddles the +X door at z=0 so neither
+	# console blocks the entrance from cr_corridor_2.
+	# Kenney Space Station Kit's `computer-wide.glb` is a wide chest-height
+	# control panel with an angled screen — much better silhouette than the
+	# Space Kit desk_computer (which was reading as just a floating screen
+	# against the dark grate). Scale 1.8 puts it at ~1.4 m tall.
+	var console_glb: PackedScene = load("res://models/props/space_station_kit/computer-wide.glb")
 	if console_glb != null:
-		var console_count: int = 5
-		var arc_width: float = min(width - 6.0, 16.0)
-		var base_z: float = -depth * 0.5 + 3.0
-		for i in console_count:
-			var t: float = 0.0 if console_count == 1 else float(i) / float(console_count - 1)
-			var cx: float = lerp(-arc_width * 0.5, arc_width * 0.5, t)
-			# Shallow inward arc: middle consoles step forward toward the room.
-			var bow: float = sin(t * PI) * 1.2
-			_spawn_kenney_console(world, console_glb, Vector3(cx, 0.0, base_z + bow), 0.0)
+		var east_x: float = width * 0.5 - 1.4
+		var west_x: float = -width * 0.5 + 1.4
+		var console_z_offsets: Array = [-4.0, 4.0]
+		for cz in console_z_offsets:
+			# West (-X wall) consoles face +X — front faces the pillar.
+			_spawn_station_console(world, console_glb,
+				Vector3(west_x, 0.0, cz), PI * 0.5)
+			# East (+X wall) consoles face -X.
+			_spawn_station_console(world, console_glb,
+				Vector3(east_x, 0.0, cz), -PI * 0.5)
 
-	# --- Ceiling spot ring over the console zone -----------------------------
-	# Marks the active workstation area from above without adding shadow lights.
-	var spot_z: float = -depth * 0.5 + 4.5
-	for sx_off in [-4.0, -2.0, 0.0, 2.0, 4.0]:
-		_add_decor(world, ring_mat,
-			Vector3(sx_off, height - 0.08, spot_z),
-			Vector3(0.7, 0.04, 0.7))
-
-	# Single warm OmniLight pooling around the consoles so they read lit
-	# against the brighter walls.
-	var work_light: OmniLight3D = OmniLight3D.new()
-	work_light.name = "ConsoleWorkLight"
-	work_light.light_color = accent.lerp(Color(1.0, 0.92, 0.78), 0.4)
-	work_light.light_energy = 2.4
-	work_light.omni_range = 12.0
-	work_light.omni_attenuation = 1.6
-	work_light.shadow_enabled = false
-	work_light.position = Vector3(0.0, 2.6, spot_z)
-	world.add_child(work_light)
+	# --- Console downlights ---------------------------------------------------
+	# One soft warm pool over each of the four workstations so the consoles
+	# pop against the cooler walls; emissive ceiling plate above each.
+	for cz in [-4.0, 4.0]:
+		for cx in [width * 0.5 - 2.4, -width * 0.5 + 2.4]:
+			_add_decor(world, ring_mat,
+				Vector3(cx, height - 0.08, cz),
+				Vector3(0.7, 0.04, 0.7))
+			var work_light: OmniLight3D = OmniLight3D.new()
+			work_light.light_color = accent.lerp(Color(1.0, 0.92, 0.78), 0.4)
+			work_light.light_energy = 1.9
+			work_light.omni_range = 8.0
+			work_light.omni_attenuation = 1.6
+			work_light.shadow_enabled = false
+			work_light.position = Vector3(cx, 2.6, cz)
+			world.add_child(work_light)
 
 
-# Kenney Space-Kit GLBs have their materials stripped by the Godot importer
-# (the baseColorTexture binding is lost — see feedback_gltf_embedded_texture_lost).
-# We apply a flat brushed-metal override so the desk reads as a real console
-# instead of a white silhouette. Screens are highlighted in-engine via a small
-# emissive plate added in front of the model.
+# Floor-to-ceiling power column at the room's centre. Built from a dark metal
+# shaft, 6 amber-tinted vertical pipes ringing the outside, three emissive
+# conduit bands at quarter/half/three-quarter height, a wider floor collar,
+# and a tapered top cap that visually merges into the ceiling. A CylinderShape
+# collider on layer 1|2 blocks player+camera from passing through.
+static func _accent_control_pillar(world: Node3D, height: float, accent: Color) -> void:
+	var shaft_mat: StandardMaterial3D = _make_mat(Color(0.22, 0.24, 0.28), 0.75, 0.40)
+	var pipe_mat: StandardMaterial3D = _make_mat(Color(0.62, 0.55, 0.40), 0.70, 0.38)
+	var conduit_mat: StandardMaterial3D = _emissive_mat(accent, 2.2)
+	var collar_mat: StandardMaterial3D = _make_mat(Color(0.30, 0.32, 0.36), 0.70, 0.50)
+	var cap_mat: StandardMaterial3D = _make_mat(Color(0.18, 0.20, 0.22), 0.70, 0.45)
+
+	# --- Main shaft (dark cylinder, slightly conical for visual weight) ----
+	var shaft_mi: MeshInstance3D = MeshInstance3D.new()
+	shaft_mi.name = "PillarShaft"
+	var shaft_mesh: CylinderMesh = CylinderMesh.new()
+	shaft_mesh.top_radius = 1.40
+	shaft_mesh.bottom_radius = 1.55
+	shaft_mesh.height = height
+	shaft_mesh.radial_segments = 32
+	shaft_mi.mesh = shaft_mesh
+	shaft_mi.material_override = shaft_mat
+	shaft_mi.position = Vector3(0.0, height * 0.5, 0.0)
+	world.add_child(shaft_mi)
+
+	# --- Cladding pipes (6 around the shaft) -------------------------------
+	var pipe_count: int = 6
+	var pipe_radius: float = 0.10
+	var pipe_offset: float = 1.70
+	for i in pipe_count:
+		var theta: float = (TAU / float(pipe_count)) * float(i)
+		var pipe_mi: MeshInstance3D = MeshInstance3D.new()
+		var pipe_mesh: CylinderMesh = CylinderMesh.new()
+		pipe_mesh.top_radius = pipe_radius
+		pipe_mesh.bottom_radius = pipe_radius
+		pipe_mesh.height = height - 0.4
+		pipe_mesh.radial_segments = 8
+		pipe_mi.mesh = pipe_mesh
+		pipe_mi.material_override = pipe_mat
+		pipe_mi.position = Vector3(cos(theta) * pipe_offset, height * 0.5, sin(theta) * pipe_offset)
+		world.add_child(pipe_mi)
+
+	# --- Emissive conduit bands wrapping the shaft -------------------------
+	# Three bands at quarter heights — read as "power flowing up the column."
+	for y_frac in [0.20, 0.50, 0.80]:
+		var band_mi: MeshInstance3D = MeshInstance3D.new()
+		var band_mesh: CylinderMesh = CylinderMesh.new()
+		band_mesh.top_radius = 1.78
+		band_mesh.bottom_radius = 1.78
+		band_mesh.height = 0.18
+		band_mesh.radial_segments = 32
+		band_mi.mesh = band_mesh
+		band_mi.material_override = conduit_mat
+		band_mi.position = Vector3(0.0, height * y_frac, 0.0)
+		world.add_child(band_mi)
+
+	# --- Floor collar (wider base disc) ------------------------------------
+	var collar_mi: MeshInstance3D = MeshInstance3D.new()
+	var collar_mesh: CylinderMesh = CylinderMesh.new()
+	collar_mesh.top_radius = 1.90
+	collar_mesh.bottom_radius = 2.10
+	collar_mesh.height = 0.30
+	collar_mesh.radial_segments = 32
+	collar_mi.mesh = collar_mesh
+	collar_mi.material_override = collar_mat
+	collar_mi.position = Vector3(0.0, 0.15, 0.0)
+	world.add_child(collar_mi)
+
+	# --- Top cap (tapered up into ceiling) ---------------------------------
+	var cap_mi: MeshInstance3D = MeshInstance3D.new()
+	var cap_mesh: CylinderMesh = CylinderMesh.new()
+	cap_mesh.top_radius = 1.95
+	cap_mesh.bottom_radius = 1.50
+	cap_mesh.height = 0.50
+	cap_mesh.radial_segments = 32
+	cap_mi.mesh = cap_mesh
+	cap_mi.material_override = cap_mat
+	cap_mi.position = Vector3(0.0, height - 0.25, 0.0)
+	world.add_child(cap_mi)
+
+	# --- Player+camera collider --------------------------------------------
+	# Radius covers the shaft plus pipes so the SpringArm can't clip through
+	# either. Player capsule stops at the same radius. Matches kenney_room
+	# floor/walls convention: layer 1|2.
+	var pillar_body: StaticBody3D = StaticBody3D.new()
+	pillar_body.name = "PillarCollider"
+	pillar_body.collision_layer = 1 | 2
+	pillar_body.collision_mask = 0
+	var p_cs: CollisionShape3D = CollisionShape3D.new()
+	var p_shape: CylinderShape3D = CylinderShape3D.new()
+	p_shape.radius = 1.85
+	p_shape.height = height
+	p_cs.shape = p_shape
+	p_cs.position = Vector3(0.0, height * 0.5, 0.0)
+	pillar_body.add_child(p_cs)
+	world.add_child(pillar_body)
+
+
+# Space Station Kit `computer-wide.glb` console. GLB is authored at ~1u = 1m
+# with a wide flat top, angled screen, and a chunky housing — much more
+# "Ancient ship control panel" than the basic Space Kit desk_computer. Kenney
+# textures are stripped on import, so we apply a two-tone override: dark
+# brushed-metal body + a bright amber emissive screen plate aligned to the
+# model's screen face.
+#
+# Model is authored facing +Z (operator stands on -Z side); `yaw` rotates
+# the whole console so the operator standing direction is controlled by the
+# caller.
+static func _spawn_station_console(world: Node3D, glb: PackedScene, pos: Vector3, yaw: float) -> void:
+	# Verified GLB AABB (raw): 0.8 × 0.497 × 0.533 m, single mesh / surface.
+	# Scale 2.2 → 1.76 × 1.09 × 1.17 m, chest-height for a 1.75 m crewmember.
+	# Top surface (slanted screen face) sits at raw-y ≈ 0.497 → local plate
+	# anchor at y = 0.46 for proud-above-the-shell placement.
+	const SCREEN_PLATE_Y: float = 0.46
+	const SCREEN_TILT_DEG: float = -22.0
+	var holder: Node3D = Node3D.new()
+	holder.name = "StationConsole"
+	holder.position = pos
+	holder.rotation.y = yaw
+	holder.scale = Vector3(2.2, 2.2, 2.2)
+	world.add_child(holder)
+
+	var inst: Node = glb.instantiate()
+	holder.add_child(inst)
+
+	# GLB is a single-surface mesh — the embedded base-color texture was
+	# stripped by Godot's glTF importer (see feedback_gltf_embedded_texture_lost),
+	# so we override with a brushed-metal body. Pop the screen separately via
+	# an emissive plate child since we can't address the screen sub-region.
+	var body_mat: StandardMaterial3D = _make_mat(Color(0.46, 0.48, 0.52), 0.65, 0.45)
+	_apply_material_recursive(inst, body_mat)
+
+	# Amber screen plate aligned to the slanted top surface. computer-wide's
+	# front (operator side) is on -Z; the screen tilts back ~22° so its plate
+	# anchor sits a hair toward -Z and rotates around +X.
+	var screen_mat: StandardMaterial3D = _emissive_mat(Color(1.0, 0.55, 0.18), 3.0)
+	var screen_mi: MeshInstance3D = MeshInstance3D.new()
+	var screen_box: BoxMesh = BoxMesh.new()
+	screen_box.size = Vector3(0.68, 0.015, 0.36)
+	screen_mi.mesh = screen_box
+	screen_mi.material_override = screen_mat
+	screen_mi.position = Vector3(0.0, SCREEN_PLATE_Y, -0.10)
+	screen_mi.rotation = Vector3(deg_to_rad(SCREEN_TILT_DEG), 0.0, 0.0)
+	holder.add_child(screen_mi)
+
+
+# Generic Space Kit desk_computer.glb spawner — used by kino-room's
+# corner-desk + chair decor. Control room now uses _spawn_station_console
+# instead (computer-wide.glb has a stronger silhouette).
 static func _spawn_kenney_console(world: Node3D, glb: PackedScene, pos: Vector3, yaw: float) -> void:
 	var holder: Node3D = Node3D.new()
 	holder.name = "Console"

@@ -156,6 +156,9 @@ func _on_choice_pressed(next_value: Variant) -> void:
 func close() -> void:
 	get_tree().paused = false
 	closed.emit()
+	# Surface the close globally so non-NPC triggers (kino_pickup, etc.) can
+	# await dialog completion without needing a handle to this instance.
+	GameState.dialog_closed.emit()
 	queue_free()
 
 func _unhandled_input(event: InputEvent) -> void:

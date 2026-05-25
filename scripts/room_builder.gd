@@ -16,6 +16,33 @@ extends Object
 #     RoomBuilder.build(world, data)
 
 
+# ============================================================================
+# CONSOLE STYLE — single source of truth for ALL consoles in the game.
+# Used by attach_console_mesh() below; called from control room (4 stations),
+# gate room (Gate Control + FTL), and any future Ancient-tech control surface.
+# Tweak these constants to retune every console in one place.
+# ============================================================================
+const CONSOLE_GLB_PATH: String = "res://models/props/space_station_kit/computer-wide.glb"
+# Verified GLB AABB (raw): 0.8 × 0.497 × 0.533 m, single mesh / surface
+# (z-range -0.237 to +0.297). Authored with the OPERATOR side on +Z and the
+# back wall on -Z; housing rises from a low operator-side lip up to a tall
+# back, with the slanted screen face descending from the high back (-Z) down
+# toward the operator's hands (+Z).
+const CONSOLE_SCALE: float = 2.2                              # → 1.76 × 1.09 × 1.17 m (chest height)
+const CONSOLE_BODY_COLOR: Color = Color(0.46, 0.48, 0.52)
+const CONSOLE_BODY_METALLIC: float = 0.65
+const CONSOLE_BODY_ROUGHNESS: float = 0.45
+# Screen plate sits on the slanted top face; rotation.x = -38° matches the
+# GLB's authored slope so the plate embeds into the slant rather than floating
+# above. Positive y embeds further DOWN into the housing's interior.
+const CONSOLE_SCREEN_PLATE_Y: float = 0.36
+const CONSOLE_SCREEN_PLATE_Z: float = 0.06                    # shift toward +Z (operator) to centre on visible face
+const CONSOLE_SCREEN_TILT_DEG: float = -38.0
+const CONSOLE_SCREEN_SIZE: Vector3 = Vector3(0.68, 0.015, 0.36)
+const CONSOLE_SCREEN_COLOR_DEFAULT: Color = Color(0.32, 0.72, 1.0)  # Ancient tech blue
+const CONSOLE_SCREEN_EMISSION: float = 3.2
+
+
 # Default ceiling height per template (metres). Picked to make small rooms
 # feel intimate and large rooms feel monumental without per-room tuning.
 const CEILING_BY_TEMPLATE: Dictionary = {
@@ -275,25 +302,24 @@ static func _accent_control_room(world: Node3D, width: float, depth: float, heig
 	_accent_control_pillar(world, height, accent)
 
 	# --- Four consoles flanking the pillar (NW / NE / SW / SE) ---------------
-	# Each console faces the pillar so operators (Rush at NW) work with their
-	# backs to the wall. Z = ±4 m straddles the +X door at z=0 so neither
-	# console blocks the entrance from cr_corridor_2.
-	# Kenney Space Station Kit's `computer-wide.glb` is a wide chest-height
-	# control panel with an angled screen — much better silhouette than the
-	# Space Kit desk_computer (which was reading as just a floating screen
-	# against the dark grate). Scale 1.8 puts it at ~1.4 m tall.
-	var console_glb: PackedScene = load("res://models/props/space_station_kit/computer-wide.glb")
-	if console_glb != null:
-		var east_x: float = width * 0.5 - 1.4
-		var west_x: float = -width * 0.5 + 1.4
-		var console_z_offsets: Array = [-4.0, 4.0]
-		for cz in console_z_offsets:
-			# West (-X wall) consoles face +X — front faces the pillar.
-			_spawn_station_console(world, console_glb,
-				Vector3(west_x, 0.0, cz), PI * 0.5)
-			# East (+X wall) consoles face -X.
-			_spawn_station_console(world, console_glb,
-				Vector3(east_x, 0.0, cz), -PI * 0.5)
+	# Shared console style (see attach_console_mesh + CONSOLE_* constants at
+	# file top). Z = ±4 m straddles the +X door at z=0 so neither console
+	# blocks the entrance from cr_corridor_2.
+	var east_x: float = width * 0.5 - 1.4
+	var west_x: float = -width * 0.5 + 1.4
+	for cz in [-4.0, 4.0]:
+		# West (-X wall) console faces +X (front toward pillar).
+		var west_holder: Node3D = Node3D.new()
+		west_holder.position = Vector3(west_x, 0.0, cz)
+		west_holder.rotation.y = PI * 0.5
+		world.add_child(west_holder)
+		attach_console_mesh(west_holder)
+		# East (+X wall) console faces -X.
+		var east_holder: Node3D = Node3D.new()
+		east_holder.position = Vector3(east_x, 0.0, cz)
+		east_holder.rotation.y = -PI * 0.5
+		world.add_child(east_holder)
+		attach_console_mesh(east_holder)
 
 	# --- Console downlights ---------------------------------------------------
 	# One soft warm pool over each of the four workstations so the consoles
@@ -411,62 +437,45 @@ static func _accent_control_pillar(world: Node3D, height: float, accent: Color) 
 	world.add_child(pillar_body)
 
 
-# Space Station Kit `computer-wide.glb` console. GLB is authored at ~1u = 1m
-# with a wide flat top, angled screen, and a chunky housing — much more
-# "Ancient ship control panel" than the basic Space Kit desk_computer. Kenney
-# textures are stripped on import, so we apply a two-tone override: dark
-# brushed-metal body + a bright amber emissive screen plate aligned to the
-# model's screen face.
+# Attach the SHARED Ancient-tech console mesh as a child of `parent`. Caller
+# is responsible for positioning + yaw-rotating `parent`; this populates the
+# GLB + emissive screen plate inside it. Used by control_room, gate_room, and
+# any future scene that wants the same console silhouette.
 #
-# Model is authored facing +Z (operator stands on -Z side); `yaw` rotates
-# the whole console so the operator standing direction is controlled by the
-# caller.
-static func _spawn_station_console(world: Node3D, glb: PackedScene, pos: Vector3, yaw: float) -> void:
-	# Verified GLB AABB (raw): 0.8 × 0.497 × 0.533 m, single mesh / surface
-	# (z-range -0.237 to +0.297). The model is authored with the OPERATOR side
-	# on +Z and the back wall on -Z; the housing rises from a low operator-side
-	# lip up to a tall back-of-console, with the slanted screen face descending
-	# from the high back (-Z) down toward the operator's hands (+Z).
-	# Scale 2.2 → 1.76 × 1.09 × 1.17 m.
-	#
-	# To match that slope on the floating plate: rotation.x = -38° tilts the
-	# plate's +Z edge DOWN toward the operator (positive X rotation by right-
-	# hand rule lifts +Z; negative lowers it). Plate y is set so the plate
-	# embeds slightly into the slanted face rather than floating above it.
-	const SCREEN_PLATE_Y: float = 0.36
-	const SCREEN_TILT_DEG: float = -38.0
-	var holder: Node3D = Node3D.new()
-	holder.name = "StationConsole"
-	holder.position = pos
-	holder.rotation.y = yaw
-	holder.scale = Vector3(2.2, 2.2, 2.2)
-	world.add_child(holder)
+# `screen_color` overrides the default tech-blue (e.g. gate room passes
+# distinct colors to differentiate Gate Control vs FTL Countdown consoles).
+#
+# All tweakable visual constants are at file top (CONSOLE_*) — edit there to
+# retune every console in one shot.
+static func attach_console_mesh(parent: Node3D, screen_color: Color = CONSOLE_SCREEN_COLOR_DEFAULT) -> void:
+	# Inner stage holds the scaled GLB + screen so the caller can attach
+	# unscaled siblings (collision shapes, scripts) without inheriting display
+	# scale.
+	var stage: Node3D = Node3D.new()
+	stage.name = "ConsoleMesh"
+	stage.scale = Vector3(CONSOLE_SCALE, CONSOLE_SCALE, CONSOLE_SCALE)
+	parent.add_child(stage)
 
-	var inst: Node = glb.instantiate()
-	holder.add_child(inst)
+	var glb: PackedScene = load(CONSOLE_GLB_PATH)
+	if glb != null:
+		var inst: Node = glb.instantiate()
+		stage.add_child(inst)
+		# Kenney textures are stripped on glTF import (see
+		# feedback_gltf_embedded_texture_lost), so we override with brushed
+		# metal. Pop the screen separately via an emissive plate child since
+		# the GLB is a single surface — we can't address the screen sub-region.
+		var body_mat: StandardMaterial3D = _make_mat(CONSOLE_BODY_COLOR, CONSOLE_BODY_METALLIC, CONSOLE_BODY_ROUGHNESS)
+		_apply_material_recursive(inst, body_mat)
 
-	# GLB is a single-surface mesh — the embedded base-color texture was
-	# stripped by Godot's glTF importer (see feedback_gltf_embedded_texture_lost),
-	# so we override with a brushed-metal body. Pop the screen separately via
-	# an emissive plate child since we can't address the screen sub-region.
-	var body_mat: StandardMaterial3D = _make_mat(Color(0.46, 0.48, 0.52), 0.65, 0.45)
-	_apply_material_recursive(inst, body_mat)
-
-	# Tech-blue screen plate aligned to the slanted top surface. Ancient ship
-	# consoles in SGU read as cool-blue holographic UI, not warm amber. Plate
-	# anchor sits a hair toward -Z and rotates around +X to match the GLB's
-	# native slope (see SCREEN_TILT_DEG comment above).
-	var screen_mat: StandardMaterial3D = _emissive_mat(Color(0.32, 0.72, 1.0), 3.2)
+	var screen_mat: StandardMaterial3D = _emissive_mat(screen_color, CONSOLE_SCREEN_EMISSION)
 	var screen_mi: MeshInstance3D = MeshInstance3D.new()
 	var screen_box: BoxMesh = BoxMesh.new()
-	screen_box.size = Vector3(0.68, 0.015, 0.36)
+	screen_box.size = CONSOLE_SCREEN_SIZE
 	screen_mi.mesh = screen_box
 	screen_mi.material_override = screen_mat
-	# Shift slightly toward +Z (operator side) so the plate centers on the
-	# visible slanted face rather than the upper-back peak.
-	screen_mi.position = Vector3(0.0, SCREEN_PLATE_Y, 0.06)
-	screen_mi.rotation = Vector3(deg_to_rad(SCREEN_TILT_DEG), 0.0, 0.0)
-	holder.add_child(screen_mi)
+	screen_mi.position = Vector3(0.0, CONSOLE_SCREEN_PLATE_Y, CONSOLE_SCREEN_PLATE_Z)
+	screen_mi.rotation = Vector3(deg_to_rad(CONSOLE_SCREEN_TILT_DEG), 0.0, 0.0)
+	stage.add_child(screen_mi)
 
 
 # Generic Space Kit desk_computer.glb spawner — used by kino-room's

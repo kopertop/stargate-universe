@@ -1019,29 +1019,28 @@ func _james_tableau_dialog() -> Array:
 
 
 func _build_consoles() -> void:
-	# Two consoles on the deck-1 floor, facing the gate (i.e. looking +Z).
-	# Built procedurally rather than instancing computer.glb because the glTF
-	# import drops the baseColorTexture binding → meshes render pure white.
-	# Procedural also lets us color-code screens per console kind.
+	# Two consoles on the deck-1 floor, facing the gate. Both use the SHARED
+	# Ancient-tech console mesh (RoomBuilder.attach_console_mesh) — same
+	# silhouette, same tweak surface as the control-room consoles. Per-console
+	# screen color is the optional differentiator if we ever want Gate Control
+	# vs FTL Countdown to read differently; for now both use the default blue.
 	var half_z: float = room_size.y * 0.5
 	var z_console: float = half_z - 10.5
 	for spec in [
-		{"name": "GateControlConsole", "x": -3.5, "kind": "gate_control",
-			"screen": Color(0.20, 0.85, 1.00, 1.0), "label": "GATE CONTROL"},
-		{"name": "FTLConsole",         "x":  3.5, "kind": "ftl_countdown",
-			"screen": Color(1.00, 0.55, 0.18, 1.0), "label": "FTL"},
+		{"name": "GateControlConsole", "x": -3.5, "kind": "gate_control"},
+		{"name": "FTLConsole",         "x":  3.5, "kind": "ftl_countdown"},
 	]:
 		var holder: Node3D = Node3D.new()
 		holder.name = spec["name"]
 		holder.position = Vector3(spec["x"], 0.0, z_console)
-		# Face -Z so the screen tips toward the player approaching from the
-		# gate-side, not back toward the gate.
+		# Operator stands on +Z side (player approaches from the gate at +Z,
+		# walks up between gate and console). Shared mesh's authored operator
+		# direction is +Z so no yaw needed — same convention as the original
+		# hand-built console at this position.
 		holder.rotation = Vector3.ZERO
 		_world.add_child(holder)
+		RoomBuilder.attach_console_mesh(holder)
 
-		_build_console_mesh(holder, spec["screen"])
-
-		# Wrap with a StaticBody3D on the interactable layer.
 		var inter: StaticBody3D = StaticBody3D.new()
 		inter.set_script(GATE_CONSOLE_SCRIPT)
 		inter.name = "Interactable"
@@ -1053,72 +1052,6 @@ func _build_consoles() -> void:
 		cs.position = Vector3(0.0, 0.8, 0.0)
 		inter.add_child(cs)
 		holder.add_child(inter)
-
-
-func _build_console_mesh(holder: Node3D, screen_color: Color) -> void:
-	# Console silhouette: pedestal base + angled top deck with emissive screen,
-	# bronze trim along the front edge, and emissive accent stripes down the sides.
-	var body_mat: StandardMaterial3D = StandardMaterial3D.new()
-	body_mat.albedo_color = Color(0.16, 0.16, 0.19, 1.0)
-	body_mat.metallic = 0.55
-	body_mat.roughness = 0.45
-
-	var trim_mat: StandardMaterial3D = StandardMaterial3D.new()
-	trim_mat.albedo_color = Color(0.50, 0.30, 0.12, 1.0)
-	trim_mat.metallic = 0.85
-	trim_mat.roughness = 0.30
-	trim_mat.emission_enabled = true
-	trim_mat.emission = Color(1.0, 0.50, 0.15, 1.0)
-	trim_mat.emission_energy_multiplier = 0.4
-
-	var screen_mat: StandardMaterial3D = StandardMaterial3D.new()
-	screen_mat.albedo_color = screen_color * 0.4
-	screen_mat.metallic = 0.0
-	screen_mat.roughness = 0.25
-	screen_mat.emission_enabled = true
-	screen_mat.emission = screen_color
-	screen_mat.emission_energy_multiplier = 3.5
-
-	var accent_mat: StandardMaterial3D = StandardMaterial3D.new()
-	accent_mat.albedo_color = screen_color * 0.6
-	accent_mat.emission_enabled = true
-	accent_mat.emission = screen_color
-	accent_mat.emission_energy_multiplier = 2.5
-	accent_mat.metallic = 0.0
-	accent_mat.roughness = 0.4
-
-	# Pedestal base (1.5 × 0.9 × 0.7 m), centred on holder origin.
-	_attach_box(holder, Vector3(0.0, 0.45, 0.0), Vector3(1.5, 0.9, 0.7), body_mat)
-	# Wider sill on top of the pedestal (lip).
-	_attach_box(holder, Vector3(0.0, 0.93, 0.0), Vector3(1.7, 0.06, 0.85), trim_mat)
-	# Angled control deck on top — Box rotated so its front edge dips toward player.
-	# Place above the sill; rotation around X tips +Z end down.
-	var deck_pivot: Node3D = Node3D.new()
-	deck_pivot.position = Vector3(0.0, 1.08, 0.0)
-	deck_pivot.rotation = Vector3(deg_to_rad(-22.0), 0.0, 0.0)
-	holder.add_child(deck_pivot)
-	_attach_box(deck_pivot, Vector3(0.0, 0.0, 0.05), Vector3(1.55, 0.10, 0.75), body_mat)
-	# Screen surface (slightly inset, sits on deck top).
-	_attach_box(deck_pivot, Vector3(0.0, 0.06, 0.05), Vector3(1.35, 0.02, 0.60), screen_mat)
-	# Button row in front of screen (small dark strip with glowing dots).
-	_attach_box(deck_pivot, Vector3(0.0, 0.06, 0.32), Vector3(1.20, 0.025, 0.07), trim_mat)
-	for bx in [-0.45, -0.15, 0.15, 0.45]:
-		_attach_box(deck_pivot, Vector3(bx, 0.075, 0.32), Vector3(0.06, 0.02, 0.04), accent_mat)
-	# Side accent strips (vertical) — emissive bars running up the pedestal.
-	_attach_box(holder, Vector3(-0.78, 0.45, 0.0), Vector3(0.04, 0.7, 0.10), accent_mat)
-	_attach_box(holder, Vector3( 0.78, 0.45, 0.0), Vector3(0.04, 0.7, 0.10), accent_mat)
-	# Front kick-plate (darker, breaks the flat front face).
-	_attach_box(holder, Vector3(0.0, 0.08, 0.36), Vector3(1.4, 0.16, 0.04), trim_mat)
-
-
-func _attach_box(parent: Node3D, pos: Vector3, size: Vector3, mat: StandardMaterial3D) -> void:
-	var mi: MeshInstance3D = MeshInstance3D.new()
-	var box: BoxMesh = BoxMesh.new()
-	box.size = size
-	mi.mesh = box
-	mi.material_override = mat
-	mi.position = pos
-	parent.add_child(mi)
 
 
 func _build_lighting_props() -> void:

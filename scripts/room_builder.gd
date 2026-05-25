@@ -422,12 +422,19 @@ static func _accent_control_pillar(world: Node3D, height: float, accent: Color) 
 # the whole console so the operator standing direction is controlled by the
 # caller.
 static func _spawn_station_console(world: Node3D, glb: PackedScene, pos: Vector3, yaw: float) -> void:
-	# Verified GLB AABB (raw): 0.8 × 0.497 × 0.533 m, single mesh / surface.
-	# Scale 2.2 → 1.76 × 1.09 × 1.17 m, chest-height for a 1.75 m crewmember.
-	# Top surface (slanted screen face) sits at raw-y ≈ 0.497 → local plate
-	# anchor at y = 0.46 for proud-above-the-shell placement.
-	const SCREEN_PLATE_Y: float = 0.46
-	const SCREEN_TILT_DEG: float = -22.0
+	# Verified GLB AABB (raw): 0.8 × 0.497 × 0.533 m, single mesh / surface
+	# (z-range -0.237 to +0.297). The model is authored with the OPERATOR side
+	# on +Z and the back wall on -Z; the housing rises from a low operator-side
+	# lip up to a tall back-of-console, with the slanted screen face descending
+	# from the high back (-Z) down toward the operator's hands (+Z).
+	# Scale 2.2 → 1.76 × 1.09 × 1.17 m.
+	#
+	# To match that slope on the floating plate: rotation.x = -38° tilts the
+	# plate's +Z edge DOWN toward the operator (positive X rotation by right-
+	# hand rule lifts +Z; negative lowers it). Plate y is set so the plate
+	# embeds slightly into the slanted face rather than floating above it.
+	const SCREEN_PLATE_Y: float = 0.36
+	const SCREEN_TILT_DEG: float = -38.0
 	var holder: Node3D = Node3D.new()
 	holder.name = "StationConsole"
 	holder.position = pos
@@ -445,16 +452,19 @@ static func _spawn_station_console(world: Node3D, glb: PackedScene, pos: Vector3
 	var body_mat: StandardMaterial3D = _make_mat(Color(0.46, 0.48, 0.52), 0.65, 0.45)
 	_apply_material_recursive(inst, body_mat)
 
-	# Amber screen plate aligned to the slanted top surface. computer-wide's
-	# front (operator side) is on -Z; the screen tilts back ~22° so its plate
-	# anchor sits a hair toward -Z and rotates around +X.
-	var screen_mat: StandardMaterial3D = _emissive_mat(Color(1.0, 0.55, 0.18), 3.0)
+	# Tech-blue screen plate aligned to the slanted top surface. Ancient ship
+	# consoles in SGU read as cool-blue holographic UI, not warm amber. Plate
+	# anchor sits a hair toward -Z and rotates around +X to match the GLB's
+	# native slope (see SCREEN_TILT_DEG comment above).
+	var screen_mat: StandardMaterial3D = _emissive_mat(Color(0.32, 0.72, 1.0), 3.2)
 	var screen_mi: MeshInstance3D = MeshInstance3D.new()
 	var screen_box: BoxMesh = BoxMesh.new()
 	screen_box.size = Vector3(0.68, 0.015, 0.36)
 	screen_mi.mesh = screen_box
 	screen_mi.material_override = screen_mat
-	screen_mi.position = Vector3(0.0, SCREEN_PLATE_Y, -0.10)
+	# Shift slightly toward +Z (operator side) so the plate centers on the
+	# visible slanted face rather than the upper-back peak.
+	screen_mi.position = Vector3(0.0, SCREEN_PLATE_Y, 0.06)
 	screen_mi.rotation = Vector3(deg_to_rad(SCREEN_TILT_DEG), 0.0, 0.0)
 	holder.add_child(screen_mi)
 

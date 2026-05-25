@@ -23,22 +23,30 @@ extends Object
 # Tweak these constants to retune every console in one place.
 # ============================================================================
 const CONSOLE_GLB_PATH: String = "res://models/props/space_station_kit/computer-wide.glb"
-# Verified GLB AABB (raw): 0.8 × 0.497 × 0.533 m, single mesh / surface
-# (z-range -0.237 to +0.297). Authored with the OPERATOR side on +Z and the
-# back wall on -Z; housing rises from a low operator-side lip up to a tall
-# back, with the slanted screen face descending from the high back (-Z) down
-# toward the operator's hands (+Z).
+# Verified GLB AABB (raw): 0.8 × 0.497 × 0.533 m, single mesh / surface.
+# Top-edge profile (sampled per-vertex):
+#   z=-0.20 → y_top=0.497  ← BACK of slanted screen housing (tallest)
+#   z=-0.05 → y_top=0.294  ← FRONT edge of slanted screen face
+#   z=+0.10 → y_top=0.245  ← keyboard/controls deck (operator workspace)
+#   z=+0.30 → y_top=0.236  ← far edge of keyboard
+# OPERATOR stands on the +Z side (keyboard); screen recess is the slanted
+# face on the -Z side, sloping from low at z=-0.05 up to high at z=-0.20.
 const CONSOLE_SCALE: float = 2.2                              # → 1.76 × 1.09 × 1.17 m (chest height)
 const CONSOLE_BODY_COLOR: Color = Color(0.46, 0.48, 0.52)
 const CONSOLE_BODY_METALLIC: float = 0.65
 const CONSOLE_BODY_ROUGHNESS: float = 0.45
-# Screen plate sits on the slanted top face; rotation.x = -38° matches the
-# GLB's authored slope so the plate embeds into the slant rather than floating
-# above. Positive y embeds further DOWN into the housing's interior.
-const CONSOLE_SCREEN_PLATE_Y: float = 0.36
-const CONSOLE_SCREEN_PLATE_Z: float = 0.06                    # shift toward +Z (operator) to centre on visible face
-const CONSOLE_SCREEN_TILT_DEG: float = -38.0
-const CONSOLE_SCREEN_SIZE: Vector3 = Vector3(0.68, 0.015, 0.36)
+# Screen plate transform: dialed-in visually by dragging the plate inside the
+# GLB's slanted recess in scenes/console_test.tscn. Plate sits flush in the
+# recess with its high edge toward +Z (operator/keyboard side raised — matches
+# Ancient console "display tilted up toward operator" convention).
+# Source values from the editor Inspector (Stage-local frame, stage scale 2.2):
+#   position = (0.0, 0.365, -0.02)
+#   rotation = (+36.5°, 0°, 0°)
+#   scale    = (1.2, 1.1, 1.1)  ← baked into CONSOLE_SCREEN_SIZE below
+const CONSOLE_SCREEN_PLATE_Y: float = 0.365
+const CONSOLE_SCREEN_PLATE_Z: float = -0.02
+const CONSOLE_SCREEN_TILT_DEG: float = 36.5
+const CONSOLE_SCREEN_SIZE: Vector3 = Vector3(0.744, 0.0165, 0.33)
 const CONSOLE_SCREEN_COLOR_DEFAULT: Color = Color(0.32, 0.72, 1.0)  # Ancient tech blue
 const CONSOLE_SCREEN_EMISSION: float = 3.2
 

@@ -1,0 +1,42 @@
+[gd_scene format=3 uid="uid://c1b54351xjhp2"]
+
+[ext_resource type="PackedScene" uid="uid://c0flovcp3vnlq" path="res://models/props/space_station_kit/computer-wide.glb" id="1_glb"]
+
+[sub_resource type="Environment" id="EnvFill"]
+background_mode = 1
+background_color = Color(0.18, 0.2, 0.24, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.6, 0.7, 0.9, 1)
+ambient_light_energy = 0.4
+
+[sub_resource type="StandardMaterial3D" id="ScreenMat"]
+albedo_color = Color(0.32, 0.72, 1, 1)
+roughness = 0.25
+emission_enabled = true
+emission = Color(0.32, 0.72, 1, 1)
+emission_energy_multiplier = 3.2
+
+[sub_resource type="BoxMesh" id="ScreenBox"]
+size = Vector3(0.62, 0.015, 0.3)
+
+[node name="ConsoleTest" type="Node3D" unique_id=1292343740]
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=132734240]
+transform = Transform3D(0.866, -0.25, 0.433, 0, 0.866, 0.5, -0.5, -0.433, 0.75, 2.5, 2.5, 3)
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1356710685]
+transform = Transform3D(0.766, -0.643, 0, 0.5, 0.595, -0.628, 0.404, 0.481, 0.778, -2, 4, 2)
+light_energy = 0.9
+
+[node name="Environment" type="WorldEnvironment" parent="." unique_id=863796297]
+environment = SubResource("EnvFill")
+
+[node name="Stage" type="Node3D" parent="." unique_id=888020949]
+transform = Transform3D(2.2, 0, 0, 0, 2.2, 0, 0, 0, 2.2, 0, 0, 0)
+
+[node name="ConsoleGLB" parent="Stage" unique_id=93550240 instance=ExtResource("1_glb")]
+
+[node name="ScreenPlate" type="MeshInstance3D" parent="Stage" unique_id=1420321022]
+transform = Transform3D(1.2, 0, 0, 0, 0.88424253, -0.6543051, 0, 0.6543051, 0.88424253, 0, 0.36500302, -0.022982696)
+material_override = SubResource("ScreenMat")
+mesh = SubResource("ScreenBox")

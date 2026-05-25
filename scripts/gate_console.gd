@@ -83,25 +83,26 @@ func _build_screen_readout() -> void:
 	_viewport.transparent_bg = false
 	add_child(_viewport)
 
-	# Solid blue background filling the viewport — this is the "screen color"
-	# the player sees on the plate. Pulled from the shared console palette.
+	# DARK background — near-black so only the text glows. Inverts the
+	# previous treatment (bright blue + dark text) per user direction. With
+	# emission_energy_multiplier in play, "dark" stays dark (0.04 × 3.2 = 0.13)
+	# while the bright tech-blue text clips toward white = looks like a glowing
+	# Ancient CRT readout.
 	var bg: ColorRect = ColorRect.new()
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	bg.color = RoomBuilder.CONSOLE_SCREEN_COLOR_DEFAULT
+	bg.color = Color(0.03, 0.04, 0.06, 1.0)
 	_viewport.add_child(bg)
 
-	# Foreground Label — the actual text. Dark high-contrast color so it
-	# reads on the bright emissive screen background.
+	# Tech-blue text — the same color the screen background USED to be.
+	# Now the wording IS the bright element on the screen.
 	_vp_label = Label.new()
 	_vp_label.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_vp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_vp_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_vp_label.add_theme_font_size_override("font_size", TEXT_FONT_SIZE)
-	# Dark navy text on bright cyan background — reads clearly even when the
-	# plate's emission energy washes the surface toward white.
-	_vp_label.add_theme_color_override("font_color", Color(0.06, 0.10, 0.22, 1.0))
-	_vp_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.85))
-	_vp_label.add_theme_constant_override("outline_size", 6)
+	_vp_label.add_theme_color_override("font_color", RoomBuilder.CONSOLE_SCREEN_COLOR_DEFAULT)
+	_vp_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.9))
+	_vp_label.add_theme_constant_override("outline_size", 4)
 	_vp_label.text = _readout_text()
 	_viewport.add_child(_vp_label)
 
@@ -133,14 +134,17 @@ func _apply_text_to_plate() -> void:
 	var mat: StandardMaterial3D = src.duplicate()
 	# Sample the viewport for BOTH albedo (the plate's base color in non-emissive
 	# light) and emission (the bright self-lit content). albedo_color stays white
-	# so the texture passes through unmodified; emission picks up the plate's
-	# energy multiplier so the screen glows.
+	# so the texture passes through unmodified.
+	# Drop emission_energy_multiplier to 1.5 so the tech-blue text doesn't
+	# saturate to white — at the shared 3.2 the green+blue channels clip and
+	# the text reads as washed white instead of blue. 1.5 keeps it glowy
+	# while preserving the source colour.
 	var tex: Texture = _viewport.get_texture()
 	mat.albedo_color = Color.WHITE
 	mat.albedo_texture = tex
 	mat.emission = Color.WHITE
 	mat.emission_texture = tex
-	mat.emission_energy_multiplier = RoomBuilder.CONSOLE_SCREEN_EMISSION
+	mat.emission_energy_multiplier = 1.5
 	plate_mi.material_override = mat
 
 func _on_interact(_by: Node) -> void:

@@ -67,15 +67,36 @@ func _apply_kind_defaults() -> void:
 func _build_readout() -> void:
 	_readout = Label3D.new()
 	_readout.name = "Readout"
-	_readout.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	# Glue the readout to the screen plate (no billboard) so the text reads
+	# AS the console's display rather than a floating tag above the unit.
+	_readout.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 	_readout.no_depth_test = false
 	_readout.shaded = false
 	_readout.double_sided = true
-	_readout.pixel_size = 0.0035
+	_readout.pixel_size = 0.005
 	_readout.outline_size = 6
+	_readout.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_readout.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_readout.modulate = Color(0.55, 0.92, 1.0, 1.0) if kind == "ftl_countdown" else Color(1.0, 0.74, 0.32, 1.0)
 	_readout.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
-	_readout.position = Vector3(0.0, 1.85, 0.0)
+	# Pin the readout to the screen plate's transform — derive from RoomBuilder's
+	# shared CONSOLE_* constants so retuning the plate auto-retunes the label.
+	# Plate is at stage-local (CONSOLE_SCREEN_PLATE_Y, CONSOLE_SCREEN_PLATE_Z)
+	# scaled by CONSOLE_SCALE = holder-local position. Normal direction follows
+	# the plate's tilt (Godot's +X rotation: +Y → (0, cos, -sin)).
+	# Label's text plane (default normal +Z) needs `tilt - 90°` rotation around
+	# X so its -Z (text-visible side) aligns with the plate's +Y (surface normal).
+	var plate_y: float = RoomBuilder.CONSOLE_SCREEN_PLATE_Y * RoomBuilder.CONSOLE_SCALE
+	var plate_z: float = RoomBuilder.CONSOLE_SCREEN_PLATE_Z * RoomBuilder.CONSOLE_SCALE
+	var tilt_rad: float = deg_to_rad(RoomBuilder.CONSOLE_SCREEN_TILT_DEG)
+	# 1 cm outward along the plate normal — proud enough to avoid z-fighting.
+	var proud: float = 0.012
+	_readout.position = Vector3(
+		0.0,
+		plate_y + cos(tilt_rad) * proud,
+		plate_z - sin(tilt_rad) * proud,
+	)
+	_readout.rotation_degrees = Vector3(RoomBuilder.CONSOLE_SCREEN_TILT_DEG - 90.0, 0.0, 0.0)
 	add_child(_readout)
 	# Set initial text immediately so the first frame already reads.
 	_readout.text = _readout_text()

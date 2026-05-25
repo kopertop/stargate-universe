@@ -742,10 +742,12 @@ static func _accent_quarters(world: Node3D, width: float, depth: float, height: 
 	# Kenney bedSingle.glb authored ~2 m long × ~1 m wide × ~0.5 m tall raw.
 	# At scale 2.5 → 5 m × 2.5 m × 1.25 m. The pivot is at the foot of the
 	# bed centerline, so position z so the bed extends from the wall outward.
+	# scenes/quarters_test.tscn workbench is the right place to dial this in
+	# visually — paste tuned values back here.
 	var bed_glb: PackedScene = load("res://models/props/furniture_kit/bedSingle.glb")
 	if bed_glb != null:
 		_spawn_kenney_prop(world, bed_glb,
-			Vector3(bunk_x, 0.0, -half_z + 0.6), 0.0, BED_SCALE,
+			Vector3(bunk_x, 0.0, -half_z + 2.6), 0.0, BED_SCALE,
 			Color(0.62, 0.58, 0.52))
 
 	# --- Nightstand + lamp -------------------------------------------------
@@ -760,6 +762,9 @@ static func _accent_quarters(world: Node3D, width: float, depth: float, height: 
 				Vector3(stand_x, 0.0, -half_z + 0.9), 0.0, NIGHTSTAND_SCALE,
 				Color(0.42, 0.36, 0.30))
 		if lamp_glb != null:
+			# Lamp sits ON the nightstand. Nightstand at scale 2.0 is ~1 m
+			# tall (raw 0.5 m × scale 2.0), so the lamp's BASE should be at
+			# y=1.0. Tune via scenes/quarters_test.tscn if pivot differs.
 			_spawn_kenney_prop(world, lamp_glb,
 				Vector3(stand_x, 1.0, -half_z + 0.9), 0.0, LAMP_SCALE,
 				Color(0.85, 0.78, 0.65))

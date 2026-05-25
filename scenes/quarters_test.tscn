@@ -1,0 +1,64 @@
+[gd_scene load_steps=7 format=3 uid="uid://b2qrwm5pq8tcv"]
+
+; Quarters furniture workbench. Same pattern as scenes/console_test.tscn —
+; the @tool script attached to the root exposes per-prop @export knobs in
+; the Inspector. Walls + floor are placeholder geometry sized to match
+; Eli's Quarters (10 m × 12 m → half_x=5, half_z=6).
+;
+; Workflow:
+;   1. Click "QuartersTest" root node.
+;   2. Adjust the per-prop @export groups (Bed, Nightstand, Lamp, Locker,
+;      Desk, Chair) in the Inspector — Position / Yaw deg / Scale.
+;   3. When the layout looks right, paste the values back to Claude and
+;      they get baked into RoomBuilder._accent_quarters in room_builder.gd.
+
+[ext_resource type="Script" path="res://scripts/quarters_preview.gd" id="1_preview"]
+
+[sub_resource type="Environment" id="EnvFill"]
+background_mode = 1
+background_color = Color(0.05, 0.06, 0.08, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.6, 0.65, 0.75, 1)
+ambient_light_energy = 0.4
+
+[sub_resource type="StandardMaterial3D" id="FloorMat"]
+albedo_color = Color(0.24, 0.23, 0.25, 1)
+roughness = 0.6
+
+[sub_resource type="StandardMaterial3D" id="WallMat"]
+albedo_color = Color(0.40, 0.35, 0.34, 1)
+roughness = 0.58
+
+[sub_resource type="BoxMesh" id="FloorBox"]
+size = Vector3(10, 0.1, 12)
+
+[sub_resource type="BoxMesh" id="WallBox"]
+size = Vector3(0.2, 5.4, 12)
+
+[node name="QuartersTest" type="Node3D"]
+script = ExtResource("1_preview")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(0.766, -0.42, 0.485, 0, 0.755, 0.656, -0.643, -0.503, 0.578, 4.0, 6.0, 4.0)
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.766, -0.643, 0, 0.5, 0.595, -0.628, 0.404, 0.481, 0.778, -2, 4, 2)
+light_energy = 0.9
+
+[node name="Environment" type="WorldEnvironment" parent="."]
+environment = SubResource("EnvFill")
+
+[node name="Floor" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.05, 0)
+mesh = SubResource("FloorBox")
+material_override = SubResource("FloorMat")
+
+[node name="BackWall" type="MeshInstance3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 0, 2.7, -6.05)
+mesh = SubResource("WallBox")
+material_override = SubResource("WallMat")
+
+[node name="SideWallEast" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.05, 2.7, 0)
+mesh = SubResource("WallBox")
+material_override = SubResource("WallMat")

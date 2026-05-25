@@ -5,6 +5,7 @@
 [ext_resource type="PackedScene" uid="uid://chvqsrmx34grc" path="res://models/props/space_station_kit/container-tall.glb" id="5_locker"]
 [ext_resource type="PackedScene" uid="uid://b70i8fs5ikpva" path="res://models/props/space_station_kit/table.glb" id="6_desk"]
 [ext_resource type="PackedScene" uid="uid://ngn8l67dmp13" path="res://models/props/space_station_kit/chair-cushion.glb" id="7_chair"]
+[ext_resource type="PackedScene" uid="uid://dask714uwpjoy" path="res://models/props/kino_remote.glb" id="8_kino"]
 
 [sub_resource type="Environment" id="EnvFill"]
 background_mode = 1
@@ -91,6 +92,13 @@ transform = Transform3D(-1.0928e-07, 0, -2.5, 0, 2.5, 0, 2.5, 0, -1.0928e-07, 3.
 
 [node name="Chair" parent="." unique_id=593026701 instance=ExtResource("7_chair")]
 transform = Transform3D(1.767767, 0, 1.767767, 0, 2.5, 0, -1.767767, 0, 1.767767, 2, 0, 0)
+
+; Meshy Kino Remote — scale 0.13 (raw 1.9 m → ~25 cm SGU prop dimensions).
+; Placed centered on the desktop: world Y = 1.02 sits the kino's bottom
+; flush with the desk top (table.glb is 0.4 m tall raw × 2.5 scale = 1.0 m,
+; kino is 0.034 m tall, center pivot → 0.017 m offset).
+[node name="KinoRemote" parent="." instance=ExtResource("8_kino")]
+transform = Transform3D(0.13, 0, 0, 0, 0.13, 0, 0, 0, 0.13, 3.6, 1.02, 0)
 
 [node name="WallLightLeft" type="Node3D" parent="." unique_id=1790582917]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.2, 2.6, -5.85)

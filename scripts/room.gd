@@ -18,6 +18,23 @@ const HullSealSwitchScript: Script = preload("res://scripts/hull_seal_switch.gd"
 const NpcScript: Script = preload("res://scripts/npc.gd")
 const Co2ScrubberScript: Script = preload("res://scripts/co2_scrubber.gd")
 const PowerConsoleScript: Script = preload("res://scripts/power_console.gd")
+const QuestWaypointScript: Script = preload("res://scripts/quest_waypoint.gd")
+# Vertical offset above an in-room anchor (NPC head, console top, pickup body)
+# where the diamond sits. Tuned so it clears nametag Label3Ds.
+const QUEST_WAYPOINT_ANCHOR_HEIGHT: float = 2.4
+# Vertical offset above a door's local origin when the target is in another
+# room. Door origin sits on the floor; this lifts the diamond into eye-line.
+const QUEST_WAYPOINT_DOOR_HEIGHT: float = 1.8
+# Per-anchor vertical offset OVERRIDES — for objects that aren't NPCs and
+# would have the diamond floating embarrassingly high above them. Anchor
+# names not listed fall back to QUEST_WAYPOINT_ANCHOR_HEIGHT (NPC-default).
+const WAYPOINT_OFFSET_BY_ANCHOR: Dictionary = {
+	"KinoPickup": 0.35,        # tiny remote on a desk — diamond sits just above
+	"Bed": 1.1,                # bunk-height
+	"HullSealSwitch": 0.7,     # wall switch at chest height
+	"PowerConsole": 0.7,       # wall console
+	"CO2Scrubber": 1.4,        # scrubber housing top
+}
 
 # Set this in the editor to preview a specific room when running the scene
 # standalone (F6). At runtime, GameState.next_room_id takes precedence.
@@ -29,6 +46,7 @@ const PowerConsoleScript: Script = preload("res://scripts/power_console.gd")
 @onready var view: Node3D = $View
 
 var _room_data: Dictionary = {}
+var _quest_waypoint: Node3D = null
 
 
 func _ready() -> void:
@@ -58,6 +76,7 @@ func _ready() -> void:
 	_spawn_interactables()
 	_place_player()
 	GameState.discover_room(room_id, String(_room_data.get("name", room_id)))
+	GameState.set_current_room(room_id)
 	if room_id == "quarters_room_1":
 		GameState.mark_quarters_found()
 	elif room_id == "eli_quarters" and not GameState.kino_acquired:
@@ -65,6 +84,13 @@ func _ready() -> void:
 
 	# Persist for save/load — F5 reloads this scene with the same room_id.
 	GameState.current_scene_path = "res://scenes/room.tscn"
+
+	# Quest diamond waypoint — refreshes on objective_changed so quest
+	# advances mid-room (e.g. picking up the Kino) reposition the diamond
+	# without needing a room reload.
+	_refresh_quest_waypoint()
+	if not GameState.objective_changed.is_connected(_on_quest_objective_changed):
+		GameState.objective_changed.connect(_on_quest_objective_changed)
 
 
 # Stamp door + matching spawn Marker3D for each connection that originates at
@@ -297,53 +323,87 @@ func _spawn_quarters_bed() -> void:
 # room is wider than 6 m. eli_quarters is 10 m × 12 m so the desk always spawns.
 # Kino prop sits on the desktop, pickup hitbox alongside.
 func _spawn_eli_kino_pickup() -> void:
+	# SGU Kino Remote: a flat handheld device with a rounded oval body,
+	# bright amber screen on top, and a strip of blue accent buttons on the
+	# right edge. Built procedurally to match the silhouette of the show prop
+	# without needing a custom GLB.
 	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
 	var desk_top: Vector3 = Vector3(w_m * 0.5 - 0.7, 0.85, 0.0)
 	var holder: Node3D = Node3D.new()
 	holder.name = "KinoProp"
-	holder.position = desk_top + Vector3(0.0, 0.18, 0.0)
+	# Sit just above the desk surface — the remote lies flat on the table.
+	holder.position = desk_top + Vector3(0.0, 0.03, 0.0)
 	add_child(holder)
 
 	var body_mat: StandardMaterial3D = StandardMaterial3D.new()
-	body_mat.albedo_color = Color(0.18, 0.20, 0.24)
-	body_mat.metallic = 0.55
-	body_mat.roughness = 0.35
-	var eye_mat: StandardMaterial3D = StandardMaterial3D.new()
-	eye_mat.albedo_color = Color(0.95, 0.85, 0.55)
-	eye_mat.emission_enabled = true
-	eye_mat.emission = Color(0.95, 0.85, 0.55)
-	eye_mat.emission_energy_multiplier = 3.5
+	body_mat.albedo_color = Color(0.05, 0.05, 0.07)
+	body_mat.metallic = 0.30
+	body_mat.roughness = 0.60
+	var screen_mat: StandardMaterial3D = StandardMaterial3D.new()
+	screen_mat.albedo_color = Color(1.0, 0.55, 0.18)
+	screen_mat.emission_enabled = true
+	screen_mat.emission = Color(1.0, 0.55, 0.18)
+	screen_mat.emission_energy_multiplier = 1.8
+	var btn_mat: StandardMaterial3D = StandardMaterial3D.new()
+	btn_mat.albedo_color = Color(0.30, 0.78, 1.0)
+	btn_mat.emission_enabled = true
+	btn_mat.emission = Color(0.30, 0.78, 1.0)
+	btn_mat.emission_energy_multiplier = 2.4
 
+	# Body — flat black slab. Real SGU prop is ~25cm long, ~13cm wide, ~3cm thick.
 	var body_mi: MeshInstance3D = MeshInstance3D.new()
-	var body_mesh: SphereMesh = SphereMesh.new()
-	body_mesh.radius = 0.16
-	body_mesh.height = 0.32
-	body_mesh.radial_segments = 20
-	body_mesh.rings = 10
+	var body_mesh: BoxMesh = BoxMesh.new()
+	body_mesh.size = Vector3(0.26, 0.04, 0.14)
 	body_mi.mesh = body_mesh
 	body_mi.material_override = body_mat
 	holder.add_child(body_mi)
 
-	var eye_mi: MeshInstance3D = MeshInstance3D.new()
-	var iris: SphereMesh = SphereMesh.new()
-	iris.radius = 0.06
-	iris.height = 0.12
-	iris.radial_segments = 12
-	iris.rings = 6
-	eye_mi.mesh = iris
-	eye_mi.material_override = eye_mat
-	eye_mi.position = Vector3(0.0, 0.0, 0.13)
-	holder.add_child(eye_mi)
+	# Rounded end caps — small flattened ellipsoids to soften the rectangle
+	# into the oval silhouette of the show prop.
+	for end_x in [-0.13, 0.13]:
+		var cap_mi: MeshInstance3D = MeshInstance3D.new()
+		var cap_mesh: SphereMesh = SphereMesh.new()
+		cap_mesh.radius = 0.07
+		cap_mesh.height = 0.04
+		cap_mesh.radial_segments = 16
+		cap_mesh.rings = 6
+		cap_mi.mesh = cap_mesh
+		cap_mi.material_override = body_mat
+		cap_mi.position = Vector3(end_x, 0.0, 0.0)
+		holder.add_child(cap_mi)
 
+	# Amber screen on the left half of the top face (matching where the
+	# Ancient-text display sits on the real prop).
+	var screen_mi: MeshInstance3D = MeshInstance3D.new()
+	var screen_mesh: BoxMesh = BoxMesh.new()
+	screen_mesh.size = Vector3(0.16, 0.005, 0.095)
+	screen_mi.mesh = screen_mesh
+	screen_mi.material_override = screen_mat
+	screen_mi.position = Vector3(-0.03, 0.023, 0.0)
+	holder.add_child(screen_mi)
+
+	# Five blue accent buttons running along the right edge — the side
+	# control strip the operator's thumb sits on.
+	for i in 5:
+		var t: float = float(i) / 4.0
+		var z: float = lerp(-0.045, 0.045, t)
+		var pip_mi: MeshInstance3D = MeshInstance3D.new()
+		var pip_mesh: BoxMesh = BoxMesh.new()
+		pip_mesh.size = Vector3(0.022, 0.006, 0.018)
+		pip_mi.mesh = pip_mesh
+		pip_mi.material_override = btn_mat
+		pip_mi.position = Vector3(0.10, 0.023, z)
+		holder.add_child(pip_mi)
+
+	# Pickup hitbox — generous interact zone since the remote itself is small.
 	var pickup: StaticBody3D = StaticBody3D.new()
 	pickup.set_script(KinoPickupScript)
 	pickup.name = "KinoPickup"
 	pickup.position = holder.position
-	# Path is relative to pickup itself, which will sit alongside KinoProp.
 	pickup.set("prop_to_hide", NodePath("../KinoProp"))
 	var cs: CollisionShape3D = CollisionShape3D.new()
 	var box: BoxShape3D = BoxShape3D.new()
-	box.size = Vector3(0.7, 0.6, 0.7)
+	box.size = Vector3(0.45, 0.40, 0.30)
 	cs.shape = box
 	pickup.add_child(cs)
 	add_child(pickup)
@@ -1026,6 +1086,84 @@ func _spawn_soldier() -> void:
 		],
 		"met_soldier",
 	)
+
+
+# -------- quest waypoint ---------------------------------------------------
+
+func _on_quest_objective_changed(_text: String) -> void:
+	_refresh_quest_waypoint()
+
+
+# Position the floating diamond either above the in-room anchor for the
+# current quest target, or — when the target is in another room — above the
+# door leading toward that room (per ShipLayout's BFS). Spawns the marker on
+# first use and reuses it thereafter.
+func _refresh_quest_waypoint() -> void:
+	var target: Dictionary = GameState.quest_target()
+	var target_room: String = String(target.get("room", ""))
+	var anchor_name: String = String(target.get("anchor", ""))
+
+	if target_room == "":
+		_destroy_quest_waypoint()
+		return
+
+	var pos: Vector3 = Vector3.ZERO
+	var placed: bool = false
+
+	if target_room == room_id:
+		# In-room anchor (NPC, pickup, console, bed). Empty anchor name falls
+		# back to the room centre at standing-eye height.
+		if anchor_name == "":
+			pos = Vector3(0.0, QUEST_WAYPOINT_ANCHOR_HEIGHT, 0.0)
+			placed = true
+		else:
+			var anchor: Node = get_node_or_null(anchor_name)
+			if anchor is Node3D:
+				var n3: Node3D = anchor
+				var offset_y: float = WAYPOINT_OFFSET_BY_ANCHOR.get(anchor_name, QUEST_WAYPOINT_ANCHOR_HEIGHT)
+				pos = n3.global_position + Vector3(0.0, offset_y, 0.0)
+				placed = true
+	else:
+		# Cross-room — point at the door leading to the next hop on the path.
+		var next_hop: String = ShipLayout.next_room_toward(room_id, target_room)
+		if next_hop != "":
+			var door: Node3D = _find_door_to(next_hop)
+			if door != null:
+				pos = door.global_position + Vector3(0.0, QUEST_WAYPOINT_DOOR_HEIGHT, 0.0)
+				placed = true
+
+	if not placed:
+		_destroy_quest_waypoint()
+		return
+
+	if _quest_waypoint == null or not is_instance_valid(_quest_waypoint):
+		_quest_waypoint = Node3D.new()
+		_quest_waypoint.set_script(QuestWaypointScript)
+		_quest_waypoint.name = "QuestWaypoint"
+		world.add_child(_quest_waypoint)
+	_quest_waypoint.global_position = pos
+	if _quest_waypoint.has_method("set_target_position"):
+		_quest_waypoint.call("set_target_position", pos)
+
+
+func _destroy_quest_waypoint() -> void:
+	if _quest_waypoint != null and is_instance_valid(_quest_waypoint):
+		_quest_waypoint.queue_free()
+	_quest_waypoint = null
+
+
+# Door iteration: doors are direct children of self (added in _stamp_door) and
+# expose `target_room_id` via set/get. We use the property rather than the
+# script type so the lookup tolerates duck-typed swap-ins.
+func _find_door_to(target_id: String) -> Node3D:
+	for c in get_children():
+		if not (c is Node3D):
+			continue
+		var n: Node3D = c
+		var prop: Variant = n.get("target_room_id")
+		if prop != null and String(prop) == target_id:
+			return n
+	return null
 
 
 # -------- helpers ----------------------------------------------------------

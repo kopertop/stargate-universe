@@ -70,17 +70,17 @@ func _build_readout() -> void:
 	# Glue the readout to the screen plate (no billboard) so the text reads
 	# AS the console's display rather than a floating tag above the unit.
 	_readout.billboard = BaseMaterial3D.BILLBOARD_DISABLED
-	# Depth test ON so the console housing properly occludes the label when
-	# the camera is on the WRONG side of the console (was rendering through
-	# the back as mirrored text). render_priority breaks ties with the plate
-	# from the front side so the label doesn't z-fight.
-	_readout.no_depth_test = false
-	_readout.render_priority = 1
-	_readout.shaded = false
-	# Single-sided so the back of the quad doesn't render mirrored text when
-	# the camera is behind the console — the screen is meant to be read only
-	# from the operator's side.
+	# Combo that solves both occlusion problems:
+	#   • no_depth_test = true → front face renders ON TOP of player body
+	#     silhouette + emissive plate. Without this, the player blocks the
+	#     screen-center area where the label sits in third-person view.
+	#   • double_sided = false → back face is CULLED so the through-wall
+	#     mirrored-text artifact from image #7 doesn't appear.
+	# Net effect: text is visible only when looking at the operator side of
+	# the console, and renders cleanly on top of the bright emissive plate.
+	_readout.no_depth_test = true
 	_readout.double_sided = false
+	_readout.shaded = false
 	_readout.pixel_size = 0.007
 	_readout.outline_size = 8
 	_readout.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

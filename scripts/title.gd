@@ -78,13 +78,15 @@ func _on_difficulty_selected(index: int) -> void:
 	Settings.set_difficulty(index)
 
 func _on_continue_pressed() -> void:
-	if not GameState.load_and_resume():
+	if not SaveManager.load_and_resume():
 		# Defensive fallback: if the save vanished between the disabled check
 		# and click (unlikely but cheap), fall through to a fresh start.
 		_on_new_game_pressed()
 
 func _on_new_game_pressed() -> void:
-	GameState.reset()
+	# Iterate every registered system and call reset() — keeps GameClock,
+	# NPCState, etc. in sync without title.gd having to enumerate them.
+	SaveManager.start_new_game()
 	SceneRouter.change_to("res://scenes/gate_room.tscn", "FromGate")
 
 func _on_settings_pressed() -> void:

@@ -50,6 +50,14 @@ func _ready() -> void:
 	# StaticBody3D nodes don't process by default. Only flip when auto-greet is
 	# requested so passive NPCs (Rush) don't pay the per-frame cost.
 	set_process(auto_greet)
+	# Resume previously-captured dialogue progress / placement if this NPC
+	# has been saved before. NPCState gates on node name (stable as long as
+	# the scene's NPC isn't renamed). On a fresh spawn this just records
+	# the initial values for later round-tripping. Autoload-tolerant: the
+	# scene_boot smoke test loads scenes in -s mode with no autoloads.
+	var ns: Node = get_node_or_null("/root/NPCState")
+	if ns != null and ns.has_method("restore_or_register"):
+		ns.call("restore_or_register", self)
 
 func _process(delta: float) -> void:
 	if not auto_greet or _auto_greet_done:
@@ -83,6 +91,7 @@ func _on_interact(_by: Node) -> void:
 		if _line_index == 0 and not _has_met():
 			_handle_first_meet()
 		_line_index += 1
+		_notify_npc_state_update()
 		GameState.dialog_started.emit(self, active_tree)
 		return
 	if dialogue_lines.is_empty():
@@ -93,6 +102,42 @@ func _on_interact(_by: Node) -> void:
 	if _line_index == 0:
 		_handle_first_meet()
 	_line_index += 1
+	_notify_npc_state_update()
+
+
+# Notify the NPCState autoload to capture this NPC's current state. Safe
+# to call when NPCState is absent (scene_boot.gd loads scenes in -s mode
+# with no autoloads).
+func _notify_npc_state_update() -> void:
+	var ns: Node = get_node_or_null("/root/NPCState")
+	if ns != null and ns.has_method("update"):
+		ns.call("update", self)
+
+
+# Serialization contract used by NPCState. Captures every per-instance
+# value that diverges from the scene-authored defaults during play.
+func get_save_state() -> Dictionary:
+	return {
+		"line_index": _line_index,
+		"auto_greet_done": _auto_greet_done,
+		"pos": [global_position.x, global_position.y, global_position.z],
+		"yaw": rotation.y,
+	}
+
+
+func apply_save_state(s: Dictionary) -> void:
+	_line_index = int(s.get("line_index", 0))
+	_auto_greet_done = bool(s.get("auto_greet_done", false))
+	var pos_raw: Variant = s.get("pos", null)
+	if pos_raw is Array and (pos_raw as Array).size() == 3:
+		var arr: Array = pos_raw
+		global_position = Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
+	if s.has("yaw"):
+		rotation.y = float(s["yaw"])
+	# Once auto_greet has fired, never replay it on resume — otherwise an
+	# already-greeted NPC walks back over to the player again on reload.
+	if _auto_greet_done:
+		set_process(false)
 
 
 # ---------------- Kenney GLB helpers --------------------------------------

@@ -9,7 +9,8 @@ extends SceneTree
 #   godot --headless --quit-after 80 -s res://tests/smoke/e1_flow.gd
 
 const EXPECTED_AUTOLOADS: Array[String] = [
-	"Audio", "TestCapture", "GameState", "SceneRouter", "KinoRemote", "EpisodeWrap",
+	"Audio", "TestCapture", "SaveManager", "GameClock", "GameState", "NPCState",
+	"SceneRouter", "KinoRemote", "EpisodeWrap",
 ]
 
 var _failures: Array[String] = []
@@ -178,52 +179,44 @@ func _initialize() -> void:
 	_expect(gs.air_crisis_started == false, "mission: reset clears air crisis")
 	_expect(gs.scrubber_repaired == false, "mission: reset clears scrubber repair")
 
-	# F5 quicksave path (no scene path set → save is refused, not silent failure).
-	gs.current_scene_path = ""
-	gs.save_game("", Vector3.ZERO, 0.0)
-	# save_game with empty scene still writes — semantic check is current_scene_path
-	# gating only inside _quicksave (the F5 handler). Direct save_game writes whatever.
-	_expect(gs.has_save(), "save_game writes file regardless")
-	gs.wipe_save()
-	_expect(not gs.has_save(), "wipe_save removes file")
-
-	# Round-trip a save with meaningful payload, then reset + reload via the
-	# JSON parser path (load_and_resume schedules a scene change, so we call
-	# the parser pieces directly here for the smoke test).
+	# Serialize / deserialize round-trip via the new ISaveableSystem
+	# contract. File I/O has moved to SaveManager; this exercises only
+	# GameState's serialize/deserialize methods (no autoloads needed).
 	gs.discover_room("gate_room", "Gate Room")
 	gs.met_scott = true
 	gs.advance_air_quest()
 	gs.set_objective("Find a way off this ship")
-	gs.add_log("Quicksave round-trip line")
+	gs.add_log("Round-trip log line")
 	gs.add_resource(gs.AIR_LIME_RESOURCE, 2, "save test")
-	gs.save_game("res://scenes/gate_room.tscn", Vector3(1.5, 1.05, 10.0), 0.5)
-	_expect(gs.has_save(), "save_game writes payload")
+	gs.kino_pan_x = 12.5
+	gs.kino_pan_y = -8.0
+	gs.kino_zoom = 1.7
+	gs.kino_active_floor = 1
+	gs.kino_marker = {"floor": 0, "world_x": 100.0, "world_y": 200.0}
 
-	# Reset state and replay the read leg of load_and_resume's logic.
+	var snapshot: Dictionary = gs.serialize()
+	_expect(snapshot.has("quest_step"), "serialize() includes quest_step")
+	_expect(String(snapshot.get("quest_step", "")) == gs.QUEST_FIND_RUSH, "serialize captures current quest step")
+	_expect(bool(snapshot.get("met_scott", false)), "serialize captures met_scott")
+	_expect(int((snapshot.get("resources", {}) as Dictionary).get(gs.AIR_LIME_RESOURCE, 0)) == 2, "serialize captures resources")
+	_expect(float(snapshot.get("kino_pan_x", 0.0)) == 12.5, "serialize captures kino_pan_x")
+	_expect(float(snapshot.get("kino_zoom", 0.0)) == 1.7, "serialize captures kino_zoom")
+	_expect(snapshot.get("kino_marker", {}) is Dictionary, "serialize captures kino_marker dict")
+
 	gs.reset()
 	_expect(gs.rooms_discovered.is_empty(), "post-reset: rooms cleared")
-	var file: FileAccess = FileAccess.open(gs.SAVE_PATH, FileAccess.READ)
-	_expect(file != null, "save file readable")
-	if file != null:
-		var raw: String = file.get_as_text()
-		file.close()
-		var parsed: Variant = JSON.parse_string(raw)
-		_expect(parsed is Dictionary, "save parses to dictionary")
-		if parsed is Dictionary:
-			var data: Dictionary = parsed
-			_expect(String(data.get("scene", "")) == "res://scenes/gate_room.tscn", "saved scene preserved")
-			var pos: Array = data.get("pos", [])
-			_expect(pos.size() == 3 and float(pos[0]) == 1.5, "saved position preserved")
-			_expect(float(data.get("yaw", 0.0)) == 0.5, "saved yaw preserved")
-			_expect(String(data.get("quest_step", "")) == gs.QUEST_FIND_RUSH, "saved quest step preserved")
-			_expect(bool(data.get("met_scott", false)), "saved Scott quest flag preserved")
-			var saved_resources: Dictionary = data.get("resources", {})
-			_expect(int(saved_resources.get(gs.AIR_LIME_RESOURCE, 0)) == 2, "saved resources preserved")
-			var log_arr: Array = data.get("log_entries", [])
-			_expect(log_arr.size() >= 1, "saved log entries preserved")
+	_expect(gs.kino_pan_x == 0.0 and gs.kino_zoom == 1.0, "reset: kino UI fields restored to defaults")
+	_expect(gs.kino_marker.is_empty(), "reset: kino marker cleared")
 
-	gs.wipe_save()
-	_expect(not gs.has_save(), "post-test wipe cleared file")
+	gs.deserialize(snapshot, 2)
+	_expect(gs.met_scott, "deserialize restores met_scott")
+	_expect(gs.quest_step == gs.QUEST_FIND_RUSH, "deserialize restores quest_step")
+	_expect(gs.resource_count(gs.AIR_LIME_RESOURCE) == 2, "deserialize restores resources")
+	_expect(gs.rooms_discovered.size() == 1, "deserialize restores rooms_discovered")
+	_expect(gs.log_entries.size() >= 1, "deserialize restores log_entries")
+	_expect(gs.kino_pan_x == 12.5, "deserialize restores kino_pan_x")
+	_expect(gs.kino_zoom == 1.7, "deserialize restores kino_zoom")
+	_expect(int((gs.kino_marker as Dictionary).get("floor", -1)) == 0, "deserialize restores kino_marker.floor")
 
 	root.remove_child(gs)
 	gs.free()

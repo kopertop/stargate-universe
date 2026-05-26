@@ -1,5 +1,10 @@
 extends Node
 
+# @no-save: UI overlay only. The persisted state it cares about (pan,
+# zoom, active floor, placed marker) is mirrored to GameState fields
+# (kino_pan_x/y, kino_zoom, kino_active_floor, kino_marker) which DO
+# ride along in the save snapshot via game_state's serialize().
+#
 # Autoload. Owns the Kino Remote overlay UI — a five-page menu styled to
 # match the in-fiction handheld prop: a vertical strip of 5 blue buttons on
 # the left, an oval-styled "screen" panel on the right that shows the
@@ -418,6 +423,7 @@ func _toggle() -> void:
 func _open_remote() -> void:
 	if not _initialized:
 		_init_ui()
+	_load_persisted_ui_state()
 	_open = true
 	_root.visible = true
 	_refresh()
@@ -426,6 +432,7 @@ func _open_remote() -> void:
 
 func _close() -> void:
 	_open = false
+	_persist_ui_state()
 	if _root != null:
 		_root.visible = false
 	get_tree().paused = false
@@ -433,6 +440,47 @@ func _close() -> void:
 	# Input.mouse_mode on its own, so RMB-held-during-open leaves the cursor
 	# visible until the next RMB tap.
 	GameState.kino_closed.emit()
+
+
+# Mirror current UI state into GameState so it rides along in the next
+# autosave. Called from _close() and from the marker placement path so a
+# dropped pin survives a sudden quit followed by Continue.
+func _persist_ui_state() -> void:
+	GameState.kino_pan_x = _pan_offset.x
+	GameState.kino_pan_y = _pan_offset.y
+	GameState.kino_zoom = _zoom
+	GameState.kino_active_floor = _active_floor_override
+	if _placed_marker is Dictionary:
+		var m: Dictionary = _placed_marker
+		var world: Variant = m.get("world", null)
+		if world is Vector2:
+			GameState.kino_marker = {
+				"floor": int(m.get("floor", 0)),
+				"world_x": (world as Vector2).x,
+				"world_y": (world as Vector2).y,
+			}
+		else:
+			GameState.kino_marker = {}
+	else:
+		GameState.kino_marker = {}
+
+
+# Read GameState fields into our locals. Called from _open_remote so the
+# user sees the same pan / zoom / marker they left the previous session
+# on. Defaults are safe if GameState carries the initial values.
+func _load_persisted_ui_state() -> void:
+	_pan_offset = Vector2(GameState.kino_pan_x, GameState.kino_pan_y)
+	_zoom = GameState.kino_zoom if GameState.kino_zoom > 0.0 else ZOOM_DEFAULT
+	_active_floor_override = GameState.kino_active_floor
+	var raw: Variant = GameState.kino_marker
+	if raw is Dictionary and (raw as Dictionary).has("world_x"):
+		var d: Dictionary = raw
+		_placed_marker = {
+			"floor": int(d.get("floor", 0)),
+			"world": Vector2(float(d.get("world_x", 0.0)), float(d.get("world_y", 0.0))),
+		}
+	else:
+		_placed_marker = null
 
 func _refresh() -> void:
 	_refresh_map()
@@ -1299,9 +1347,11 @@ func _place_marker_at(screen_pt: Vector2) -> void:
 			var existing_px_var: Variant = _world_to_px(floor_id, m["world"])
 			if existing_px_var is Vector2 and (existing_px_var as Vector2).distance_to(screen_pt) < 14.0:
 				_placed_marker = null
+				_persist_ui_state()
 				_map_view.queue_redraw()
 				return
 	_placed_marker = {"floor": floor_id, "world": world_var}
+	_persist_ui_state()
 	if _map_view != null:
 		_map_view.queue_redraw()
 

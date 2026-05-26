@@ -219,7 +219,52 @@ func _drive() -> void:
 	_expect(GameState.episode_complete, "quest: Episode 1 complete")
 	await _shot("scrubber_repair")
 	await _demo_hold()
+	_verify_save_round_trip()
 	_report()
+
+
+# After driving the full E1 flow, exercise the SaveManager pipeline:
+# (1) the autosave signal hooks must have written a save during play,
+# (2) the on-disk JSON must include the new schema's systems block with
+#     game_state + game_clock + npc_state populated, and
+# (3) wipe() must clear the primary + every backup so the test cleans
+#     up after itself.
+func _verify_save_round_trip() -> void:
+	_expect(FileAccess.file_exists(SaveManager.SAVE_PATH),
+		"autosave: primary save.json exists after playthrough")
+	var f: FileAccess = FileAccess.open(SaveManager.SAVE_PATH, FileAccess.READ)
+	if f == null:
+		_fail("autosave: could not open save.json for read")
+		return
+	var raw: String = f.get_as_text()
+	f.close()
+	var parsed: Variant = JSON.parse_string(raw)
+	_expect(parsed is Dictionary, "autosave: save.json parses as JSON dict")
+	if not (parsed is Dictionary):
+		return
+	var data: Dictionary = parsed
+	_expect(int(data.get("version", 0)) >= 2, "autosave: schema version >= 2")
+	var systems: Variant = data.get("systems", {})
+	_expect(systems is Dictionary and (systems as Dictionary).has("game_state"),
+		"autosave: systems.game_state present")
+	_expect(systems is Dictionary and (systems as Dictionary).has("game_clock"),
+		"autosave: systems.game_clock present")
+	_expect(systems is Dictionary and (systems as Dictionary).has("npc_state"),
+		"autosave: systems.npc_state present")
+	var player: Variant = data.get("player", {})
+	_expect(player is Dictionary and (player as Dictionary).has("pos"),
+		"autosave: player.pos present")
+	# GameClock should have ticked above zero during playthrough.
+	if systems is Dictionary and (systems as Dictionary).has("game_clock"):
+		var gc: Variant = (systems as Dictionary)["game_clock"]
+		if gc is Dictionary:
+			_expect(float((gc as Dictionary).get("elapsed_seconds", 0.0)) > 0.0,
+				"autosave: GameClock.elapsed_seconds > 0 after play")
+	SaveManager.wipe()
+	_expect(not FileAccess.file_exists(SaveManager.SAVE_PATH),
+		"autosave: wipe() removes primary save")
+	for bak in SaveManager.BACKUP_PATHS:
+		_expect(not FileAccess.file_exists(bak), "autosave: wipe() removes " + bak)
 
 
 # --- transitions ---------------------------------------------------------

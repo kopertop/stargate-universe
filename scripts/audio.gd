@@ -1,5 +1,7 @@
 extends Node
 
+# @no-save: audio playback bus — no persistent gameplay state.
+#
 # Code adapted from KidsCanCode
 
 var num_players = 12

@@ -1,5 +1,9 @@
 extends Node
 
+# @no-save: transient cross-scene transition state (fade alpha, pending
+# spawn point). The destination scene path is captured by SaveManager
+# directly from GameState.current_scene_path, not from this router.
+#
 # Cross-scene transition manager. Owns a fade-out CanvasLayer it parents to root
 # at runtime, then deferred-loads the next scene. Places the player at a Marker3D
 # named via metadata `spawn_point` if present.
@@ -16,7 +20,9 @@ var instant_mode: bool = false
 
 var _fade_layer: CanvasLayer
 var _fade_rect: ColorRect
-var _is_transitioning: bool = false
+# Public flag — SaveManager reads this to gate auto-save (mid-fade is not
+# a stable moment to capture the player transform).
+var is_transitioning: bool = false
 var _pending_spawn: String = ""
 
 func _ready() -> void:
@@ -34,9 +40,9 @@ func _build_fade_layer() -> void:
 	_fade_layer.add_child(_fade_rect)
 
 func change_to(scene_path: String, spawn_point: String = "") -> void:
-	if _is_transitioning:
+	if is_transitioning:
 		return
-	_is_transitioning = true
+	is_transitioning = true
 	_pending_spawn = spawn_point
 	await _fade_to(1.0)
 	# Release mouse capture during transition so it doesn't carry over.
@@ -44,7 +50,7 @@ func change_to(scene_path: String, spawn_point: String = "") -> void:
 	var err: int = get_tree().change_scene_to_file(scene_path)
 	if err != OK:
 		push_error("SceneRouter: failed to load %s (err %d)" % [scene_path, err])
-		_is_transitioning = false
+		is_transitioning = false
 		await _fade_to(0.0)
 		return
 	# Wait until the new scene is actually in the tree. In Godot 4,
@@ -58,7 +64,7 @@ func change_to(scene_path: String, spawn_point: String = "") -> void:
 	_place_player_at_spawn()
 	scene_changed.emit(scene_path)
 	await _fade_to(0.0)
-	_is_transitioning = false
+	is_transitioning = false
 
 func _place_player_at_spawn() -> void:
 	if _pending_spawn == "":

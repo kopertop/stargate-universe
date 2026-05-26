@@ -12,9 +12,12 @@ extends Interactable
 
 @export var kind: String = "gate_control"
 
-# FTL countdown initial offset (matches the spec's "17h 42m 18s" beat from the
-# arrival cinematic — feel free to tweak per scene if you want a different beat).
-@export var ftl_seconds_remaining: float = 63738.0
+# FTL countdown total window length, in seconds (matches the spec's
+# "17h 42m 18s" beat from the arrival cinematic). The live remaining
+# value is derived from GameClock.elapsed_seconds at every read, so the
+# countdown is anchored to accumulated gameplay time and survives
+# save/resume exactly.
+const FTL_COUNTDOWN_TOTAL_SECONDS: float = 63738.0
 
 # Live readout — TextMesh as child of the ScreenPlate. TextMesh geometry
 # regenerates when .text changes, so we track _last_text and only update
@@ -45,16 +48,16 @@ func _ready() -> void:
 	_apply_kind_defaults()
 	_build_screen_readout()
 
-func _process(delta: float) -> void:
+func _process(_delta: float) -> void:
 	if _text_mesh != null:
 		var current: String = _readout_text()
 		if current != _last_text:
 			_text_mesh.text = current
 			_last_text = current
 	_apply_kind_defaults()
-	if kind != "ftl_countdown":
-		return
-	ftl_seconds_remaining = maxf(0.0, ftl_seconds_remaining - delta)
+	# FTL countdown is now derived from GameClock.elapsed_seconds — no
+	# per-frame accumulator needed. Display computation lives in
+	# _readout_text() and _on_interact().
 
 func _apply_kind_defaults() -> void:
 	# Each kind gets its own interact prompt — the player doesn't have to walk
@@ -117,7 +120,7 @@ func _on_interact(_by: Node) -> void:
 		if GameState.quest_step == GameState.QUEST_WAIT_FTL:
 			GameState.trigger_ftl_drop()
 		else:
-			GameState.add_log("Console: Next FTL drop in %s." % _format_countdown(ftl_seconds_remaining))
+			GameState.add_log("Console: Next FTL drop in %s." % _format_countdown(_ftl_seconds_remaining()))
 			GameState.add_log(_ftl_lines[_line_index % _ftl_lines.size()])
 	else:
 		if GameState.quest_step == GameState.QUEST_DIAGNOSE_LIFE_SUPPORT:
@@ -138,13 +141,21 @@ func _format_countdown(total_seconds: float) -> String:
 	var s: int = t % 60
 	return "%dh %02dm %02ds" % [h, m, s]
 
+
+# Countdown is anchored to GameClock.elapsed_seconds — total window minus
+# how much gameplay time has accumulated since the new-game origin. Save
+# files round-trip GameClock so the displayed value picks up exactly
+# where the player left off.
+func _ftl_seconds_remaining() -> float:
+	return maxf(0.0, FTL_COUNTDOWN_TOTAL_SECONDS - GameClock.elapsed_seconds)
+
 func _readout_text() -> String:
 	if kind == "ftl_countdown":
 		if GameState.quest_step == GameState.QUEST_WAIT_FTL:
 			return "FTL WINDOW\nDROP NOW"
 		if GameState.ftl_drop_triggered:
 			return "FTL STATUS\nNORMAL SPACE"
-		return "NEXT FTL DROP\n" + _format_countdown(ftl_seconds_remaining)
+		return "NEXT FTL DROP\n" + _format_countdown(_ftl_seconds_remaining())
 	if GameState.quest_step == GameState.QUEST_DIAGNOSE_LIFE_SUPPORT:
 		return "LIFE SUPPORT\nDIAGNOSTIC READY"
 	if GameState.quest_step == GameState.QUEST_DIAL_LIME_PLANET:

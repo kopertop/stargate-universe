@@ -13,8 +13,6 @@ signal current_room_changed(room_id: String)
 signal kino_changed(acquired: bool)
 signal episode_completed()
 signal log_added(line: String)
-signal save_written()
-signal save_wiped()
 # Fired by npc.gd each time a dialogue line is shown. The HUD listens and
 # renders the line inside the sci-fi dialog panel; log_added still captures
 # the same text for the journal.
@@ -39,7 +37,6 @@ signal dialog_closed()
 
 const MAX_HEALTH: float = 100.0
 const MAX_OXYGEN: float = 100.0
-const SAVE_PATH: String = "user://save.json"
 
 const EPISODE_AIR: String = "air"
 const QUEST_TALK_SCOTT: String = "talk_scott"
@@ -173,6 +170,35 @@ var resources: Dictionary = {AIR_LIME_RESOURCE: 0}
 var met_scott: bool = false
 var met_rush: bool = false
 
+# Stamped by trigger_ftl_drop() with GameClock.elapsed_seconds at the
+# moment the FTL window opens. The gate console computes the live
+# countdown as FTL_COUNTDOWN_START_SECONDS - (GameClock.elapsed_seconds -
+# ftl_drop_game_time), so the displayed value is preserved across saves
+# without depending on wall-clock time. -1 means the FTL drop hasn't
+# happened yet.
+var ftl_drop_game_time: float = -1.0
+
+# Kino Remote map UI state — persisted so the player's preferred pan/zoom
+# and any placed marker survives close + reopen and save + resume.
+# `kino_marker` is empty when no marker is placed; otherwise:
+#   { "floor": int, "world_x": float, "world_y": float }
+var kino_pan_x: float = 0.0
+var kino_pan_y: float = 0.0
+var kino_zoom: float = 1.0
+var kino_active_floor: int = -1
+var kino_marker: Dictionary = {}
+
+
+func _ready() -> void:
+	# Autoload-tolerant: e1_flow.gd and other -s SceneTree script tests
+	# instantiate GameState directly with no SaveManager in the tree.
+	# `/root/SaveManager` resolves to the live autoload in real runs and
+	# returns null in script tests, which we accept silently.
+	var sm: Node = get_node_or_null("/root/SaveManager")
+	if sm != null and sm.has_method("register_system"):
+		sm.call("register_system", "game_state", self)
+
+
 func reset() -> void:
 	health = MAX_HEALTH
 	oxygen = MAX_OXYGEN
@@ -202,6 +228,12 @@ func reset() -> void:
 	resources[AIR_LIME_RESOURCE] = 0
 	met_scott = false
 	met_rush = false
+	ftl_drop_game_time = -1.0
+	kino_pan_x = 0.0
+	kino_pan_y = 0.0
+	kino_zoom = 1.0
+	kino_active_floor = -1
+	kino_marker = {}
 	health_changed.emit(health)
 	oxygen_changed.emit(oxygen)
 	kino_changed.emit(kino_acquired)
@@ -510,6 +542,12 @@ func trigger_ftl_drop() -> void:
 		add_log("Destiny is already out of FTL. Gate systems are available.")
 		return
 	ftl_drop_triggered = true
+	# Stamp the moment so gate_console can compute a stable countdown
+	# anchored to GameClock — survives save / resume without depending on
+	# wall-clock time. Tolerates GameClock absence so the headless
+	# e1_flow.gd test (no autoloads) can still exercise this path.
+	var gc: Node = get_node_or_null("/root/GameClock")
+	ftl_drop_game_time = float(gc.get("elapsed_seconds")) if gc != null else 0.0
 	add_log("FTL drop triggered. Destiny falls into normal space near a viable gate address.")
 	advance_air_quest()
 
@@ -570,42 +608,23 @@ func complete_episode_air() -> void:
 
 # --- save / wipe -------------------------------------------------------------
 #
-# F5 quick-save and F9 wipe are intentionally bare-bones: the savefile captures
-# enough state that the player resumes inside whichever room they left, with
-# their progression flags intact. Inventory and world objects below the scene
-# layer are NOT serialized — Phase A's loop is too small to need it.
+# File I/O lives on SaveManager — this autoload only owns its serialize /
+# deserialize contract per the ISaveableSystem pattern in
+# design/gdd/save-load-interface.md. SaveManager auto-saves on every
+# objective_changed + current_room_changed emit and rotates 3 backups for
+# corruption recovery.
 
-func _unhandled_input(event: InputEvent) -> void:
-	if not (event is InputEventKey):
-		return
-	if not event.pressed or event.echo:
-		return
-	if event.keycode == KEY_F5:
-		_quicksave()
-		get_viewport().set_input_as_handled()
-	elif event.keycode == KEY_F9:
-		wipe_save()
-		get_viewport().set_input_as_handled()
+func has_save() -> bool:
+	# Forward to SaveManager when autoloads are active; gracefully report
+	# "no save" in script tests where the SaveManager autoload is absent.
+	var sm: Node = get_node_or_null("/root/SaveManager")
+	if sm != null and sm.has_method("has_save"):
+		return bool(sm.call("has_save"))
+	return false
 
-func _quicksave() -> void:
-	# Only save when a real gameplay scene has registered itself. Title menu
-	# and headless tests leave current_scene_path empty.
-	if current_scene_path == "":
-		add_log("Save unavailable — nothing to record yet.")
-		return
-	var player: Node = get_tree().get_first_node_in_group("player")
-	if player == null or not (player is Node3D):
-		add_log("Save unavailable — no player in scene.")
-		return
-	var p3: Node3D = player
-	save_game(current_scene_path, p3.global_position, p3.rotation.y)
 
-func save_game(scene_path: String, pos: Vector3, yaw: float) -> void:
-	var data: Dictionary = {
-		"version": 1,
-		"scene": scene_path,
-		"pos": [pos.x, pos.y, pos.z],
-		"yaw": yaw,
+func serialize() -> Dictionary:
+	return {
 		"health": health,
 		"oxygen": oxygen,
 		"current_episode": current_episode,
@@ -614,13 +633,16 @@ func save_game(scene_path: String, pos: Vector3, yaw: float) -> void:
 		"quarters_found": quarters_found,
 		"eli_quarters_visited": eli_quarters_visited,
 		"elevator_repaired": elevator_repaired,
-		"rooms_discovered": rooms_discovered,
-		"doors_traversed": doors_traversed,
-		"breaches_sealed": breaches_sealed,
+		# Duplicate every collection so a downstream reset() can't mutate
+		# the snapshot through a shared reference (caught by the e1_flow
+		# round-trip test before it became a save-corruption bug).
+		"rooms_discovered": rooms_discovered.duplicate(),
+		"doors_traversed": doors_traversed.duplicate(),
+		"breaches_sealed": breaches_sealed.duplicate(),
 		"current_room_id": current_room_id,
 		"objective": current_objective,
 		"episode_complete": episode_complete,
-		"log_entries": log_entries,
+		"log_entries": log_entries.duplicate(),
 		"met_scott": met_scott,
 		"met_rush": met_rush,
 		"prologue_complete": prologue_complete,
@@ -629,38 +651,19 @@ func save_game(scene_path: String, pos: Vector3, yaw: float) -> void:
 		"scrubber_diagnosed": scrubber_diagnosed,
 		"scrubber_repaired": scrubber_repaired,
 		"ftl_drop_triggered": ftl_drop_triggered,
+		"ftl_drop_game_time": ftl_drop_game_time,
 		"lime_planet_dialed": lime_planet_dialed,
 		"returned_from_lime_planet": returned_from_lime_planet,
-		"resources": resources,
+		"resources": resources.duplicate(true),
+		"kino_pan_x": kino_pan_x,
+		"kino_pan_y": kino_pan_y,
+		"kino_zoom": kino_zoom,
+		"kino_active_floor": kino_active_floor,
+		"kino_marker": kino_marker.duplicate(true),
 	}
-	var file: FileAccess = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
-	if file == null:
-		add_log("Save failed (couldn't open %s)." % SAVE_PATH)
-		return
-	file.store_string(JSON.stringify(data, "\t"))
-	file.close()
-	add_log("Quicksave written.")
-	save_written.emit()
 
-func has_save() -> bool:
-	return FileAccess.file_exists(SAVE_PATH)
 
-# Load the save file and switch to the saved scene at the saved position.
-# Called by the title screen "Continue" path. Returns false if no save.
-func load_and_resume() -> bool:
-	if not has_save():
-		return false
-	var file: FileAccess = FileAccess.open(SAVE_PATH, FileAccess.READ)
-	if file == null:
-		return false
-	var raw: String = file.get_as_text()
-	file.close()
-	var parsed: Variant = JSON.parse_string(raw)
-	if not (parsed is Dictionary):
-		push_warning("save.json is malformed")
-		return false
-	var data: Dictionary = parsed
-	# Hydrate persistent state.
+func deserialize(data: Dictionary, _version: int) -> void:
 	health = float(data.get("health", MAX_HEALTH))
 	oxygen = float(data.get("oxygen", MAX_OXYGEN))
 	current_episode = String(data.get("current_episode", EPISODE_AIR))
@@ -680,6 +683,7 @@ func load_and_resume() -> bool:
 	scrubber_diagnosed = bool(data.get("scrubber_diagnosed", false))
 	scrubber_repaired = bool(data.get("scrubber_repaired", false))
 	ftl_drop_triggered = bool(data.get("ftl_drop_triggered", false))
+	ftl_drop_game_time = float(data.get("ftl_drop_game_time", -1.0))
 	lime_planet_dialed = bool(data.get("lime_planet_dialed", false))
 	returned_from_lime_planet = bool(data.get("returned_from_lime_planet", false))
 	resources.clear()
@@ -701,32 +705,15 @@ func load_and_resume() -> bool:
 	log_entries.clear()
 	for l in data.get("log_entries", []):
 		log_entries.append(String(l))
+	kino_pan_x = float(data.get("kino_pan_x", 0.0))
+	kino_pan_y = float(data.get("kino_pan_y", 0.0))
+	kino_zoom = float(data.get("kino_zoom", 1.0))
+	kino_active_floor = int(data.get("kino_active_floor", -1))
+	var marker_raw: Variant = data.get("kino_marker", {})
+	kino_marker = marker_raw if marker_raw is Dictionary else {}
 	advance_air_quest()
-	# Fire signals so the HUD picks the loaded values up.
+	# Republish so the HUD, Kino, and quest waypoint pick up loaded values.
 	health_changed.emit(health)
 	oxygen_changed.emit(oxygen)
 	objective_changed.emit(current_objective)
 	kino_changed.emit(kino_acquired)
-	# Stage the spawn override for the next scene load. Defensive against
-	# malformed/edited saves — if the "pos" entry isn't a 3-element array,
-	# fall back to gate-room origin rather than crashing on out-of-bounds.
-	var raw_pos: Variant = data.get("pos", null)
-	if raw_pos is Array and (raw_pos as Array).size() == 3:
-		var pos_arr: Array = raw_pos
-		pending_spawn_position = Vector3(float(pos_arr[0]), float(pos_arr[1]), float(pos_arr[2]))
-	else:
-		push_warning("save.json: 'pos' missing or malformed, defaulting to origin")
-		pending_spawn_position = Vector3.ZERO
-	pending_spawn_yaw = float(data.get("yaw", 0.0))
-	skip_arrival_cinematic = true
-	var scene: String = String(data.get("scene", "res://scenes/gate_room.tscn"))
-	SceneRouter.change_to(scene, "")
-	return true
-
-func wipe_save() -> void:
-	if FileAccess.file_exists(SAVE_PATH):
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
-		add_log("Save wiped.")
-		save_wiped.emit()
-	else:
-		add_log("Nothing to wipe.")

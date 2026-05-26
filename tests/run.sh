@@ -7,7 +7,11 @@
 #   4. playthrough  — real cross-scene transitions via SceneRouter +
 #                     Interactable.interact() pipelines, end-to-end
 #
-# Usage: tests/run.sh [scene|flow|quest|playthrough|all]   (default: all)
+# Usage: tests/run.sh [lint|scene|flow|quest|playthrough|all]   (default: all)
+#
+# Pre-commit hook: .githooks/pre-commit invokes the lint subset via
+# tests/lint/check_save_registration.sh --staged. Install once with:
+#   git config core.hooksPath .githooks
 
 set -u
 cd "$(dirname "$0")/.."
@@ -28,10 +32,12 @@ RAN_SCENE=0
 RAN_FLOW=0
 RAN_QUEST=0
 RAN_PLAY=0
+RAN_LINT=0
 RC_SCENE=0
 RC_FLOW=0
 RC_QUEST=0
 RC_PLAY=0
+RC_LINT=0
 
 # Run a SceneTree-extending script (synchronous, no autoloads).
 #
@@ -66,6 +72,16 @@ run_scene_test() {
 	"$GODOT_BIN" --headless --quit-after 100000 "$scene" 2>&1
 	return $?
 }
+
+if [[ "$MODE" == "lint" || "$MODE" == "all" ]]; then
+	echo
+	echo "==============================="
+	echo " save-registration lint"
+	echo "==============================="
+	tests/lint/check_save_registration.sh
+	RC_LINT=$?
+	RAN_LINT=1
+fi
 
 if [[ "$MODE" == "scene" || "$MODE" == "all" ]]; then
 	run_script_test "scene_boot" "res://tests/smoke/scene_boot.gd"
@@ -122,12 +138,13 @@ echo
 echo "==============================="
 echo " final"
 echo "==============================="
+[[ $RAN_LINT  -eq 1 ]] && echo "save_registration:   $([[ $RC_LINT  -eq 0 ]] && echo PASS || echo "FAIL ($RC_LINT)")"  || echo "save_registration:   SKIPPED"
 [[ $RAN_SCENE -eq 1 ]] && echo "scene_boot:          $([[ $RC_SCENE -eq 0 ]] && echo PASS || echo "FAIL ($RC_SCENE)")" || echo "scene_boot:          SKIPPED"
 [[ $RAN_FLOW  -eq 1 ]] && echo "e1_flow:             $([[ $RC_FLOW  -eq 0 ]] && echo PASS || echo "FAIL ($RC_FLOW)")"  || echo "e1_flow:             SKIPPED"
 [[ $RAN_QUEST -eq 1 ]] && echo "quest_waypoint:      $([[ $RC_QUEST -eq 0 ]] && echo PASS || echo "FAIL ($RC_QUEST)")" || echo "quest_waypoint:      SKIPPED"
 [[ $RAN_PLAY  -eq 1 ]] && echo "e1_playthrough:      $([[ $RC_PLAY  -eq 0 ]] && echo PASS || echo "FAIL ($RC_PLAY)")"  || echo "e1_playthrough:      SKIPPED"
 
-if [[ ( $RAN_SCENE -eq 1 && $RC_SCENE -ne 0 ) || ( $RAN_FLOW -eq 1 && $RC_FLOW -ne 0 ) || ( $RAN_QUEST -eq 1 && $RC_QUEST -ne 0 ) || ( $RAN_PLAY -eq 1 && $RC_PLAY -ne 0 ) ]]; then
+if [[ ( $RAN_LINT -eq 1 && $RC_LINT -ne 0 ) || ( $RAN_SCENE -eq 1 && $RC_SCENE -ne 0 ) || ( $RAN_FLOW -eq 1 && $RC_FLOW -ne 0 ) || ( $RAN_QUEST -eq 1 && $RC_QUEST -ne 0 ) || ( $RAN_PLAY -eq 1 && $RC_PLAY -ne 0 ) ]]; then
 	exit 1
 fi
 exit 0

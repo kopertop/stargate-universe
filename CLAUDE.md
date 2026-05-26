@@ -100,13 +100,29 @@ Headless smoke + flow tests live in `tests/smoke/` (Godot `SceneTree`-extending 
 GDUnit4 needed). Run:
 
 ```bash
-tests/run.sh         # all
+tests/run.sh         # all (lint + scene + flow + quest + playthrough)
 tests/run.sh scene   # scene-boot only
 tests/run.sh flow    # e1-flow only
+tests/run.sh lint    # save-registration policy only
 ```
 
 See `tests/README.md` for details. Both tests must pass before any branch can claim the E1
 vertical slice ships.
+
+### Pre-commit hook
+
+Per-clone install (one-time, no dependencies):
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The hook runs `tests/lint/check_save_registration.sh --staged`, which enforces the
+**save-registration policy**: every autoload in `project.godot` must either
+(a) call `SaveManager.register_system("<id>", self)` somewhere in its script, or
+(b) carry a `# @no-save: <reason>` marker declaring it stateless. Without this
+guard, a new system that holds gameplay state can ship without being captured by
+the auto-save pipeline — state would silently disappear across save/load.
 
 ## Collaboration Protocol
 

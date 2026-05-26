@@ -1,5 +1,8 @@
 extends Node
 
+# @no-save: dev/test utility that snapshots Kino map PNGs from CLI args.
+# Never invoked during normal gameplay; no persistent state.
+#
 # Visual smoke capture for the Kino Remote map. Gated on a `--cli-arg
 # kino_map_capture` flag; otherwise the autoload self-frees. Reads
 # `scenario=NAME` and `out=PATH` user args, scripts a deterministic

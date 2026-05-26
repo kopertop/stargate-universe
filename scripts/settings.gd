@@ -1,5 +1,9 @@
 extends Node
 
+# @no-save: user preferences (music/sfx volume, difficulty) are persisted
+# via a separate ConfigFile at user://settings.cfg — independent of the
+# gameplay save pipeline so settings survive a save wipe.
+#
 # Persistent player settings. Loaded on boot from user://settings.cfg and applied
 # to the Music / SFX audio buses. Title-screen Settings overlay reads/writes via
 # this singleton; gameplay code reads `difficulty` directly.

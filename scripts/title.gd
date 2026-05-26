@@ -12,6 +12,10 @@ extends Control
 @onready var _btn_exit: Button = $LeftColumn/MenuList/ExitButton
 
 @onready var _settings_overlay: Control = $SettingsOverlay
+
+# Built lazily in _ready since it isn't in the .tscn — a code-owned
+# ConfirmationDialog lets us update copy without touching the scene.
+var _new_game_confirm: ConfirmationDialog
 @onready var _music_slider: HSlider = $SettingsOverlay/Panel/V/MusicRow/MusicHBox/MusicSlider
 @onready var _music_value: Label = $SettingsOverlay/Panel/V/MusicRow/MusicHBox/MusicValue
 @onready var _sfx_slider: HSlider = $SettingsOverlay/Panel/V/SfxRow/SfxHBox/SfxSlider
@@ -27,6 +31,18 @@ func _ready() -> void:
 	_btn_settings.pressed.connect(_on_settings_pressed)
 	_btn_exit.pressed.connect(_on_exit_pressed)
 	_back_btn.pressed.connect(_on_back_pressed)
+
+	# Destructive-action guard: New Game wipes the save file. Without this
+	# prompt a misclick during a long playthrough silently destroys hours
+	# of progress, so we gate it behind an explicit confirm whenever a
+	# save exists. No-save case skips the dialog entirely (nothing to lose).
+	_new_game_confirm = ConfirmationDialog.new()
+	_new_game_confirm.title = "New Game"
+	_new_game_confirm.dialog_text = "Delete the current game?\n\nIf you do this you will lose all previous save data."
+	_new_game_confirm.get_ok_button().text = "Delete & Start Over"
+	_new_game_confirm.get_cancel_button().text = "Cancel"
+	_new_game_confirm.confirmed.connect(_start_new_game)
+	add_child(_new_game_confirm)
 
 	# Settings overlay UI wired to the Settings autoload.
 	_populate_difficulty_options()
@@ -84,6 +100,18 @@ func _on_continue_pressed() -> void:
 		_on_new_game_pressed()
 
 func _on_new_game_pressed() -> void:
+	# When a save exists, route through the confirmation dialog first.
+	# Cancel leaves the menu untouched; confirm calls _start_new_game.
+	if SaveManager.has_save():
+		_new_game_confirm.popup_centered()
+		return
+	_start_new_game()
+
+
+func _start_new_game() -> void:
+	# Wipe the on-disk save eagerly so the user's "start over" intent
+	# holds even if they quit at the title before any autosave lands.
+	SaveManager.wipe()
 	# Iterate every registered system and call reset() — keeps GameClock,
 	# NPCState, etc. in sync without title.gd having to enumerate them.
 	SaveManager.start_new_game()

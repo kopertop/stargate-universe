@@ -8,6 +8,20 @@ carry-overs; project-specific audio gets added under the same convention.
 - `break.ogg` — Reused as gate-shutdown SFX in `gate_room.tscn`.
 - `coin.ogg`, `fall.ogg`, `jump.ogg`, `land.ogg`, `walking.ogg` — Kenney
   starter-kit SFX, still referenced for player movement.
+- `klaxon.ogg` — Heavy bell strike (Kenney Impact Sounds /
+  impactBell_heavy_001). Played 3× by `bed.gd` on the post-sleep wake-up.
+- `flicker.ogg` — Electrical glitch (Kenney Interface Sounds / glitch_002).
+  Played at random 6–14s intervals by `ambient_audio.gd` while the air
+  crisis is active; also fires once mid-klaxon during wake-up.
+- `menu_open.ogg` — Confirmation bong (Kenney Interface Sounds / bong_001).
+  Plays when Kino Remote / control terminal panel opens.
+- `menu_close.ogg` — Soft close chirp (Kenney Interface Sounds / close_001).
+- `menu_click.ogg` — UI tab click (Kenney Interface Sounds / click_001).
+- `terminal_boot.ogg` — Computer power-on tone (Kenney Sci-Fi Sounds /
+  computerNoise_001). Plays diegetically when E-ing a control console.
+- `radio_click.ogg` — Two-tone radio-comm beep (Kenney Digital Audio /
+  twoTone1). Played by `bed.gd` during the black wake-up beat right before
+  Scott's radio order. Reuse for any incoming-transmission moment.
 
 ## Conventions
 

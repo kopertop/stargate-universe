@@ -19,6 +19,10 @@ const NpcScript: Script = preload("res://scripts/npc.gd")
 const Co2ScrubberScript: Script = preload("res://scripts/co2_scrubber.gd")
 const PowerConsoleScript: Script = preload("res://scripts/power_console.gd")
 const QuestWaypointScript: Script = preload("res://scripts/quest_waypoint.gd")
+# Preload (not class_name lookup) — class_name registration can lag in
+# headless `-s` runs so the bare identifier sometimes resolves at parse-time
+# and sometimes doesn't. preload always works.
+const ShipAlertScript: Script = preload("res://scripts/ship_alert.gd")
 # Vertical offset above an in-room anchor (NPC head, console top, pickup body)
 # where the diamond sits. Tuned so it clears nametag Label3Ds.
 const QUEST_WAYPOINT_ANCHOR_HEIGHT: float = 2.4
@@ -34,6 +38,10 @@ const WAYPOINT_OFFSET_BY_ANCHOR: Dictionary = {
 	"HullSealSwitch": 0.7,     # wall switch at chest height
 	"PowerConsole": 0.7,       # wall console
 	"CO2Scrubber": 1.4,        # scrubber housing top
+	"ControlConsoleEast": 1.4, # control terminal at chest height
+	"ControlConsoleWest": 1.4,
+	"ControlConsoleNorth": 1.4,
+	"ControlConsoleSouth": 1.4,
 }
 
 # Set this in the editor to preview a specific room when running the scene
@@ -75,12 +83,25 @@ func _ready() -> void:
 	_setup_doors()
 	_spawn_interactables()
 	_place_player()
+	# Red-alert tint applies to lights + WorldEnvironment if the air crisis
+	# is active. Runs after RoomBuilder.build so it catches every light the
+	# accent functions just spawned. Idempotent on re-entry.
+	if ShipAlertScript.is_alert_active():
+		ShipAlertScript.apply_to_scene(self)
 	GameState.discover_room(room_id, String(_room_data.get("name", room_id)))
 	GameState.set_current_room(room_id)
 	if room_id == "quarters_room_1":
 		GameState.mark_quarters_found()
 	elif room_id == "eli_quarters":
 		GameState.mark_eli_quarters_found()
+
+	# Post-crisis return to the control room: Rush is gone, Eli radios Scott,
+	# Scott hands the problem to Eli, and the quest advances to "access a
+	# control terminal".
+	if (room_id == "control_interface_room"
+			and GameState.air_crisis_started
+			and GameState.quest_step == GameState.QUEST_RETURN_TO_CONTROL):
+		_trigger_rush_absent_beat()
 
 	# Persist for save/load — F5 reloads this scene with the same room_id.
 	GameState.current_scene_path = "res://scenes/room.tscn"
@@ -283,9 +304,13 @@ func _spawn_interactables() -> void:
 			_spawn_hull_breach()
 			_spawn_sgt_greer()
 		"control_interface_room":
-			# Only Rush — Young, James, Park have moved to the gate room with the
-			# unconscious-tableau (Young laid out, James + Park treating him).
-			_spawn_dr_rush()
+			# Pre-crisis: Rush is at his console. Once the air crisis starts he
+			# has left to chase the fault elsewhere — the player arrives to an
+			# empty control room, radios Scott, and works the terminal alone
+			# (see _trigger_rush_absent_beat). Young, James, Park are in the
+			# gate room with the unconscious-Young tableau.
+			if not GameState.air_crisis_started:
+				_spawn_dr_rush()
 		"engineering_bay":
 			_spawn_power_console()
 		"hydroponics":
@@ -368,9 +393,12 @@ func _spawn_eli_kino_pickup() -> void:
 		var inst: Node = glb.instantiate()
 		holder.add_child(inst)
 
-	# Pickup hitbox — generous interact zone since the remote itself is small.
-	# Sized in world space (NOT scaled by the holder), so set as a SIBLING of
-	# the visual prop rather than a child.
+	# Pickup hitbox — DELIBERATELY large. The kino prop on the desk is tiny
+	# (~0.05 m at scale 0.2) so a tight box requires pixel-precise aim with
+	# the camera. Box is sized to cover the whole desktop surface above the
+	# kino so the player can E from any approach angle as long as their
+	# camera points at the desk. Tall (0.9 m) so the chest-height interact
+	# ray catches it from a step back, too.
 	var pickup: StaticBody3D = StaticBody3D.new()
 	pickup.set_script(KinoPickupScript)
 	pickup.name = "KinoPickup"
@@ -378,7 +406,7 @@ func _spawn_eli_kino_pickup() -> void:
 	pickup.set("prop_to_hide", NodePath("../KinoProp"))
 	var cs: CollisionShape3D = CollisionShape3D.new()
 	var box: BoxShape3D = BoxShape3D.new()
-	box.size = Vector3(0.45, 0.40, 0.30)
+	box.size = Vector3(1.0, 0.9, 1.4)
 	cs.shape = box
 	pickup.add_child(cs)
 	add_child(pickup)
@@ -756,6 +784,42 @@ func _spawn_dr_rush() -> void:
 	add_child(rush)
 
 
+# Post-crisis "Rush isn't here" beat. Eli radios Scott, Scott hands the
+# problem off, and the quest advances RETURN_TO_CONTROL → access-terminal.
+# Skipped (state flipped synchronously) under SceneRouter.instant_mode so
+# the headless playthrough doesn't have to wait out the radio timers.
+func _trigger_rush_absent_beat() -> void:
+	var sr: Node = get_node_or_null("/root/SceneRouter")
+	if sr != null and sr.get("instant_mode"):
+		GameState.mark_control_room_returned()
+		return
+	_play_rush_absent_radio()
+
+
+func _play_rush_absent_radio() -> void:
+	# Advance the quest up front so it's correct even if the player walks
+	# back out of the control room before the radio finishes — the player
+	# has full control during this beat (input is NOT locked), so the room
+	# node can be freed mid-coroutine. Every await below is followed by an
+	# is_inside_tree() bail to avoid touching get_tree() on a freed node.
+	GameState.mark_control_room_returned()
+
+	await get_tree().create_timer(1.2).timeout
+	if not is_inside_tree():
+		return
+	GameState.dialogue_shown.emit("Eli", "Uhh… Scott? Rush isn't here.")
+	GameState.add_log("Eli: Uhh… Scott? Rush isn't here.")
+	await get_tree().create_timer(2.5).timeout
+	if not is_inside_tree():
+		return
+	Audio.play("res://sounds/radio_click.ogg")
+	await get_tree().create_timer(0.4).timeout
+	if not is_inside_tree():
+		return
+	GameState.dialogue_shown.emit("Lt Scott", "Well then, Eli — it's up to you. Find out what's going on.")
+	GameState.add_log("Lt Scott (radio): Well then, Eli — it's up to you. Find out what's going on.")
+
+
 # Generic NPC spawn — mirrors the manual _spawn_dr_rush construction so the
 # six secondary crew members can share a single code path. Returns the
 # StaticBody3D so callers can tweak post-hoc if needed.
@@ -1024,11 +1088,11 @@ func _spawn_soldier() -> void:
 		[
 			{
 				"speaker": "Soldier",
-				"text": "Ma'am. Sir. Sorry — half of us don't know who's who yet. Need directions?",
+				"text": "Mr Wallace — sir. Heading anywhere in particular, or just walking the deck?",
 				"choices": [
 					{"text": "What's down this corridor?", "next": 1},
 					{"text": "Everything okay up here?", "next": 2},
-					{"text": "I'm good. Carry on.", "next": "exit"},
+					{"text": "Just passing through. Carry on.", "next": "exit"},
 				],
 			},
 			{

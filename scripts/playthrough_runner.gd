@@ -125,28 +125,33 @@ func _drive() -> void:
 	_expect(GameState.quest_step == GameState.QUEST_SLEEP, "quest: device inspected -> sleep")
 	await _interact_node(_find_node_named("Bed"), "sleep")
 	_expect(GameState.air_crisis_started, "quest: sleep starts Air crisis")
-	_expect(GameState.quest_step == GameState.QUEST_DIAGNOSE_LIFE_SUPPORT, "quest: crisis -> diagnose life support")
+	_expect(GameState.quest_step == GameState.QUEST_RETURN_TO_CONTROL, "quest: crisis -> return to control room")
 
-	# === STEP 6: diagnose life support in gate room ===
-	# Leaves from Eli's quarters now (not Crew Quarters Alpha on the upper floor).
+	# === STEP 6: return to the control room, find Rush gone, work the terminal ===
+	# Scott's wake-up radio sends Eli back to the control room. Arriving
+	# fires the "Rush isn't here" beat (room.gd::_trigger_rush_absent_beat),
+	# which in instant_mode synchronously marks the room returned and
+	# advances the quest to "access a control terminal".
 	await _travel_path([
 		"cr_corridor_2",
 		"control_interface_room",
-		"control_approach_north",
-		"north_corridor",
-		"east_corridor",
-		"stargate_corridor_east_connector",
-		"gate_room",
 	])
-	var gate_ctrl: Node = _find_console("gate_control")
-	_expect(gate_ctrl != null, "gate_room: Gate Control console present")
-	await _interact_node(gate_ctrl, "life support diagnostic")
-	_expect(GameState.life_support_diagnosed, "quest: life support diagnosed")
-	_expect(GameState.quest_step == GameState.QUEST_SEAL_BREACH, "quest: diagnostic -> seal breach")
+	_expect(GameState.control_room_returned, "quest: arriving control room flips returned flag")
+	_expect(GameState.quest_step == GameState.QUEST_DIAGNOSE_LIFE_SUPPORT, "quest: rush absent -> access terminal")
+	var ctrl_console: Node = _find_node_named("ControlConsoleEast")
+	_expect(ctrl_console != null, "control_interface_room: Control Console East present")
+	await _interact_node(ctrl_console, "control terminal access")
+	_expect(GameState.life_support_diagnosed, "quest: control terminal accessed -> life support diagnosed")
+	_expect(GameState.quest_step == GameState.QUEST_SEAL_BREACH, "quest: terminal access -> seal breach")
+	# Close the menu the console just opened so subsequent travel steps can
+	# walk the player around the ship.
+	KinoRemote.close_remote()
 
 	# === STEP 7: lock off exposed ship section ===
+	# East corridor is reachable from the control room via north_corridor.
 	await _travel_path([
-		"stargate_corridor_east_connector",
+		"control_approach_north",
+		"north_corridor",
 		"east_corridor",
 	])
 	await _interact_node(_find_node_named("HullSealSwitch"), "hull seal switch")
@@ -338,7 +343,7 @@ func _activate_gate(gate: Node, label: String) -> void:
 
 func _wait_until(predicate: Callable, label: String, max_frames: int = 90) -> bool:
 	for i in max_frames:
-		if bool(predicate.call()):
+		if predicate.call():
 			return true
 		await get_tree().process_frame
 	_dismiss_dialogs()

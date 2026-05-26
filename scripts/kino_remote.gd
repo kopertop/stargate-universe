@@ -388,6 +388,7 @@ func _build_inventory_page(parent: Control) -> void:
 
 
 func _on_page_button(idx: int) -> void:
+	Audio.play("res://sounds/menu_click.ogg")
 	_select_page(idx)
 
 
@@ -420,6 +421,18 @@ func _toggle() -> void:
 	else:
 		_open_remote()
 
+# Public open API for external callers (control_console.gd). The Tab-key
+# path goes through _unhandled_input → _toggle → _open_remote which keeps the
+# kino_acquired gate; this entrypoint lets diegetic in-world consoles open
+# the same surface even before the player has picked up the handheld remote,
+# since the menu represents the console's interface in that case rather than
+# the player's pocket prop.
+func open_remote(force: bool = false) -> void:
+	if not force and not GameState.kino_acquired:
+		return
+	_open_remote()
+
+
 func _open_remote() -> void:
 	if not _initialized:
 		_init_ui()
@@ -429,6 +442,15 @@ func _open_remote() -> void:
 	_refresh()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	get_tree().paused = true
+	Audio.play("res://sounds/menu_open.ogg")
+
+# Public close — mirrors open_remote() so external callers (control_console.gd,
+# playthrough_runner.gd) can dismiss the menu without reaching into the private
+# _close() path.
+func close_remote() -> void:
+	if _open:
+		_close()
+
 
 func _close() -> void:
 	_open = false
@@ -436,6 +458,7 @@ func _close() -> void:
 	if _root != null:
 		_root.visible = false
 	get_tree().paused = false
+	Audio.play("res://sounds/menu_close.ogg")
 	# Reset mouselook through view.gd — closing the Kino doesn't restore
 	# Input.mouse_mode on its own, so RMB-held-during-open leaves the cursor
 	# visible until the next RMB tap.
@@ -1117,7 +1140,7 @@ func _draw_door_pips_for_room(canvas: CanvasItem, room: Dictionary) -> void:
 # traversed > open.
 func _pip_state(source_id: String, target_id: String, dir: String) -> String:
 	var target_room: Dictionary = ShipLayout.room(target_id)
-	if not target_room.is_empty() and bool(target_room.get("locked", false)):
+	if not target_room.is_empty() and target_room.get("locked", false):
 		return "hardlock"
 	if dir == "elevator" and not GameState.elevator_repaired:
 		return "lock"

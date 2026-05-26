@@ -127,7 +127,7 @@ func get_save_state() -> Dictionary:
 
 func apply_save_state(s: Dictionary) -> void:
 	_line_index = int(s.get("line_index", 0))
-	_auto_greet_done = bool(s.get("auto_greet_done", false))
+	_auto_greet_done = s.get("auto_greet_done", false) == true
 	var pos_raw: Variant = s.get("pos", null)
 	if pos_raw is Array and (pos_raw as Array).size() == 3:
 		var arr: Array = pos_raw
@@ -195,7 +195,7 @@ static func play_idle_animation(root: Node) -> void:
 			stack.append(c)
 
 func _handle_first_meet() -> void:
-	if met_flag != "" and not bool(GameState.get(met_flag)):
+	if met_flag != "" and not GameState.get(met_flag):
 		GameState.set(met_flag, true)
 		# Story milestones get logged once so the journal records them.
 		GameState.add_log("Met %s." % character_name)
@@ -208,7 +208,7 @@ func _handle_first_meet() -> void:
 			GameState.check_episode_complete()
 
 func _has_met() -> bool:
-	return met_flag != "" and bool(GameState.get(met_flag))
+	return met_flag != "" and GameState.get(met_flag) == true
 
 func _active_dialogue_tree() -> Array:
 	if _has_met() and not repeat_dialogue_tree.is_empty():

@@ -204,6 +204,12 @@ func load_and_resume() -> bool:
 			sys.call("deserialize", sys_data, version)
 	_stage_player_spawn(data)
 	GameState.skip_arrival_cinematic = true
+	# room.tscn is a template — it reads GameState.next_room_id at _ready to
+	# pick which ShipLayout row to build. On resume we already know the room
+	# (deserialized into current_room_id), so prime the same cross-scene
+	# baton door.gd uses. Without this the template scene loads with no row
+	# and the player spawns in a void with no floor.
+	GameState.next_room_id = GameState.current_room_id
 	var scene: String = String(data.get("scene_path", data.get("scene", "res://scenes/gate_room.tscn")))
 	_loading = false
 	save_loaded.emit()

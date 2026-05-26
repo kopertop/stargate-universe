@@ -46,6 +46,7 @@ const QUEST_FIND_KINO: String = "find_kino"
 const QUEST_RESTORE_POWER: String = "restore_power"
 const QUEST_FIND_QUARTERS: String = "find_quarters"
 const QUEST_SLEEP: String = "sleep"
+const QUEST_RETURN_TO_CONTROL: String = "return_to_control"
 const QUEST_DIAGNOSE_LIFE_SUPPORT: String = "diagnose_life_support"
 const QUEST_SEAL_BREACH: String = "seal_breach"
 const QUEST_FIND_SCRUBBER: String = "find_scrubber"
@@ -66,7 +67,8 @@ const QUEST_LABELS: Dictionary = {
 	QUEST_RESTORE_POWER: "Restore main power",
 	QUEST_FIND_QUARTERS: "Find quarters",
 	QUEST_SLEEP: "Sleep",
-	QUEST_DIAGNOSE_LIFE_SUPPORT: "Diagnose life support",
+	QUEST_RETURN_TO_CONTROL: "Return to the Control Room",
+	QUEST_DIAGNOSE_LIFE_SUPPORT: "Access a control terminal",
 	QUEST_SEAL_BREACH: "Lock off exposed section",
 	QUEST_FIND_SCRUBBER: "Find CO2 scrubber",
 	QUEST_WAIT_FTL: "Trigger FTL drop",
@@ -90,7 +92,8 @@ const QUEST_TARGETS: Dictionary = {
 	QUEST_RESTORE_POWER: {"room": "engineering_bay", "anchor": "PowerConsole"},
 	QUEST_FIND_QUARTERS: {"room": "quarters_room_1", "anchor": ""},
 	QUEST_SLEEP: {"room": "eli_quarters", "anchor": "Bed"},
-	QUEST_DIAGNOSE_LIFE_SUPPORT: {"room": "gate_room", "anchor": "GateControlConsole"},
+	QUEST_RETURN_TO_CONTROL: {"room": "control_interface_room", "anchor": ""},
+	QUEST_DIAGNOSE_LIFE_SUPPORT: {"room": "control_interface_room", "anchor": "ControlConsoleEast"},
 	QUEST_SEAL_BREACH: {"room": "east_corridor", "anchor": "HullSealSwitch"},
 	QUEST_FIND_SCRUBBER: {"room": "hydroponics", "anchor": "CO2Scrubber"},
 	QUEST_WAIT_FTL: {"room": "gate_room", "anchor": "FTLConsole"},
@@ -155,6 +158,10 @@ var episode_complete: bool = false
 var log_entries: Array[String] = []
 var prologue_complete: bool = false
 var air_crisis_started: bool = false
+# True once the player has returned to the Control Interface Room after the
+# air crisis, found Rush absent, and radioed Scott. Gates the
+# RETURN_TO_CONTROL → DIAGNOSE_LIFE_SUPPORT (access terminal) transition.
+var control_room_returned: bool = false
 var life_support_diagnosed: bool = false
 var scrubber_diagnosed: bool = false
 var scrubber_repaired: bool = false
@@ -218,6 +225,7 @@ func reset() -> void:
 	log_entries.clear()
 	prologue_complete = false
 	air_crisis_started = false
+	control_room_returned = false
 	life_support_diagnosed = false
 	scrubber_diagnosed = false
 	scrubber_repaired = false
@@ -368,6 +376,8 @@ func _next_air_quest_step() -> String:
 	prologue_complete = true
 	if not air_crisis_started:
 		return QUEST_SLEEP
+	if not control_room_returned:
+		return QUEST_RETURN_TO_CONTROL
 	if not life_support_diagnosed:
 		return QUEST_DIAGNOSE_LIFE_SUPPORT
 	if breaches_sealed.is_empty():
@@ -406,8 +416,10 @@ func _objective_for_step(step: String) -> String:
 			return "Take the elevator to the upper deck: find Crew Quarters Alpha."
 		QUEST_SLEEP:
 			return "Get some rest. Lay down on the bed in your quarters."
+		QUEST_RETURN_TO_CONTROL:
+			return "Scott's orders: get to the Control Interface Room and find Rush."
 		QUEST_DIAGNOSE_LIFE_SUPPORT:
-			return "Diagnose failing life support at the Gate Room console."
+			return "Access a control terminal in the Control Interface Room."
 		QUEST_SEAL_BREACH:
 			return "Lock off the exposed ship section in the East Corridor."
 		QUEST_FIND_SCRUBBER:
@@ -501,12 +513,35 @@ func start_air_crisis() -> void:
 	oxygen = minf(oxygen, 62.0)
 	oxygen_changed.emit(oxygen)
 	add_log("Destiny drops out of FTL. Alarms report rising CO2 in life support.")
-	dialogue_shown.emit("Eli", "That's not a normal alarm. The air just got worse.")
+	# Dialog announcement is intentionally NOT fired here — callers play their
+	# own cinematic (bed.gd fades to black on sleep, then wakes the player up
+	# and calls announce_air_crisis()). Direct state-only callers (smoke tests)
+	# skip the dialog entirely.
 	# Emergency override flips the inter-deck elevator online so the player can
 	# reach Hydroponics on the upper floor without first solving the power
 	# console. (That console used to gate the prologue; now it's free flavor.)
 	if not elevator_repaired:
 		unlock_elevator()
+	advance_air_quest()
+
+
+# Wake-up dialog beat — fired after bed.gd's sleep cinematic finishes its
+# fade-in so the line reads as the player coming to and noticing the alarm,
+# not as a popup the moment they pressed E on the bed.
+func announce_air_crisis() -> void:
+	if not air_crisis_started:
+		return
+	dialogue_shown.emit("Eli", "That's not a normal alarm. The air just got worse.")
+
+
+# Marks the post-crisis return to the control room (Rush absent, Eli radios
+# Scott). Advances RETURN_TO_CONTROL → DIAGNOSE_LIFE_SUPPORT so the next
+# objective is "access a control terminal". The radio exchange itself is
+# played by room.gd on entry; this just flips the state.
+func mark_control_room_returned() -> void:
+	if control_room_returned:
+		return
+	control_room_returned = true
 	advance_air_quest()
 
 func diagnose_life_support() -> void:
@@ -619,7 +654,7 @@ func has_save() -> bool:
 	# "no save" in script tests where the SaveManager autoload is absent.
 	var sm: Node = get_node_or_null("/root/SaveManager")
 	if sm != null and sm.has_method("has_save"):
-		return bool(sm.call("has_save"))
+		return sm.call("has_save") == true
 	return false
 
 
@@ -647,6 +682,7 @@ func serialize() -> Dictionary:
 		"met_rush": met_rush,
 		"prologue_complete": prologue_complete,
 		"air_crisis_started": air_crisis_started,
+		"control_room_returned": control_room_returned,
 		"life_support_diagnosed": life_support_diagnosed,
 		"scrubber_diagnosed": scrubber_diagnosed,
 		"scrubber_repaired": scrubber_repaired,
@@ -668,24 +704,25 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	oxygen = float(data.get("oxygen", MAX_OXYGEN))
 	current_episode = String(data.get("current_episode", EPISODE_AIR))
 	quest_step = String(data.get("quest_step", QUEST_TALK_SCOTT))
-	kino_acquired = bool(data.get("kino_acquired", false))
-	quarters_found = bool(data.get("quarters_found", false))
-	eli_quarters_visited = bool(data.get("eli_quarters_visited", false))
-	elevator_repaired = bool(data.get("elevator_repaired", false))
-	episode_complete = bool(data.get("episode_complete", false))
+	kino_acquired = data.get("kino_acquired", false) == true
+	quarters_found = data.get("quarters_found", false) == true
+	eli_quarters_visited = data.get("eli_quarters_visited", false) == true
+	elevator_repaired = data.get("elevator_repaired", false) == true
+	episode_complete = data.get("episode_complete", false) == true
 	current_room_id = String(data.get("current_room_id", ""))
 	current_objective = String(data.get("objective", current_objective))
-	met_scott = bool(data.get("met_scott", false))
-	met_rush = bool(data.get("met_rush", false))
-	prologue_complete = bool(data.get("prologue_complete", false))
-	air_crisis_started = bool(data.get("air_crisis_started", false))
-	life_support_diagnosed = bool(data.get("life_support_diagnosed", false))
-	scrubber_diagnosed = bool(data.get("scrubber_diagnosed", false))
-	scrubber_repaired = bool(data.get("scrubber_repaired", false))
-	ftl_drop_triggered = bool(data.get("ftl_drop_triggered", false))
+	met_scott = data.get("met_scott", false) == true
+	met_rush = data.get("met_rush", false) == true
+	prologue_complete = data.get("prologue_complete", false) == true
+	air_crisis_started = data.get("air_crisis_started", false) == true
+	control_room_returned = data.get("control_room_returned", false) == true
+	life_support_diagnosed = data.get("life_support_diagnosed", false) == true
+	scrubber_diagnosed = data.get("scrubber_diagnosed", false) == true
+	scrubber_repaired = data.get("scrubber_repaired", false) == true
+	ftl_drop_triggered = data.get("ftl_drop_triggered", false) == true
 	ftl_drop_game_time = float(data.get("ftl_drop_game_time", -1.0))
-	lime_planet_dialed = bool(data.get("lime_planet_dialed", false))
-	returned_from_lime_planet = bool(data.get("returned_from_lime_planet", false))
+	lime_planet_dialed = data.get("lime_planet_dialed", false) == true
+	returned_from_lime_planet = data.get("returned_from_lime_planet", false) == true
 	resources.clear()
 	var loaded_resources: Variant = data.get("resources", {})
 	if loaded_resources is Dictionary:

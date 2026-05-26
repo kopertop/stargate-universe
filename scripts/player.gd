@@ -207,7 +207,7 @@ func _find_interact_target() -> Node:
 	var n: Node = collider as Node
 	while n != null:
 		if n.is_in_group("interactable"):
-			if "enabled" in n and not bool(n.get("enabled")):
+			if "enabled" in n and not n.get("enabled"):
 				return null
 			return n
 		n = n.get_parent()

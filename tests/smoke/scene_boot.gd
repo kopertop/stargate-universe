@@ -255,6 +255,10 @@ func _check_procedural_room(room_id: String) -> void:
 	if packed == null:
 		_fail(ROOM_SCENE, "load() returned null")
 		return
+	# Clean slate per room so leftover state from a prior room's mission
+	# wiring (e.g. hydroponics flips air_crisis_started) doesn't change what
+	# this room builds — control_interface_room omits Rush during the crisis.
+	_game_state.call("reset")
 	_game_state.set("next_room_id", room_id)
 	var inst := packed.instantiate()
 	if inst == null:

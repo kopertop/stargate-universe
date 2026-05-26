@@ -106,11 +106,15 @@ func _initialize() -> void:
 
 	gs.start_air_crisis()
 	_expect(gs.air_crisis_started, "air: sleep starts crisis")
-	_expect(gs.quest_step == gs.QUEST_DIAGNOSE_LIFE_SUPPORT, "air: crisis -> diagnose life support")
+	_expect(gs.quest_step == gs.QUEST_RETURN_TO_CONTROL, "air: crisis -> return to control room")
+
+	gs.mark_control_room_returned()
+	_expect(gs.control_room_returned, "air: control room return records flag")
+	_expect(gs.quest_step == gs.QUEST_DIAGNOSE_LIFE_SUPPORT, "air: returned -> access terminal")
 
 	gs.diagnose_life_support()
 	_expect(gs.life_support_diagnosed, "air: life support diagnostic records flag")
-	_expect(gs.quest_step == gs.QUEST_SEAL_BREACH, "air: diagnostic -> seal breach")
+	_expect(gs.quest_step == gs.QUEST_SEAL_BREACH, "air: terminal access -> seal breach")
 
 	_expect(gs.breaches_sealed.is_empty(), "mission: no breaches sealed yet")
 	gs.seal_breach("breach_a")

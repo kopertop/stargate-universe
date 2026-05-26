@@ -19,6 +19,8 @@ const GATE_CONSOLE_SCRIPT: Script = preload("res://scripts/gate_console.gd")
 const NPC_SCRIPT: Script = preload("res://scripts/npc.gd")
 const PLANET_GATE_SCRIPT: Script = preload("res://scripts/planet_gate.gd")
 const QuestWaypointScript: Script = preload("res://scripts/quest_waypoint.gd")
+# Preload bypasses class_name registration timing — same reason as room.gd.
+const ShipAlertScript: Script = preload("res://scripts/ship_alert.gd")
 const QUEST_WAYPOINT_ANCHOR_HEIGHT: float = 2.4
 const QUEST_WAYPOINT_DOOR_HEIGHT: float = 1.8
 
@@ -73,6 +75,12 @@ func _ready() -> void:
 	_build_consoles()
 	_build_npcs()
 	_build_lighting_props()
+
+	# Red-alert tint catches every light spawned by the build helpers above.
+	# Tints the WorldEnvironment ambient too so the gate room reads as the
+	# same emergency state as the procedural rooms.
+	if ShipAlertScript.is_alert_active():
+		ShipAlertScript.apply_to_scene(self)
 
 	# Spawn the gate model on the dais.
 	_stargate = STARGATE_SCENE.instantiate()
@@ -288,10 +296,10 @@ func _build_floor() -> void:
 	var box: BoxMesh = BoxMesh.new()
 	box.size = Vector3(room_size.x, 0.2, room_size.y)
 	mi.mesh = box
-	var mat: StandardMaterial3D = StandardMaterial3D.new()
-	mat.albedo_color = Color(0.30, 0.29, 0.32, 1.0)
-	mat.metallic = 0.32
-	mat.roughness = 0.62
+	# Shared metal-grate floor via RoomBuilder.make_floor_mat — same texture,
+	# tile size, brightness, and PNG-buffer fallback as every procedural room.
+	# Palette kept near the original (0.30, 0.29, 0.32) tint.
+	var mat: StandardMaterial3D = RoomBuilder.make_floor_mat(Color(0.30, 0.29, 0.32, 1.0), room_size.x, room_size.y)
 	mi.material_override = mat
 	mi.position = Vector3(0.0, -0.1, 0.0)
 	_world.add_child(mi)
@@ -334,10 +342,15 @@ func _build_walls_and_ceiling() -> void:
 	var half_z: float = room_size.y * 0.5
 	var wall_thickness: float = 0.5
 
-	var wall_mat: StandardMaterial3D = StandardMaterial3D.new()
-	wall_mat.albedo_color = Color(0.36, 0.34, 0.38, 1.0)
-	wall_mat.metallic = 0.30
-	wall_mat.roughness = 0.65
+	# Shared Ancient-tech wall-panel texture via RoomBuilder.make_wall_mat —
+	# same loader/cache/tile-size as every procedural room. Two material
+	# clones because BoxMesh uv1_scale is per-face uniform: ±X walls show
+	# room_size.y × ceiling_height; ±Z walls show room_size.x × ceiling_height.
+	# Palette tint kept close to the original (0.36, 0.34, 0.38) so the gate
+	# room's slightly warmer wall reading survives the texture overlay.
+	var wall_palette: Color = Color(0.36, 0.34, 0.38, 1.0)
+	var wall_mat_x: StandardMaterial3D = RoomBuilder.make_wall_mat(wall_palette, room_size.y, ceiling_height)
+	var wall_mat_z: StandardMaterial3D = RoomBuilder.make_wall_mat(wall_palette, room_size.x, ceiling_height)
 
 	var dark_mat: StandardMaterial3D = StandardMaterial3D.new()
 	dark_mat.albedo_color = Color(0.22, 0.22, 0.26, 1.0)
@@ -353,19 +366,19 @@ func _build_walls_and_ceiling() -> void:
 	# Walls are solid — doors are decorative panels recessed INTO the wall, and the
 	# scene transition is driven entirely by their E-interact. No archway cutouts.
 	# +X wall (right, Crew Quarters side).
-	_add_wall_segment(walls, wall_mat,
+	_add_wall_segment(walls, wall_mat_x,
 		Vector3(half_x + wall_thickness * 0.5, ceiling_height * 0.5, 0.0),
 		Vector3(wall_thickness, ceiling_height, room_size.y))
 	# -X wall (left, Mess Hall side).
-	_add_wall_segment(walls, wall_mat,
+	_add_wall_segment(walls, wall_mat_x,
 		Vector3(-half_x - wall_thickness * 0.5, ceiling_height * 0.5, 0.0),
 		Vector3(wall_thickness, ceiling_height, room_size.y))
 	# +Z wall (back, behind the gate).
-	_add_wall_segment(walls, wall_mat,
+	_add_wall_segment(walls, wall_mat_z,
 		Vector3(0.0, ceiling_height * 0.5, half_z + wall_thickness * 0.5),
 		Vector3(room_size.x, ceiling_height, wall_thickness))
 	# -Z wall (front, the EXIT wall) — also solid; ExitDoor sits recessed in it.
-	_add_wall_segment(walls, wall_mat,
+	_add_wall_segment(walls, wall_mat_z,
 		Vector3(0.0, ceiling_height * 0.5, -half_z - wall_thickness * 0.5),
 		Vector3(room_size.x, ceiling_height, wall_thickness))
 

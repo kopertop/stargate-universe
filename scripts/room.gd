@@ -309,26 +309,28 @@ func _spawn_quarters_bed(first_time_log: String = "") -> void:
 	var bunk_pos: Vector3 = Vector3(bunk_x, 0.5, -half_z + 2.0)
 
 	# Interact body — Interactable._ready() hard-sets collision_layer = 4, so
-	# this one ONLY handles the E-prompt. Walk-blocking is a separate body below.
-	# Shrunk to the actual mattress footprint so the prompt doesn't fire across
-	# half the room.
-	const BED_FOOTPRINT: Vector3 = Vector3(1.8, 0.7, 3.4)
+	# this one ONLY handles the E-prompt. Player interact ray casts at
+	# y=interact_origin_height (1.1 m, chest) so the box has to reach UP to
+	# that height — a thin mattress-only box would let the ray fly over it.
+	# Generous footprint so the prompt fires from a step back too.
+	const BED_INTERACT_SIZE: Vector3 = Vector3(2.4, 1.6, 4.0)
 	var bed: StaticBody3D = StaticBody3D.new()
 	bed.set_script(BedScript)
 	bed.name = "Bed"
-	bed.position = bunk_pos
+	bed.position = bunk_pos + Vector3(0.0, 0.25, 0.0)  # raise to box centre y≈0.75
 	if first_time_log != "":
 		bed.set("first_time_log", first_time_log)
 	var cs: CollisionShape3D = CollisionShape3D.new()
 	var box: BoxShape3D = BoxShape3D.new()
-	box.size = BED_FOOTPRINT
+	box.size = BED_INTERACT_SIZE
 	cs.shape = box
 	bed.add_child(cs)
 	add_child(bed)
 
 	# Walk-blocker — sibling StaticBody on world layer 1 so the player can't
-	# stroll through the mattress. Sized to match the bed footprint; lowered so
-	# its top sits at mattress height (~1 m) rather than mid-pillow.
+	# stroll through the mattress. Tighter footprint (matches the visual mesh)
+	# so the player can stand right alongside the bed without being shoved.
+	const BED_BLOCKER_SIZE: Vector3 = Vector3(1.8, 0.7, 3.4)
 	var bed_block: StaticBody3D = StaticBody3D.new()
 	bed_block.name = "BedBlocker"
 	bed_block.position = bunk_pos + Vector3(0.0, -0.05, 0.0)
@@ -336,7 +338,7 @@ func _spawn_quarters_bed(first_time_log: String = "") -> void:
 	bed_block.collision_mask = 0
 	var block_cs: CollisionShape3D = CollisionShape3D.new()
 	var block_box: BoxShape3D = BoxShape3D.new()
-	block_box.size = BED_FOOTPRINT
+	block_box.size = BED_BLOCKER_SIZE
 	block_cs.shape = block_box
 	bed_block.add_child(block_cs)
 	add_child(bed_block)
@@ -649,18 +651,18 @@ func _add_mesh_box(parent: Node3D, pos: Vector3, size: Vector3, mat: StandardMat
 # already gates on E + proximity, auto_greet stays off by default).
 # First interact flips `met_rush` and re-checks episode completion.
 func _spawn_dr_rush() -> void:
-	# NW console position (mirrors RoomBuilder._accent_control_room):
-	#   west_x = -width/2 + 1.6, z = -4.0, yaw = PI/2 (desk front faces +X).
-	# Rush stands 1.0 m in front of the desk (close — leaning over it) on the
-	# +X side, body rotation -PI/2 so his -Z forward points at -X (the console).
-	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
-	var console_x: float = -w_m * 0.5 + 1.6
-	var pos: Vector3 = Vector3(console_x + 1.0, 0.0, -4.0)
+	# Mirrors RoomBuilder._accent_control_room — the east console sits 4 m
+	# east of origin with its screen facing +X (outward toward operator).
+	# Rush stands on the OUTER side of the east console (between console
+	# and east wall) facing -X so his look direction passes through the
+	# console screen and onward to the central pillar.
+	const CONSOLE_OFFSET: float = 4.0
+	var pos: Vector3 = Vector3(CONSOLE_OFFSET + 1.0, 0.0, 0.0)
 	var rush: StaticBody3D = StaticBody3D.new()
 	rush.set_script(NpcScript)
 	rush.name = "DrRush"
 	rush.position = pos
-	rush.rotation.y = -PI * 0.5
+	rush.rotation.y = PI * 0.5  # Forward = -X (toward console + pillar at room centre).
 	rush.set("character_name", "Dr Rush")
 	rush.set("prompt", "Talk to Dr Rush")
 	# Choice-tree dialog — Rush brushes Eli off. The only useful instruction is

@@ -202,9 +202,13 @@ func _find_interact_target() -> Node:
 	if collider == null:
 		return null
 	# Walk up the tree looking for the first node in group "interactable".
+	# Skip nodes that have already been disabled (e.g. Kino pickup after
+	# acquisition) — otherwise the HUD prompt sticks on a stale target.
 	var n: Node = collider as Node
 	while n != null:
 		if n.is_in_group("interactable"):
+			if "enabled" in n and not bool(n.get("enabled")):
+				return null
 			return n
 		n = n.get_parent()
 	return null

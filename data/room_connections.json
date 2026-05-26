@@ -1,41 +1,41 @@
 {
 	"gate_room": [
-		{ "dir": "-x", "to": "stargate_corridor_east_connector", "plaque": "Destiny Corridor — Rush / Breach" }
+		{ "dir": "-x", "to": "stargate_corridor_east_connector", "plaque": "Destiny Corridor" }
 	],
 
 	"stargate_corridor_east_connector": [
-		{ "dir": "-x", "to": "east_corridor", "plaque": "East Corridor — Breach" }
+		{ "dir": "-x", "to": "east_corridor", "plaque": "East Corridor" }
 	],
 
 	"east_corridor": [
-		{ "dir": "+x", "to": "north_corridor", "plaque": "North Wing — Rush / Quarters" },
-		{ "dir": "+x", "to": "south_corridor", "plaque": "South Wing — Control" }
+		{ "dir": "+x", "to": "north_corridor", "plaque": "North Corridor" },
+		{ "dir": "+x", "to": "south_corridor", "plaque": "South Corridor" }
 	],
 
 	"north_corridor": [
 		{ "dir": "+x", "to": "elevator_north", "plaque": "Elevator — Upper Deck" },
-		{ "dir": "+z", "to": "control_approach_north", "plaque": "To Control / Rush" }
+		{ "dir": "+z", "to": "control_approach_north", "plaque": "Control Approach" }
 	],
 
 	"south_corridor": [
-		{ "dir": "-z", "to": "control_approach_south", "plaque": "To Control / Rush" }
+		{ "dir": "-z", "to": "control_approach_south", "plaque": "Control Approach" }
 	],
 
 	"control_approach_north": [
-		{ "dir": "+z", "to": "control_interface_room", "plaque": "Control Room — Dr Rush" }
+		{ "dir": "+z", "to": "control_interface_room", "plaque": "Control Interface Room" }
 	],
 
 	"control_approach_south": [
-		{ "dir": "-z", "to": "control_interface_room", "plaque": "Control Room — Dr Rush" }
+		{ "dir": "-z", "to": "control_interface_room", "plaque": "Control Interface Room" }
 	],
 
 	"control_interface_room": [
-		{ "dir": "+x", "to": "cr_corridor_2", "plaque": "Crew Wing — Eli / Engineering" }
+		{ "dir": "+x", "to": "cr_corridor_2", "plaque": "Crew Wing" }
 	],
 
 	"cr_corridor_2": [
-		{ "dir": "+x", "to": "eli_quarters", "plaque": "Eli's Quarters" },
-		{ "dir": "+z", "to": "engineering_bay", "plaque": "Engineering Bay — Power" }
+		{ "dir": "+x", "to": "eli_quarters", "plaque": "Kino Room" },
+		{ "dir": "+z", "to": "engineering_bay", "plaque": "Engineering Bay" }
 	],
 
 	"elevator_north": [

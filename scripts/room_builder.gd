@@ -325,42 +325,60 @@ static func _accent_control_room(world: Node3D, width: float, depth: float, heig
 	# anchor (player can't walk through it — see PillarCollider).
 	_accent_control_pillar(world, height, accent)
 
-	# --- Four consoles flanking the pillar (NW / NE / SW / SE) ---------------
-	# Shared console style (see attach_console_mesh + CONSOLE_* constants at
-	# file top). Z = ±4 m straddles the +X door at z=0 so neither console
-	# blocks the entrance from cr_corridor_2.
-	var east_x: float = width * 0.5 - 1.4
-	var west_x: float = -width * 0.5 + 1.4
-	for cz in [-4.0, 4.0]:
-		# West (-X wall) console faces +X (front toward pillar).
-		var west_holder: Node3D = Node3D.new()
-		west_holder.position = Vector3(west_x, 0.0, cz)
-		west_holder.rotation.y = PI * 0.5
-		world.add_child(west_holder)
-		attach_console_mesh(west_holder)
-		# East (+X wall) console faces -X.
-		var east_holder: Node3D = Node3D.new()
-		east_holder.position = Vector3(east_x, 0.0, cz)
-		east_holder.rotation.y = -PI * 0.5
-		world.add_child(east_holder)
-		attach_console_mesh(east_holder)
+	# --- Four consoles clustered N / S / E / W around the pillar ------------
+	# Each console sits ~4 m from the room centre — close enough that the
+	# pillar is at the operator's back, far enough not to overlap the pillar
+	# itself (radius ≈ 1.4 m). Rotation has each console's front face (screen
+	# + tilted plate) pointing OUTWARD toward the walls, so the operator
+	# stands on the inside (pillar-side), looking outward at the console —
+	# matching the SGU control-room blocking the user dialled in.
+	#
+	# DOORWAY-CLEARANCE rule: rooms must keep ≥1–2 m clear of every doorway.
+	# The control room's doors sit on wall midpoints; with consoles at 4 m
+	# from origin, the nearest console-to-door distance is ~10 m. Safe.
+	const CONSOLE_OFFSET: float = 4.0
+	var east_pos: Vector3  = Vector3( CONSOLE_OFFSET, 0.0, 0.0)
+	var west_pos: Vector3  = Vector3(-CONSOLE_OFFSET, 0.0, 0.0)
+	var north_pos: Vector3 = Vector3(0.0, 0.0, -CONSOLE_OFFSET)
+	var south_pos: Vector3 = Vector3(0.0, 0.0,  CONSOLE_OFFSET)
+	# Rotation Y so each console's forward (-Z local) points TOWARD the
+	# central pillar — its tilted screen sits on the local +Z face which
+	# then faces OUTWARD (away from pillar) toward the operator. Operators
+	# stand on the wall-side of the console, facing inward through the
+	# screen toward the pillar beyond.
+	#   east  (+X)  → forward = -X (toward origin) → rot.y = +PI/2
+	#   west  (-X)  → forward = +X (toward origin) → rot.y = -PI/2
+	#   north (-Z)  → forward = +Z (toward origin) → rot.y = PI
+	#   south (+Z)  → forward = -Z (toward origin) → rot.y = 0
+	var consoles: Array = [
+		{"pos": east_pos,  "rot":  PI * 0.5},
+		{"pos": west_pos,  "rot": -PI * 0.5},
+		{"pos": north_pos, "rot":  PI},
+		{"pos": south_pos, "rot":  0.0},
+	]
+	for c in consoles:
+		var holder: Node3D = Node3D.new()
+		holder.position = c["pos"]
+		holder.rotation.y = c["rot"]
+		world.add_child(holder)
+		attach_console_mesh(holder)
 
 	# --- Console downlights ---------------------------------------------------
-	# One soft warm pool over each of the four workstations so the consoles
-	# pop against the cooler walls; emissive ceiling plate above each.
-	for cz in [-4.0, 4.0]:
-		for cx in [width * 0.5 - 2.4, -width * 0.5 + 2.4]:
-			_add_decor(world, ring_mat,
-				Vector3(cx, height - 0.08, cz),
-				Vector3(0.7, 0.04, 0.7))
-			var work_light: OmniLight3D = OmniLight3D.new()
-			work_light.light_color = accent.lerp(Color(1.0, 0.92, 0.78), 0.4)
-			work_light.light_energy = 1.9
-			work_light.omni_range = 8.0
-			work_light.omni_attenuation = 1.6
-			work_light.shadow_enabled = false
-			work_light.position = Vector3(cx, 2.6, cz)
-			world.add_child(work_light)
+	# One soft warm pool above each console, plus a small emissive ceiling
+	# plate so the consoles pop against the cooler walls.
+	for cp in [east_pos, west_pos, north_pos, south_pos]:
+		var pos: Vector3 = cp
+		_add_decor(world, ring_mat,
+			Vector3(pos.x, height - 0.08, pos.z),
+			Vector3(0.7, 0.04, 0.7))
+		var work_light: OmniLight3D = OmniLight3D.new()
+		work_light.light_color = accent.lerp(Color(1.0, 0.92, 0.78), 0.4)
+		work_light.light_energy = 1.9
+		work_light.omni_range = 8.0
+		work_light.omni_attenuation = 1.6
+		work_light.shadow_enabled = false
+		work_light.position = Vector3(pos.x, 2.6, pos.z)
+		world.add_child(work_light)
 
 
 # Floor-to-ceiling power column at the room's centre. Built from a dark metal

@@ -552,6 +552,7 @@ func _refresh_map() -> void:
 	_level_bar.offset_bottom = -MAP_HUD_BOTTOM
 	_level_bar.alignment = BoxContainer.ALIGNMENT_BEGIN
 	_level_bar.add_theme_constant_override("separation", 6)
+	_level_bar.visible = false  # User: "hidden for now, we'll have other levels later".
 	page.add_child(_level_bar)
 	_rebuild_level_bar()
 
@@ -849,13 +850,46 @@ func _draw_stargate_glyph(canvas: CanvasItem, centre: Vector2, radius: float, co
 		canvas.draw_circle(p, 1.6, color)
 
 
-# Console tower: chunky rectangle base + cyan screen plate inset on top.
+# Console room layout: central octagonal pillar with four console panels
+# arranged N/E/S/W around it. Matches the SGU control-room concept art.
+# `radius` is the local scale set by the room rect; we re-derive sizes from
+# that so the glyph stays proportional across narrow corridors and big
+# rooms alike.
 func _draw_console_glyph(canvas: CanvasItem, centre: Vector2, radius: float, color: Color) -> void:
-	var base: Rect2 = Rect2(centre + Vector2(-radius * 0.7, -radius * 0.4), Vector2(radius * 1.4, radius * 1.2))
-	canvas.draw_rect(base, color * Color(1, 1, 1, 0.5), true)
-	canvas.draw_rect(base, color, false, 1.5)
-	var screen: Rect2 = Rect2(base.position + Vector2(radius * 0.18, radius * 0.18), base.size - Vector2(radius * 0.36, radius * 0.7))
+	var console_long: float = radius * 1.05
+	var console_short: float = radius * 0.45
+	var arm: float = radius * 1.05  # distance from centre to each console centre
+	# North & south consoles: long axis runs horizontally.
+	_draw_console_panel(canvas, centre + Vector2(0.0, -arm), console_long, console_short, color)
+	_draw_console_panel(canvas, centre + Vector2(0.0,  arm), console_long, console_short, color)
+	# East & west consoles: long axis runs vertically.
+	_draw_console_panel(canvas, centre + Vector2(-arm, 0.0), console_short, console_long, color)
+	_draw_console_panel(canvas, centre + Vector2( arm, 0.0), console_short, console_long, color)
+	# Central octagonal pillar.
+	_draw_octagon(canvas, centre, radius * 0.32, color)
+
+
+# Single console panel — outlined rect with a small cyan "screen" patch
+# centred inside it. Used by the control-room cluster glyph and any future
+# console-equipped rooms.
+func _draw_console_panel(canvas: CanvasItem, centre: Vector2, w: float, h: float, color: Color) -> void:
+	var body: Rect2 = Rect2(centre - Vector2(w, h) * 0.5, Vector2(w, h))
+	canvas.draw_rect(body, color * Color(1, 1, 1, 0.4), true)
+	canvas.draw_rect(body, color, false, 1.0)
+	var screen: Rect2 = body.grow_individual(-w * 0.18, -h * 0.18, -w * 0.18, -h * 0.45)
 	canvas.draw_rect(screen, Color(0.30, 0.85, 1.0, 0.85), true)
+
+
+# Regular octagon centred at `centre` with circumradius `radius`. Flat-side-
+# up orientation (vertex 0 sits at angle π/8).
+func _draw_octagon(canvas: CanvasItem, centre: Vector2, radius: float, color: Color) -> void:
+	var pts: PackedVector2Array = PackedVector2Array()
+	for i in 8:
+		var theta: float = (float(i) + 0.5) / 8.0 * TAU
+		pts.append(centre + Vector2(cos(theta), sin(theta)) * radius)
+	# Close the loop so draw_polyline renders the last edge too.
+	pts.append(pts[0])
+	canvas.draw_polyline(pts, color, 1.5)
 
 
 # Home: roof triangle + square base. Reads as "your quarters" at a glance.
@@ -961,7 +995,15 @@ func _draw_room_outline(canvas: CanvasItem, room: Dictionary) -> void:
 		if text_w > inner_w:
 			return  # Even the first word won't fit — leave the rect unlabeled.
 	var centre: Vector2 = rect.position + rect.size * 0.5
-	var text_pos: Vector2 = centre + Vector2(-text_w * 0.5, fs * 0.35)
+	# Control rooms put a central octagonal pillar at the room centre — lift
+	# the label into the upper third so it doesn't sit on top of the glyph.
+	var type_id: String = String(room.get("type", room_id))
+	var label_y: float
+	if type_id == "control_room":
+		label_y = rect.position.y + rect.size.y * 0.30
+	else:
+		label_y = centre.y + fs * 0.35
+	var text_pos: Vector2 = Vector2(centre.x - text_w * 0.5, label_y)
 	var text_color: Color = Color(0.95, 0.98, 1.0, 1.0) if is_current else Color(0.78, 0.88, 0.96, 0.9)
 	canvas.draw_string(font, text_pos, label, HORIZONTAL_ALIGNMENT_CENTER, -1.0, fs, text_color)
 

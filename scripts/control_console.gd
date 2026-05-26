@@ -27,6 +27,9 @@ func _ready() -> void:
 	collision_layer = 1 | 4
 	_ensure_collider()
 	prompt = "Use control terminal"
+	# Group membership lets room.gd's quest waypoint find the nearest console
+	# to the player (all four are interchangeable objective targets).
+	add_to_group("control_console")
 
 
 # Build the collider in code if the scene didn't ship one. RoomBuilder spawns
@@ -46,18 +49,55 @@ func _ensure_collider() -> void:
 
 
 func _on_interact(_by: Node) -> void:
-	# Diegetic boot sound — Ancient terminal waking up. Plays alongside the
-	# menu_open chime when the Kino-Remote panel opens, layering the
-	# "console powering on" feel underneath the UI chime.
+	# Diegetic boot sound — Ancient terminal waking up.
 	Audio.play("res://sounds/terminal_boot.ogg")
-	# Advance any quest step that lives on a control console. Phase B+ will
-	# layer in more (open-door buttons during red-alert beats, route-power
-	# choices, etc.) — for now the access itself is the trigger.
-	if GameState.quest_step == GameState.QUEST_DIAGNOSE_LIFE_SUPPORT:
-		GameState.diagnose_life_support()
 	GameState.add_log("Console: Ancient interface comes online.")
-	# Open the shipwide control menu. force=true so consoles work even
-	# before the Kino Remote pickup (the menu surface is the console's,
-	# we're just borrowing the rendering pipeline that already exists).
+
+	# First post-crisis access runs the diagnostic (advances the quest to the
+	# seal-breach objective) and downloads the affected section to the map.
+	# The narrative — Scott flagging the door, the red-alert panic — is played
+	# by the breach beat triggered below.
+	var first_access: bool = (GameState.quest_step == GameState.QUEST_DIAGNOSE_LIFE_SUPPORT)
+	if first_access:
+		GameState.diagnose_life_support()
+		_reveal_route_to_quest_target()
+
+	# Open the shipwide control menu in CONSOLE mode: force=true so it works
+	# pre-Kino-pickup, console_mode=true so the map shows the full deck
+	# schematic (not the handheld's fog-of-war). The menu surface is the
+	# console's — we borrow the Kino Remote rendering pipeline.
 	if KinoRemote.has_method("open_remote"):
-		KinoRemote.call("open_remote", true)
+		KinoRemote.call("open_remote", true, true)
+
+	# First access during the crisis triggers the map-driven blocked-door
+	# beat: Scott flags the LOCKED sealed section far to the north
+	# (north_spur ↔ sealed_section_north); the player clicks it open on the
+	# map (that section + its access corridor flood red), panics, clicks it
+	# shut, then the jammed half-open door in the Damaged Section far to the
+	# SOUTH (breached_section_south) is revealed pulsing red↔grey as the real
+	# seal objective. Skipped under instant_mode (tests can't click) and once
+	# the beat has already played.
+	var sr: Node = get_node_or_null("/root/SceneRouter")
+	var instant: bool = sr != null and sr.get("instant_mode")
+	if first_access and not instant and not GameState.blocked_door_beat_done:
+		if KinoRemote.has_method("begin_breach_beat"):
+			KinoRemote.call("begin_breach_beat",
+				"north_spur", "sealed_section_north", "breached_section_south",
+				["sealed_section_north", "north_spur"])
+
+
+# Discover every room between here and the active quest target so the map
+# shows the full route (and the target room's amber highlight) — the
+# console has the ship's own schematic, so it can reveal sections the
+# player's handheld Kino hasn't physically scouted yet.
+func _reveal_route_to_quest_target() -> void:
+	var target: Dictionary = GameState.quest_target()
+	var target_room: String = String(target.get("room", ""))
+	if target_room == "":
+		return
+	var sl: Node = get_node_or_null("/root/ShipLayout")
+	if sl == null:
+		return
+	var path: PackedStringArray = sl.call("path_through_rooms", GameState.current_room_id, target_room)
+	for rid in path:
+		GameState.discover_room(String(rid))

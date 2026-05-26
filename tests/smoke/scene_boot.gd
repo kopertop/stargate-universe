@@ -77,7 +77,7 @@ const ROOM_INTERACTABLE_REQUIRES: Dictionary = {
 	"quarters_room_1": ["Bed"],
 	"eli_quarters": ["KinoPickup"],
 	"engineering_bay": ["PowerConsole"],
-	"east_corridor": ["HullBreach", "HullSealSwitch"],
+	"breached_section_south": ["HullBreach", "HullSealSwitch"],
 	"control_interface_room": ["DrRush"],
 	"hydroponics": ["CO2Scrubber"],
 }
@@ -344,7 +344,7 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 			else:
 				_fail("%s [engineering_bay]" % ROOM_SCENE,
 					"PowerConsole.interact() did not set GameState.elevator_repaired")
-		"east_corridor":
+		"breached_section_south":
 			var switch: Node = inst.get_node("HullSealSwitch")
 			switch.call("interact", null)
 			var sealed: Array = _game_state.get("breaches_sealed")
@@ -352,7 +352,7 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 				print("  OK (HullSealSwitch.interact → breaches_sealed=", sealed, ")")
 				_passes += 1
 			else:
-				_fail("%s [east_corridor]" % ROOM_SCENE,
+				_fail("%s [breached_section_south]" % ROOM_SCENE,
 					"HullSealSwitch.interact() did not record a sealed breach")
 		"hydroponics":
 			_game_state.set("met_scott", true)
@@ -380,7 +380,9 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 func _check_connection_reachability() -> void:
 	print("\n=== connection graph reachability ===")
 	const MUST_REACH: Array[String] = [
-		"east_corridor",                # hull breach lives here
+		"east_corridor",                # corridor watch (Sgt Greer)
+		"breached_section_south",       # jammed door + seal switch (air-crisis objective)
+		"sealed_section_north",         # locked trap section (blocked-door beat)
 		"control_interface_room",       # Dr Rush
 		"eli_quarters",                 # kino pickup (Eli's room)
 		"engineering_bay",              # power console — gates upper deck

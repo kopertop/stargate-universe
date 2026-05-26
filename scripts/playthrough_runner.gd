@@ -147,19 +147,26 @@ func _drive() -> void:
 	# walk the player around the ship.
 	KinoRemote.close_remote()
 
-	# === STEP 7: lock off exposed ship section ===
-	# East corridor is reachable from the control room via north_corridor.
+	# === STEP 7: seal the jammed door in the far-south Damaged Section ===
+	# Reached from the control room via the south approach + south corridor +
+	# the new south access spur.
 	await _travel_path([
-		"control_approach_north",
-		"north_corridor",
-		"east_corridor",
+		"control_approach_south",
+		"south_corridor",
+		"south_spur",
+		"breached_section_south",
 	])
 	await _interact_node(_find_node_named("HullSealSwitch"), "hull seal switch")
 	_expect(GameState.breaches_sealed.has("breach_a"), "quest: breach sealed")
 	_expect(GameState.quest_step == GameState.QUEST_FIND_SCRUBBER, "quest: breach -> find scrubber")
 
 	# === STEP 8: diagnose broken CO2 scrubber ===
+	# Back up from the far-south Damaged Section, across to the north corridor,
+	# then up the elevator to Hydroponics.
 	await _travel_path([
+		"south_spur",
+		"south_corridor",
+		"east_corridor",
 		"north_corridor",
 		"elevator_north",
 		"elevator_room_floor_1",

@@ -38,10 +38,7 @@ const WAYPOINT_OFFSET_BY_ANCHOR: Dictionary = {
 	"HullSealSwitch": 0.7,     # wall switch at chest height
 	"PowerConsole": 0.7,       # wall console
 	"CO2Scrubber": 1.4,        # scrubber housing top
-	"ControlConsoleEast": 1.4, # control terminal at chest height
-	"ControlConsoleWest": 1.4,
-	"ControlConsoleNorth": 1.4,
-	"ControlConsoleSouth": 1.4,
+	"ControlConsoleNearest": 1.4, # nearest-console sentinel (see _find_nearest_console)
 }
 
 # Set this in the editor to preview a specific room when running the scene
@@ -301,8 +298,13 @@ func _spawn_interactables() -> void:
 			_spawn_eli_kino_pickup()
 			_spawn_quarters_bed("My bed. Time to crash.")
 		"east_corridor":
-			_spawn_hull_breach()
+			# Sgt Greer holds the east corridor; the actual breach lives in the
+			# far-south Damaged Section now.
 			_spawn_sgt_greer()
+		"breached_section_south":
+			# The jammed bulkhead door + emergency seal switch — the real
+			# air-crisis objective, far south of the control room.
+			_spawn_hull_breach()
 		"control_interface_room":
 			# Pre-crisis: Rush is at his console. Once the air crisis starts he
 			# has left to chase the fault elsewhere — the player arrives to an
@@ -818,6 +820,10 @@ func _play_rush_absent_radio() -> void:
 		return
 	GameState.dialogue_shown.emit("Lt Scott", "Well then, Eli — it's up to you. Find out what's going on.")
 	GameState.add_log("Lt Scott (radio): Well then, Eli — it's up to you. Find out what's going on.")
+	await get_tree().create_timer(2.0).timeout
+	if not is_inside_tree():
+		return
+	Audio.play("res://sounds/radio_off.ogg")
 
 
 # Generic NPC spawn — mirrors the manual _spawn_dr_rush construction so the
@@ -1143,6 +1149,15 @@ func _refresh_quest_waypoint() -> void:
 		if anchor_name == "":
 			pos = Vector3(0.0, QUEST_WAYPOINT_ANCHOR_HEIGHT, 0.0)
 			placed = true
+		elif anchor_name == "ControlConsoleNearest":
+			# All four control consoles are identical, so point the diamond at
+			# whichever one is closest to the player — wherever they're
+			# standing in the room, the objective marker is on a console they
+			# can see, not a fixed cardinal one that may be behind them.
+			var console: Node3D = _find_nearest_console()
+			if console != null:
+				pos = console.global_position + Vector3(0.0, WAYPOINT_OFFSET_BY_ANCHOR.get("ControlConsoleNearest", 1.4), 0.0)
+				placed = true
 		else:
 			var anchor: Node = get_node_or_null(anchor_name)
 			if anchor is Node3D:
@@ -1177,6 +1192,24 @@ func _destroy_quest_waypoint() -> void:
 	if _quest_waypoint != null and is_instance_valid(_quest_waypoint):
 		_quest_waypoint.queue_free()
 	_quest_waypoint = null
+
+
+# Nearest node in the "control_console" group to the player. Used by the
+# DIAGNOSE_LIFE_SUPPORT waypoint so the diamond tracks whichever console the
+# player is closest to.
+func _find_nearest_console() -> Node3D:
+	var nearest: Node3D = null
+	var best_dist: float = INF
+	var origin: Vector3 = player.global_position if player != null else Vector3.ZERO
+	for node in get_tree().get_nodes_in_group("control_console"):
+		if not (node is Node3D):
+			continue
+		var n3: Node3D = node
+		var d: float = origin.distance_to(n3.global_position)
+		if d < best_dist:
+			best_dist = d
+			nearest = n3
+	return nearest
 
 
 # Door iteration: doors are direct children of self (added in _stamp_door) and

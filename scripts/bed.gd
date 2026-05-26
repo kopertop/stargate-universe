@@ -190,6 +190,9 @@ func _sleep_cinematic(by: Node) -> void:
 	await get_tree().create_timer(RADIO_CLICK_TO_LINE_GAP).timeout
 	GameState.dialogue_shown.emit("Lt Scott", "Eli — get to the control room. NOW. Find Rush.")
 	GameState.add_log("Lt Scott (radio): Eli, get to the control room NOW. Find Rush.")
+	# Walkie-talkie sign-off beep closes the transmission.
+	await get_tree().create_timer(1.8).timeout
+	Audio.play("res://sounds/radio_off.ogg")
 
 
 # Render a cinematic caption directly onto the fade overlay (which sits above

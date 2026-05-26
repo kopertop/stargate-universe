@@ -69,7 +69,7 @@ const QUEST_LABELS: Dictionary = {
 	QUEST_SLEEP: "Sleep",
 	QUEST_RETURN_TO_CONTROL: "Return to the Control Room",
 	QUEST_DIAGNOSE_LIFE_SUPPORT: "Access a control terminal",
-	QUEST_SEAL_BREACH: "Lock off exposed section",
+	QUEST_SEAL_BREACH: "Seal the jammed door",
 	QUEST_FIND_SCRUBBER: "Find CO2 scrubber",
 	QUEST_WAIT_FTL: "Trigger FTL drop",
 	QUEST_DIAL_LIME_PLANET: "Dial lime planet",
@@ -93,8 +93,8 @@ const QUEST_TARGETS: Dictionary = {
 	QUEST_FIND_QUARTERS: {"room": "quarters_room_1", "anchor": ""},
 	QUEST_SLEEP: {"room": "eli_quarters", "anchor": "Bed"},
 	QUEST_RETURN_TO_CONTROL: {"room": "control_interface_room", "anchor": ""},
-	QUEST_DIAGNOSE_LIFE_SUPPORT: {"room": "control_interface_room", "anchor": "ControlConsoleEast"},
-	QUEST_SEAL_BREACH: {"room": "east_corridor", "anchor": "HullSealSwitch"},
+	QUEST_DIAGNOSE_LIFE_SUPPORT: {"room": "control_interface_room", "anchor": "ControlConsoleNearest"},
+	QUEST_SEAL_BREACH: {"room": "breached_section_south", "anchor": "HullSealSwitch"},
 	QUEST_FIND_SCRUBBER: {"room": "hydroponics", "anchor": "CO2Scrubber"},
 	QUEST_WAIT_FTL: {"room": "gate_room", "anchor": "FTLConsole"},
 	QUEST_DIAL_LIME_PLANET: {"room": "gate_room", "anchor": "GateControlConsole"},
@@ -163,6 +163,10 @@ var air_crisis_started: bool = false
 # RETURN_TO_CONTROL → DIAGNOSE_LIFE_SUPPORT (access terminal) transition.
 var control_room_returned: bool = false
 var life_support_diagnosed: bool = false
+# True once the player has played out the "blocked door" beat at the control
+# terminal — opened the sealed section (ship strobes red), panicked, and shut
+# it again. One-shot: gates the beat so it doesn't replay on console re-access.
+var blocked_door_beat_done: bool = false
 var scrubber_diagnosed: bool = false
 var scrubber_repaired: bool = false
 var ftl_drop_triggered: bool = false
@@ -226,6 +230,7 @@ func reset() -> void:
 	prologue_complete = false
 	air_crisis_started = false
 	control_room_returned = false
+	blocked_door_beat_done = false
 	life_support_diagnosed = false
 	scrubber_diagnosed = false
 	scrubber_repaired = false
@@ -421,7 +426,7 @@ func _objective_for_step(step: String) -> String:
 		QUEST_DIAGNOSE_LIFE_SUPPORT:
 			return "Access a control terminal in the Control Interface Room."
 		QUEST_SEAL_BREACH:
-			return "Lock off the exposed ship section in the East Corridor."
+			return "Head south to the Damaged Section and force the jammed bulkhead door shut."
 		QUEST_FIND_SCRUBBER:
 			return "Find the broken CO2 scrubber in Hydroponics."
 		QUEST_WAIT_FTL:
@@ -683,6 +688,7 @@ func serialize() -> Dictionary:
 		"prologue_complete": prologue_complete,
 		"air_crisis_started": air_crisis_started,
 		"control_room_returned": control_room_returned,
+		"blocked_door_beat_done": blocked_door_beat_done,
 		"life_support_diagnosed": life_support_diagnosed,
 		"scrubber_diagnosed": scrubber_diagnosed,
 		"scrubber_repaired": scrubber_repaired,
@@ -716,6 +722,7 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	prologue_complete = data.get("prologue_complete", false) == true
 	air_crisis_started = data.get("air_crisis_started", false) == true
 	control_room_returned = data.get("control_room_returned", false) == true
+	blocked_door_beat_done = data.get("blocked_door_beat_done", false) == true
 	life_support_diagnosed = data.get("life_support_diagnosed", false) == true
 	scrubber_diagnosed = data.get("scrubber_diagnosed", false) == true
 	scrubber_repaired = data.get("scrubber_repaired", false) == true

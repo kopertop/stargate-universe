@@ -31,6 +31,21 @@ var _auto_walk_target: Vector3 = Vector3.ZERO
 var _auto_walk_speed: float = 5.0
 var _auto_walk_arrive_dist: float = 0.18
 
+# Footsteps — random individual samples (slices of the Ship Footsteps pack)
+# played on a distance-based cadence: one step per ~FOOTSTEP_STRIDE metres of
+# floor travel, so faster speeds produce faster steps without per-frame
+# timing math. Pitch jitters per step so repeats don't sound mechanical.
+const FOOTSTEP_SOUNDS: Array[String] = [
+	"res://sounds/footstep_01.ogg", "res://sounds/footstep_02.ogg",
+	"res://sounds/footstep_03.ogg", "res://sounds/footstep_04.ogg",
+	"res://sounds/footstep_05.ogg", "res://sounds/footstep_06.ogg",
+	"res://sounds/footstep_07.ogg", "res://sounds/footstep_08.ogg",
+	"res://sounds/footstep_09.ogg", "res://sounds/footstep_10.ogg",
+]
+const FOOTSTEP_STRIDE: float = 1.9
+var _footstep_streams: Array = []
+var _footstep_distance: float = 0.0
+
 @onready var _particles_trail: GPUParticles3D = $ParticlesTrail
 @onready var _sound_footsteps: AudioStreamPlayer = $SoundFootsteps
 @onready var _model: Node3D = $Character
@@ -47,6 +62,10 @@ const _COLORMAP_MAT: Material = preload("res://models/colormap.tres")
 
 func _ready() -> void:
 	_apply_colormap(_model)
+	for path in FOOTSTEP_SOUNDS:
+		var s: AudioStream = load(path)
+		if s != null:
+			_footstep_streams.append(s)
 
 func _apply_colormap(root: Node) -> void:
 	if root is MeshInstance3D:
@@ -119,6 +138,7 @@ func _handle_movement(delta: float) -> void:
 	rotation.y = lerp_angle(rotation.y, _facing_yaw, delta * 12.0)
 
 	_drive_locomotion_anim()
+	_update_footsteps(delta)
 
 func _apply_gravity(delta: float) -> void:
 	if is_on_floor():
@@ -128,7 +148,6 @@ func _apply_gravity(delta: float) -> void:
 
 func _drive_locomotion_anim() -> void:
 	_particles_trail.emitting = false
-	_sound_footsteps.stream_paused = true
 	var horiz_speed: float = Vector2(velocity.x, velocity.z).length()
 	if is_on_floor():
 		if horiz_speed > 0.25:
@@ -136,8 +155,6 @@ func _drive_locomotion_anim() -> void:
 			_play_anim("sprint" if is_sprinting else "walk", 0.1)
 			# Sprint clip is already fast; only scale walk by speed ratio.
 			var pitch_ratio: float = clampf(horiz_speed / walk_speed, 0.4, sprint_multiplier)
-			_sound_footsteps.stream_paused = false
-			_sound_footsteps.pitch_scale = 1.0 + (pitch_ratio - 1.0) * 0.6
 			if _animation != null:
 				_animation.speed_scale = 1.0 if is_sprinting else pitch_ratio
 			if pitch_ratio > 1.2:
@@ -153,6 +170,32 @@ func _drive_locomotion_anim() -> void:
 		_play_anim(airborne_anim, 0.1)
 		if _animation != null:
 			_animation.speed_scale = 1.0
+
+
+# Distance-based footstep cadence: accumulate horizontal travel and emit a
+# random footstep sample every FOOTSTEP_STRIDE metres on the floor. Resets
+# when airborne or stopped so the next stride starts fresh.
+func _update_footsteps(delta: float) -> void:
+	if not is_on_floor():
+		_footstep_distance = 0.0
+		return
+	var horiz_speed: float = Vector2(velocity.x, velocity.z).length()
+	if horiz_speed < 0.5:
+		_footstep_distance = 0.0
+		return
+	_footstep_distance += horiz_speed * delta
+	if _footstep_distance >= FOOTSTEP_STRIDE:
+		_footstep_distance -= FOOTSTEP_STRIDE
+		_emit_footstep()
+
+
+func _emit_footstep() -> void:
+	if _footstep_streams.is_empty() or _sound_footsteps == null:
+		return
+	_sound_footsteps.stream = _footstep_streams[randi() % _footstep_streams.size()]
+	_sound_footsteps.stream_paused = false
+	_sound_footsteps.pitch_scale = randf_range(0.9, 1.1)
+	_sound_footsteps.play()
 
 func _play_anim(name: String, blend: float) -> void:
 	if _animation == null:
@@ -252,5 +295,4 @@ func _drive_auto_walk(delta: float) -> void:
 	_play_anim("walk", 0.1)
 	if _animation != null:
 		_animation.speed_scale = 1.0
-	_sound_footsteps.stream_paused = false
-	_sound_footsteps.pitch_scale = 1.25
+	_update_footsteps(delta)

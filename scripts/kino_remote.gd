@@ -44,6 +44,16 @@ const MAP_GRID_PITCH: float = 50.0
 const ROOM_OUTLINE_COLOR: Color = Color(0.55, 0.85, 1.0, 0.95)
 const ROOM_FILL_COLOR: Color = Color(0.20, 0.55, 0.95, 0.10)
 const ROOM_OUTLINE_CURRENT_COLOR: Color = Color(0.80, 0.95, 1.0, 1.0)
+# Quest-target room — amber alert outline + warmer fill so the player can
+# see at a glance WHICH room the current objective is in (e.g. the jammed
+# door the control terminal just flagged).
+const ROOM_OUTLINE_TARGET_COLOR: Color = Color(1.0, 0.62, 0.25, 1.0)
+const ROOM_FILL_TARGET_COLOR: Color = Color(1.0, 0.45, 0.18, 0.16)
+# Breach-beat colours: hot alarm red for the trap door + flooded rooms, and a
+# red↔grey pulse for the jammed (half-open) door that's the real objective.
+const BREACH_RED: Color = Color(1.0, 0.13, 0.10)
+const BREACH_JAMMED_GREY: Color = Color(0.55, 0.56, 0.60)
+const BREACH_DOOR_CLICK_RADIUS: float = 46.0
 const PIP_OPEN_COLOR: Color = Color(0.55, 0.90, 1.0, 1.0)
 const PIP_TRAVERSED_COLOR: Color = Color(0.45, 0.65, 0.85, 0.6)
 const PIP_LOCKED_COLOR: Color = Color(1.0, 0.65, 0.20, 1.0)
@@ -77,6 +87,28 @@ var _is_panning: bool = false
 var _pan_last_mouse: Vector2 = Vector2.ZERO
 # 0.5–2.5 multiplier applied to the AABB→viewport scale.
 var _zoom: float = ZOOM_DEFAULT
+# True when the panel was opened from a wall-mounted control terminal (vs the
+# handheld Kino on Tab). The console has the ship's own schematic, so it
+# shows EVERY room on the active floor; the handheld keeps fog-of-war and
+# only shows discovered rooms. Reset on close.
+var _console_mode: bool = false
+
+# --- Blocked-door beat -------------------------------------------------------
+# A scripted, map-driven sequence run from the control terminal: Scott flags a
+# sealed door (pulsing red on the map); the player clicks it to OPEN (connected
+# rooms flood red, Scott panics); clicks again to CLOSE; then a different room
+# pulses red↔grey to reveal the jammed half-open door that's the real seal
+# objective. Phases: 0 = sealed (clickable), 1 = open/flooding (clickable),
+# 2 = resolved (jammed room revealed, no longer clickable).
+var _breach_active: bool = false
+var _breach_phase: int = 0
+var _breach_time: float = 0.0
+var _breach_trap_from: String = ""
+var _breach_trap_to: String = ""
+var _breach_jammed_room: String = ""
+var _breach_flood_rooms: Array = []
+var _breach_klaxon_timer: Timer = null
+
 # Which floor is currently shown. -1 means "track GameState.current_room_id";
 # any other value overrides via the level-switcher bar.
 var _active_floor_override: int = -1
@@ -419,6 +451,8 @@ func _toggle() -> void:
 	if _open:
 		_close()
 	else:
+		# Tab = handheld Kino: fog-of-war, only discovered rooms.
+		_console_mode = false
 		_open_remote()
 
 # Public open API for external callers (control_console.gd). The Tab-key
@@ -427,9 +461,10 @@ func _toggle() -> void:
 # the same surface even before the player has picked up the handheld remote,
 # since the menu represents the console's interface in that case rather than
 # the player's pocket prop.
-func open_remote(force: bool = false) -> void:
+func open_remote(force: bool = false, console_mode: bool = false) -> void:
 	if not force and not GameState.kino_acquired:
 		return
+	_console_mode = console_mode
 	_open_remote()
 
 
@@ -454,6 +489,13 @@ func close_remote() -> void:
 
 func _close() -> void:
 	_open = false
+	_console_mode = false
+	# Tear down any in-progress breach beat so it doesn't linger / keep the
+	# klaxon looping after the panel closes.
+	if _breach_active:
+		_breach_active = false
+		_stop_breach_klaxon()
+		_clear_breach_caption()
 	_persist_ui_state()
 	if _root != null:
 		_root.visible = false
@@ -742,10 +784,32 @@ func _active_route_target() -> String:
 	return target
 
 
+# Room IDs the map should render. Handheld Kino → fog-of-war (only
+# discovered). Console mode → every room on the active floor (the ship's
+# own schematic). Returned as a plain Array of id strings.
+func _visible_room_ids() -> Array:
+	if not _console_mode:
+		return GameState.rooms_discovered
+	var ids: Array = []
+	var floor_id: int = _active_floor()
+	for r in ShipLayout.all_rooms():
+		if int(r.get("floor", 0)) == floor_id:
+			ids.append(String(r.get("id", "")))
+	return ids
+
+
+func _is_room_visible(room_id: String) -> bool:
+	if not _console_mode:
+		return GameState.rooms_discovered.has(room_id)
+	var r: Dictionary = ShipLayout.room(room_id)
+	return not r.is_empty() and int(r.get("floor", 0)) == _active_floor()
+
+
 # Compute ONE transform for the active floor, filling the entire MapView
-# rect. AABB is taken over discovered rooms on that floor only, so the
-# fit auto-tightens as the player explores. `_pan_offset` and `_zoom`
-# layer on top so click-drag + wheel-zoom move the visible window.
+# rect. AABB is taken over visible rooms on that floor only, so the
+# fit auto-tightens as the player explores (or covers the whole floor in
+# console mode). `_pan_offset` and `_zoom` layer on top so click-drag +
+# wheel-zoom move the visible window.
 func _compute_deck_transforms() -> void:
 	_deck_transform = {}
 	if _map_view == null:
@@ -756,7 +820,7 @@ func _compute_deck_transforms() -> void:
 	var floor_id: int = _active_floor()
 	var aabb: Rect2 = Rect2()
 	var has_any: bool = false
-	for room_id in GameState.rooms_discovered:
+	for room_id in _visible_room_ids():
 		var room: Dictionary = ShipLayout.room(room_id)
 		if room.is_empty() or int(room.get("floor", 0)) != floor_id:
 			continue
@@ -859,9 +923,172 @@ func _on_map_view_draw(canvas: CanvasItem) -> void:
 	_draw_quest_markers(canvas)
 	_draw_placed_marker(canvas)
 	_draw_route(canvas)
+	# Blocked-door beat overlay (pulsing trap door, flooded rooms, jammed room).
+	_draw_breach_overlay(canvas)
 	# Outer chrome.
 	_draw_corner_brackets(canvas, _map_view.size)
 	_draw_north_arrow(canvas, _map_view.size)
+
+
+# Drives the breach-beat pulse animation. Only ticks while the beat is live;
+# kino_remote runs PROCESS_MODE_ALWAYS so this animates under the paused map.
+func _process(delta: float) -> void:
+	if _breach_active:
+		_breach_time += delta
+		if _map_view != null:
+			_map_view.queue_redraw()
+
+
+# Entry point for the control-terminal blocked-door beat. trap_from/trap_to
+# name the sealed door (its on-map midpoint becomes the click target);
+# flood_rooms pulse red while it's open; jammed_room pulses red↔grey once it's
+# shut, revealing the real objective.
+func begin_breach_beat(trap_from: String, trap_to: String, jammed_room: String, flood_rooms: Array) -> void:
+	_breach_active = true
+	_breach_phase = 0
+	_breach_time = 0.0
+	_breach_trap_from = trap_from
+	_breach_trap_to = trap_to
+	_breach_jammed_room = jammed_room
+	_breach_flood_rooms = flood_rooms
+	Audio.play("res://sounds/radio_click.ogg")
+	# Caption rendered on the map panel (dialogue_shown would be hidden behind
+	# the full-screen map). add_log keeps it in the journal too.
+	_set_breach_caption("Lt Scott [radio]: Eli — we found a sealed door. Can you open it from there?")
+	GameState.add_log("Lt Scott (radio): We found a sealed door — can you open it from there?")
+	if _map_view != null:
+		_map_view.queue_redraw()
+
+
+# Screen-space midpoint of the trap door (between its two rooms' centres). The
+# click target is a generous radius around this point.
+func _breach_door_px() -> Variant:
+	var a: Variant = _room_to_px(_breach_trap_from)
+	var b: Variant = _room_to_px(_breach_trap_to)
+	if a is Vector2 and b is Vector2:
+		return ((a as Vector2) + (b as Vector2)) * 0.5
+	return null
+
+
+func _is_click_on_breach_door(pos: Vector2) -> bool:
+	var dp: Variant = _breach_door_px()
+	return dp is Vector2 and pos.distance_to(dp) <= BREACH_DOOR_CLICK_RADIUS
+
+
+# Click handler: phase 0 → open (flood + panic), phase 1 → close (reveal jammed).
+func _advance_breach() -> void:
+	if _breach_phase == 0:
+		_breach_phase = 1
+		_start_breach_klaxon()
+		Audio.play("res://sounds/radio_click.ogg")
+		_set_breach_caption("Lt Scott [radio]: —! CLOSE IT! CLOSE IT, ELI, CLOSE IT!")
+		GameState.add_log("Lt Scott (radio): CLOSE IT! CLOSE IT!")
+	elif _breach_phase == 1:
+		_breach_phase = 2
+		_stop_breach_klaxon()
+		Audio.play("res://sounds/radio_off.ogg")
+		_set_breach_caption("Lt Scott [radio]: …okay. That section's a furnace — leave it. But look, south of you — that door's only half shut. It's jammed. THAT's venting our air. Get down there and force it closed.")
+		GameState.add_log("Lt Scott (radio): Jammed door, half-open, in the Damaged Section to the south. Force it shut.")
+		GameState.blocked_door_beat_done = true
+	if _map_view != null:
+		_map_view.queue_redraw()
+
+
+func _start_breach_klaxon() -> void:
+	if _breach_klaxon_timer == null:
+		_breach_klaxon_timer = Timer.new()
+		_breach_klaxon_timer.process_mode = Node.PROCESS_MODE_ALWAYS
+		_breach_klaxon_timer.wait_time = 0.85
+		_breach_klaxon_timer.timeout.connect(_emit_breach_klaxon)
+		add_child(_breach_klaxon_timer)
+	_emit_breach_klaxon()
+	_breach_klaxon_timer.start()
+
+
+# Dedicated loud player — the shared Audio pool clamps at -10 dB, too quiet
+# for an alarm meant to convey panic. Stream is preloaded (not load() per
+# tick) since this fires every 0.85 s while the klaxon timer runs.
+const BREACH_KLAXON_STREAM: AudioStream = preload("res://sounds/klaxon.ogg")
+
+func _emit_breach_klaxon() -> void:
+	var p: AudioStreamPlayer = AudioStreamPlayer.new()
+	p.stream = BREACH_KLAXON_STREAM
+	p.bus = "SFX"
+	p.volume_db = 6.0
+	p.process_mode = Node.PROCESS_MODE_ALWAYS
+	p.finished.connect(p.queue_free)
+	add_child(p)
+	p.play()
+
+
+func _stop_breach_klaxon() -> void:
+	if _breach_klaxon_timer != null:
+		_breach_klaxon_timer.stop()
+
+
+# Scott's breach lines render as a caption on the map panel itself —
+# dialogue_shown would draw behind the full-screen map and never be seen.
+func _set_breach_caption(text: String) -> void:
+	if _root == null:
+		return
+	var label: Label = _root.get_node_or_null("BreachCaption") as Label
+	if label == null:
+		label = Label.new()
+		label.name = "BreachCaption"
+		label.anchor_left = 0.0
+		label.anchor_right = 1.0
+		label.offset_left = 150
+		label.offset_right = -150
+		label.offset_top = 150
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		label.add_theme_font_size_override("font_size", 19)
+		label.add_theme_color_override("font_color", Color(1.0, 0.84, 0.78))
+		label.add_theme_color_override("font_outline_color", Color(0.15, 0.0, 0.0))
+		label.add_theme_constant_override("outline_size", 6)
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_root.add_child(label)
+	label.text = text
+
+
+func _clear_breach_caption() -> void:
+	if _root == null:
+		return
+	var label: Node = _root.get_node_or_null("BreachCaption")
+	if label != null:
+		label.queue_free()
+
+
+func _draw_breach_overlay(canvas: CanvasItem) -> void:
+	if not _breach_active:
+		return
+	var pulse: float = 0.5 + 0.5 * sin(_breach_time * 6.0)
+	# Phase 1: connected rooms flood red.
+	if _breach_phase == 1:
+		for rid in _breach_flood_rooms:
+			var rr: Variant = _room_rect_px(rid)
+			if rr is Rect2:
+				var fill: Color = BREACH_RED
+				fill.a = 0.22 + 0.40 * pulse
+				canvas.draw_rect(rr, fill, true)
+				canvas.draw_rect(rr, Color(1.0, 0.35, 0.25, 0.95), false, 2.5)
+	# Phase 2: jammed room pulses red↔grey — "half shut, jammed".
+	if _breach_phase == 2:
+		var jr: Variant = _room_rect_px(_breach_jammed_room)
+		if jr is Rect2:
+			var jfill: Color = BREACH_RED.lerp(BREACH_JAMMED_GREY, pulse)
+			jfill.a = 0.38
+			canvas.draw_rect(jr, jfill, true)
+			var jline: Color = Color(1.0, 0.35, 0.25, 0.95).lerp(Color(0.65, 0.66, 0.70, 0.9), pulse)
+			canvas.draw_rect(jr, jline, false, 3.0)
+	# Trap door marker — pulsing red ring at the door midpoint (phases 0+1).
+	if _breach_phase <= 1:
+		var dp: Variant = _breach_door_px()
+		if dp is Vector2:
+			var p: Vector2 = dp
+			var radius: float = 9.0 + 6.0 * pulse
+			canvas.draw_circle(p, radius, Color(1.0, 0.15, 0.12, 0.45 + 0.45 * pulse))
+			canvas.draw_arc(p, radius + 5.0, 0.0, TAU, 28, Color(1.0, 0.45, 0.3, 0.95), 2.0)
 
 
 # Faint blueprint grid inside one room's rect. Pitch = 18px in screen space —
@@ -1014,17 +1241,25 @@ func _draw_elevator_glyph(canvas: CanvasItem, centre: Vector2, radius: float, co
 # ghosts for the active deck. Drawn in 3 passes so pips and glyphs land on
 # top of room fills, and connection lines sit behind pips.
 func _draw_deck_geometry(canvas: CanvasItem, floor_id: int, _rect: Rect2) -> void:
-	for room_id in GameState.rooms_discovered:
+	for room_id in _visible_room_ids():
 		var room: Dictionary = ShipLayout.room(room_id)
 		if room.is_empty() or int(room.get("floor", 0)) != floor_id:
 			continue
 		_draw_room_outline(canvas, room)
 	_draw_connection_lines(canvas, floor_id)
-	for room_id in GameState.rooms_discovered:
+	for room_id in _visible_room_ids():
 		var room: Dictionary = ShipLayout.room(room_id)
 		if room.is_empty() or int(room.get("floor", 0)) != floor_id:
 			continue
 		_draw_door_pips_for_room(canvas, room)
+
+
+# True when this room holds the active quest target — drives the amber
+# alert highlight so the problem room (jammed door, scrubber, etc.) stands
+# out from ordinary discovered rooms.
+func _is_quest_target_room(room_id: String) -> bool:
+	var q: Dictionary = GameState.quest_target()
+	return String(q.get("room", "")) == room_id
 
 
 func _draw_room_outline(canvas: CanvasItem, room: Dictionary) -> void:
@@ -1034,13 +1269,20 @@ func _draw_room_outline(canvas: CanvasItem, room: Dictionary) -> void:
 		return
 	var rect: Rect2 = rect_var
 	var is_current: bool = (room_id == GameState.current_room_id)
-	var outline: Color = ROOM_OUTLINE_CURRENT_COLOR if is_current else ROOM_OUTLINE_COLOR
-	canvas.draw_rect(rect, ROOM_FILL_COLOR, true)
+	var is_target: bool = _is_quest_target_room(room_id)
+	var outline: Color = ROOM_OUTLINE_COLOR
+	var fill: Color = ROOM_FILL_COLOR
+	if is_current:
+		outline = ROOM_OUTLINE_CURRENT_COLOR
+	elif is_target:
+		outline = ROOM_OUTLINE_TARGET_COLOR
+		fill = ROOM_FILL_TARGET_COLOR
+	canvas.draw_rect(rect, fill, true)
 	# Faint blueprint grid clipped to this room's interior. Pitch in JSON
 	# units (100) projected to pixels so grid spacing stays consistent across
 	# rooms regardless of how zoom and AABB-fit scale individual rects.
 	_draw_room_grid(canvas, rect)
-	canvas.draw_rect(rect, outline, false, (2.5 if is_current else 1.5))
+	canvas.draw_rect(rect, outline, false, (2.5 if (is_current or is_target) else 1.5))
 	# Room-type glyph centred in the rect (stargate / console / home / etc.).
 	_draw_room_glyph(canvas, room, rect, is_current)
 	# Name label — uppercase + multi-line auto-wrap when the room is narrow,
@@ -1083,14 +1325,14 @@ func _draw_room_outline(canvas: CanvasItem, room: Dictionary) -> void:
 # Helps the player see topology before they walk through the door.
 func _draw_connection_lines(canvas: CanvasItem, floor_id: int) -> void:
 	var seen: Dictionary = {}
-	for room_id in GameState.rooms_discovered:
+	for room_id in _visible_room_ids():
 		var room: Dictionary = ShipLayout.room(room_id)
 		if room.is_empty() or int(room.get("floor", 0)) != floor_id:
 			continue
 		for edge in ShipLayout.outgoing_edges(room_id):
 			var e: Dictionary = edge
 			var to_id: String = String(e.get("to", ""))
-			if to_id == "" or not GameState.rooms_discovered.has(to_id):
+			if to_id == "" or not _is_room_visible(to_id):
 				continue
 			var key: String = GameState.door_key(room_id, to_id)
 			if seen.has(key):
@@ -1226,6 +1468,10 @@ func _draw_player_marker(canvas: CanvasItem) -> void:
 
 
 func _draw_quest_markers(canvas: CanvasItem) -> void:
+	# Suppressed during the breach beat — the red trap door + flooded rooms
+	# are the focus; the quest diamond/route would compete with them.
+	if _breach_active:
+		return
 	var quest: Dictionary = GameState.quest_target()
 	var quest_room: String = String(quest.get("room", ""))
 	if quest_room != "":
@@ -1235,6 +1481,9 @@ func _draw_quest_markers(canvas: CanvasItem) -> void:
 
 
 func _draw_route(canvas: CanvasItem) -> void:
+	# No dotted route during the breach beat (see _draw_quest_markers).
+	if _breach_active:
+		return
 	var target_id: String = _active_route_target()
 	if target_id == "":
 		return
@@ -1317,6 +1566,11 @@ func _handle_mouse_button(mb: InputEventMouseButton) -> void:
 	match mb.button_index:
 		MOUSE_BUTTON_LEFT:
 			if mb.pressed:
+				# During the breach beat, a click on the trap door toggles it
+				# (open ↔ close) instead of starting a pan drag.
+				if _breach_active and _breach_phase <= 1 and _is_click_on_breach_door(mb.position):
+					_advance_breach()
+					return
 				_is_panning = true
 				_pan_last_mouse = mb.position
 			else:

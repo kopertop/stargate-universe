@@ -111,6 +111,7 @@ func _initialize() -> void:
 	gs.mark_control_room_returned()
 	_expect(gs.control_room_returned, "air: control room return records flag")
 	_expect(gs.quest_step == gs.QUEST_DIAGNOSE_LIFE_SUPPORT, "air: returned -> access terminal")
+	_expect(not gs.blocked_door_beat_done, "air: blocked-door beat not yet played")
 
 	gs.diagnose_life_support()
 	_expect(gs.life_support_diagnosed, "air: life support diagnostic records flag")

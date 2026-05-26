@@ -23,24 +23,48 @@ extends Object
 # Tweak these constants to retune every console in one place.
 # ============================================================================
 const CONSOLE_GLB_PATH: String = "res://models/props/space_station_kit/computer-wide.glb"
-# Verified GLB AABB (raw): 0.8 × 0.497 × 0.533 m, single mesh / surface
-# (z-range -0.237 to +0.297). Authored with the OPERATOR side on +Z and the
-# back wall on -Z; housing rises from a low operator-side lip up to a tall
-# back, with the slanted screen face descending from the high back (-Z) down
-# toward the operator's hands (+Z).
+# Verified GLB AABB (raw): 0.8 × 0.497 × 0.533 m, single mesh / surface.
+# Top-edge profile (sampled per-vertex):
+#   z=-0.20 → y_top=0.497  ← BACK of slanted screen housing (tallest)
+#   z=-0.05 → y_top=0.294  ← FRONT edge of slanted screen face
+#   z=+0.10 → y_top=0.245  ← keyboard/controls deck (operator workspace)
+#   z=+0.30 → y_top=0.236  ← far edge of keyboard
+# OPERATOR stands on the +Z side (keyboard); screen recess is the slanted
+# face on the -Z side, sloping from low at z=-0.05 up to high at z=-0.20.
 const CONSOLE_SCALE: float = 2.2                              # → 1.76 × 1.09 × 1.17 m (chest height)
 const CONSOLE_BODY_COLOR: Color = Color(0.46, 0.48, 0.52)
 const CONSOLE_BODY_METALLIC: float = 0.65
 const CONSOLE_BODY_ROUGHNESS: float = 0.45
-# Screen plate sits on the slanted top face; rotation.x = -38° matches the
-# GLB's authored slope so the plate embeds into the slant rather than floating
-# above. Positive y embeds further DOWN into the housing's interior.
-const CONSOLE_SCREEN_PLATE_Y: float = 0.36
-const CONSOLE_SCREEN_PLATE_Z: float = 0.06                    # shift toward +Z (operator) to centre on visible face
-const CONSOLE_SCREEN_TILT_DEG: float = -38.0
-const CONSOLE_SCREEN_SIZE: Vector3 = Vector3(0.68, 0.015, 0.36)
-const CONSOLE_SCREEN_COLOR_DEFAULT: Color = Color(0.32, 0.72, 1.0)  # Ancient tech blue
-const CONSOLE_SCREEN_EMISSION: float = 3.2
+# Screen plate transform: dialed-in visually by dragging the plate inside the
+# GLB's slanted recess in scenes/console_test.tscn. Plate sits flush in the
+# recess with its high edge toward +Z (operator/keyboard side raised — matches
+# Ancient console "display tilted up toward operator" convention).
+# Source values from the editor Inspector (Stage-local frame, stage scale 2.2):
+#   position = (0.0, 0.365, -0.02)
+#   rotation = (+36.5°, 0°, 0°)
+#   scale    = (1.2, 1.1, 1.1)  ← baked into CONSOLE_SCREEN_SIZE below
+const CONSOLE_SCREEN_PLATE_Y: float = 0.365
+const CONSOLE_SCREEN_PLATE_Z: float = -0.02
+const CONSOLE_SCREEN_TILT_DEG: float = 36.5
+const CONSOLE_SCREEN_SIZE: Vector3 = Vector3(0.744, 0.0165, 0.33)
+# Dimly emissive dark blue — workbench-tuned defaults (scenes/console_test.tscn).
+# Bright tech-blue glow now comes from the TextMesh on top of the plate, not
+# the plate itself.
+const CONSOLE_SCREEN_COLOR_DEFAULT: Color = Color(0.04, 0.06, 0.10)
+const CONSOLE_SCREEN_EMISSION: float = 0.4
+# Albedo texture overlaid on the plate so it reads as a weathered steel
+# display rather than a flat-coloured rectangle. Rusted-metal pattern gives
+# the plate that Ancient-ship "millennia-old wall panel" feel.
+const CONSOLE_SCREEN_OVERLAY_TEX: String = "res://textures/rusted-metal.png"
+# Tech-blue text that lives on top of the screen plate (production gate-room
+# consoles add this via gate_console.gd; control-room consoles leave it
+# absent for a clean "powered-down screen" decorative look).
+const CONSOLE_TEXT_COLOR: Color = Color(0.32, 0.72, 1.0)
+const CONSOLE_TEXT_EMISSION: float = 1.5
+const CONSOLE_TEXT_FONT_SIZE: int = 16
+const CONSOLE_TEXT_PIXEL_SIZE: float = 0.005
+const CONSOLE_TEXT_DEPTH: float = 0.0
+const CONSOLE_TEXT_LOCAL_ROTATION_DEG: Vector3 = Vector3(-90.0, 0.0, 0.0)
 
 
 # Default ceiling height per template (metres). Picked to make small rooms
@@ -301,42 +325,60 @@ static func _accent_control_room(world: Node3D, width: float, depth: float, heig
 	# anchor (player can't walk through it — see PillarCollider).
 	_accent_control_pillar(world, height, accent)
 
-	# --- Four consoles flanking the pillar (NW / NE / SW / SE) ---------------
-	# Shared console style (see attach_console_mesh + CONSOLE_* constants at
-	# file top). Z = ±4 m straddles the +X door at z=0 so neither console
-	# blocks the entrance from cr_corridor_2.
-	var east_x: float = width * 0.5 - 1.4
-	var west_x: float = -width * 0.5 + 1.4
-	for cz in [-4.0, 4.0]:
-		# West (-X wall) console faces +X (front toward pillar).
-		var west_holder: Node3D = Node3D.new()
-		west_holder.position = Vector3(west_x, 0.0, cz)
-		west_holder.rotation.y = PI * 0.5
-		world.add_child(west_holder)
-		attach_console_mesh(west_holder)
-		# East (+X wall) console faces -X.
-		var east_holder: Node3D = Node3D.new()
-		east_holder.position = Vector3(east_x, 0.0, cz)
-		east_holder.rotation.y = -PI * 0.5
-		world.add_child(east_holder)
-		attach_console_mesh(east_holder)
+	# --- Four consoles clustered N / S / E / W around the pillar ------------
+	# Each console sits ~4 m from the room centre — close enough that the
+	# pillar is at the operator's back, far enough not to overlap the pillar
+	# itself (radius ≈ 1.4 m). Rotation has each console's front face (screen
+	# + tilted plate) pointing OUTWARD toward the walls, so the operator
+	# stands on the inside (pillar-side), looking outward at the console —
+	# matching the SGU control-room blocking the user dialled in.
+	#
+	# DOORWAY-CLEARANCE rule: rooms must keep ≥1–2 m clear of every doorway.
+	# The control room's doors sit on wall midpoints; with consoles at 4 m
+	# from origin, the nearest console-to-door distance is ~10 m. Safe.
+	const CONSOLE_OFFSET: float = 4.0
+	var east_pos: Vector3  = Vector3( CONSOLE_OFFSET, 0.0, 0.0)
+	var west_pos: Vector3  = Vector3(-CONSOLE_OFFSET, 0.0, 0.0)
+	var north_pos: Vector3 = Vector3(0.0, 0.0, -CONSOLE_OFFSET)
+	var south_pos: Vector3 = Vector3(0.0, 0.0,  CONSOLE_OFFSET)
+	# Rotation Y so each console's forward (-Z local) points TOWARD the
+	# central pillar — its tilted screen sits on the local +Z face which
+	# then faces OUTWARD (away from pillar) toward the operator. Operators
+	# stand on the wall-side of the console, facing inward through the
+	# screen toward the pillar beyond.
+	#   east  (+X)  → forward = -X (toward origin) → rot.y = +PI/2
+	#   west  (-X)  → forward = +X (toward origin) → rot.y = -PI/2
+	#   north (-Z)  → forward = +Z (toward origin) → rot.y = PI
+	#   south (+Z)  → forward = -Z (toward origin) → rot.y = 0
+	var consoles: Array = [
+		{"pos": east_pos,  "rot":  PI * 0.5},
+		{"pos": west_pos,  "rot": -PI * 0.5},
+		{"pos": north_pos, "rot":  PI},
+		{"pos": south_pos, "rot":  0.0},
+	]
+	for c in consoles:
+		var holder: Node3D = Node3D.new()
+		holder.position = c["pos"]
+		holder.rotation.y = c["rot"]
+		world.add_child(holder)
+		attach_console_mesh(holder)
 
 	# --- Console downlights ---------------------------------------------------
-	# One soft warm pool over each of the four workstations so the consoles
-	# pop against the cooler walls; emissive ceiling plate above each.
-	for cz in [-4.0, 4.0]:
-		for cx in [width * 0.5 - 2.4, -width * 0.5 + 2.4]:
-			_add_decor(world, ring_mat,
-				Vector3(cx, height - 0.08, cz),
-				Vector3(0.7, 0.04, 0.7))
-			var work_light: OmniLight3D = OmniLight3D.new()
-			work_light.light_color = accent.lerp(Color(1.0, 0.92, 0.78), 0.4)
-			work_light.light_energy = 1.9
-			work_light.omni_range = 8.0
-			work_light.omni_attenuation = 1.6
-			work_light.shadow_enabled = false
-			work_light.position = Vector3(cx, 2.6, cz)
-			world.add_child(work_light)
+	# One soft warm pool above each console, plus a small emissive ceiling
+	# plate so the consoles pop against the cooler walls.
+	for cp in [east_pos, west_pos, north_pos, south_pos]:
+		var pos: Vector3 = cp
+		_add_decor(world, ring_mat,
+			Vector3(pos.x, height - 0.08, pos.z),
+			Vector3(0.7, 0.04, 0.7))
+		var work_light: OmniLight3D = OmniLight3D.new()
+		work_light.light_color = accent.lerp(Color(1.0, 0.92, 0.78), 0.4)
+		work_light.light_energy = 1.9
+		work_light.omni_range = 8.0
+		work_light.omni_attenuation = 1.6
+		work_light.shadow_enabled = false
+		work_light.position = Vector3(pos.x, 2.6, pos.z)
+		world.add_child(work_light)
 
 
 # Floor-to-ceiling power column at the room's centre. Built from a dark metal
@@ -468,11 +510,25 @@ static func attach_console_mesh(parent: Node3D, screen_color: Color = CONSOLE_SC
 		_apply_material_recursive(inst, body_mat)
 
 	var screen_mat: StandardMaterial3D = _emissive_mat(screen_color, CONSOLE_SCREEN_EMISSION)
+	screen_mat.roughness = 0.25
+	# Overlay material: a second layer drawn on top of material_override that
+	# adds the panel-texture detail. Lets the plate read as a real steel-panel
+	# display rather than a flat rectangle. No emission on the overlay — only
+	# the base material contributes the dim background glow.
+	var overlay_mat: StandardMaterial3D = StandardMaterial3D.new()
+	overlay_mat.albedo_texture = load(CONSOLE_SCREEN_OVERLAY_TEX)
 	var screen_mi: MeshInstance3D = MeshInstance3D.new()
+	# Named so external scripts (gate_console.gd) can find the plate and
+	# attach a TextMesh child for the readout.
+	screen_mi.name = "ScreenPlate"
 	var screen_box: BoxMesh = BoxMesh.new()
 	screen_box.size = CONSOLE_SCREEN_SIZE
 	screen_mi.mesh = screen_box
 	screen_mi.material_override = screen_mat
+	screen_mi.material_overlay = overlay_mat
+	# Plate is dimly emissive — no shadow casting (would just darken the
+	# console housing beneath it with a tiny crisp box silhouette).
+	screen_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	screen_mi.position = Vector3(0.0, CONSOLE_SCREEN_PLATE_Y, CONSOLE_SCREEN_PLATE_Z)
 	screen_mi.rotation = Vector3(deg_to_rad(CONSOLE_SCREEN_TILT_DEG), 0.0, 0.0)
 	stage.add_child(screen_mi)
@@ -651,6 +707,25 @@ static func _spawn_kenney_prop(world: Node3D, glb: PackedScene, pos: Vector3, ya
 	_apply_material_recursive(inst, mat)
 
 
+# Procedural walk-blocker. `pos` is the prop's floor anchor; the body is auto-
+# raised by size.y/2 so the box sits flush with the floor. Layer 1 only — camera
+# spring-arm (layer 2) can still see over so the third-person view isn't pulled
+# in tight whenever it grazes a chair.
+static func _add_walk_blocker(world: Node3D, pos: Vector3, yaw: float, size: Vector3, body_name: String) -> void:
+	var body: StaticBody3D = StaticBody3D.new()
+	body.name = body_name
+	body.position = pos + Vector3(0.0, size.y * 0.5, 0.0)
+	body.rotation.y = yaw
+	body.collision_layer = 1
+	body.collision_mask = 0
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = size
+	cs.shape = box
+	body.add_child(cs)
+	world.add_child(body)
+
+
 # Small Kino sphere: dark body with an emissive iris sphere protruding from
 # its front. Used by the kino-room shelf display.
 static func _add_kino_ball(world: Node3D, body: StandardMaterial3D, eye: StandardMaterial3D, pos: Vector3) -> void:
@@ -682,66 +757,114 @@ static func _add_kino_ball(world: Node3D, body: StandardMaterial3D, eye: Standar
 # `bathroomCabinet.glb` locker on the opposite wall, and (in wider rooms) a
 # `desk.glb` + `chairDesk.glb` side workstation.
 static func _accent_quarters(world: Node3D, width: float, depth: float, height: float, palette: Dictionary) -> void:
+	# Values dialled in via scenes/quarters_test.tscn workbench and then
+	# generalised into half-axis formulas so the layout works in both
+	# Eli's Quarters (10×12 m) and Crew Quarters Alpha (12.8×4.4 m).
+	# Furniture switched to Kenney Space Station Kit (sleek sci-fi pieces
+	# matching the Ancient ship aesthetic) — the Furniture-Kit domestic
+	# pieces previously used didn't fit the visual story.
+	const BED_SCALE: float = 2.5
+	const LOCKER_SCALE: float = 2.5
+	const DESK_SCALE: float = 2.5
+	const CHAIR_SCALE: float = 2.5
+
 	var half_x: float = width * 0.5
 	var half_z: float = depth * 0.5
-	var bunk_w: float = min(width - 1.0, 2.0)
+	var bunk_w: float = min(width - 1.0, 3.0)
 	var bunk_x: float = -half_x * 0.3
 
-	# --- Bed (must line up with the interactable hitbox in room.gd) --------
-	# room.gd::_spawn_quarters_bed places a 2.0 m × 1.0 m × 2.0 m hitbox at
-	# (bunk_x, 0.5, -half_z + 1.1). The Kenney bedSingle.glb is authored ~2 m
-	# long and ~1 m wide; we sit it on the floor (y=0) and yaw to face +Z so
-	# the headboard is against the -Z wall.
-	var bed_glb: PackedScene = load("res://models/props/furniture_kit/bedSingle.glb")
-	if bed_glb != null:
-		_spawn_kenney_prop(world, bed_glb,
-			Vector3(bunk_x, 0.0, -half_z + 1.1), 0.0, 1.5,
-			Color(0.62, 0.58, 0.52))
+	# --- Bed (Space Station Kit bed-single.obj as Mesh resource) ----------
+	# OBJ imports as a Mesh resource (not a PackedScene), so we instantiate
+	# a MeshInstance3D and assign the mesh. Surface material override gives
+	# the bed a warm cream tint that reads against the dark Ancient walls.
+	var bed_mesh: Mesh = load("res://models/props/space_station_kit/bed-single.obj")
+	if bed_mesh != null:
+		var bed_mi: MeshInstance3D = MeshInstance3D.new()
+		bed_mi.name = "BedProp"
+		bed_mi.mesh = bed_mesh
+		bed_mi.position = Vector3(bunk_x, 0.0, -half_z + 2.0)
+		bed_mi.scale = Vector3.ONE * BED_SCALE
+		var bed_mat: StandardMaterial3D = _make_mat(Color(0.62, 0.58, 0.52), 0.0, 0.55)
+		# bed-single.obj exposes two surfaces (frame + mattress) — paint both
+		# so we don't see the white default fallback on one of them.
+		var surf_count: int = bed_mesh.get_surface_count()
+		for i in surf_count:
+			bed_mi.set_surface_override_material(i, bed_mat)
+		world.add_child(bed_mi)
 
-	# --- Nightstand + lamp -------------------------------------------------
-	var stand_x: float = bunk_x + bunk_w * 0.5 + 0.55
-	if stand_x < half_x - 0.4:
-		var stand_glb: PackedScene = load("res://models/props/furniture_kit/cabinetBedDrawerTable.glb")
-		var lamp_glb: PackedScene = load("res://models/props/furniture_kit/lampSquareTable.glb")
-		if stand_glb != null:
-			_spawn_kenney_prop(world, stand_glb,
-				Vector3(stand_x, 0.0, -half_z + 0.55), 0.0, 1.2,
-				Color(0.42, 0.36, 0.30))
-		if lamp_glb != null:
-			_spawn_kenney_prop(world, lamp_glb,
-				Vector3(stand_x, 0.55, -half_z + 0.55), 0.0, 1.2,
-				Color(0.85, 0.78, 0.65))
-		# A warm bedside pool — sells the lamp as a real lit object and gives
-		# the bunk corner the cosy read it needs.
-		var bed_light: OmniLight3D = OmniLight3D.new()
-		bed_light.name = "BedsideLamp"
-		bed_light.light_color = Color(1.0, 0.78, 0.50)
-		bed_light.light_energy = 1.8
-		bed_light.omni_range = 3.5
-		bed_light.omni_attenuation = 1.8
-		bed_light.shadow_enabled = false
-		bed_light.position = Vector3(stand_x, 1.2, -half_z + 0.55)
-		world.add_child(bed_light)
-
-	# --- Wall locker on +Z wall --------------------------------------------
-	var locker_glb: PackedScene = load("res://models/props/furniture_kit/bathroomCabinet.glb")
+	# --- Wall locker on +Z wall (Space Station Kit container-tall) --------
+	var locker_glb: PackedScene = load("res://models/props/space_station_kit/container-tall.glb")
 	if locker_glb != null:
 		_spawn_kenney_prop(world, locker_glb,
-			Vector3(bunk_x, 0.0, half_z - 0.3), PI, 1.4,
+			Vector3(bunk_x, 0.0, half_z - 0.7), PI, LOCKER_SCALE,
 			Color(0.38, 0.40, 0.44))
 
-	# --- Side desk (wider rooms only) --------------------------------------
+	# --- Side desk + chair (Space Station Kit table + chair-cushion) ------
+	# Workbench yaws: desk -90° so its long axis runs +Z; chair +45° for the
+	# casual "pulled out a bit" angle the user dialled in.
 	if width > 6.0:
-		var desk_glb: PackedScene = load("res://models/props/furniture_kit/desk.glb")
-		var chair_glb: PackedScene = load("res://models/props/furniture_kit/chairDesk.glb")
+		var desk_glb: PackedScene = load("res://models/props/space_station_kit/table.glb")
+		var chair_glb: PackedScene = load("res://models/props/space_station_kit/chair-cushion.glb")
 		if desk_glb != null:
-			_spawn_kenney_prop(world, desk_glb,
-				Vector3(half_x - 0.7, 0.0, 0.0), -PI * 0.5, 1.4,
+			var desk_pos: Vector3 = Vector3(half_x - 1.4, 0.0, 0.0)
+			_spawn_kenney_prop(world, desk_glb, desk_pos, -PI * 0.5, DESK_SCALE,
 				Color(0.45, 0.40, 0.35))
+			# Desk box: long axis follows yaw -90° → world Z. 2.4 m × 0.95 m tall ×
+			# 1.0 m deep at scale 2.5.
+			_add_walk_blocker(world, desk_pos, -PI * 0.5,
+				Vector3(1.0, 0.95, 2.4), "DeskBlocker")
 		if chair_glb != null:
-			_spawn_kenney_prop(world, chair_glb,
-				Vector3(half_x - 1.6, 0.0, 0.0), -PI * 0.5, 1.3,
+			var chair_pos: Vector3 = Vector3(half_x - 3.0, 0.0, 0.0)
+			_spawn_kenney_prop(world, chair_glb, chair_pos, PI * 0.25, CHAIR_SCALE,
 				Color(0.30, 0.32, 0.36))
+			# Chair: ~1.1 m square seat-block footprint, 0.95 m to seat back. Yaw
+			# +45° but the near-square box makes that visually irrelevant.
+			_add_walk_blocker(world, chair_pos, PI * 0.25,
+				Vector3(1.1, 0.95, 1.1), "ChairBlocker")
+
+	# --- Wall sconces (replace the old nightstand-lamp combo) -------------
+	# Two warm amber sconces flanking the bed on the back (-Z) wall, mounted
+	# 2.6 m up so they read at standing-eye-level. Each sconce: dark housing
+	# box + bright emissive plate + OmniLight3D pool.
+	_add_wall_sconce(world, Vector3(-3.2, 2.6, -half_z + 0.15))
+	_add_wall_sconce(world, Vector3(0.6, 2.6, -half_z + 0.15))
+
+
+# Procedural wall sconce — a Node3D parent with a dark housing box, bright
+# amber emissive plate, and OmniLight3D for the spill. Sized to match the
+# scenes/quarters_test.tscn workbench placement so values stay portable.
+static func _add_wall_sconce(world: Node3D, pos: Vector3) -> void:
+	var sconce: Node3D = Node3D.new()
+	sconce.name = "WallSconce"
+	sconce.position = pos
+	world.add_child(sconce)
+
+	var housing_mat: StandardMaterial3D = _make_mat(Color(0.20, 0.20, 0.22), 0.5, 0.45)
+	var housing_mi: MeshInstance3D = MeshInstance3D.new()
+	var housing_box: BoxMesh = BoxMesh.new()
+	housing_box.size = Vector3(0.46, 0.74, 0.16)
+	housing_mi.mesh = housing_box
+	housing_mi.material_override = housing_mat
+	housing_mi.position = Vector3(0.0, 0.0, 0.08)
+	sconce.add_child(housing_mi)
+
+	var plate_mat: StandardMaterial3D = _emissive_mat(Color(1.0, 0.78, 0.50), 3.0)
+	var plate_mi: MeshInstance3D = MeshInstance3D.new()
+	var plate_box: BoxMesh = BoxMesh.new()
+	plate_box.size = Vector3(0.32, 0.6, 0.08)
+	plate_mi.mesh = plate_box
+	plate_mi.material_override = plate_mat
+	plate_mi.position = Vector3(0.0, 0.0, 0.16)
+	sconce.add_child(plate_mi)
+
+	var glow: OmniLight3D = OmniLight3D.new()
+	glow.light_color = Color(1.0, 0.78, 0.50)
+	glow.light_energy = 2.4
+	glow.omni_range = 4.5
+	glow.omni_attenuation = 1.8
+	glow.shadow_enabled = false
+	glow.position = Vector3(0.0, 0.0, 0.3)
+	sconce.add_child(glow)
 
 
 # Hydroponics: working crop bay. Ceiling-spanning grow-light array (emissive

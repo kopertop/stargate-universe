@@ -5,9 +5,10 @@ extends Interactable
 #   • "gate_control"   — Eli reads his notes; address book empty; gate is dormant.
 #   • "ftl_countdown"  — live countdown to next FTL drop; ticks every frame.
 #
-# Both consoles render a small Label3D floating just above their model so the
-# readout is legible from across the room. The interact handler dumps a longer
-# block of flavor text to the HUD log so the player can read Eli's thinking.
+# The console's text readout is rendered as a TextMesh child of the screen
+# plate (see RoomBuilder.attach_console_mesh which builds the plate). The
+# TextMesh inherits the plate's tilt automatically, glows tech-blue against
+# the plate's dim background, and updates live for the FTL countdown.
 
 @export var kind: String = "gate_control"
 
@@ -15,9 +16,13 @@ extends Interactable
 # arrival cinematic — feel free to tweak per scene if you want a different beat).
 @export var ftl_seconds_remaining: float = 63738.0
 
-# Floating readout above the console mesh. Built procedurally so the .tscn /
-# instancer doesn't have to know about it.
-var _readout: Label3D
+# Live readout — TextMesh as child of the ScreenPlate. TextMesh geometry
+# regenerates when .text changes, so we track _last_text and only update
+# when the displayed string actually differs (avoids re-meshing 60×/sec
+# during FTL countdown).
+var _text_mi: MeshInstance3D
+var _text_mesh: TextMesh
+var _last_text: String = ""
 # Cached interact-flavour lines so repeated reads cycle instead of repeating.
 var _gate_lines: Array[String] = [
 	"Eli: \"Gate's in standby. No active wormhole, no address dialed.\"",
@@ -38,11 +43,14 @@ func _ready() -> void:
 	# console body — otherwise the player walks straight through the gate consoles.
 	collision_layer = 1 | 4
 	_apply_kind_defaults()
-	_build_readout()
+	_build_screen_readout()
 
 func _process(delta: float) -> void:
-	if _readout != null:
-		_readout.text = _readout_text()
+	if _text_mesh != null:
+		var current: String = _readout_text()
+		if current != _last_text:
+			_text_mesh.text = current
+			_last_text = current
 	_apply_kind_defaults()
 	if kind != "ftl_countdown":
 		return
@@ -56,7 +64,7 @@ func _apply_kind_defaults() -> void:
 		if GameState.quest_step == GameState.QUEST_WAIT_FTL:
 			prompt = "Trigger FTL drop"
 	else:
-		prompt = "Read Eli's notes"
+		prompt = "Read your notes"
 		if GameState.quest_step == GameState.QUEST_DIAGNOSE_LIFE_SUPPORT:
 			prompt = "Diagnose life support"
 		elif GameState.quest_step == GameState.QUEST_DIAL_LIME_PLANET:
@@ -64,21 +72,45 @@ func _apply_kind_defaults() -> void:
 		elif GameState.is_lime_gate_open():
 			prompt = "Gate active: lime planet"
 
-func _build_readout() -> void:
-	_readout = Label3D.new()
-	_readout.name = "Readout"
-	_readout.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_readout.no_depth_test = false
-	_readout.shaded = false
-	_readout.double_sided = true
-	_readout.pixel_size = 0.0035
-	_readout.outline_size = 6
-	_readout.modulate = Color(0.55, 0.92, 1.0, 1.0) if kind == "ftl_countdown" else Color(1.0, 0.74, 0.32, 1.0)
-	_readout.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
-	_readout.position = Vector3(0.0, 1.85, 0.0)
-	add_child(_readout)
-	# Set initial text immediately so the first frame already reads.
-	_readout.text = _readout_text()
+func _build_screen_readout() -> void:
+	# Find the ScreenPlate built procedurally by RoomBuilder.attach_console_mesh
+	# (named for exactly this purpose) and attach a TextMesh as its child so
+	# the text inherits the plate's tilt automatically.
+	var holder: Node = get_parent()
+	if holder == null:
+		return
+	var stage: Node = holder.get_node_or_null("ConsoleMesh")
+	if stage == null:
+		return
+	var plate: Node = stage.get_node_or_null("ScreenPlate")
+	if plate == null or not (plate is MeshInstance3D):
+		return
+	var plate_mi: MeshInstance3D = plate
+
+	_text_mesh = TextMesh.new()
+	_text_mesh.text = _readout_text()
+	_text_mesh.font_size = RoomBuilder.CONSOLE_TEXT_FONT_SIZE
+	_text_mesh.depth = RoomBuilder.CONSOLE_TEXT_DEPTH
+	_text_mesh.pixel_size = RoomBuilder.CONSOLE_TEXT_PIXEL_SIZE
+	_text_mesh.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_text_mesh.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_last_text = _text_mesh.text
+
+	var text_mat: StandardMaterial3D = StandardMaterial3D.new()
+	text_mat.albedo_color = RoomBuilder.CONSOLE_TEXT_COLOR
+	text_mat.emission_enabled = true
+	text_mat.emission = RoomBuilder.CONSOLE_TEXT_COLOR
+	text_mat.emission_energy_multiplier = RoomBuilder.CONSOLE_TEXT_EMISSION
+	text_mat.no_depth_test = true
+
+	_text_mi = MeshInstance3D.new()
+	_text_mi.name = "ScreenText"
+	_text_mi.mesh = _text_mesh
+	_text_mi.material_override = text_mat
+	_text_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_text_mi.position = Vector3.ZERO
+	_text_mi.rotation_degrees = RoomBuilder.CONSOLE_TEXT_LOCAL_ROTATION_DEG
+	plate_mi.add_child(_text_mi)
 
 func _on_interact(_by: Node) -> void:
 	if kind == "ftl_countdown":

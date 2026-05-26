@@ -7,6 +7,9 @@ signal health_changed(value: float)
 signal oxygen_changed(value: float)
 signal objective_changed(text: String)
 signal room_discovered(room_id: String)
+# Fired when the player enters a new room. Drives the Kino Remote player
+# marker and the in-world quest-waypoint diamond's re-targeting.
+signal current_room_changed(room_id: String)
 signal kino_changed(acquired: bool)
 signal episode_completed()
 signal log_added(line: String)
@@ -18,6 +21,16 @@ signal save_wiped()
 signal dialogue_shown(character_name: String, line: String)
 # Fired by npc.gd when a choice-tree dialog should open. The HUD listens
 # and shows the full-screen DialogScreen targeting `npc`.
+signal kino_closed()
+# Fired when the player walks through a door for the first time. Drives the
+# Kino map's door-pip dim-on-traverse and survives save/load via
+# doors_traversed.
+signal door_traversed(key: String)
+# Placeholder status readouts shown on the Kino map HUD chrome. Future power
+# / hull systems will fire these — defaults render as "OFFLINE" until any
+# value is published.
+signal power_changed(value: float)
+signal hull_changed(value: float)
 signal dialog_started(npc: Node3D, tree: Array)
 # Fired by dialog_screen.gd::close() — lets one-shot triggers (e.g.
 # kino_pickup) await a dialog's natural end without having to track the
@@ -31,6 +44,7 @@ const SAVE_PATH: String = "user://save.json"
 const EPISODE_AIR: String = "air"
 const QUEST_TALK_SCOTT: String = "talk_scott"
 const QUEST_FIND_RUSH: String = "find_rush"
+const QUEST_FIND_REST: String = "find_rest"
 const QUEST_FIND_KINO: String = "find_kino"
 const QUEST_RESTORE_POWER: String = "restore_power"
 const QUEST_FIND_QUARTERS: String = "find_quarters"
@@ -50,7 +64,8 @@ const AIR_LIME_REQUIRED: int = 3
 const QUEST_LABELS: Dictionary = {
 	QUEST_TALK_SCOTT: "Talk to Scott",
 	QUEST_FIND_RUSH: "Find Rush",
-	QUEST_FIND_KINO: "Find Kino Remote",
+	QUEST_FIND_REST: "Find a place to rest",
+	QUEST_FIND_KINO: "Inspect the strange device",
 	QUEST_RESTORE_POWER: "Restore main power",
 	QUEST_FIND_QUARTERS: "Find quarters",
 	QUEST_SLEEP: "Sleep",
@@ -63,6 +78,30 @@ const QUEST_LABELS: Dictionary = {
 	QUEST_RETURN_DESTINY: "Return to Destiny",
 	QUEST_REPAIR_SCRUBBER: "Repair CO2 scrubber",
 	QUEST_COMPLETE: "Episode complete",
+}
+
+# Where each quest step's diamond should anchor. The room field names a row in
+# data/ship_layout.json; the anchor field names a Node already spawned by
+# room.gd / gate_room.gd (matched by Node.name). When `anchor` is empty the
+# waypoint pins to the room itself (door of entry); when both fields are empty
+# the waypoint is hidden (off-ship or completion states).
+const QUEST_TARGETS: Dictionary = {
+	QUEST_TALK_SCOTT: {"room": "gate_room", "anchor": "LtScott"},
+	QUEST_FIND_RUSH: {"room": "control_interface_room", "anchor": "DrRush"},
+	QUEST_FIND_REST: {"room": "eli_quarters", "anchor": ""},
+	QUEST_FIND_KINO: {"room": "eli_quarters", "anchor": "KinoPickup"},
+	QUEST_RESTORE_POWER: {"room": "engineering_bay", "anchor": "PowerConsole"},
+	QUEST_FIND_QUARTERS: {"room": "quarters_room_1", "anchor": ""},
+	QUEST_SLEEP: {"room": "eli_quarters", "anchor": "Bed"},
+	QUEST_DIAGNOSE_LIFE_SUPPORT: {"room": "gate_room", "anchor": "GateControlConsole"},
+	QUEST_SEAL_BREACH: {"room": "east_corridor", "anchor": "HullSealSwitch"},
+	QUEST_FIND_SCRUBBER: {"room": "hydroponics", "anchor": "CO2Scrubber"},
+	QUEST_WAIT_FTL: {"room": "gate_room", "anchor": "FTLConsole"},
+	QUEST_DIAL_LIME_PLANET: {"room": "gate_room", "anchor": "GateControlConsole"},
+	QUEST_MINE_LIME: {"room": "", "anchor": ""},  # offworld — hide waypoint
+	QUEST_RETURN_DESTINY: {"room": "", "anchor": ""},  # offworld — hide waypoint
+	QUEST_REPAIR_SCRUBBER: {"room": "hydroponics", "anchor": "CO2Scrubber"},
+	QUEST_COMPLETE: {"room": "", "anchor": ""},
 }
 
 # Set by scene scripts (currently only gate_room.gd) when the player is
@@ -86,13 +125,34 @@ var current_episode: String = EPISODE_AIR
 var quest_step: String = QUEST_TALK_SCOTT
 var kino_acquired: bool = false
 var quarters_found: bool = false
+# True once the player first steps into Eli's Quarters (eli_quarters). Drives
+# the FIND_REST → SLEEP transition: Rush dismisses Eli with "go get some rest",
+# the waypoint points at his quarters, and arriving there advances the quest.
+var eli_quarters_visited: bool = false
 # Main power is offline at E1 start: the elevator door north of cr_corridor_2 is
 # locked until the player flips the Engineering Bay power console. Crew Quarters
 # Alpha (floor 1) is gated by this — Eli's Quarters (floor 0) is reachable
 # without power so the Kino Remote is still findable first.
 var elevator_repaired: bool = false
 var rooms_discovered: Array[String] = []
+# Stable keys ("min_room_id|max_room_id") of doors the player has walked
+# through. Both directions resolve to the same key via door_key(). Drives the
+# Kino map's bright-vs-dim pip styling and survives save/load.
+var doors_traversed: Array[String] = []
 var breaches_sealed: Array[String] = []
+# Placeholder status readouts for the Kino map HUD chrome. The underlying
+# systems (power grid, hull integrity) haven't been built yet — these stay at
+# their default sentinels until something publishes a real value, in which
+# case the HUD switches from "OFFLINE" to a percentage. Wire up later by
+# setting `power_percent` (and emitting power_changed) from the power system.
+const STATUS_OFFLINE: float = -1.0
+var power_percent: float = STATUS_OFFLINE
+var hull_percent: float = STATUS_OFFLINE
+# Last room the player physically entered. Set by room.gd / gate_room.gd in
+# _ready() and emitted via current_room_changed. Drives the Kino Remote map
+# player-marker and the quest waypoint's "which door points toward the
+# target" computation.
+var current_room_id: String = ""
 var current_objective: String = "Explore the Destiny"
 var episode_complete: bool = false
 var log_entries: Array[String] = []
@@ -120,9 +180,14 @@ func reset() -> void:
 	quest_step = QUEST_TALK_SCOTT
 	kino_acquired = false
 	quarters_found = false
+	eli_quarters_visited = false
 	elevator_repaired = false
 	rooms_discovered.clear()
+	doors_traversed.clear()
 	breaches_sealed.clear()
+	power_percent = STATUS_OFFLINE
+	hull_percent = STATUS_OFFLINE
+	current_room_id = ""
 	episode_complete = false
 	log_entries.clear()
 	prologue_complete = false
@@ -169,6 +234,43 @@ func discover_room(room_id: String, display_name: String = "") -> void:
 	if display_name != "":
 		add_log("Discovered: " + display_name)
 
+
+# Stable, direction-agnostic key for a door connecting two rooms. Sorted so
+# the same door has the same id regardless of which side you walk through.
+static func door_key(a: String, b: String) -> String:
+	if a <= b:
+		return "%s|%s" % [a, b]
+	return "%s|%s" % [b, a]
+
+
+# Record that the player has walked through the door between rooms a and b.
+# Idempotent — re-traversing the same door is a no-op. Emits door_traversed
+# so the open Kino map can dim the pip in real time.
+func mark_door_traversed(a: String, b: String) -> void:
+	if a == "" or b == "":
+		return
+	var key: String = door_key(a, b)
+	if doors_traversed.has(key):
+		return
+	doors_traversed.append(key)
+	door_traversed.emit(key)
+
+
+func door_was_traversed(a: String, b: String) -> bool:
+	return doors_traversed.has(door_key(a, b))
+
+
+# Publish a power-reading. Future power system calls this; the Kino map HUD
+# listens and switches from "OFFLINE" to "POWER xx%". -1 reverts to OFFLINE.
+func set_power_percent(value: float) -> void:
+	power_percent = value
+	power_changed.emit(value)
+
+
+func set_hull_percent(value: float) -> void:
+	hull_percent = value
+	hull_changed.emit(value)
+
 func acquire_kino() -> void:
 	if kino_acquired:
 		return
@@ -177,17 +279,21 @@ func acquire_kino() -> void:
 	add_log("Acquired the Kino Remote.")
 	advance_air_quest()
 
-func mark_quarters_found() -> void:
+func mark_quarters_found(log_msg: String = "Found Crew Quarters Alpha.") -> void:
 	if quarters_found:
 		return
 	quarters_found = true
-	add_log("Found Crew Quarters Alpha.")
+	add_log(log_msg)
 	advance_air_quest()
 
 func mark_eli_quarters_found() -> void:
-	# Logged on first entry. The Kino-pickup interaction still drives the quest
-	# advance — finding the room alone doesn't tick the objective.
-	add_log("Found Eli's quarters. A Kino Remote is on the nightstand.")
+	# Eli IS the player; this is HIS room. First entry flips eli_quarters_visited,
+	# logs the moment, and advances the quest (FIND_REST → SLEEP).
+	if eli_quarters_visited:
+		return
+	eli_quarters_visited = true
+	add_log("My quarters. Something's sitting on the desk — better take a look.")
+	advance_air_quest()
 
 func unlock_elevator() -> void:
 	if elevator_repaired:
@@ -223,12 +329,10 @@ func _next_air_quest_step() -> String:
 		return QUEST_TALK_SCOTT
 	if not met_rush:
 		return QUEST_FIND_RUSH
+	if not eli_quarters_visited:
+		return QUEST_FIND_REST
 	if not kino_acquired:
 		return QUEST_FIND_KINO
-	if not elevator_repaired:
-		return QUEST_RESTORE_POWER
-	if not quarters_found:
-		return QUEST_FIND_QUARTERS
 	prologue_complete = true
 	if not air_crisis_started:
 		return QUEST_SLEEP
@@ -260,14 +364,16 @@ func _objective_for_step(step: String) -> String:
 			return "Talk to Lt Scott in the Gate Room."
 		QUEST_FIND_RUSH:
 			return "Find Dr Rush in the Control Interface Room."
+		QUEST_FIND_REST:
+			return "Find a place to rest. Try your quarters."
 		QUEST_FIND_KINO:
-			return "Find the Kino Remote in Eli's Quarters, just past Control."
+			return "There's a strange device on your desk. Take a look."
 		QUEST_RESTORE_POWER:
 			return "Restore main power at the Engineering Bay (south of cr corridor)."
 		QUEST_FIND_QUARTERS:
 			return "Take the elevator to the upper deck: find Crew Quarters Alpha."
 		QUEST_SLEEP:
-			return "Return to Crew Quarters Alpha and sleep."
+			return "Get some rest. Lay down on the bed in your quarters."
 		QUEST_DIAGNOSE_LIFE_SUPPORT:
 			return "Diagnose failing life support at the Gate Room console."
 		QUEST_SEAL_BREACH:
@@ -292,6 +398,24 @@ func _objective_for_step(step: String) -> String:
 func quest_step_label(step: String = "") -> String:
 	var key: String = quest_step if step == "" else step
 	return String(QUEST_LABELS.get(key, key))
+
+
+# Anchor data for the in-world quest diamond and the Kino Remote target
+# marker. Returns {} when the active step has no on-ship target (offworld
+# planet steps + completion).
+func quest_target(step: String = "") -> Dictionary:
+	var key: String = quest_step if step == "" else step
+	var entry: Variant = QUEST_TARGETS.get(key, null)
+	if entry is Dictionary:
+		return entry
+	return {}
+
+
+func set_current_room(room_id: String) -> void:
+	if room_id == "" or room_id == current_room_id:
+		return
+	current_room_id = room_id
+	current_room_changed.emit(room_id)
 
 func set_objective(text: String) -> void:
 	current_objective = text
@@ -331,13 +455,13 @@ func spend_resource(type: String, amount: int, reason: String = "") -> bool:
 	return true
 
 func can_start_air_crisis() -> bool:
-	return met_rush and quarters_found and kino_acquired and not air_crisis_started
+	return met_rush and eli_quarters_visited and kino_acquired and not air_crisis_started
 
 func start_air_crisis() -> void:
 	if air_crisis_started or episode_complete:
 		return
 	if not can_start_air_crisis():
-		add_log("Sleep can wait. Rush, quarters, and the Kino Remote come first.")
+		add_log("Inspect the strange device on your desk first.")
 		advance_air_quest()
 		return
 	prologue_complete = true
@@ -346,6 +470,11 @@ func start_air_crisis() -> void:
 	oxygen_changed.emit(oxygen)
 	add_log("Destiny drops out of FTL. Alarms report rising CO2 in life support.")
 	dialogue_shown.emit("Eli", "That's not a normal alarm. The air just got worse.")
+	# Emergency override flips the inter-deck elevator online so the player can
+	# reach Hydroponics on the upper floor without first solving the power
+	# console. (That console used to gate the prologue; now it's free flavor.)
+	if not elevator_repaired:
+		unlock_elevator()
 	advance_air_quest()
 
 func diagnose_life_support() -> void:
@@ -483,9 +612,12 @@ func save_game(scene_path: String, pos: Vector3, yaw: float) -> void:
 		"quest_step": quest_step,
 		"kino_acquired": kino_acquired,
 		"quarters_found": quarters_found,
+		"eli_quarters_visited": eli_quarters_visited,
 		"elevator_repaired": elevator_repaired,
 		"rooms_discovered": rooms_discovered,
+		"doors_traversed": doors_traversed,
 		"breaches_sealed": breaches_sealed,
+		"current_room_id": current_room_id,
 		"objective": current_objective,
 		"episode_complete": episode_complete,
 		"log_entries": log_entries,
@@ -535,8 +667,10 @@ func load_and_resume() -> bool:
 	quest_step = String(data.get("quest_step", QUEST_TALK_SCOTT))
 	kino_acquired = bool(data.get("kino_acquired", false))
 	quarters_found = bool(data.get("quarters_found", false))
+	eli_quarters_visited = bool(data.get("eli_quarters_visited", false))
 	elevator_repaired = bool(data.get("elevator_repaired", false))
 	episode_complete = bool(data.get("episode_complete", false))
+	current_room_id = String(data.get("current_room_id", ""))
 	current_objective = String(data.get("objective", current_objective))
 	met_scott = bool(data.get("met_scott", false))
 	met_rush = bool(data.get("met_rush", false))
@@ -558,6 +692,9 @@ func load_and_resume() -> bool:
 	rooms_discovered.clear()
 	for r in data.get("rooms_discovered", []):
 		rooms_discovered.append(String(r))
+	doors_traversed.clear()
+	for d in data.get("doors_traversed", []):
+		doors_traversed.append(String(d))
 	breaches_sealed.clear()
 	for b in data.get("breaches_sealed", []):
 		breaches_sealed.append(String(b))
@@ -570,9 +707,16 @@ func load_and_resume() -> bool:
 	oxygen_changed.emit(oxygen)
 	objective_changed.emit(current_objective)
 	kino_changed.emit(kino_acquired)
-	# Stage the spawn override for the next scene load.
-	var pos_arr: Array = data.get("pos", [0.0, 0.0, 0.0])
-	pending_spawn_position = Vector3(float(pos_arr[0]), float(pos_arr[1]), float(pos_arr[2]))
+	# Stage the spawn override for the next scene load. Defensive against
+	# malformed/edited saves — if the "pos" entry isn't a 3-element array,
+	# fall back to gate-room origin rather than crashing on out-of-bounds.
+	var raw_pos: Variant = data.get("pos", null)
+	if raw_pos is Array and (raw_pos as Array).size() == 3:
+		var pos_arr: Array = raw_pos
+		pending_spawn_position = Vector3(float(pos_arr[0]), float(pos_arr[1]), float(pos_arr[2]))
+	else:
+		push_warning("save.json: 'pos' missing or malformed, defaulting to origin")
+		pending_spawn_position = Vector3.ZERO
 	pending_spawn_yaw = float(data.get("yaw", 0.0))
 	skip_arrival_cinematic = true
 	var scene: String = String(data.get("scene", "res://scenes/gate_room.tscn"))

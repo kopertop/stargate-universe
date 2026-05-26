@@ -17,7 +17,7 @@ var _naming: bool = false
 const KINO_DIALOG_TREE: Array = [
 	{
 		"speaker": "Eli Wallace",
-		"text": "Whoa — wait. What is that? It was just sitting on the nightstand. Looks Ancient. Familiar too, somehow.",
+		"text": "Hey — what's that over there? On the desk. I don't remember putting that down. Looks Ancient.",
 		"choices": [
 			{"text": "Pick it up.", "next": 1},
 			{"text": "Leave it for now.", "next": "exit"},
@@ -25,17 +25,25 @@ const KINO_DIALOG_TREE: Array = [
 	},
 	{
 		"speaker": "Eli Wallace",
-		"text": "It's a remote — and these spheres in the cradle, they're little floating cameras. They follow the remote. I've seen design notes like this on Atlantis dumps.",
+		"text": "Okay. It's a remote of some kind — controls down the side, little oval screen. And… wait. Something just lifted off the cradle. A tiny sphere. It's hovering. A flying camera ball.",
 		"choices": [
-			{"text": "Does it have a name?", "next": 2},
+			{"text": "A flying camera ball?", "next": 2},
+			{"text": "Set it back down.", "next": "exit"},
+		],
+	},
+	{
+		"speaker": "Eli Wallace",
+		"text": "Yeah — it tracks the remote. I can fly it around, look through it. It's a recon drone. I should give these things a name before someone else does and ruins it.",
+		"choices": [
+			{"text": "What are you going to call them?", "next": 3},
 			{"text": "Bag it up.", "next": "exit"},
 		],
 	},
 	{
 		"speaker": "Eli Wallace",
-		"text": "Not yet. But… there's a word for these in Russian — 'kino' — it means cinema, film. Old word. The first kinos in cinema history were just silent footage. Feels right for what these do. I'm calling them Kinos.",
+		"text": "'Kino.' Russian word — means cinema. The first kinos were silent footage, just an eye watching. Feels right. Kino it is. I'm taking them with me.",
 		"choices": [
-			{"text": "Kino it is. Take them.", "next": "exit"},
+			{"text": "Kino it is.", "next": "exit"},
 		],
 	},
 ]

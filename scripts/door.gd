@@ -17,6 +17,10 @@ extends Interactable
 # with this id stashed in GameState.next_room_id. target_scene remains for
 # hand-authored scenes (gate_room.tscn).
 @export var target_room_id: String = ""
+# Room this door lives IN (the source side of the edge). Set by room.gd /
+# gate_room.gd when the door is stamped. Used to mark the door as traversed
+# in GameState so the Kino map can dim its pip.
+@export var source_room_id: String = ""
 @export var target_spawn: String = ""
 @export var locked: bool = false
 @export var lock_message: String = "LOCKED — power is offline."
@@ -156,6 +160,8 @@ func _transition(by: Node) -> void:
 # gate_room is the lone artisan scene — every other room_id routes through
 # the data-driven scenes/room.tscn. target_scene is the legacy fallback.
 func _route_to_destination() -> void:
+	if source_room_id != "" and target_room_id != "":
+		GameState.mark_door_traversed(source_room_id, target_room_id)
 	if target_room_id != "":
 		if target_room_id == "gate_room":
 			SceneRouter.change_to("res://scenes/gate_room.tscn", target_spawn)

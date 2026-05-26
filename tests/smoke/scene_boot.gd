@@ -353,7 +353,7 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 		"hydroponics":
 			_game_state.set("met_scott", true)
 			_game_state.set("met_rush", true)
-			_game_state.set("quarters_found", true)
+			_game_state.set("eli_quarters_visited", true)
 			_game_state.set("kino_acquired", true)
 			_game_state.call("advance_air_quest")
 			_game_state.call("start_air_crisis")

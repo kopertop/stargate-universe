@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Smoke + flow + playthrough test runner for Stargate Universe (Godot 4.6).
-# Validates the E1 vertical slice at three levels:
+# Validates the E1 vertical slice at four levels:
 #   1. scene_boot   — every gameplay scene loads with critical nodes intact
 #   2. e1_flow      — GameState mutators + win-condition logic
-#   3. playthrough  — real cross-scene transitions via SceneRouter +
+#   3. quest        — quest-tracker BFS + GameState.quest_target + Kino route
+#   4. playthrough  — real cross-scene transitions via SceneRouter +
 #                     Interactable.interact() pipelines, end-to-end
 #
-# Usage: tests/run.sh [scene|flow|playthrough|all]   (default: all)
+# Usage: tests/run.sh [scene|flow|quest|playthrough|all]   (default: all)
 
 set -u
 cd "$(dirname "$0")/.."
@@ -25,9 +26,11 @@ fi
 MODE="${1:-all}"
 RAN_SCENE=0
 RAN_FLOW=0
+RAN_QUEST=0
 RAN_PLAY=0
 RC_SCENE=0
 RC_FLOW=0
+RC_QUEST=0
 RC_PLAY=0
 
 # Run a SceneTree-extending script (synchronous, no autoloads).
@@ -76,10 +79,43 @@ if [[ "$MODE" == "flow" || "$MODE" == "all" ]]; then
 	RAN_FLOW=1
 fi
 
+if [[ "$MODE" == "quest" || "$MODE" == "all" ]]; then
+	run_script_test "quest_waypoint" "res://tests/smoke/quest_waypoint.gd"
+	RC_QUEST=$?
+	RAN_QUEST=1
+fi
+
 if [[ "$MODE" == "playthrough" || "$MODE" == "all" ]]; then
 	run_scene_test "e1_playthrough" "res://tests/playthrough/playthrough.tscn"
 	RC_PLAY=$?
 	RAN_PLAY=1
+fi
+
+# Kino map visual captures — produces 4 PNGs under screenshots/result/ that
+# can be eyeballed against the concept image (design/concept-art/sgu-map.png).
+# Not part of `all` because it requires a headed Godot; opt-in via `visual`.
+if [[ "$MODE" == "visual" || "$MODE" == "kino-map" ]]; then
+	echo
+	echo "==============================="
+	echo " kino_map visual captures"
+	echo "==============================="
+	mkdir -p screenshots/result
+	RC_VISUAL=0
+	for s in fog partial locked full; do
+		out_user="user://kino_map_${s}.png"
+		"$GODOT_BIN" --rendering-driver opengl3 --quit-after 240 \
+			res://scenes/title.tscn ++ kino_map_capture "scenario=${s}" "out=${out_user}" \
+			2>&1 | grep -E "(\[kino_map_capture\]|ERROR.*kino)"
+		# Find the abs path Godot resolved to (user:// → app_userdata).
+		abs="$HOME/Library/Application Support/Godot/app_userdata/Stargate Universe/kino_map_${s}.png"
+		if [[ -f "$abs" ]]; then
+			cp "$abs" "screenshots/result/kino_map_${s}.png"
+			echo "  ✓ screenshots/result/kino_map_${s}.png"
+		else
+			echo "  ✗ kino_map_${s} capture missing"
+			RC_VISUAL=1
+		fi
+	done
 fi
 
 echo
@@ -88,9 +124,10 @@ echo " final"
 echo "==============================="
 [[ $RAN_SCENE -eq 1 ]] && echo "scene_boot:          $([[ $RC_SCENE -eq 0 ]] && echo PASS || echo "FAIL ($RC_SCENE)")" || echo "scene_boot:          SKIPPED"
 [[ $RAN_FLOW  -eq 1 ]] && echo "e1_flow:             $([[ $RC_FLOW  -eq 0 ]] && echo PASS || echo "FAIL ($RC_FLOW)")"  || echo "e1_flow:             SKIPPED"
+[[ $RAN_QUEST -eq 1 ]] && echo "quest_waypoint:      $([[ $RC_QUEST -eq 0 ]] && echo PASS || echo "FAIL ($RC_QUEST)")" || echo "quest_waypoint:      SKIPPED"
 [[ $RAN_PLAY  -eq 1 ]] && echo "e1_playthrough:      $([[ $RC_PLAY  -eq 0 ]] && echo PASS || echo "FAIL ($RC_PLAY)")"  || echo "e1_playthrough:      SKIPPED"
 
-if [[ ( $RAN_SCENE -eq 1 && $RC_SCENE -ne 0 ) || ( $RAN_FLOW -eq 1 && $RC_FLOW -ne 0 ) || ( $RAN_PLAY -eq 1 && $RC_PLAY -ne 0 ) ]]; then
+if [[ ( $RAN_SCENE -eq 1 && $RC_SCENE -ne 0 ) || ( $RAN_FLOW -eq 1 && $RC_FLOW -ne 0 ) || ( $RAN_QUEST -eq 1 && $RC_QUEST -ne 0 ) || ( $RAN_PLAY -eq 1 && $RC_PLAY -ne 0 ) ]]; then
 	exit 1
 fi
 exit 0

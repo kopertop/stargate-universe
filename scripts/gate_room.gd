@@ -18,6 +18,9 @@ const FLOOR_SCENE: PackedScene = preload("res://models/sci-fi/space-station/floo
 const GATE_CONSOLE_SCRIPT: Script = preload("res://scripts/gate_console.gd")
 const NPC_SCRIPT: Script = preload("res://scripts/npc.gd")
 const PLANET_GATE_SCRIPT: Script = preload("res://scripts/planet_gate.gd")
+const QuestWaypointScript: Script = preload("res://scripts/quest_waypoint.gd")
+const QUEST_WAYPOINT_ANCHOR_HEIGHT: float = 2.4
+const QUEST_WAYPOINT_DOOR_HEIGHT: float = 1.8
 
 # Railings are tall enough that the player's 0.6 m jump (jump² / 2·g ≈ 0.6 m
 # given the player's tunables) can't clear them. Combined with the per-rail
@@ -55,6 +58,7 @@ var _from_corridor_marker: Marker3D
 var _from_east_connector_marker: Marker3D
 var _gate_portal: Area3D
 var _arrival_running: bool = false
+var _quest_waypoint: Node3D = null
 
 func _ready() -> void:
 	# Tell the save system this is a real gameplay scene.
@@ -84,6 +88,12 @@ func _ready() -> void:
 	# Discover + run arrival branch. If resuming from save, skip the cinematic.
 	var first_visit: bool = not GameState.rooms_discovered.has("gate_room")
 	GameState.discover_room("gate_room", "Gate Room")
+	GameState.set_current_room("gate_room")
+
+	# Quest diamond — same pattern as room.gd. Refresh on objective_changed.
+	_refresh_quest_waypoint()
+	if not GameState.objective_changed.is_connected(_on_quest_objective_changed):
+		GameState.objective_changed.connect(_on_quest_objective_changed)
 
 	if GameState.skip_arrival_cinematic and GameState.pending_spawn_position != null:
 		# Continue-from-save: place player at saved position with their facing.
@@ -191,6 +201,80 @@ func _refresh_lime_gate_state() -> void:
 func _start_ambient() -> void:
 	if _ambient_sfx != null and not _ambient_sfx.playing:
 		_ambient_sfx.play()
+
+# ----- quest waypoint --------------------------------------------------------
+
+func _on_quest_objective_changed(_text: String) -> void:
+	_refresh_quest_waypoint()
+
+
+# Same pattern as room.gd::_refresh_quest_waypoint, adapted for the hand-
+# authored gate room: anchors are direct children of self (LtScott, the two
+# console holders), the cross-room target uses the ExitDoor instance defined
+# in gate_room.tscn (target_room_id = "stargate_corridor_east_connector").
+func _refresh_quest_waypoint() -> void:
+	var target: Dictionary = GameState.quest_target()
+	var target_room: String = String(target.get("room", ""))
+	var anchor_name: String = String(target.get("anchor", ""))
+
+	if target_room == "":
+		_destroy_quest_waypoint()
+		return
+
+	var pos: Vector3 = Vector3.ZERO
+	var placed: bool = false
+
+	if target_room == "gate_room":
+		if anchor_name == "":
+			pos = Vector3(0.0, QUEST_WAYPOINT_ANCHOR_HEIGHT, 0.0)
+			placed = true
+		else:
+			var anchor: Node = get_node_or_null(anchor_name)
+			# The two console holders (GateControlConsole, FTLConsole) are
+			# children of $World, not self. Look there as a fallback.
+			if anchor == null and _world != null:
+				anchor = _world.get_node_or_null(anchor_name)
+			if anchor is Node3D:
+				var n3: Node3D = anchor
+				pos = n3.global_position + Vector3(0.0, QUEST_WAYPOINT_ANCHOR_HEIGHT, 0.0)
+				placed = true
+	else:
+		var next_hop: String = ShipLayout.next_room_toward("gate_room", target_room)
+		if next_hop != "":
+			var door: Node3D = _find_door_to(next_hop)
+			if door != null:
+				pos = door.global_position + Vector3(0.0, QUEST_WAYPOINT_DOOR_HEIGHT, 0.0)
+				placed = true
+
+	if not placed:
+		_destroy_quest_waypoint()
+		return
+
+	if _quest_waypoint == null or not is_instance_valid(_quest_waypoint):
+		_quest_waypoint = Node3D.new()
+		_quest_waypoint.set_script(QuestWaypointScript)
+		_quest_waypoint.name = "QuestWaypoint"
+		_world.add_child(_quest_waypoint)
+	_quest_waypoint.global_position = pos
+	if _quest_waypoint.has_method("set_target_position"):
+		_quest_waypoint.call("set_target_position", pos)
+
+
+func _destroy_quest_waypoint() -> void:
+	if _quest_waypoint != null and is_instance_valid(_quest_waypoint):
+		_quest_waypoint.queue_free()
+	_quest_waypoint = null
+
+
+func _find_door_to(target_id: String) -> Node3D:
+	for c in get_children():
+		if not (c is Node3D):
+			continue
+		var n: Node3D = c
+		var prop: Variant = n.get("target_room_id")
+		if prop != null and String(prop) == target_id:
+			return n
+	return null
 
 # ----- procedural geometry ---------------------------------------------------
 
@@ -1033,11 +1117,11 @@ func _build_consoles() -> void:
 		var holder: Node3D = Node3D.new()
 		holder.name = spec["name"]
 		holder.position = Vector3(spec["x"], 0.0, z_console)
-		# Operator stands on +Z side (player approaches from the gate at +Z,
-		# walks up between gate and console). Shared mesh's authored operator
-		# direction is +Z so no yaw needed — same convention as the original
-		# hand-built console at this position.
-		holder.rotation = Vector3.ZERO
+		# Yaw 180° flips the shared mesh so its operator-controls face the
+		# player who's approaching from -Z (gate-room arrival side). Without
+		# this the chunky back of the console points at the player and the
+		# controls are reachable only by walking around the unit.
+		holder.rotation = Vector3(0.0, PI, 0.0)
 		_world.add_child(holder)
 		RoomBuilder.attach_console_mesh(holder)
 

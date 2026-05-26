@@ -22,6 +22,15 @@ signal dialogue_shown(character_name: String, line: String)
 # Fired by npc.gd when a choice-tree dialog should open. The HUD listens
 # and shows the full-screen DialogScreen targeting `npc`.
 signal kino_closed()
+# Fired when the player walks through a door for the first time. Drives the
+# Kino map's door-pip dim-on-traverse and survives save/load via
+# doors_traversed.
+signal door_traversed(key: String)
+# Placeholder status readouts shown on the Kino map HUD chrome. Future power
+# / hull systems will fire these — defaults render as "OFFLINE" until any
+# value is published.
+signal power_changed(value: float)
+signal hull_changed(value: float)
 signal dialog_started(npc: Node3D, tree: Array)
 # Fired by dialog_screen.gd::close() — lets one-shot triggers (e.g.
 # kino_pickup) await a dialog's natural end without having to track the
@@ -126,7 +135,19 @@ var eli_quarters_visited: bool = false
 # without power so the Kino Remote is still findable first.
 var elevator_repaired: bool = false
 var rooms_discovered: Array[String] = []
+# Stable keys ("min_room_id|max_room_id") of doors the player has walked
+# through. Both directions resolve to the same key via door_key(). Drives the
+# Kino map's bright-vs-dim pip styling and survives save/load.
+var doors_traversed: Array[String] = []
 var breaches_sealed: Array[String] = []
+# Placeholder status readouts for the Kino map HUD chrome. The underlying
+# systems (power grid, hull integrity) haven't been built yet — these stay at
+# their default sentinels until something publishes a real value, in which
+# case the HUD switches from "OFFLINE" to a percentage. Wire up later by
+# setting `power_percent` (and emitting power_changed) from the power system.
+const STATUS_OFFLINE: float = -1.0
+var power_percent: float = STATUS_OFFLINE
+var hull_percent: float = STATUS_OFFLINE
 # Last room the player physically entered. Set by room.gd / gate_room.gd in
 # _ready() and emitted via current_room_changed. Drives the Kino Remote map
 # player-marker and the quest waypoint's "which door points toward the
@@ -162,7 +183,10 @@ func reset() -> void:
 	eli_quarters_visited = false
 	elevator_repaired = false
 	rooms_discovered.clear()
+	doors_traversed.clear()
 	breaches_sealed.clear()
+	power_percent = STATUS_OFFLINE
+	hull_percent = STATUS_OFFLINE
 	current_room_id = ""
 	episode_complete = false
 	log_entries.clear()
@@ -209,6 +233,43 @@ func discover_room(room_id: String, display_name: String = "") -> void:
 	room_discovered.emit(room_id)
 	if display_name != "":
 		add_log("Discovered: " + display_name)
+
+
+# Stable, direction-agnostic key for a door connecting two rooms. Sorted so
+# the same door has the same id regardless of which side you walk through.
+static func door_key(a: String, b: String) -> String:
+	if a <= b:
+		return "%s|%s" % [a, b]
+	return "%s|%s" % [b, a]
+
+
+# Record that the player has walked through the door between rooms a and b.
+# Idempotent — re-traversing the same door is a no-op. Emits door_traversed
+# so the open Kino map can dim the pip in real time.
+func mark_door_traversed(a: String, b: String) -> void:
+	if a == "" or b == "":
+		return
+	var key: String = door_key(a, b)
+	if doors_traversed.has(key):
+		return
+	doors_traversed.append(key)
+	door_traversed.emit(key)
+
+
+func door_was_traversed(a: String, b: String) -> bool:
+	return doors_traversed.has(door_key(a, b))
+
+
+# Publish a power-reading. Future power system calls this; the Kino map HUD
+# listens and switches from "OFFLINE" to "POWER xx%". -1 reverts to OFFLINE.
+func set_power_percent(value: float) -> void:
+	power_percent = value
+	power_changed.emit(value)
+
+
+func set_hull_percent(value: float) -> void:
+	hull_percent = value
+	hull_changed.emit(value)
 
 func acquire_kino() -> void:
 	if kino_acquired:
@@ -554,6 +615,7 @@ func save_game(scene_path: String, pos: Vector3, yaw: float) -> void:
 		"eli_quarters_visited": eli_quarters_visited,
 		"elevator_repaired": elevator_repaired,
 		"rooms_discovered": rooms_discovered,
+		"doors_traversed": doors_traversed,
 		"breaches_sealed": breaches_sealed,
 		"current_room_id": current_room_id,
 		"objective": current_objective,
@@ -630,6 +692,9 @@ func load_and_resume() -> bool:
 	rooms_discovered.clear()
 	for r in data.get("rooms_discovered", []):
 		rooms_discovered.append(String(r))
+	doors_traversed.clear()
+	for d in data.get("doors_traversed", []):
+		doors_traversed.append(String(d))
 	breaches_sealed.clear()
 	for b in data.get("breaches_sealed", []):
 		breaches_sealed.append(String(b))

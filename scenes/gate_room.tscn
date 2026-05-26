@@ -26,6 +26,7 @@ environment = ExtResource("1_env")
 [node name="ExitDoor" parent="." groups=["interactable"] instance=ExtResource("8_door")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -16)
 target_room_id = "stargate_corridor_east_connector"
+source_room_id = "gate_room"
 target_spawn = "FromGateRoom"
 plaque_label = "East Corridor"
 open_prompt = "Step into the corridor"

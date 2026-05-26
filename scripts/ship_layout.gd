@@ -26,7 +26,22 @@ var _loaded: bool = false
 # Built from data/room_connections.json with reverse edges mirrored in (the
 # JSON only declares each connection once, like room.gd::_setup_doors expects).
 var _adjacency: Dictionary = {}
+# Direction-tagged edges keyed by room_id. Each entry is an Array of
+# Dictionaries `{ "to": String, "dir": String, "plaque": String }`. Reverse
+# edges are mirrored with the direction flipped (+x ↔ -x, +z ↔ -z) so the
+# Kino map can place pips on the correct wall from either side.
+var _outgoing_edges: Dictionary = {}
 var _connections_loaded: bool = false
+
+
+# Flip an "axis-aligned" direction string for reverse-edge mirroring.
+static func _flip_dir(d: String) -> String:
+	match d:
+		"+x": return "-x"
+		"-x": return "+x"
+		"+z": return "-z"
+		"-z": return "+z"
+		_:    return d
 
 
 func _ready() -> void:
@@ -115,11 +130,16 @@ func _load_connections() -> void:
 		for edge in edges:
 			if not (edge is Dictionary):
 				continue
-			var to_id: String = String((edge as Dictionary).get("to", ""))
+			var edge_dict: Dictionary = edge
+			var to_id: String = String(edge_dict.get("to", ""))
 			if to_id == "":
 				continue
+			var dir: String = String(edge_dict.get("dir", ""))
+			var plaque: String = String(edge_dict.get("plaque", ""))
 			_add_edge(String(from_id), to_id)
 			_add_edge(to_id, String(from_id))
+			_add_directed_edge(String(from_id), to_id, dir, plaque)
+			_add_directed_edge(to_id, String(from_id), _flip_dir(dir), plaque)
 	_connections_loaded = true
 
 
@@ -129,6 +149,26 @@ func _add_edge(a: String, b: String) -> void:
 	var neighbours: Array = _adjacency[a]
 	if not neighbours.has(b):
 		neighbours.append(b)
+
+
+# Stores ONE direction-tagged edge. Skips duplicates (same to + same dir).
+func _add_directed_edge(from_id: String, to_id: String, dir: String, plaque: String) -> void:
+	if not _outgoing_edges.has(from_id):
+		_outgoing_edges[from_id] = []
+	var arr: Array = _outgoing_edges[from_id]
+	for existing in arr:
+		var e: Dictionary = existing
+		if String(e.get("to", "")) == to_id and String(e.get("dir", "")) == dir:
+			return
+	arr.append({"to": to_id, "dir": dir, "plaque": plaque})
+
+
+# Direction-aware outgoing edges of `id` — used by the Kino map to place door
+# pips on the correct wall. Each entry: { "to": String, "dir": String,
+# "plaque": String }. Returns empty array for unknown ids.
+func outgoing_edges(id: String) -> Array:
+	_load_connections()
+	return (_outgoing_edges.get(id, []) as Array).duplicate()
 
 
 # Neighbours of `id`. Returns empty array for unknown ids.

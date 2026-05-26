@@ -32,6 +32,7 @@ KinoRemote="*res://scripts/kino_remote.gd"
 EpisodeWrap="*res://scripts/episode_wrap.gd"
 Settings="*res://scripts/settings.gd"
 ShipLayout="*res://scripts/ship_layout.gd"
+KinoMapCapture="*res://scripts/kino_map_capture.gd"
 
 [display]
 

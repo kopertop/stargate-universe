@@ -91,6 +91,33 @@ if [[ "$MODE" == "playthrough" || "$MODE" == "all" ]]; then
 	RAN_PLAY=1
 fi
 
+# Kino map visual captures — produces 4 PNGs under screenshots/result/ that
+# can be eyeballed against the concept image (design/concept-art/sgu-map.png).
+# Not part of `all` because it requires a headed Godot; opt-in via `visual`.
+if [[ "$MODE" == "visual" || "$MODE" == "kino-map" ]]; then
+	echo
+	echo "==============================="
+	echo " kino_map visual captures"
+	echo "==============================="
+	mkdir -p screenshots/result
+	RC_VISUAL=0
+	for s in fog partial locked full; do
+		out_user="user://kino_map_${s}.png"
+		"$GODOT_BIN" --rendering-driver opengl3 --quit-after 240 \
+			res://scenes/title.tscn ++ kino_map_capture "scenario=${s}" "out=${out_user}" \
+			2>&1 | grep -E "(\[kino_map_capture\]|ERROR.*kino)"
+		# Find the abs path Godot resolved to (user:// → app_userdata).
+		abs="$HOME/Library/Application Support/Godot/app_userdata/Stargate Universe/kino_map_${s}.png"
+		if [[ -f "$abs" ]]; then
+			cp "$abs" "screenshots/result/kino_map_${s}.png"
+			echo "  ✓ screenshots/result/kino_map_${s}.png"
+		else
+			echo "  ✗ kino_map_${s} capture missing"
+			RC_VISUAL=1
+		fi
+	done
+fi
+
 echo
 echo "==============================="
 echo " final"

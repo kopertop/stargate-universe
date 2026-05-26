@@ -94,6 +94,15 @@ func _initialize() -> void:
 	gs.mark_quarters_found()
 	_expect(gs.quarters_found, "air: mark_quarters_found sets flag")
 
+	# Door-traversal state — drives the Kino map's pip dim-on-traverse.
+	_expect(gs.doors_traversed.is_empty(), "doors: traversed set starts empty")
+	_expect(gs.door_key("a", "b") == gs.door_key("b", "a"), "doors: door_key is direction-agnostic")
+	gs.mark_door_traversed("gate_room", "east_corridor")
+	_expect(gs.door_was_traversed("gate_room", "east_corridor"), "doors: mark_door_traversed records key")
+	_expect(gs.door_was_traversed("east_corridor", "gate_room"), "doors: traversal lookup symmetric")
+	gs.mark_door_traversed("gate_room", "east_corridor")
+	_expect(gs.doors_traversed.size() == 1, "doors: mark_door_traversed is idempotent")
+
 	gs.start_air_crisis()
 	_expect(gs.air_crisis_started, "air: sleep starts crisis")
 	_expect(gs.quest_step == gs.QUEST_DIAGNOSE_LIFE_SUPPORT, "air: crisis -> diagnose life support")
@@ -160,6 +169,7 @@ func _initialize() -> void:
 	_expect(gs.quarters_found == false, "mission: reset clears quarters")
 	_expect(gs.eli_quarters_visited == false, "mission: reset clears eli_quarters_visited")
 	_expect(gs.elevator_repaired == false, "mission: reset clears elevator_repaired")
+	_expect(gs.doors_traversed.is_empty(), "mission: reset clears doors_traversed")
 	_expect(gs.breaches_sealed.is_empty(), "mission: reset clears breaches")
 	_expect(gs.met_scott == false, "mission: reset clears met_scott")
 	_expect(gs.met_rush == false, "mission: reset clears met_rush")

@@ -169,6 +169,7 @@ func _stamp_door(edge: Dictionary, half_x: float, half_z: float) -> void:
 	door.position = pos
 	door.rotation.y = face_yaw
 	door.set("target_room_id", target_id)
+	door.set("source_room_id", room_id)
 	door.set("target_spawn", outgoing_spawn)
 	door.set("plaque_label", plaque)
 	door.set("open_prompt", "Step through to %s" % plaque)

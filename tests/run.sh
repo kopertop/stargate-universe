@@ -7,7 +7,7 @@
 #   4. playthrough  — real cross-scene transitions via SceneRouter +
 #                     Interactable.interact() pipelines, end-to-end
 #
-# Usage: tests/run.sh [lint|scene|flow|quest|playthrough|all]   (default: all)
+# Usage: tests/run.sh [lint|scene|flow|quest|playthrough|resume|all]   (default: all)
 #
 # Pre-commit hook: .githooks/pre-commit invokes the lint subset via
 # tests/lint/check_save_registration.sh --staged. Install once with:
@@ -33,11 +33,13 @@ RAN_FLOW=0
 RAN_QUEST=0
 RAN_PLAY=0
 RAN_LINT=0
+RAN_RESUME=0
 RC_SCENE=0
 RC_FLOW=0
 RC_QUEST=0
 RC_PLAY=0
 RC_LINT=0
+RC_RESUME=0
 
 # Run a SceneTree-extending script (synchronous, no autoloads).
 #
@@ -107,6 +109,12 @@ if [[ "$MODE" == "playthrough" || "$MODE" == "all" ]]; then
 	RAN_PLAY=1
 fi
 
+if [[ "$MODE" == "resume" || "$MODE" == "all" ]]; then
+	run_scene_test "resume_probe" "res://tests/resume/probe.tscn"
+	RC_RESUME=$?
+	RAN_RESUME=1
+fi
+
 # Kino map visual captures — produces 4 PNGs under screenshots/result/ that
 # can be eyeballed against the concept image (design/concept-art/sgu-map.png).
 # Not part of `all` because it requires a headed Godot; opt-in via `visual`.
@@ -143,8 +151,9 @@ echo "==============================="
 [[ $RAN_FLOW  -eq 1 ]] && echo "e1_flow:             $([[ $RC_FLOW  -eq 0 ]] && echo PASS || echo "FAIL ($RC_FLOW)")"  || echo "e1_flow:             SKIPPED"
 [[ $RAN_QUEST -eq 1 ]] && echo "quest_waypoint:      $([[ $RC_QUEST -eq 0 ]] && echo PASS || echo "FAIL ($RC_QUEST)")" || echo "quest_waypoint:      SKIPPED"
 [[ $RAN_PLAY  -eq 1 ]] && echo "e1_playthrough:      $([[ $RC_PLAY  -eq 0 ]] && echo PASS || echo "FAIL ($RC_PLAY)")"  || echo "e1_playthrough:      SKIPPED"
+[[ $RAN_RESUME -eq 1 ]] && echo "resume_probe:        $([[ $RC_RESUME -eq 0 ]] && echo PASS || echo "FAIL ($RC_RESUME)")" || echo "resume_probe:        SKIPPED"
 
-if [[ ( $RAN_LINT -eq 1 && $RC_LINT -ne 0 ) || ( $RAN_SCENE -eq 1 && $RC_SCENE -ne 0 ) || ( $RAN_FLOW -eq 1 && $RC_FLOW -ne 0 ) || ( $RAN_QUEST -eq 1 && $RC_QUEST -ne 0 ) || ( $RAN_PLAY -eq 1 && $RC_PLAY -ne 0 ) ]]; then
+if [[ ( $RAN_LINT -eq 1 && $RC_LINT -ne 0 ) || ( $RAN_SCENE -eq 1 && $RC_SCENE -ne 0 ) || ( $RAN_FLOW -eq 1 && $RC_FLOW -ne 0 ) || ( $RAN_QUEST -eq 1 && $RC_QUEST -ne 0 ) || ( $RAN_PLAY -eq 1 && $RC_PLAY -ne 0 ) || ( $RAN_RESUME -eq 1 && $RC_RESUME -ne 0 ) ]]; then
 	exit 1
 fi
 exit 0

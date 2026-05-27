@@ -63,11 +63,15 @@ func _install_autosave_hooks() -> void:
 	if _autosave_hooks_ready:
 		return
 	_autosave_hooks_ready = true
-	# Autosave on the two beats the design calls for: each quest-step
-	# advance and each room transition. quest_step_changed (not
-	# objective_changed) is the precise trigger — it fires once per actual
-	# step change, avoiding redundant writes from custom-objective updates.
-	GameState.quest_step_changed.connect(_on_quest_changed)
+	# Autosave on every objective update and every room transition.
+	# objective_changed is deliberately BROAD — it's a superset of
+	# quest_step_changed that also fires on sub-step beats (collecting Kino
+	# orbs, finding fuses) and planet-side objective updates. The stricter
+	# quest_step_changed trigger missed those, so progress between step
+	# boundaries was lost and resume rewound to the last step — the
+	# "starts over" report. Writes are tiny + atomic, so over-saving is
+	# cheap; losing progress is not.
+	GameState.objective_changed.connect(_on_quest_changed)
 	GameState.current_room_changed.connect(_on_room_changed)
 
 

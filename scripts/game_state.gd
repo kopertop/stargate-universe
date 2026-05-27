@@ -56,6 +56,7 @@ const QUEST_DIAGNOSE_LIFE_SUPPORT: String = "diagnose_life_support"
 const QUEST_SEAL_BREACH: String = "seal_breach"
 const QUEST_FIND_SCRUBBER: String = "find_scrubber"
 const QUEST_WAIT_FTL: String = "wait_ftl"
+const QUEST_GO_TO_GATE: String = "go_to_gate"
 const QUEST_DIAL_LIME_PLANET: String = "dial_lime_planet"
 const QUEST_MINE_LIME: String = "mine_lime"
 const QUEST_RETURN_DESTINY: String = "return_destiny"
@@ -77,6 +78,7 @@ const QUEST_LABELS: Dictionary = {
 	QUEST_SEAL_BREACH: "Seal the jammed door",
 	QUEST_FIND_SCRUBBER: "Find CO2 scrubber",
 	QUEST_WAIT_FTL: "Trigger FTL drop",
+	QUEST_GO_TO_GATE: "Get to the Gate Room",
 	QUEST_DIAL_LIME_PLANET: "Dial lime planet",
 	QUEST_MINE_LIME: "Mine lime",
 	QUEST_RETURN_DESTINY: "Return to Destiny",
@@ -102,6 +104,7 @@ const QUEST_TARGETS: Dictionary = {
 	QUEST_SEAL_BREACH: {"room": "breached_section_south", "anchor": "ShuttleObjective"},
 	QUEST_FIND_SCRUBBER: {"room": "south_corridor", "anchor": "CO2Scrubber"},
 	QUEST_WAIT_FTL: {"room": "gate_room", "anchor": "FTLConsole"},
+	QUEST_GO_TO_GATE: {"room": "gate_room", "anchor": ""},
 	QUEST_DIAL_LIME_PLANET: {"room": "gate_room", "anchor": "GateControlConsole"},
 	QUEST_MINE_LIME: {"room": "", "anchor": ""},  # offworld — hide waypoint
 	QUEST_RETURN_DESTINY: {"room": "", "anchor": ""},  # offworld — hide waypoint
@@ -185,6 +188,9 @@ var scrubber_diagnosed: bool = false
 var scrubber_repaired: bool = false
 var ftl_drop_triggered: bool = false
 var lime_planet_dialed: bool = false
+# True once the player reaches the Gate Room after Dr Brody's "the gate
+# dialed itself" call (the GO_TO_GATE beat that ends the CO2 scrubber scene).
+var reported_to_gate: bool = false
 var returned_from_lime_planet: bool = false
 var resources: Dictionary = {AIR_LIME_RESOURCE: 0}
 # E1 story milestones — set by NPC interacts (npc.gd via met_flag).
@@ -267,6 +273,7 @@ func reset() -> void:
 	scrubber_repaired = false
 	ftl_drop_triggered = false
 	lime_planet_dialed = false
+	reported_to_gate = false
 	returned_from_lime_planet = false
 	resources.clear()
 	resources[AIR_LIME_RESOURCE] = 0
@@ -432,6 +439,8 @@ func _next_air_quest_step() -> String:
 		return QUEST_FIND_SCRUBBER
 	if not ftl_drop_triggered:
 		return QUEST_WAIT_FTL
+	if not reported_to_gate:
+		return QUEST_GO_TO_GATE
 	if not lime_planet_dialed:
 		return QUEST_DIAL_LIME_PLANET
 	if not has_resource(AIR_LIME_RESOURCE, AIR_LIME_REQUIRED):
@@ -479,6 +488,8 @@ func _objective_for_step(step: String) -> String:
 			return "Fix the broken CO2 scrubber in the south corridor."
 		QUEST_WAIT_FTL:
 			return "Return to the Gate Room and trigger the FTL drop."
+		QUEST_GO_TO_GATE:
+			return "Dr Brody says the gate dialed itself. Get to the Gate Room."
 		QUEST_DIAL_LIME_PLANET:
 			return "Use Gate Control in the Gate Room to dial the lime planet."
 		QUEST_MINE_LIME:
@@ -654,6 +665,31 @@ func diagnose_scrubber() -> void:
 	add_log("CO2 scrubber is cracked. It needs lime before the cartridge bed can reset.")
 	advance_air_quest()
 
+
+# End of the Phase D scrubber scene (Rush opens the wall panel, the crew agree
+# lime is the only fix). One call collapses the old player-driven beats: the
+# scrubber is diagnosed, Destiny drops from FTL, and the gate dials a known
+# lime-bearing world on its own. The objective then becomes "get to the Gate
+# Room" (Dr Brody's call) — the Phase E entry point.
+func complete_scrubber_scene() -> void:
+	if scrubber_diagnosed:
+		return
+	scrubber_diagnosed = true
+	ftl_drop_triggered = true
+	var gc: Node = _autoload_node("GameClock")
+	ftl_drop_game_time = float(gc.get("elapsed_seconds")) if gc != null else 0.0
+	lime_planet_dialed = true
+	add_log("Rush: the scrubber's beyond salvage — it needs lime. Destiny lurches out of FTL; the gate dials a lime-bearing world on its own.")
+	advance_air_quest()
+
+
+# Player reaches the Gate Room after Brody's "the gate dialed itself" call.
+func report_to_gate() -> void:
+	if reported_to_gate:
+		return
+	reported_to_gate = true
+	advance_air_quest()
+
 func trigger_ftl_drop() -> void:
 	if not scrubber_diagnosed:
 		add_log("FTL controls stay locked until the scrubber fault is identified.")
@@ -782,6 +818,7 @@ func serialize() -> Dictionary:
 		"ftl_drop_triggered": ftl_drop_triggered,
 		"ftl_drop_game_time": ftl_drop_game_time,
 		"lime_planet_dialed": lime_planet_dialed,
+		"reported_to_gate": reported_to_gate,
 		"returned_from_lime_planet": returned_from_lime_planet,
 		"resources": resources.duplicate(true),
 		"kino_pan_x": kino_pan_x,
@@ -819,6 +856,7 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	ftl_drop_triggered = data.get("ftl_drop_triggered", false) == true
 	ftl_drop_game_time = float(data.get("ftl_drop_game_time", -1.0))
 	lime_planet_dialed = data.get("lime_planet_dialed", false) == true
+	reported_to_gate = data.get("reported_to_gate", false) == true
 	returned_from_lime_planet = data.get("returned_from_lime_planet", false) == true
 	resources.clear()
 	var loaded_resources: Variant = data.get("resources", {})

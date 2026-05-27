@@ -132,7 +132,11 @@ func _initialize() -> void:
 
 	gs.trigger_ftl_drop()
 	_expect(gs.ftl_drop_triggered, "air: FTL drop records flag")
-	_expect(gs.quest_step == gs.QUEST_DIAL_LIME_PLANET, "air: FTL -> dial lime planet")
+	_expect(gs.quest_step == gs.QUEST_GO_TO_GATE, "air: FTL -> get to gate room")
+
+	gs.report_to_gate()
+	_expect(gs.reported_to_gate, "air: reporting to gate records flag")
+	_expect(gs.quest_step == gs.QUEST_DIAL_LIME_PLANET, "air: gate room -> dial lime planet")
 
 	gs.dial_lime_planet()
 	_expect(gs.lime_planet_dialed, "air: lime planet dialed")

@@ -98,6 +98,12 @@ func _ready() -> void:
 	GameState.discover_room("gate_room", "Gate Room")
 	GameState.set_current_room("gate_room")
 
+	# Phase D → E bridge: Brody's "the gate dialed itself" call (end of the CO2
+	# scrubber scene) routes the player back here. Arriving satisfies the
+	# GO_TO_GATE objective and hands off to the Phase E gate beats.
+	if GameState.quest_step == GameState.QUEST_GO_TO_GATE:
+		GameState.report_to_gate()
+
 	# Quest diamond — same pattern as room.gd. Refresh on objective_changed.
 	_refresh_quest_waypoint()
 	if not GameState.objective_changed.is_connected(_on_quest_objective_changed):

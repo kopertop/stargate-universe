@@ -324,11 +324,17 @@ func _spawn_interactables() -> void:
 		"engineering_bay":
 			_spawn_power_console()
 		"south_corridor":
-			# Chloe is stationed here; the broken CO2 scrubber Rush flags after
-			# the breach is sealed also lives on this corridor (Hydroponics is a
-			# later-discovered upper-deck room, so the Phase D fault is here).
-			_spawn_chloe()
-			_spawn_co2_scrubber()
+			# The CO2 scrubber wall panel always exists (it's a fixture), but the
+			# corridor stays EMPTY of people until the player seals the Shuttle
+			# Dock breach below — nobody's down here while it's still venting.
+			# After the seal: Chloe is about, and during the Phase D window
+			# (breach sealed, scrubber not yet diagnosed) Rush + Park work the
+			# panel. Once diagnosed they don't respawn (they've moved on).
+			var scrubber: StaticBody3D = _spawn_co2_scrubber()
+			if not GameState.breaches_sealed.is_empty():
+				_spawn_chloe()
+				if GameState.air_crisis_started and not GameState.scrubber_diagnosed:
+					_spawn_scrubber_crew(scrubber.position)
 		"north_corridor":
 			_spawn_soldier()
 
@@ -599,61 +605,54 @@ func _spawn_power_console() -> void:
 	add_child(label)
 
 
-func _spawn_co2_scrubber() -> void:
+func _spawn_co2_scrubber() -> StaticBody3D:
 	var d_m: float = float(_room_data.get("height", 200)) * ShipLayout.SCALE
 	var half_z: float = d_m * 0.5
+	# Recessed wall panel on the -Z (north) wall, west half of the corridor:
+	# in view as the player arrives from the south_spur door (~x -5) and clear
+	# of the control-approach door (~x +34) and Chloe (~x +12). co2_scrubber.gd
+	# owns the visual (frame + sliding hatch + internals) so it can animate the
+	# hatch open during the Phase D reveal scene.
 	var scrubber: StaticBody3D = StaticBody3D.new()
 	scrubber.set_script(Co2ScrubberScript)
 	scrubber.name = "CO2Scrubber"
-	# Against the -Z (north) wall on the west half of the corridor: in view as
-	# the player arrives from the south_spur door (~x -5) and clear of both the
-	# control-approach door (~x +34) and Chloe (~x +12). Rotated 180° so its
-	# labelled face (warning strip + lime cartridges, built on the -Z side)
-	# points into the room toward the player.
-	scrubber.position = Vector3(-10.0, 0.0, -half_z + 0.6)
-	scrubber.rotation.y = PI
-
-	var cs: CollisionShape3D = CollisionShape3D.new()
-	var box: BoxShape3D = BoxShape3D.new()
-	box.size = Vector3(1.6, 1.8, 1.1)
-	cs.shape = box
-	cs.position = Vector3(0.0, 0.9, 0.0)
-	scrubber.add_child(cs)
-
-	var housing_mat: StandardMaterial3D = StandardMaterial3D.new()
-	housing_mat.albedo_color = Color(0.18, 0.20, 0.22)
-	housing_mat.metallic = 0.65
-	housing_mat.roughness = 0.38
-	var warning_mat: StandardMaterial3D = StandardMaterial3D.new()
-	warning_mat.albedo_color = Color(1.0, 0.42, 0.12)
-	warning_mat.emission_enabled = true
-	warning_mat.emission = Color(1.0, 0.35, 0.10)
-	warning_mat.emission_energy_multiplier = 2.6
-	var lime_mat: StandardMaterial3D = StandardMaterial3D.new()
-	lime_mat.albedo_color = Color(0.72, 0.92, 0.38)
-	lime_mat.emission_enabled = true
-	lime_mat.emission = Color(0.42, 0.78, 0.18)
-	lime_mat.emission_energy_multiplier = 0.9
-
-	_add_mesh_box(scrubber, Vector3(0.0, 0.85, 0.0), Vector3(1.4, 1.5, 0.8), housing_mat)
-	_add_mesh_box(scrubber, Vector3(0.0, 1.52, -0.43), Vector3(1.1, 0.14, 0.08), warning_mat)
-	_add_mesh_box(scrubber, Vector3(-0.42, 0.72, -0.46), Vector3(0.24, 0.56, 0.08), lime_mat)
-	_add_mesh_box(scrubber, Vector3(0.0, 0.72, -0.46), Vector3(0.24, 0.56, 0.08), lime_mat)
-	_add_mesh_box(scrubber, Vector3(0.42, 0.72, -0.46), Vector3(0.24, 0.56, 0.08), lime_mat)
-
-	var label: Label3D = Label3D.new()
-	label.name = "Label"
-	label.text = "CO2 SCRUBBER"
-	label.pixel_size = 0.004
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.outline_size = 6
-	label.shaded = false
-	label.modulate = Color(0.75, 0.95, 1.0, 1.0)
-	label.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
-	label.position = Vector3(0.0, 2.0, 0.0)
-	scrubber.add_child(label)
-
+	scrubber.position = Vector3(-10.0, 0.0, -half_z + 0.15)
 	add_child(scrubber)
+	return scrubber
+
+
+# The two crew at the scrubber panel for the Phase D reveal. Flank the panel so
+# they don't block the player's approach to it. The scene's dialogue is driven
+# by co2_scrubber.gd (captions); these are the on-screen figures.
+func _spawn_scrubber_crew(panel_pos: Vector3) -> void:
+	_spawn_npc(
+		"DrRush",
+		"Dr Rush",
+		panel_pos + Vector3(-1.2, 0.0, 1.5),
+		0.0,  # face -Z, toward the panel
+		"res://models/characters/rush.glb",
+		[
+			{
+				"speaker": "Dr Rush",
+				"text": "The scrubber bank's behind this panel. Open it up — let's see what we're dealing with.",
+				"choices": [{"text": "Open the panel.", "next": "exit"}],
+			},
+		],
+	)
+	_spawn_npc(
+		"DrPark",
+		"Dr Park",
+		panel_pos + Vector3(1.2, 0.0, 1.5),
+		0.0,
+		"res://models/characters/eli.glb",
+		[
+			{
+				"speaker": "Dr Park",
+				"text": "Rush thinks it's the scrubber. I'm hoping he's wrong, for once.",
+				"choices": [{"text": "Same.", "next": "exit"}],
+			},
+		],
+	)
 
 
 func _add_mesh_box(parent: Node3D, pos: Vector3, size: Vector3, mat: StandardMaterial3D) -> void:

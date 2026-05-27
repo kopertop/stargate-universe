@@ -359,6 +359,12 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 				_fail("%s [breached_section_south]" % ROOM_SCENE,
 					"ShuttleDoorPanel.interact() did not record a sealed breach after the fuse")
 		"south_corridor":
+			# instant_mode short-circuits the scrubber reveal coroutine to
+			# complete_scrubber_scene() so the assert can read the flags
+			# synchronously (the full scene plays over several seconds).
+			var sr: Node = root.get_node_or_null("SceneRouter")
+			if sr != null:
+				sr.set("instant_mode", true)
 			_game_state.set("met_scott", true)
 			_game_state.set("met_rush", true)
 			_game_state.set("eli_quarters_visited", true)
@@ -369,12 +375,15 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 			_game_state.call("seal_breach", "breach_a")
 			var scrubber: Node = inst.get_node("CO2Scrubber")
 			scrubber.call("interact", null)
-			if _game_state.get("scrubber_diagnosed") == true:
-				print("  OK (CO2Scrubber.interact → scrubber_diagnosed=true)")
+			var diag_ok: bool = _game_state.get("scrubber_diagnosed") == true
+			var ftl_ok: bool = _game_state.get("ftl_drop_triggered") == true
+			var dial_ok: bool = _game_state.get("lime_planet_dialed") == true
+			if diag_ok and ftl_ok and dial_ok:
+				print("  OK (CO2Scrubber reveal scene → diagnosed + FTL drop + gate dialed)")
 				_passes += 1
 			else:
 				_fail("%s [south_corridor]" % ROOM_SCENE,
-					"CO2Scrubber.interact() did not diagnose the scrubber")
+					"CO2Scrubber reveal scene flags not set (diag=%s ftl=%s dial=%s)" % [diag_ok, ftl_ok, dial_ok])
 
 
 # BFS the connection graph (data/room_connections.json) from gate_room and

@@ -171,31 +171,31 @@ func _drive() -> void:
 	_expect(GameState.breaches_sealed.has("breach_a"), "quest: jammed door sealed")
 	_expect(GameState.quest_step == GameState.QUEST_FIND_SCRUBBER, "quest: breach -> find scrubber")
 
-	# === STEP 8: diagnose broken CO2 scrubber ===
-	# Rush's radio points us back up to the south corridor, where the broken
-	# scrubber sits — no elevator/Hydroponics trip (that's a later-deck room).
+	# === STEP 8: CO2 scrubber reveal scene (Phase D) ===
+	# Rush's radio points us back to the south corridor. Working the wall panel
+	# plays the reveal: only lime fixes it, Destiny drops from FTL, and the gate
+	# dials a lime world on its own — all folded into one scene completion.
 	await _travel_path([
 		"south_spur",
 		"south_corridor",
 	])
-	await _interact_node(_find_node_named("CO2Scrubber"), "scrubber diagnosis")
+	await _interact_node(_find_node_named("CO2Scrubber"), "scrubber reveal scene")
 	_expect(GameState.scrubber_diagnosed, "quest: scrubber diagnosed")
-	_expect(GameState.quest_step == GameState.QUEST_WAIT_FTL, "quest: scrubber -> FTL drop")
+	_expect(GameState.ftl_drop_triggered, "quest: scene drops Destiny from FTL")
+	_expect(GameState.lime_planet_dialed, "quest: scene auto-dials the lime world")
+	_expect(GameState.quest_step == GameState.QUEST_GO_TO_GATE, "quest: scene -> get to gate room")
 
-	# === STEP 9: trigger FTL drop and dial lime planet ===
-	# From the south corridor, back to the gate room via the east corridor.
+	# === STEP 9: answer Brody's call — get to the Gate Room ===
+	# Arriving satisfies GO_TO_GATE (gate_room.gd calls report_to_gate), and the
+	# already-dialed gate hands straight off to the lime run.
 	await _travel_path([
 		"east_corridor",
 		"stargate_corridor_east_connector",
 		"gate_room",
 	])
-	var ftl: Node = _find_console("ftl_countdown")
-	_expect(ftl != null, "gate_room: FTL console present")
-	await _interact_node(ftl, "FTL drop")
-	_expect(GameState.ftl_drop_triggered, "quest: FTL drop triggered")
-	await _interact_node(_find_console("gate_control"), "dial lime planet")
-	_expect(GameState.lime_planet_dialed, "quest: lime planet dialed")
-	_expect(GameState.is_lime_gate_open(), "quest: ship gate open to lime planet")
+	_expect(GameState.reported_to_gate, "quest: arriving gate room reports in")
+	_expect(GameState.is_lime_gate_open(), "quest: ship gate open to lime world")
+	_expect(GameState.quest_step == GameState.QUEST_MINE_LIME, "quest: gate room -> mine lime")
 	await _shot("gate_room_lime_dial")
 	await _demo_hold()
 

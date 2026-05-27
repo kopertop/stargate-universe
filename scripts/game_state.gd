@@ -39,6 +39,10 @@ signal dialog_started(npc: Node3D, tree: Array)
 # kino_pickup) await a dialog's natural end without having to track the
 # DialogScreen instance directly.
 signal dialog_closed()
+# Fired by dialog_screen.gd when it renders a dialog node carrying an "action"
+# key. Lets a data-driven dialog tree trigger a side effect mid-conversation
+# (e.g. the Phase D scrubber scene firing the FTL-drop blur on Brody's line).
+signal dialog_action(action_id: String)
 
 const MAX_HEALTH: float = 100.0
 const MAX_OXYGEN: float = 100.0
@@ -102,7 +106,7 @@ const QUEST_TARGETS: Dictionary = {
 	QUEST_RETURN_TO_CONTROL: {"room": "control_interface_room", "anchor": ""},
 	QUEST_DIAGNOSE_LIFE_SUPPORT: {"room": "control_interface_room", "anchor": "ControlConsoleNearest"},
 	QUEST_SEAL_BREACH: {"room": "breached_section_south", "anchor": "ShuttleObjective"},
-	QUEST_FIND_SCRUBBER: {"room": "south_corridor", "anchor": "CO2Scrubber"},
+	QUEST_FIND_SCRUBBER: {"room": "south_corridor", "anchor": "ScrubberRush"},
 	QUEST_WAIT_FTL: {"room": "gate_room", "anchor": "FTLConsole"},
 	QUEST_GO_TO_GATE: {"room": "gate_room", "anchor": ""},
 	QUEST_DIAL_LIME_PLANET: {"room": "gate_room", "anchor": "GateControlConsole"},
@@ -186,6 +190,10 @@ var small_fuse_found: bool = false
 var large_fuse_found: bool = false
 var scrubber_diagnosed: bool = false
 var scrubber_repaired: bool = false
+# CO2 scrubber lime charge, 0–100%. Drives the 3-bar panel gauge (each bar =
+# one third: 0%=3 red, 33%=1 green, 66%=2 green, 100%=3 green). Loading lime on
+# repair sets it to 100; Phase G will decay it over time.
+var scrubber_level: float = 0.0
 var ftl_drop_triggered: bool = false
 var lime_planet_dialed: bool = false
 # True once the player reaches the Gate Room after Dr Brody's "the gate
@@ -271,6 +279,7 @@ func reset() -> void:
 	life_support_diagnosed = false
 	scrubber_diagnosed = false
 	scrubber_repaired = false
+	scrubber_level = 0.0
 	ftl_drop_triggered = false
 	lime_planet_dialed = false
 	reported_to_gate = false
@@ -485,7 +494,7 @@ func _objective_for_step(step: String) -> String:
 				return "The door panel's fuse is blown. Search the Shuttle Dock crates for a Small Fuse."
 			return "Fit the Small Fuse into the door panel to force the jammed door shut."
 		QUEST_FIND_SCRUBBER:
-			return "Fix the broken CO2 scrubber in the south corridor."
+			return "Talk to Dr Rush at the open life-support panel in the south corridor."
 		QUEST_WAIT_FTL:
 			return "Return to the Gate Room and trigger the FTL drop."
 		QUEST_GO_TO_GATE:
@@ -743,10 +752,18 @@ func repair_scrubber_with_lime() -> bool:
 	if not spend_resource(AIR_LIME_RESOURCE, AIR_LIME_REQUIRED, "CO2 scrubber repair"):
 		return false
 	scrubber_repaired = true
+	scrubber_level = 100.0
 	restore_oxygen(MAX_OXYGEN)
 	add_log("CO2 scrubber repaired. Life support is stabilising across this section.")
 	complete_episode_air()
 	return true
+
+
+# Green-bar count (0–3) for the scrubber panel gauge, derived from
+# scrubber_level. 0%→0, 33%→1, 66%→2, 100%→3. Phase G decay of scrubber_level
+# will make this drop back through 2 and 1 over time.
+func scrubber_green_bars() -> int:
+	return clampi(roundi(scrubber_level / (100.0 / 3.0)), 0, 3)
 
 # Episode 1 completion now happens after the Air crisis loop resolves, not at
 # the old Rush + Kino + quarters + breach milestone.
@@ -815,6 +832,7 @@ func serialize() -> Dictionary:
 		"life_support_diagnosed": life_support_diagnosed,
 		"scrubber_diagnosed": scrubber_diagnosed,
 		"scrubber_repaired": scrubber_repaired,
+		"scrubber_level": scrubber_level,
 		"ftl_drop_triggered": ftl_drop_triggered,
 		"ftl_drop_game_time": ftl_drop_game_time,
 		"lime_planet_dialed": lime_planet_dialed,
@@ -853,6 +871,7 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	life_support_diagnosed = data.get("life_support_diagnosed", false) == true
 	scrubber_diagnosed = data.get("scrubber_diagnosed", false) == true
 	scrubber_repaired = data.get("scrubber_repaired", false) == true
+	scrubber_level = float(data.get("scrubber_level", 0.0))
 	ftl_drop_triggered = data.get("ftl_drop_triggered", false) == true
 	ftl_drop_game_time = float(data.get("ftl_drop_game_time", -1.0))
 	lime_planet_dialed = data.get("lime_planet_dialed", false) == true

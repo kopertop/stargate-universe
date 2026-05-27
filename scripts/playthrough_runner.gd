@@ -179,7 +179,9 @@ func _drive() -> void:
 		"south_spur",
 		"south_corridor",
 	])
-	await _interact_node(_find_node_named("CO2Scrubber"), "scrubber reveal scene")
+	# The scene is triggered by talking to Dr Rush at the open panel; instant_mode
+	# short-circuits his dialog straight to the folded completion.
+	await _interact_node(_find_node_named("ScrubberRush"), "scrubber reveal scene (talk to Rush)")
 	_expect(GameState.scrubber_diagnosed, "quest: scrubber diagnosed")
 	_expect(GameState.ftl_drop_triggered, "quest: scene drops Destiny from FTL")
 	_expect(GameState.lime_planet_dialed, "quest: scene auto-dials the lime world")

@@ -18,13 +18,23 @@ signal auto_walk_finished
 @export var jump_strength: float = 5.5
 
 @export_subgroup("Interact")
-@export var interact_reach: float = 2.4      # metres
+@export var interact_reach: float = 3.5      # metres — general "look + E" range
+# Clicking an interactable selects it and lets you interact from this larger
+# range, so you can pick someone slightly further off and step in to talk.
+@export var interact_reach_targeted: float = 6.0
 @export var interact_origin_height: float = 1.1  # chest height
+# Minimum facing alignment (dot of camera-forward vs direction to target) for a
+# candidate to count — keeps us from grabbing something behind the player.
+@export var interact_min_aim: float = 0.1
 
 var _gravity_velocity: float = 0.0
 var _move_velocity: Vector3 = Vector3.ZERO
 var _facing_yaw: float = 0.0
 var _current_interactable: Node = null
+# Sticky target set by clicking an interactable. Wins over the look-based pick
+# and is reachable from the extended range. Cleared when it leaves range, gets
+# disabled, or the player clicks empty space / another interactable.
+var _clicked_target: Node = null
 var _input_locked: bool = false   # locked during cutscene / scene transitions
 var _auto_walking: bool = false
 var _auto_walk_target: Vector3 = Vector3.ZERO
@@ -216,45 +226,128 @@ func _handle_interact() -> void:
 			target.interact(self)
 
 func _find_interact_target() -> Node:
-	if view == null:
-		return null
-	var camera: Camera3D = view.get_node_or_null("SpringArm/Camera")
-	if camera == null:
-		camera = view.get_node_or_null("Camera")
+	var camera: Camera3D = _interact_camera()
 	if camera == null:
 		return null
-	# Cast from the player's chest forward along the camera's yaw.
 	var origin: Vector3 = global_position + Vector3.UP * interact_origin_height
+	# A clicked target wins while it's still valid + within the extended range.
+	if _target_in_range(_clicked_target, origin, interact_reach_targeted):
+		return _clicked_target
+	_clicked_target = null
+	# Otherwise pick the best in-range interactable in FRONT of the player.
+	# Score = facing alignment minus a small distance penalty, with a big bonus
+	# for the current quest target so the "diamond" NPC wins when two are close.
 	var forward: Vector3 = -camera.global_transform.basis.z
 	forward.y = 0.0
 	if forward.length() < 0.001:
 		return null
 	forward = forward.normalized()
-	var to: Vector3 = origin + forward * interact_reach
+	var quest_anchor: String = _quest_anchor_name()
+	var best: Node = null
+	var best_score: float = -INF
+	for node in get_tree().get_nodes_in_group("interactable"):
+		var n3: Node3D = node as Node3D
+		if n3 == null or not _interactable_enabled(n3):
+			continue
+		var to: Vector3 = n3.global_position - origin
+		to.y = 0.0
+		var dist: float = to.length()
+		if dist > interact_reach or dist < 0.05:
+			continue
+		var aim: float = forward.dot(to / dist)
+		if aim < interact_min_aim:
+			continue
+		var score: float = aim - dist * 0.05
+		if quest_anchor != "" and n3.name == quest_anchor:
+			score += 100.0
+		if score > best_score:
+			best_score = score
+			best = n3
+	return best
+
+
+func _interact_camera() -> Camera3D:
+	if view == null:
+		return null
+	var cam: Camera3D = view.get_node_or_null("SpringArm/Camera")
+	if cam == null:
+		cam = view.get_node_or_null("Camera")
+	return cam
+
+
+func _interactable_enabled(n: Node) -> bool:
+	# Skip nodes disabled (e.g. Kino pickup after acquisition) so the HUD prompt
+	# doesn't stick on a stale target.
+	return not ("enabled" in n and not n.get("enabled"))
+
+
+func _target_in_range(node: Node, origin: Vector3, reach: float) -> bool:
+	if node == null or not is_instance_valid(node) or not node.is_in_group("interactable"):
+		return false
+	if not _interactable_enabled(node):
+		return false
+	var n3: Node3D = node as Node3D
+	if n3 == null:
+		return false
+	var flat: Vector3 = n3.global_position - origin
+	flat.y = 0.0
+	return flat.length() <= reach
+
+
+# Node name of the current quest target's anchor (the "diamond" NPC/object), so
+# the look-based pick can prefer it. Empty for sentinel anchors (e.g. nearest-
+# console) which aren't real node names — those fall back to facing/nearest.
+func _quest_anchor_name() -> String:
+	if GameState == null or not GameState.has_method("quest_target"):
+		return ""
+	var t: Variant = GameState.call("quest_target")
+	if t is Dictionary:
+		return String((t as Dictionary).get("anchor", ""))
+	return ""
+
+
+# Click an interactable to select it (extends reach + makes the target obvious
+# via the HUD prompt). Clicking empty space clears the selection.
+func _unhandled_input(event: InputEvent) -> void:
+	if _input_locked or _auto_walking:
+		return
+	if event is InputEventMouseButton:
+		var mb: InputEventMouseButton = event
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+			_try_click_target(mb.position)
+
+
+func _try_click_target(screen_pos: Vector2) -> void:
+	var camera: Camera3D = _interact_camera()
+	if camera == null:
+		return
+	# Mouselook captures the cursor at screen centre — pick from there instead.
+	var pos: Vector2 = screen_pos
+	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		pos = get_viewport().get_visible_rect().size * 0.5
+	var from: Vector3 = camera.project_ray_origin(pos)
+	var dir: Vector3 = camera.project_ray_normal(pos)
+	var to: Vector3 = from + dir * (interact_reach_targeted + 6.0)
 	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
-	var params: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(origin, to)
+	var params: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(from, to)
 	params.exclude = [self.get_rid()]
 	params.collide_with_areas = true
 	params.collide_with_bodies = true
-	# Layer 4 reserved for interactable areas/bodies.
 	params.collision_mask = 4
 	var hit: Dictionary = space.intersect_ray(params)
-	if hit.is_empty():
-		return null
-	var collider: Object = hit.get("collider")
-	if collider == null:
-		return null
-	# Walk up the tree looking for the first node in group "interactable".
-	# Skip nodes that have already been disabled (e.g. Kino pickup after
-	# acquisition) — otherwise the HUD prompt sticks on a stale target.
-	var n: Node = collider as Node
-	while n != null:
-		if n.is_in_group("interactable"):
-			if "enabled" in n and not n.get("enabled"):
-				return null
-			return n
-		n = n.get_parent()
-	return null
+	var picked: Node = null
+	if not hit.is_empty():
+		var n: Node = hit.get("collider") as Node
+		while n != null:
+			if n.is_in_group("interactable"):
+				picked = n
+				break
+			n = n.get_parent()
+	var origin: Vector3 = global_position + Vector3.UP * interact_origin_height
+	if picked != null and _target_in_range(picked, origin, interact_reach_targeted):
+		_clicked_target = picked
+	else:
+		_clicked_target = null
 
 func set_input_locked(locked: bool) -> void:
 	_input_locked = locked

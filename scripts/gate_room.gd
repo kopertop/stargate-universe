@@ -927,10 +927,11 @@ func _build_npcs() -> void:
 	_world.add_child(scott)
 
 	# Medic tableau: Colonel Young laid out unconscious with Lt James kneeling
-	# beside him trying to stabilise him. Clustered well away from the
-	# gate at the -X / -Z corner so the player walks past on their way to the
-	# south corridor exit and can't miss it.
-	_build_medic_tableau()
+	# beside him. Only present BEFORE the air crisis — once it starts, James has
+	# moved Young to the Infirmary (off the south corridor) to recover, so the
+	# gate-room floor is clear.
+	if not GameState.air_crisis_started:
+		_build_medic_tableau()
 
 
 # Medic vignette near the -X wall, behind the staircases:
@@ -962,7 +963,7 @@ func _build_medic_tableau() -> void:
 		"Lt James",
 		tableau_center + Vector3(0.85, 0.0, 0.4),
 		PI * 0.5,
-		"res://models/characters/lt_james.glb",
+		"res://models/characters/james.glb",
 		_james_tableau_dialog(),
 		"",
 		"kneel",

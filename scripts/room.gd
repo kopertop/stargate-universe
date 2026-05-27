@@ -18,6 +18,9 @@ const HullSealSwitchScript: Script = preload("res://scripts/hull_seal_switch.gd"
 const ShuttleCrateScript: Script = preload("res://scripts/shuttle_crate.gd")
 const ShuttleDoorPanelScript: Script = preload("res://scripts/shuttle_door_panel.gd")
 const NpcScript: Script = preload("res://scripts/npc.gd")
+const ScrubberRushScript: Script = preload("res://scripts/scrubber_rush.gd")
+const GreerScript: Script = preload("res://scripts/greer.gd")
+const InfirmaryJamesScript: Script = preload("res://scripts/infirmary_james.gd")
 const Co2ScrubberScript: Script = preload("res://scripts/co2_scrubber.gd")
 const PowerConsoleScript: Script = preload("res://scripts/power_console.gd")
 const QuestWaypointScript: Script = preload("res://scripts/quest_waypoint.gd")
@@ -55,6 +58,9 @@ const WAYPOINT_OFFSET_BY_ANCHOR: Dictionary = {
 
 var _room_data: Dictionary = {}
 var _quest_waypoint: Node3D = null
+# Multiple diamonds for the Shuttle Dock crate-search phase: one per un-looted
+# crate. Separate from the single _quest_waypoint used by every other beat.
+var _crate_waypoints: Array[Node3D] = []
 # True once the red-alert tint has been applied to this scene, so the objective
 # handler knows whether it needs to clear the tint when the breach is sealed.
 var _alert_applied: bool = false
@@ -337,6 +343,12 @@ func _spawn_interactables() -> void:
 					_spawn_scrubber_crew(scrubber.position)
 		"north_corridor":
 			_spawn_soldier()
+		"infirmary":
+			# Post-crisis, James has moved Young here to recover. Pre-crisis the
+			# pair are still in the gate-room arrival tableau, so the ward is
+			# empty (just the room shell).
+			if GameState.air_crisis_started:
+				_spawn_infirmary_ward()
 
 
 # Bed against the -Z wall, matching the position used by RoomBuilder._accent_quarters.
@@ -495,6 +507,10 @@ func _spawn_shuttle_dock() -> void:
 		crate.position = Vector3(half_x - 1.3, 0.0, -2.6 + float(i) * 2.6)
 		crate.set("fuse_type", crate_contents[i])
 		add_child(crate)
+		# Refresh the per-crate diamonds after a loot. interacted fires BEFORE
+		# the crate's _on_interact sets _looted, so defer until the loot has
+		# actually applied.
+		crate.connect("interacted", _on_crate_interacted)
 
 
 # A bulkhead door on the west wall: slightly ajar when unsealed (a dark vent
@@ -621,30 +637,32 @@ func _spawn_co2_scrubber() -> StaticBody3D:
 	return scrubber
 
 
-# The two crew at the scrubber panel for the Phase D reveal. Flank the panel so
-# they don't block the player's approach to it. The scene's dialogue is driven
-# by co2_scrubber.gd (captions); these are the on-screen figures.
+# Rush + Park stand shoulder-to-shoulder right in front of the open scrubber
+# panel for the Phase D reveal — both within ~1 m of the panel and ~1.1 m apart,
+# centred on it, so they read as a pair working the exposed bank. The scene's
+# dialogue is driven by scrubber_rush.gd; these are the on-screen figures.
 func _spawn_scrubber_crew(panel_pos: Vector3) -> void:
+	# Rush carries the whole multi-speaker scene (scrubber_rush.gd sets its own
+	# dialogue_tree + drives the FTL beat), so pass an empty tree + its script.
+	# Node name MUST differ from the control-room "DrRush" — NPCState keys saved
+	# position by node name, so a shared name cross-restores this Rush to the
+	# control-room Rush's spot. Display name stays "Dr Rush".
 	_spawn_npc(
-		"DrRush",
+		"ScrubberRush",
 		"Dr Rush",
-		panel_pos + Vector3(-1.2, 0.0, 1.5),
+		panel_pos + Vector3(-0.55, 0.0, 1.0),
 		0.0,  # face -Z, toward the panel
 		"res://models/characters/rush.glb",
-		[
-			{
-				"speaker": "Dr Rush",
-				"text": "The scrubber bank's behind this panel. Open it up — let's see what we're dealing with.",
-				"choices": [{"text": "Open the panel.", "next": "exit"}],
-			},
-		],
+		[],
+		"",
+		ScrubberRushScript,
 	)
 	_spawn_npc(
 		"DrPark",
 		"Dr Park",
-		panel_pos + Vector3(1.2, 0.0, 1.5),
+		panel_pos + Vector3(0.6, 0.0, 1.0),
 		0.0,
-		"res://models/characters/eli.glb",
+		"res://models/characters/park.glb",
 		[
 			{
 				"speaker": "Dr Park",
@@ -790,54 +808,51 @@ func _trigger_rush_absent_beat() -> void:
 
 
 func _play_rush_absent_radio() -> void:
-	# Advance the quest up front so it's correct even if the player walks
-	# back out of the control room before the radio finishes — the player
-	# has full control during this beat (input is NOT locked), so the room
-	# node can be freed mid-coroutine. Every await below is followed by an
-	# is_inside_tree() bail to avoid touching get_tree() on a freed node.
+	# Advance the quest up front so it sticks even if the player closes the
+	# comm early. Short beat after arrival so the HUD is settled before the
+	# dialog opens; is_inside_tree() guards the freed-mid-await case.
 	GameState.mark_control_room_returned()
-
-	await get_tree().create_timer(1.2).timeout
+	await get_tree().create_timer(0.8).timeout
 	if not is_inside_tree():
 		return
-	GameState.dialogue_shown.emit("Eli", "Uhh… Scott? Rush isn't here.")
-	GameState.add_log("Eli: Uhh… Scott? Rush isn't here.")
-	await get_tree().create_timer(2.5).timeout
-	if not is_inside_tree():
-		return
-	Audio.play("res://sounds/radio_click.ogg")
-	await get_tree().create_timer(0.4).timeout
-	if not is_inside_tree():
-		return
-	GameState.dialogue_shown.emit("Lt Scott", "Well then, Eli — it's up to you. Find out what's going on.")
-	GameState.add_log("Lt Scott (radio): Well then, Eli — it's up to you. Find out what's going on.")
-	await get_tree().create_timer(2.0).timeout
-	if not is_inside_tree():
-		return
-	Audio.play("res://sounds/radio_off.ogg")
+	var line_eli: String = "Uhh… Scott? Rush isn't here."
+	var line_scott: String = "Well then, Eli — it's up to you. Find out what's going on."
+	GameState.add_log("Eli: " + line_eli)
+	GameState.add_log("Lt Scott (radio): " + line_scott)
+	_play_radio_dialog([
+		{"speaker": "Eli", "text": line_eli, "choices": [{"text": "(key the radio)", "next": 1}]},
+		{"speaker": "Lt Scott", "text": line_scott, "choices": [{"text": "Understood.", "next": "exit"}]},
+	])
 
 
 # Rush radios the player the instant the jammed shuttle door is sealed: praise
-# + the next objective (the CO2 scrubber in the south corridor). The player
-# keeps full control during this beat, so every await is guarded by an
-# is_inside_tree() bail in case the room frees mid-coroutine.
+# + the next objective (the CO2 scrubber in the south corridor).
 func _play_breach_sealed_radio() -> void:
 	var sr: Node = get_node_or_null("/root/SceneRouter")
 	if sr != null and sr.get("instant_mode"):
 		return
-	await get_tree().create_timer(1.0).timeout
-	if not is_inside_tree():
-		return
-	Audio.play("res://sounds/radio_click.ogg")
-	await get_tree().create_timer(0.4).timeout
+	await get_tree().create_timer(0.8).timeout
 	if not is_inside_tree():
 		return
 	var line: String = "Good work, Eli. Now get over to the south corridor — I think I found what's causing the CO2 buildup."
-	GameState.dialogue_shown.emit("Dr Rush", line)
 	GameState.add_log("Dr Rush (radio): " + line)
-	await get_tree().create_timer(2.8).timeout
-	if not is_inside_tree():
-		return
+	_play_radio_dialog([
+		{"speaker": "Dr Rush", "text": line, "choices": [{"text": "On my way.", "next": "exit"}]},
+	])
+
+
+# Play a radio comm as a WoW-style dialog (single-choice continues) instead of
+# timed captions, bookended by the radio click/off SFX. Quest/state changes
+# happen at the call site (up front) so they stick if the player closes early.
+func _play_radio_dialog(tree: Array) -> void:
+	Audio.play("res://sounds/radio_click.ogg")
+	if not GameState.dialog_closed.is_connected(_on_radio_dialog_closed):
+		GameState.dialog_closed.connect(_on_radio_dialog_closed, CONNECT_ONE_SHOT)
+	var player: Node = get_tree().get_first_node_in_group("player")
+	GameState.dialog_started.emit(player, tree)
+
+
+func _on_radio_dialog_closed() -> void:
 	Audio.play("res://sounds/radio_off.ogg")
 
 
@@ -851,10 +866,11 @@ func _spawn_npc(
 		yaw: float,
 		glb_path: String,
 		dialog_tree: Array,
-		met_flag: String = ""
+		met_flag: String = "",
+		script: Script = NpcScript
 	) -> StaticBody3D:
 	var body: StaticBody3D = StaticBody3D.new()
-	body.set_script(NpcScript)
+	body.set_script(script)
 	body.name = npc_name
 	body.position = pos
 	body.rotation.y = yaw
@@ -949,7 +965,7 @@ func _spawn_dr_james() -> void:
 		"Dr James",
 		Vector3(-4.5, 0.0, 3.8),
 		PI * 0.25,
-		"res://models/characters/eli.glb",
+		"res://models/characters/james.glb",
 		[
 			{
 				"speaker": "Dr James",
@@ -988,7 +1004,7 @@ func _spawn_dr_park() -> void:
 		"Dr Park",
 		Vector3(3.2, 0.0, 5.0),
 		-PI * 0.25,
-		"res://models/characters/eli.glb",
+		"res://models/characters/park.glb",
 		[
 			{
 				"speaker": "Dr Park",
@@ -1022,40 +1038,81 @@ func _spawn_dr_park() -> void:
 # Sergeant pulling corridor watch in the east corridor — alongside the hull
 # breach that the player is meant to seal. Direct, blunt, useful.
 func _spawn_sgt_greer() -> void:
+	# greer.gd builds his line dynamically from the quest step (a single "go
+	# here next" hint), so the passed tree is unused.
 	_spawn_npc(
 		"SgtGreer",
 		"Sgt Greer",
 		Vector3(0.0, 0.0, 8.0),
 		PI,  # face north (-z) so he's watching back toward the gate room
 		"res://models/characters/scott.glb",
+		[],
+		"met_greer",
+		GreerScript,
+	)
+
+
+# Infirmary ward (simple first pass): Colonel Young recovering on a bed against
+# the -Z wall, a desk against the +X wall, and Lt James pacing between the two.
+func _spawn_infirmary_ward() -> void:
+	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
+	var d_m: float = float(_room_data.get("height", 200)) * ShipLayout.SCALE
+	var half_x: float = w_m * 0.5
+	var half_z: float = d_m * 0.5
+
+	# Bed (frame + mattress), long axis along Z, west of centre on the -Z wall.
+	var bed_pos: Vector3 = Vector3(-2.5, 0.0, -half_z + 1.8)
+	_add_mesh_box(self, bed_pos + Vector3(0.0, 0.25, 0.0), Vector3(1.0, 0.5, 2.2), _flat_mat(Color(0.20, 0.22, 0.26), 0.4, 0.6))
+	_add_mesh_box(self, bed_pos + Vector3(0.0, 0.55, 0.0), Vector3(0.9, 0.16, 2.0), _flat_mat(Color(0.78, 0.80, 0.84), 0.1, 0.7))
+
+	# Young laid on his back on the mattress (model tipped 90° onto its back,
+	# lifted to the mattress top). Unique node name so NPCState doesn't cross-
+	# restore him to the gate-room "ColonelYoung" tableau spot.
+	var young: StaticBody3D = _spawn_npc(
+		"InfirmaryYoung",
+		"Colonel Young",
+		bed_pos + Vector3(0.0, 0.55, -0.4),
+		0.0,
+		"res://models/characters/scott.glb",
 		[
 			{
-				"speaker": "Sgt Greer",
-				"text": "You see that breach down the hall? Don't walk past it. Seal it, then come back through this way. Got me?",
-				"choices": [
-					{"text": "Where's the switch?", "next": 1},
-					{"text": "What if it gets worse?", "next": 2},
-					{"text": "Copy that.", "next": "exit"},
-				],
-			},
-			{
-				"speaker": "Sgt Greer",
-				"text": "Opposite wall from the breach. Big yellow handle. You can't miss it unless you're trying. Hit it, panel slams down, problem stops.",
-				"choices": [
-					{"text": "What if it gets worse?", "next": 2},
-					{"text": "On it.", "next": "exit"},
-				],
-			},
-			{
-				"speaker": "Sgt Greer",
-				"text": "Then we lose the corridor and probably anyone in it. So don't make me come do it for you. Move.",
-				"choices": [
-					{"text": "Moving.", "next": "exit"},
-				],
+				"speaker": "Colonel Young",
+				"text": "I'm fine, Wallace — just banged up. Rush and Scott have it. Do what they tell you and we'll get through this.",
+				"choices": [{"text": "Rest up, Colonel.", "next": "exit"}],
 			},
 		],
-		"met_greer",
 	)
+	var ym: Node3D = young.get_node_or_null("Model") as Node3D
+	if ym != null:
+		ym.rotation = Vector3(-PI * 0.5, PI, 0.0)
+		ym.position = Vector3(0.0, 0.18, 0.7)
+
+	# Desk against the +X wall.
+	var desk_pos: Vector3 = Vector3(half_x - 1.2, 0.0, -half_z + 2.4)
+	_add_mesh_box(self, desk_pos + Vector3(0.0, 0.75, 0.0), Vector3(1.6, 0.1, 0.8), _flat_mat(Color(0.22, 0.24, 0.28), 0.5, 0.5))
+	_add_mesh_box(self, desk_pos + Vector3(0.0, 0.35, 0.0), Vector3(1.4, 0.7, 0.6), _flat_mat(Color(0.14, 0.15, 0.18), 0.4, 0.6))
+
+	# James paces between the bedside and her desk.
+	var bedside: Vector3 = bed_pos + Vector3(1.5, 0.0, 0.4)
+	var deskside: Vector3 = desk_pos + Vector3(-1.4, 0.0, 0.0)
+	var james: StaticBody3D = _spawn_npc(
+		"InfirmaryJames",
+		"Lt James",
+		bedside,
+		0.0,
+		"res://models/characters/james.glb",
+		[
+			{
+				"speaker": "Lt James",
+				"text": "He's stable — concussion, a couple of cracked ribs. I've got him. You just keep the air on, all right?",
+				"choices": [{"text": "Will do.", "next": "exit"}],
+			},
+		],
+		"",
+		InfirmaryJamesScript,
+	)
+	james.set("pace_a", bedside)
+	james.set("pace_b", deskside)
 
 
 # Civilian along the south corridor — Chloe, the IOA daughter. She's already
@@ -1066,7 +1123,7 @@ func _spawn_chloe() -> void:
 		"Chloe Armstrong",
 		Vector3(12.0, 0.0, 0.0),
 		-PI * 0.5,  # face -x, back toward gate room
-		"res://models/characters/eli.glb",
+		"res://models/characters/chloe.glb",
 		[
 			{
 				"speaker": "Chloe Armstrong",
@@ -1166,6 +1223,16 @@ func _refresh_quest_waypoint() -> void:
 	var target_room: String = String(target.get("room", ""))
 	var anchor_name: String = String(target.get("anchor", ""))
 
+	# Multi-marker case: the Shuttle Dock crate-search phase puts a diamond over
+	# every UN-looted crate. Each clears as its crate is emptied; all clear once
+	# the Small Fuse turns up (handing back to the single panel marker below).
+	if (target_room == room_id and anchor_name == "ShuttleObjective"
+			and GameState.door_panel_examined and not GameState.small_fuse_found):
+		_destroy_quest_waypoint()
+		_refresh_crate_waypoints()
+		return
+	_clear_crate_waypoints()
+
 	if target_room == "":
 		_destroy_quest_waypoint()
 		return
@@ -1189,19 +1256,13 @@ func _refresh_quest_waypoint() -> void:
 				pos = console.global_position + Vector3(0.0, WAYPOINT_OFFSET_BY_ANCHOR.get("ControlConsoleNearest", 1.4), 0.0)
 				placed = true
 		elif anchor_name == "ShuttleObjective":
-			# Three-stage marker: door panel first (go try it), then the
-			# crates once the player learns it needs a fuse, then back to the
-			# panel once they have the Small Fuse to fit it.
-			var shuttle_target: Node3D = null
-			var shuttle_offset: float = 0.7
-			if not GameState.door_panel_examined or GameState.small_fuse_found:
-				shuttle_target = get_node_or_null("ShuttleDoorPanel") as Node3D
-				shuttle_offset = WAYPOINT_OFFSET_BY_ANCHOR.get("ShuttleDoorPanel", 0.7)
-			else:
-				shuttle_target = _find_nearest_in_group("shuttle_crate")
-				shuttle_offset = 1.3
-			if shuttle_target != null:
-				pos = shuttle_target.global_position + Vector3(0.0, shuttle_offset, 0.0)
+			# Panel marker. The crate-search phase (door examined, no fuse yet)
+			# is handled by the multi-marker case above; here the single diamond
+			# sits on the panel both before the player examines it and once the
+			# Small Fuse is in hand to fit it.
+			var panel: Node3D = get_node_or_null("ShuttleDoorPanel") as Node3D
+			if panel != null:
+				pos = panel.global_position + Vector3(0.0, WAYPOINT_OFFSET_BY_ANCHOR.get("ShuttleDoorPanel", 0.7), 0.0)
 				placed = true
 		else:
 			var anchor: Node = get_node_or_null(anchor_name)
@@ -1237,6 +1298,39 @@ func _destroy_quest_waypoint() -> void:
 	if _quest_waypoint != null and is_instance_valid(_quest_waypoint):
 		_quest_waypoint.queue_free()
 	_quest_waypoint = null
+
+
+# Rebuild one diamond per un-looted Shuttle Dock crate. Cheap to rebuild from
+# scratch (three crates) so we don't track per-crate marker identity.
+func _refresh_crate_waypoints() -> void:
+	_clear_crate_waypoints()
+	for c in get_tree().get_nodes_in_group("shuttle_crate"):
+		var crate: Node3D = c as Node3D
+		if crate == null or crate.get("_looted") == true:
+			continue
+		var wp: Node3D = Node3D.new()
+		wp.set_script(QuestWaypointScript)
+		wp.name = "CrateWaypoint"
+		world.add_child(wp)
+		var pos: Vector3 = crate.global_position + Vector3(0.0, 1.3, 0.0)
+		wp.global_position = pos
+		if wp.has_method("set_target_position"):
+			wp.call("set_target_position", pos)
+		_crate_waypoints.append(wp)
+
+
+func _clear_crate_waypoints() -> void:
+	for wp in _crate_waypoints:
+		if wp != null and is_instance_valid(wp):
+			wp.queue_free()
+	_crate_waypoints.clear()
+
+
+# Crate loot fires interacted BEFORE _on_interact sets _looted, so defer the
+# diamond refresh until the loot has applied (the emptied crate's diamond then
+# drops; finding the Small Fuse clears them all and hands off to the panel).
+func _on_crate_interacted(_by: Node) -> void:
+	_refresh_quest_waypoint.call_deferred()
 
 
 # Nearest Node3D in the given group to the player. Drives the

@@ -27,7 +27,6 @@ const WAKE_UP_DURATION: float = 0.5
 const ALARM_TO_REACTION_GAP: float = 0.7   # klaxon → "What the heck?"
 const REACTION_READ_TIME: float = 1.6      # "What the heck?" → fade back in
 const POST_WAKE_RADIO_DELAY: float = 0.6   # standing up → radio static
-const RADIO_CLICK_TO_LINE_GAP: float = 0.35  # static → Scott's line
 
 # Vertical lift above the bed body's pivot — raises the model so it lays
 # ON the mattress (~y=0.85 world) rather than half-sunk into the bed body
@@ -182,16 +181,23 @@ func _sleep_cinematic(by: Node) -> void:
 
 	# === Awake beat: Scott's radio ===
 	# Now that Eli is on his feet in the lit (red-alert) room, Scott crackles
-	# in over the radio. Player already has control — Scott's order can land
-	# while they start moving. Uses the dialog HUD panel (visible now that
-	# the fade is gone) rather than a black-screen caption.
+	# in over the radio — rendered as the standard WoW-style dialog (one
+	# "On my way." choice) rather than a timed caption.
 	await get_tree().create_timer(POST_WAKE_RADIO_DELAY).timeout
+	if not is_inside_tree():
+		return
+	var line: String = "Eli — get to the control room. NOW. Find Rush."
+	GameState.add_log("Lt Scott (radio): " + line)
 	Audio.play("res://sounds/radio_click.ogg")
-	await get_tree().create_timer(RADIO_CLICK_TO_LINE_GAP).timeout
-	GameState.dialogue_shown.emit("Lt Scott", "Eli — get to the control room. NOW. Find Rush.")
-	GameState.add_log("Lt Scott (radio): Eli, get to the control room NOW. Find Rush.")
-	# Walkie-talkie sign-off beep closes the transmission.
-	await get_tree().create_timer(1.8).timeout
+	if not GameState.dialog_closed.is_connected(_on_scott_radio_closed):
+		GameState.dialog_closed.connect(_on_scott_radio_closed, CONNECT_ONE_SHOT)
+	GameState.dialog_started.emit(player, [
+		{"speaker": "Lt Scott", "text": line, "choices": [{"text": "On my way.", "next": "exit"}]},
+	])
+
+
+# Walkie-talkie sign-off beep when the player closes Scott's transmission.
+func _on_scott_radio_closed() -> void:
 	Audio.play("res://sounds/radio_off.ogg")
 
 

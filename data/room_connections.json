@@ -52,6 +52,11 @@
 			"dir": "+z",
 			"to": "south_spur",
 			"plaque": "South Access"
+		},
+		{
+			"dir": "+z",
+			"to": "infirmary",
+			"plaque": "Infirmary"
 		}
 	],
 	"control_approach_north": [

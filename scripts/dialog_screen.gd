@@ -60,6 +60,12 @@ func _render_node() -> void:
 	_speaker_label.text = speaker
 	_portrait.texture = _portrait_for(speaker)
 	_line_label.text = String(node.get("text", ""))
+	# Data-driven side effects: a node may carry an "action" id that fires when
+	# it's shown (e.g. the FTL-drop blur on Brody's line). Listeners hook
+	# GameState.dialog_action.
+	var action: String = String(node.get("action", ""))
+	if action != "":
+		GameState.dialog_action.emit(action)
 	for c in _choices_box.get_children():
 		_choices_box.remove_child(c)
 		c.queue_free()

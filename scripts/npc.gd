@@ -39,6 +39,11 @@ extends Interactable
 var _line_index: int = 0
 var _auto_greet_done: bool = false
 var _auto_greet_t: float = 0.0
+# Facing-restore: when a conversation starts we turn to face the player and
+# remember the prior rotation, then ease back to it when the dialog closes so
+# the NPC resumes facing their console / panel / patrol heading.
+var _facing_player: bool = false
+var _pre_talk_rotation: Vector3 = Vector3.ZERO
 
 func _ready() -> void:
 	super()
@@ -83,11 +88,14 @@ func _process(delta: float) -> void:
 	# Face the way we're walking so the model doesn't moonwalk.
 	look_at(Vector3(player.global_position.x, global_position.y, player.global_position.z), Vector3.UP)
 
-func _on_interact(_by: Node) -> void:
+func _on_interact(by: Node) -> void:
 	# Choice-tree dialog takes precedence. The DialogScreen pauses the game,
 	# zooms a portrait-camera onto this node, and routes choice picks back.
 	var active_tree: Array = _active_dialogue_tree()
 	if not active_tree.is_empty():
+		# Turn to face the player for the conversation; restore the prior facing
+		# when it closes (otherwise NPCs freeze facing the player forever).
+		_begin_conversation_facing(by)
 		if _line_index == 0 and not _has_met():
 			_handle_first_meet()
 		_line_index += 1
@@ -96,6 +104,7 @@ func _on_interact(_by: Node) -> void:
 		return
 	if dialogue_lines.is_empty():
 		return
+	_face_interactor(by)
 	var line: String = dialogue_lines[_line_index % dialogue_lines.size()]
 	GameState.add_log("%s: %s" % [character_name, line])
 	GameState.dialogue_shown.emit(character_name, line)
@@ -193,6 +202,46 @@ static func play_idle_animation(root: Node) -> void:
 			return
 		for c in n.get_children():
 			stack.append(c)
+
+# Yaw to face the interacting player (planar only — never tip the model). Falls
+# back to the player group if `by` isn't a Node3D. look_at needs us in the tree
+# (we are, on interact) and a non-coincident target.
+func _face_interactor(by: Node) -> void:
+	var target: Node3D = by as Node3D
+	if target == null:
+		target = get_tree().get_first_node_in_group("player") as Node3D
+	if target == null:
+		return
+	var flat: Vector3 = Vector3(target.global_position.x, global_position.y, target.global_position.z)
+	if global_position.distance_to(flat) < 0.05:
+		return
+	look_at(flat, Vector3.UP)
+
+
+# Start a face-to-face conversation: remember our prior rotation (once), turn to
+# the player, and arm a one-shot restore on dialog close.
+func _begin_conversation_facing(by: Node) -> void:
+	if not _facing_player:
+		_pre_talk_rotation = rotation
+		_facing_player = true
+	_face_interactor(by)
+	if not GameState.dialog_closed.is_connected(_on_talk_ended):
+		GameState.dialog_closed.connect(_on_talk_ended, CONNECT_ONE_SHOT)
+
+
+# Dialog closed — ease back to the pre-talk facing over the shortest arc so the
+# NPC resumes what they were doing (their idle animation never stopped).
+func _on_talk_ended() -> void:
+	if not _facing_player:
+		return
+	_facing_player = false
+	if not is_inside_tree():
+		return
+	rotation.x = _pre_talk_rotation.x
+	rotation.z = _pre_talk_rotation.z
+	var target_y: float = rotation.y + wrapf(_pre_talk_rotation.y - rotation.y, -PI, PI)
+	var tween: Tween = create_tween()
+	tween.tween_property(self, "rotation:y", target_y, 0.45).set_trans(Tween.TRANS_SINE)
 
 func _handle_first_meet() -> void:
 	if met_flag != "" and not GameState.get(met_flag):

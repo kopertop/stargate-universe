@@ -359,12 +359,10 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 				_fail("%s [breached_section_south]" % ROOM_SCENE,
 					"ShuttleDoorPanel.interact() did not record a sealed breach after the fuse")
 		"south_corridor":
-			# instant_mode short-circuits the scrubber reveal coroutine to
-			# complete_scrubber_scene() so the assert can read the flags
-			# synchronously (the full scene plays over several seconds).
-			var sr: Node = root.get_node_or_null("SceneRouter")
-			if sr != null:
-				sr.set("instant_mode", true)
+			# The reveal scene is Dr Rush's WoW dialog (player-driven), so drive
+			# the GameState completion directly here — the panel only redirects
+			# to Rush before diagnosis. This asserts the folded scene outcome:
+			# diagnosed + FTL drop + gate auto-dialed.
 			_game_state.set("met_scott", true)
 			_game_state.set("met_rush", true)
 			_game_state.set("eli_quarters_visited", true)
@@ -373,17 +371,16 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 			_game_state.call("start_air_crisis")
 			_game_state.call("diagnose_life_support")
 			_game_state.call("seal_breach", "breach_a")
-			var scrubber: Node = inst.get_node("CO2Scrubber")
-			scrubber.call("interact", null)
+			_game_state.call("complete_scrubber_scene")
 			var diag_ok: bool = _game_state.get("scrubber_diagnosed") == true
 			var ftl_ok: bool = _game_state.get("ftl_drop_triggered") == true
 			var dial_ok: bool = _game_state.get("lime_planet_dialed") == true
 			if diag_ok and ftl_ok and dial_ok:
-				print("  OK (CO2Scrubber reveal scene → diagnosed + FTL drop + gate dialed)")
+				print("  OK (complete_scrubber_scene → diagnosed + FTL drop + gate dialed)")
 				_passes += 1
 			else:
 				_fail("%s [south_corridor]" % ROOM_SCENE,
-					"CO2Scrubber reveal scene flags not set (diag=%s ftl=%s dial=%s)" % [diag_ok, ftl_ok, dial_ok])
+					"complete_scrubber_scene flags not set (diag=%s ftl=%s dial=%s)" % [diag_ok, ftl_ok, dial_ok])
 
 
 # BFS the connection graph (data/room_connections.json) from gate_room and

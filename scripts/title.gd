@@ -25,6 +25,12 @@ var _new_game_confirm: ConfirmationDialog
 
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	# Mark that we're no longer in a gameplay scene. The pause menu and
+	# autosave both gate on current_scene_path being empty to mean "title /
+	# not in-world". "Save and Quit" returns here WITHOUT going through
+	# reset(), so if we don't clear it the stale gameplay path lets Esc pop
+	# the pause menu over the title (and would let a stray autosave fire).
+	GameState.current_scene_path = ""
 
 	_btn_continue.pressed.connect(_on_continue_pressed)
 	_btn_new_game.pressed.connect(_on_new_game_pressed)

@@ -50,6 +50,10 @@ func _begin() -> void:
 		print("  (screenshot capture → ", _shot_dir, ")")
 		DirAccess.make_dir_recursive_absolute(_shot_dir)
 	SceneRouter.instant_mode = not _demo_mode
+	# Redirect save I/O to a test-only prefix BEFORE any autosave can fire.
+	# Otherwise this integration test writes and wipes the player's real
+	# user://save.json, destroying actual progress on every test run.
+	SaveManager.configure_test_paths()
 	get_tree().create_timer(TIMEOUT_SEC).timeout.connect(_on_timeout)
 	GameState.reset()
 	_drive()
@@ -156,31 +160,31 @@ func _drive() -> void:
 		"south_spur",
 		"breached_section_south",
 	])
-	await _interact_node(_find_node_named("HullSealSwitch"), "hull seal switch")
-	_expect(GameState.breaches_sealed.has("breach_a"), "quest: breach sealed")
+	# Examine the dead panel (learn it needs a fuse), loot the small fuse from
+	# a crate, then fit it at the panel to seal the breach.
+	await _interact_node(_find_node_named("ShuttleDoorPanel"), "examine dead door panel")
+	_expect(GameState.door_panel_examined, "quest: examining panel reveals the fuse need")
+	_expect(not GameState.breaches_sealed.has("breach_a"), "quest: door not sealed without a fuse")
+	await _interact_node(_find_node_named("ShuttleCrate2"), "search fuse crate")
+	_expect(GameState.small_fuse_found, "quest: small fuse looted from crate")
+	await _interact_node(_find_node_named("ShuttleDoorPanel"), "fit small fuse")
+	_expect(GameState.breaches_sealed.has("breach_a"), "quest: jammed door sealed")
 	_expect(GameState.quest_step == GameState.QUEST_FIND_SCRUBBER, "quest: breach -> find scrubber")
 
 	# === STEP 8: diagnose broken CO2 scrubber ===
-	# Back up from the far-south Damaged Section, across to the north corridor,
-	# then up the elevator to Hydroponics.
+	# Rush's radio points us back up to the south corridor, where the broken
+	# scrubber sits — no elevator/Hydroponics trip (that's a later-deck room).
 	await _travel_path([
 		"south_spur",
 		"south_corridor",
-		"east_corridor",
-		"north_corridor",
-		"elevator_north",
-		"elevator_room_floor_1",
-		"hydroponics",
 	])
 	await _interact_node(_find_node_named("CO2Scrubber"), "scrubber diagnosis")
 	_expect(GameState.scrubber_diagnosed, "quest: scrubber diagnosed")
 	_expect(GameState.quest_step == GameState.QUEST_WAIT_FTL, "quest: scrubber -> FTL drop")
 
 	# === STEP 9: trigger FTL drop and dial lime planet ===
+	# From the south corridor, back to the gate room via the east corridor.
 	await _travel_path([
-		"elevator_room_floor_1",
-		"elevator_north",
-		"north_corridor",
 		"east_corridor",
 		"stargate_corridor_east_connector",
 		"gate_room",
@@ -218,13 +222,11 @@ func _drive() -> void:
 	await _demo_hold()
 
 	# === STEP 11: repair scrubber and complete Episode 1 ===
+	# Lime in hand, back to the south-corridor scrubber to finish the repair.
 	await _travel_path([
 		"stargate_corridor_east_connector",
 		"east_corridor",
-		"north_corridor",
-		"elevator_north",
-		"elevator_room_floor_1",
-		"hydroponics",
+		"south_corridor",
 	])
 	await _interact_node(_find_node_named("CO2Scrubber"), "scrubber repair")
 	_expect(GameState.scrubber_repaired, "quest: scrubber repaired")
@@ -242,9 +244,9 @@ func _drive() -> void:
 # (3) wipe() must clear the primary + every backup so the test cleans
 #     up after itself.
 func _verify_save_round_trip() -> void:
-	_expect(FileAccess.file_exists(SaveManager.SAVE_PATH),
+	_expect(FileAccess.file_exists(SaveManager.save_path),
 		"autosave: primary save.json exists after playthrough")
-	var f: FileAccess = FileAccess.open(SaveManager.SAVE_PATH, FileAccess.READ)
+	var f: FileAccess = FileAccess.open(SaveManager.save_path, FileAccess.READ)
 	if f == null:
 		_fail("autosave: could not open save.json for read")
 		return
@@ -273,9 +275,9 @@ func _verify_save_round_trip() -> void:
 			_expect(float((gc as Dictionary).get("elapsed_seconds", 0.0)) > 0.0,
 				"autosave: GameClock.elapsed_seconds > 0 after play")
 	SaveManager.wipe()
-	_expect(not FileAccess.file_exists(SaveManager.SAVE_PATH),
+	_expect(not FileAccess.file_exists(SaveManager.save_path),
 		"autosave: wipe() removes primary save")
-	for bak in SaveManager.BACKUP_PATHS:
+	for bak in SaveManager.backup_paths:
 		_expect(not FileAccess.file_exists(bak), "autosave: wipe() removes " + bak)
 
 

@@ -17,9 +17,20 @@ const PAGE_STATUS: int = 1
 const PAGE_QUEST: int = 2
 const PAGE_LOG: int = 3
 const PAGE_INVENTORY: int = 4
-# Short labels rendered on the 5 blue buttons (Ancient operator typically
-# reads these in an unknown alphabet — for now plain ASCII).
-const PAGE_LABELS: PackedStringArray = ["MAP", "STATUS", "QUEST", "LOG", "INV"]
+const PAGE_SHIP_SYSTEMS: int = 5
+# Short labels rendered on the nav buttons (Ancient operator typically
+# reads these in an unknown alphabet — for now plain ASCII). Indexed by PAGE_*.
+const PAGE_LABELS: PackedStringArray = ["MAP", "STATUS", "QUEST", "LOG", "INV", "SYSTEMS"]
+
+# Per-surface menus. The handheld Kino is the player's personal device (map +
+# personal stats/quest/log/inventory). A wall-mounted control terminal is the
+# SHIP's interface — it shares the map but swaps the personal pages for ship
+# systems, and never exposes inventory/personal stats. Adding a new console
+# variant later is just a new page-set constant.
+const HANDHELD_PAGES: Array[int] = [PAGE_MAP, PAGE_STATUS, PAGE_QUEST, PAGE_LOG, PAGE_INVENTORY]
+const CONSOLE_PAGES: Array[int] = [PAGE_MAP, PAGE_SHIP_SYSTEMS]
+const HANDHELD_TITLE: String = "KINO REMOTE — ANCIENT INTERFACE"
+const CONSOLE_TITLE: String = "DESTINY CONTROL TERMINAL"
 
 # Map projection padding: leaves a small margin around each deck's bounding box
 # so rooms at the edge don't render flush against the panel border.
@@ -68,6 +79,7 @@ const ZOOM_DEFAULT: float = 1.0
 var _layer: CanvasLayer
 var _root: Control
 var _screen: PanelContainer
+var _header_label: Label = null
 var _pages: Array[Control] = []
 var _buttons: Array[Button] = []
 var _active_page: int = PAGE_MAP
@@ -202,12 +214,12 @@ func _init_ui() -> void:
 	vbox.add_theme_constant_override("separation", 10)
 	frame.add_child(vbox)
 
-	var header: Label = Label.new()
-	header.text = "KINO REMOTE — ANCIENT INTERFACE"
-	header.add_theme_color_override("font_color", Color(0.55, 0.85, 1.0, 1))
-	header.add_theme_font_size_override("font_size", 20)
-	header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(header)
+	_header_label = Label.new()
+	_header_label.text = HANDHELD_TITLE
+	_header_label.add_theme_color_override("font_color", Color(0.55, 0.85, 1.0, 1))
+	_header_label.add_theme_font_size_override("font_size", 20)
+	_header_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(_header_label)
 
 	# Body row: [button strip] | [oval screen]
 	var body: HBoxContainer = HBoxContainer.new()
@@ -269,6 +281,7 @@ func _init_ui() -> void:
 	_build_quest_page(page_stack)
 	_build_log_page(page_stack)
 	_build_inventory_page(page_stack)
+	_build_ship_systems_page(page_stack)
 
 	var footer: Label = Label.new()
 	footer.text = "[Tab] Close  •  [Esc] Resume"
@@ -418,6 +431,26 @@ func _build_inventory_page(parent: Control) -> void:
 	inv.name = "InventoryBox"
 	page.add_child(inv)
 
+# Console-only page: ship-level systems (power / O2 / hull) and a life-support
+# diagnostics block. Distinct from the personal STATUS page (Eli's vitals) — a
+# control terminal reads the ship, not the crewman holding it.
+func _build_ship_systems_page(parent: Control) -> void:
+	var page: VBoxContainer = VBoxContainer.new()
+	page.name = "ShipSystems"
+	page.anchor_right = 1.0
+	page.anchor_bottom = 1.0
+	page.add_theme_constant_override("separation", 10)
+	parent.add_child(page)
+	_pages.append(page)
+	_label(page, "SHIP SYSTEMS", 16, Color(0.55, 0.85, 1.0, 1.0))
+	_label(page, "  Main power:  —", 14, Color.WHITE).name = "SysPower"
+	_label(page, "  Atmosphere O2:  —", 14, Color.WHITE).name = "SysOxygen"
+	_label(page, "  Hull integrity:  —", 14, Color.WHITE).name = "SysHull"
+	page.add_child(HSeparator.new())
+	_label(page, "LIFE SUPPORT", 16, Color(0.55, 0.85, 1.0, 1.0))
+	_label(page, "  Exposed section:  —", 14, Color.WHITE).name = "SysBreach"
+	_label(page, "  CO2 scrubber:  —", 14, Color.WHITE).name = "SysScrubber"
+
 
 func _on_page_button(idx: int) -> void:
 	Audio.play("res://sounds/menu_click.ogg")
@@ -440,24 +473,25 @@ func _label(parent: Node, text: String, size: int, color: Color) -> Label:
 	return l
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("kino_remote") and GameState.kino_acquired:
-		_toggle()
-		get_viewport().set_input_as_handled()
+	if event.is_action_pressed("kino_remote"):
+		# Tab always CLOSES an open surface — including a console-opened map the
+		# player can't reopen yet (no handheld Kino). Only OPENING via Tab is
+		# gated on kino_acquired, so a diegetic console map isn't a soft-lock.
+		if _open:
+			_close()
+			get_viewport().set_input_as_handled()
+		elif GameState.kino_acquired:
+			# Tab = handheld Kino: fog-of-war, only discovered rooms.
+			_console_mode = false
+			_open_remote()
+			get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("pause") and _open:
 		_close()
 		get_viewport().set_input_as_handled()
 
-func _toggle() -> void:
-	if _open:
-		_close()
-	else:
-		# Tab = handheld Kino: fog-of-war, only discovered rooms.
-		_console_mode = false
-		_open_remote()
-
 # Public open API for external callers (control_console.gd). The Tab-key
-# path goes through _unhandled_input → _toggle → _open_remote which keeps the
-# kino_acquired gate; this entrypoint lets diegetic in-world consoles open
+# path keeps the kino_acquired gate; this entrypoint lets diegetic in-world
+# consoles open
 # the same surface even before the player has picked up the handheld remote,
 # since the menu represents the console's interface in that case rather than
 # the player's pocket prop.
@@ -474,10 +508,26 @@ func _open_remote() -> void:
 	_load_persisted_ui_state()
 	_open = true
 	_root.visible = true
+	_apply_surface()
 	_refresh()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	get_tree().paused = true
 	Audio.play("res://sounds/menu_open.ogg")
+
+
+# Configure the menu for the active surface: the handheld Kino (personal device)
+# vs a wall-mounted control terminal (ship interface). Sets the title, shows
+# only that surface's nav buttons, and lands on a valid page. Driven by
+# _console_mode, which open_remote() set from its console_mode argument.
+func _apply_surface() -> void:
+	var pages: Array[int] = CONSOLE_PAGES if _console_mode else HANDHELD_PAGES
+	if _header_label != null:
+		_header_label.text = CONSOLE_TITLE if _console_mode else HANDHELD_TITLE
+	for i in range(_buttons.size()):
+		_buttons[i].visible = pages.has(i)
+	# Keep the current page if it belongs to this surface; otherwise fall back
+	# to the surface's first page (MAP today).
+	_select_page(_active_page if pages.has(_active_page) else pages[0])
 
 # Public close — mirrors open_remote() so external callers (control_console.gd,
 # playthrough_runner.gd) can dismiss the menu without reaching into the private
@@ -553,6 +603,7 @@ func _refresh() -> void:
 	_refresh_quest()
 	_refresh_log()
 	_refresh_inventory()
+	_refresh_ship_systems()
 
 # Rebuild the entire map page: dark backdrop, HUD chrome (title, deck label,
 # zoom slider, status readouts), and a single MapView Control whose _draw
@@ -1704,6 +1755,36 @@ func _refresh_status() -> void:
 			scan.text = "  Planet scan: viable address pending gate dial"
 		else:
 			scan.text = "  Planet scan: no active offworld scan"
+
+func _refresh_ship_systems() -> void:
+	var page: Node = _pages[PAGE_SHIP_SYSTEMS]
+	var power: Label = page.get_node_or_null("SysPower") as Label
+	var oxygen: Label = page.get_node_or_null("SysOxygen") as Label
+	var hull: Label = page.get_node_or_null("SysHull") as Label
+	var breach: Label = page.get_node_or_null("SysBreach") as Label
+	var scrubber: Label = page.get_node_or_null("SysScrubber") as Label
+	if power != null:
+		power.text = "  Main power:  %s" % _format_status("", GameState.power_percent).strip_edges()
+	if oxygen != null:
+		oxygen.text = "  Atmosphere O2:  %d%%" % int(GameState.oxygen)
+	if hull != null:
+		hull.text = "  Hull integrity:  %s" % _format_status("", GameState.hull_percent).strip_edges()
+	if breach != null:
+		if not GameState.air_crisis_started:
+			breach.text = "  Exposed section:  nominal"
+		elif GameState.breaches_sealed.is_empty():
+			breach.text = "  Exposed section:  VENTING — seal required"
+		else:
+			breach.text = "  Exposed section:  sealed"
+	if scrubber != null:
+		if GameState.scrubber_repaired:
+			scrubber.text = "  CO2 scrubber:  online"
+		elif GameState.scrubber_diagnosed:
+			scrubber.text = "  CO2 scrubber:  FAULT — lime required"
+		elif GameState.air_crisis_started:
+			scrubber.text = "  CO2 scrubber:  FAULT detected"
+		else:
+			scrubber.text = "  CO2 scrubber:  nominal"
 
 func _refresh_quest() -> void:
 	var page: Node = _pages[PAGE_QUEST]

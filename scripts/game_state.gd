@@ -94,13 +94,13 @@ const QUEST_TARGETS: Dictionary = {
 	QUEST_SLEEP: {"room": "eli_quarters", "anchor": "Bed"},
 	QUEST_RETURN_TO_CONTROL: {"room": "control_interface_room", "anchor": ""},
 	QUEST_DIAGNOSE_LIFE_SUPPORT: {"room": "control_interface_room", "anchor": "ControlConsoleNearest"},
-	QUEST_SEAL_BREACH: {"room": "breached_section_south", "anchor": "HullSealSwitch"},
-	QUEST_FIND_SCRUBBER: {"room": "hydroponics", "anchor": "CO2Scrubber"},
+	QUEST_SEAL_BREACH: {"room": "breached_section_south", "anchor": "ShuttleObjective"},
+	QUEST_FIND_SCRUBBER: {"room": "south_corridor", "anchor": "CO2Scrubber"},
 	QUEST_WAIT_FTL: {"room": "gate_room", "anchor": "FTLConsole"},
 	QUEST_DIAL_LIME_PLANET: {"room": "gate_room", "anchor": "GateControlConsole"},
 	QUEST_MINE_LIME: {"room": "", "anchor": ""},  # offworld — hide waypoint
 	QUEST_RETURN_DESTINY: {"room": "", "anchor": ""},  # offworld — hide waypoint
-	QUEST_REPAIR_SCRUBBER: {"room": "hydroponics", "anchor": "CO2Scrubber"},
+	QUEST_REPAIR_SCRUBBER: {"room": "south_corridor", "anchor": "CO2Scrubber"},
 	QUEST_COMPLETE: {"room": "", "anchor": ""},
 }
 
@@ -167,6 +167,15 @@ var life_support_diagnosed: bool = false
 # terminal — opened the sealed section (ship strobes red), panicked, and shut
 # it again. One-shot: gates the beat so it doesn't replay on console re-access.
 var blocked_door_beat_done: bool = false
+# True once the player examines the jammed-door panel and learns its fuse
+# slot is blown — only THEN does the objective send them to the crates for a
+# fuse (don't hand the player the answer before they've looked at the door).
+var door_panel_examined: bool = false
+# Fuses looted from the Shuttle Dock crates. The jammed door panel needs a
+# SMALL fuse; a large fuse also turns up (wrong size for the door — kept for
+# flavor / future use). One crate holds the small fuse the player needs.
+var small_fuse_found: bool = false
+var large_fuse_found: bool = false
 var scrubber_diagnosed: bool = false
 var scrubber_repaired: bool = false
 var ftl_drop_triggered: bool = false
@@ -200,12 +209,26 @@ var kino_active_floor: int = -1
 var kino_marker: Dictionary = {}
 
 
+# Resolve an autoload by name, tolerating the headless -s SceneTree test
+# context where GameState is instantiated as a bare node. An ABSOLUTE path
+# like get_node_or_null("/root/X") errors ("Can't use get_node() with
+# absolute paths from outside the active scene tree") when this node was
+# add_child'd to the tree root without a current scene — so we navigate
+# from get_tree().root with a RELATIVE name instead, guarded by
+# is_inside_tree().
+func _autoload_node(autoload_name: String) -> Node:
+	if not is_inside_tree():
+		return null
+	var tree: SceneTree = get_tree()
+	if tree == null or tree.root == null:
+		return null
+	return tree.root.get_node_or_null(autoload_name)
+
+
 func _ready() -> void:
 	# Autoload-tolerant: e1_flow.gd and other -s SceneTree script tests
 	# instantiate GameState directly with no SaveManager in the tree.
-	# `/root/SaveManager` resolves to the live autoload in real runs and
-	# returns null in script tests, which we accept silently.
-	var sm: Node = get_node_or_null("/root/SaveManager")
+	var sm: Node = _autoload_node("SaveManager")
 	if sm != null and sm.has_method("register_system"):
 		sm.call("register_system", "game_state", self)
 
@@ -231,6 +254,9 @@ func reset() -> void:
 	air_crisis_started = false
 	control_room_returned = false
 	blocked_door_beat_done = false
+	door_panel_examined = false
+	small_fuse_found = false
+	large_fuse_found = false
 	life_support_diagnosed = false
 	scrubber_diagnosed = false
 	scrubber_repaired = false
@@ -247,6 +273,16 @@ func reset() -> void:
 	kino_zoom = 1.0
 	kino_active_floor = -1
 	kino_marker = {}
+	# Clear scene-staging batons BEFORE advance_air_quest() emits
+	# objective_changed. Otherwise the autosave hook sees a stale
+	# current_scene_path (the room we were in when Restart was pressed) plus
+	# a freshly-cleared current_room_id, and writes a roomless save that
+	# void-falls on Continue. The next scene's _ready repopulates these.
+	current_scene_path = ""
+	next_room_id = ""
+	pending_spawn_position = null
+	pending_spawn_yaw = 0.0
+	skip_arrival_cinematic = false
 	health_changed.emit(health)
 	oxygen_changed.emit(oxygen)
 	kino_changed.emit(kino_acquired)
@@ -426,9 +462,13 @@ func _objective_for_step(step: String) -> String:
 		QUEST_DIAGNOSE_LIFE_SUPPORT:
 			return "Access a control terminal in the Control Interface Room."
 		QUEST_SEAL_BREACH:
-			return "Head south to the Damaged Section and force the jammed bulkhead door shut."
+			if not door_panel_examined:
+				return "A jammed shuttle door is venting atmosphere in the Shuttle Dock (far south). Get to the door panel and try it."
+			if not small_fuse_found:
+				return "The door panel's fuse is blown. Search the Shuttle Dock crates for a Small Fuse."
+			return "Fit the Small Fuse into the door panel to force the jammed door shut."
 		QUEST_FIND_SCRUBBER:
-			return "Find the broken CO2 scrubber in Hydroponics."
+			return "Fix the broken CO2 scrubber in the south corridor."
 		QUEST_WAIT_FTL:
 			return "Return to the Gate Room and trigger the FTL drop."
 		QUEST_DIAL_LIME_PLANET:
@@ -438,7 +478,7 @@ func _objective_for_step(step: String) -> String:
 		QUEST_RETURN_DESTINY:
 			return "Return through the planet gate to Destiny."
 		QUEST_REPAIR_SCRUBBER:
-			return "Bring lime to the CO2 scrubber in Hydroponics."
+			return "Bring lime to the CO2 scrubber in the south corridor."
 		QUEST_COMPLETE:
 			return "Episode 1: Air — Complete"
 		_:
@@ -549,6 +589,39 @@ func mark_control_room_returned() -> void:
 	control_room_returned = true
 	advance_air_quest()
 
+
+# First time the player works the dead door panel: they learn the fuse slot
+# is blown. Flips the objective + waypoint from the panel to the crates.
+func examine_door_panel() -> void:
+	if door_panel_examined:
+		return
+	door_panel_examined = true
+	advance_air_quest()
+
+
+# Looting a fuse from a Shuttle Dock crate. The small fuse is the one the
+# door panel needs (flips the objective + waypoint to the panel); the large
+# fuse is the wrong size for the door.
+func find_small_fuse() -> void:
+	if small_fuse_found:
+		return
+	small_fuse_found = true
+	add_log("Found a Small Fuse — this should fit the door panel.")
+	advance_air_quest()
+
+
+func find_large_fuse() -> void:
+	if large_fuse_found:
+		return
+	large_fuse_found = true
+	add_log("Found a Large Fuse. Too big for the door panel — pocket it anyway.")
+
+
+# Generic crate loot for the non-fuse crate: a ration pack the player pockets.
+# Stocks the shared resource pool so the dock crate isn't a dead end.
+func find_rations() -> void:
+	add_resource("rations", 1, "a supply crate")
+
 func diagnose_life_support() -> void:
 	if not air_crisis_started:
 		add_log("Life support is nominal enough for now. Rush still wants priorities handled.")
@@ -586,7 +659,7 @@ func trigger_ftl_drop() -> void:
 	# anchored to GameClock — survives save / resume without depending on
 	# wall-clock time. Tolerates GameClock absence so the headless
 	# e1_flow.gd test (no autoloads) can still exercise this path.
-	var gc: Node = get_node_or_null("/root/GameClock")
+	var gc: Node = _autoload_node("GameClock")
 	ftl_drop_game_time = float(gc.get("elapsed_seconds")) if gc != null else 0.0
 	add_log("FTL drop triggered. Destiny falls into normal space near a viable gate address.")
 	advance_air_quest()
@@ -657,7 +730,7 @@ func complete_episode_air() -> void:
 func has_save() -> bool:
 	# Forward to SaveManager when autoloads are active; gracefully report
 	# "no save" in script tests where the SaveManager autoload is absent.
-	var sm: Node = get_node_or_null("/root/SaveManager")
+	var sm: Node = _autoload_node("SaveManager")
 	if sm != null and sm.has_method("has_save"):
 		return sm.call("has_save") == true
 	return false
@@ -689,6 +762,9 @@ func serialize() -> Dictionary:
 		"air_crisis_started": air_crisis_started,
 		"control_room_returned": control_room_returned,
 		"blocked_door_beat_done": blocked_door_beat_done,
+		"door_panel_examined": door_panel_examined,
+		"small_fuse_found": small_fuse_found,
+		"large_fuse_found": large_fuse_found,
 		"life_support_diagnosed": life_support_diagnosed,
 		"scrubber_diagnosed": scrubber_diagnosed,
 		"scrubber_repaired": scrubber_repaired,
@@ -723,6 +799,9 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	air_crisis_started = data.get("air_crisis_started", false) == true
 	control_room_returned = data.get("control_room_returned", false) == true
 	blocked_door_beat_done = data.get("blocked_door_beat_done", false) == true
+	door_panel_examined = data.get("door_panel_examined", false) == true
+	small_fuse_found = data.get("small_fuse_found", false) == true
+	large_fuse_found = data.get("large_fuse_found", false) == true
 	life_support_diagnosed = data.get("life_support_diagnosed", false) == true
 	scrubber_diagnosed = data.get("scrubber_diagnosed", false) == true
 	scrubber_repaired = data.get("scrubber_repaired", false) == true

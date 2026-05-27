@@ -77,9 +77,9 @@ const ROOM_INTERACTABLE_REQUIRES: Dictionary = {
 	"quarters_room_1": ["Bed"],
 	"eli_quarters": ["KinoPickup"],
 	"engineering_bay": ["PowerConsole"],
-	"breached_section_south": ["HullBreach", "HullSealSwitch"],
+	"breached_section_south": ["ShuttleDoorPanel", "ShuttleCrate1", "ShuttleCrate2", "ShuttleCrate3"],
 	"control_interface_room": ["DrRush"],
-	"hydroponics": ["CO2Scrubber"],
+	"south_corridor": ["CO2Scrubber"],
 }
 
 var _failures: Array[String] = []
@@ -218,7 +218,7 @@ func _check_scott_repeat_dialogue(inst: Node) -> void:
 	if scott == null:
 		_fail("res://scenes/gate_room.tscn", "Lt Scott node missing")
 		return
-	var was_met: bool = bool(_game_state.get("met_scott"))
+	var was_met: bool = _game_state.get("met_scott") == true
 	_game_state.set("met_scott", true)
 	var tree: Array = scott.call("_active_dialogue_tree")
 	_game_state.set("met_scott", was_met)
@@ -313,7 +313,7 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 		"quarters_room_1":
 			var bed: Node = inst.get_node("Bed")
 			bed.call("interact", null)
-			if bool(_game_state.get("quarters_found")):
+			if _game_state.get("quarters_found") == true:
 				print("  OK (Bed.interact → quarters_found=true)")
 				_passes += 1
 			else:
@@ -326,10 +326,10 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 			# the flag. Headless short-circuits the waits but the await still
 			# yields one frame; poll briefly so we see the flip after resume.
 			var waited: int = 0
-			while not bool(_game_state.get("kino_acquired")) and waited < 30:
+			while _game_state.get("kino_acquired") != true and waited < 30:
 				await process_frame
 				waited += 1
-			if bool(_game_state.get("kino_acquired")):
+			if _game_state.get("kino_acquired") == true:
 				print("  OK (KinoPickup.interact → kino_acquired=true)")
 				_passes += 1
 			else:
@@ -338,23 +338,27 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 		"engineering_bay":
 			var console: Node = inst.get_node("PowerConsole")
 			console.call("interact", null)
-			if bool(_game_state.get("elevator_repaired")):
+			if _game_state.get("elevator_repaired") == true:
 				print("  OK (PowerConsole.interact → elevator_repaired=true)")
 				_passes += 1
 			else:
 				_fail("%s [engineering_bay]" % ROOM_SCENE,
 					"PowerConsole.interact() did not set GameState.elevator_repaired")
 		"breached_section_south":
-			var switch: Node = inst.get_node("HullSealSwitch")
-			switch.call("interact", null)
+			# Loot the small-fuse crate, then repair the door panel → breach sealed.
+			inst.get_node("ShuttleCrate2").call("interact", null)
+			if _game_state.get("small_fuse_found") != true:
+				_fail("%s [breached_section_south]" % ROOM_SCENE,
+					"ShuttleCrate2.interact() did not grant the Small Fuse")
+			inst.get_node("ShuttleDoorPanel").call("interact", null)
 			var sealed: Array = _game_state.get("breaches_sealed")
 			if sealed.size() > 0:
-				print("  OK (HullSealSwitch.interact → breaches_sealed=", sealed, ")")
+				print("  OK (crate→small fuse, panel→breaches_sealed=", sealed, ")")
 				_passes += 1
 			else:
 				_fail("%s [breached_section_south]" % ROOM_SCENE,
-					"HullSealSwitch.interact() did not record a sealed breach")
-		"hydroponics":
+					"ShuttleDoorPanel.interact() did not record a sealed breach after the fuse")
+		"south_corridor":
 			_game_state.set("met_scott", true)
 			_game_state.set("met_rush", true)
 			_game_state.set("eli_quarters_visited", true)
@@ -365,11 +369,11 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 			_game_state.call("seal_breach", "breach_a")
 			var scrubber: Node = inst.get_node("CO2Scrubber")
 			scrubber.call("interact", null)
-			if bool(_game_state.get("scrubber_diagnosed")):
+			if _game_state.get("scrubber_diagnosed") == true:
 				print("  OK (CO2Scrubber.interact → scrubber_diagnosed=true)")
 				_passes += 1
 			else:
-				_fail("%s [hydroponics]" % ROOM_SCENE,
+				_fail("%s [south_corridor]" % ROOM_SCENE,
 					"CO2Scrubber.interact() did not diagnose the scrubber")
 
 
@@ -387,7 +391,8 @@ func _check_connection_reachability() -> void:
 		"eli_quarters",                 # kino pickup (Eli's room)
 		"engineering_bay",              # power console — gates upper deck
 		"quarters_room_1",              # Crew Quarters Alpha (upper deck)
-		"hydroponics",                  # CO2 scrubber
+		"south_corridor",               # CO2 scrubber (Phase D)
+		"hydroponics",                  # upper-deck room, elevator-gated
 	]
 	var connections: Dictionary = _load_connections()
 	if connections.is_empty():

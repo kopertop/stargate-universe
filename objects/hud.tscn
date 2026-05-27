@@ -5,7 +5,7 @@
 [ext_resource type="Texture2D" path="res://sprites/ui/dialog_nameplate.png" id="3_dlgnamep"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_objective"]
-font_size = 22
+font_size = 16
 font_color = Color(0.95, 0.98, 1, 1)
 outline_size = 6
 outline_color = Color(0, 0, 0, 0.65)

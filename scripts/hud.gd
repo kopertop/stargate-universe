@@ -33,6 +33,11 @@ const EDGE_ARROW_MARGIN: float = 64.0
 var _edge_arrow: Polygon2D = null
 
 func _ready() -> void:
+	# Wrap the objective within its ~676px box (offset 24→700 in the scene)
+	# instead of overflowing across the full top row into the top-right log
+	# feed. Extra vertical room lets a long objective wrap to 2–3 lines.
+	_objective_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_objective_label.offset_bottom = 130.0
 	GameState.objective_changed.connect(_on_objective_changed)
 	GameState.health_changed.connect(_on_health_changed)
 	GameState.oxygen_changed.connect(_on_oxygen_changed)
@@ -189,7 +194,7 @@ func _on_log_added(line: String) -> void:
 	var lbl: Label = Label.new()
 	lbl.text = "• " + line
 	lbl.add_theme_color_override("font_color", Color(0.85, 0.95, 1.0, 1.0))
-	lbl.add_theme_font_size_override("font_size", 14)
+	lbl.add_theme_font_size_override("font_size", 11)
 	_log_box.add_child(lbl)
 	# Keep only the last 3. remove_child() first so the count drops synchronously —
 	# queue_free() alone defers deletion to end-of-frame and would spin this loop.

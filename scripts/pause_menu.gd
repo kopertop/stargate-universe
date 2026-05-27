@@ -8,11 +8,12 @@ extends Node
 # onto a CanvasLayer so it attaches to every scene without per-scene
 # wiring, same pattern as KinoRemote.
 #
-# Layered above KinoRemote behaviorally: when KinoRemote is open, the
-# existing Esc handler in kino_remote.gd consumes the event first and
-# closes the Kino — our handler only fires once nothing else has claimed
-# the press. This keeps Tab=Kino and Esc=pause distinct without an
-# explicit priority system.
+# Layered above KinoRemote behaviorally: when the Kino map/console is open,
+# Esc must close THAT, not stack a pause menu over it. PauseMenu's
+# _unhandled_input runs before KinoRemote's (autoload order), so it
+# explicitly bails when KinoRemote is open and lets the event fall through
+# to KinoRemote's own pause handler. This keeps Tab=Kino and Esc=pause
+# distinct without a global priority system.
 
 const RESTART_CONFIRM_PROMPT: String = "Confirm? This wipes your save."
 
@@ -178,8 +179,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	# don't intercept the user before they've started a game.
 	if not _open and GameState.current_scene_path == "":
 		return
-	# When KinoRemote is open, its own pause handler ran first (consumed
-	# the event), so we never see it here — see kino_remote.gd:414.
+	# Defer to KinoRemote when its map/console surface is open: Esc should
+	# CLOSE the map, not stack the pause menu over it. PauseMenu's
+	# _unhandled_input actually runs BEFORE KinoRemote's (autoload order puts
+	# PauseMenu lower in the tree, so it gets unhandled input first), so we
+	# must bail WITHOUT consuming the event and let it fall through to
+	# KinoRemote's own pause handler.
+	if not _open and KinoRemote.get("_open"):
+		return
 	get_viewport().set_input_as_handled()
 	_toggle()
 

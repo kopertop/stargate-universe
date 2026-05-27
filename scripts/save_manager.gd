@@ -17,14 +17,32 @@ signal save_written()
 signal save_loaded()
 signal save_wiped()
 
-const SAVE_PATH: String = "user://save.json"
-const SAVE_TMP_PATH: String = "user://save.json.tmp"
-const BACKUP_PATHS: Array[String] = [
+const SAVE_VERSION: int = 2
+
+# Save paths are vars, not consts, so headless tests can redirect them off
+# the real player save via configure_test_paths(). Without this, running
+# tests/run.sh would write to AND wipe the player's actual user://save.json
+# — destroying real progress every test run.
+var save_path: String = "user://save.json"
+var save_tmp_path: String = "user://save.json.tmp"
+var backup_paths: Array[String] = [
 	"user://save.bak.1.json",
 	"user://save.bak.2.json",
 	"user://save.bak.3.json",
 ]
-const SAVE_VERSION: int = 2
+
+
+# Redirect all save I/O to a test-only prefix. Called by the playthrough
+# runner at startup so integration tests exercise the full save pipeline
+# without ever touching the player's real save files.
+func configure_test_paths(stem: String = "test_save") -> void:
+	save_path = "user://%s.json" % stem
+	save_tmp_path = "user://%s.json.tmp" % stem
+	backup_paths = [
+		"user://%s.bak.1.json" % stem,
+		"user://%s.bak.2.json" % stem,
+		"user://%s.bak.3.json" % stem,
+	]
 
 var _systems: Dictionary = {}
 var _autosave_hooks_ready: bool = false
@@ -60,9 +78,9 @@ func register_system(id: String, system: Object) -> void:
 
 
 func has_save() -> bool:
-	if FileAccess.file_exists(SAVE_PATH):
+	if FileAccess.file_exists(save_path):
 		return true
-	for p in BACKUP_PATHS:
+	for p in backup_paths:
 		if FileAccess.file_exists(p):
 			return true
 	return false
@@ -85,6 +103,11 @@ func _on_room_changed(_room_id: String) -> void:
 func _can_autosave() -> bool:
 	if GameState.current_scene_path == "":
 		return false
+	# A save with no room id void-falls on resume (room.tscn is a template
+	# that needs a room to build). Never persist one — this guards every
+	# autosave path, not just the reset/Restart case that first exposed it.
+	if GameState.current_room_id == "":
+		return false
 	if SceneRouter.is_transitioning:
 		return false
 	var player: Node = get_tree().get_first_node_in_group("player")
@@ -102,7 +125,7 @@ func save() -> void:
 	var data: Dictionary = _build_snapshot()
 	if data.is_empty():
 		return
-	if not _write_atomic(SAVE_PATH, data):
+	if not _write_atomic(save_path, data):
 		return
 	save_written.emit()
 
@@ -139,9 +162,9 @@ func _capture_player_transform() -> Dictionary:
 
 func _write_atomic(target: String, data: Dictionary) -> bool:
 	_rotate_backups(target)
-	var tmp: FileAccess = FileAccess.open(SAVE_TMP_PATH, FileAccess.WRITE)
+	var tmp: FileAccess = FileAccess.open(save_tmp_path, FileAccess.WRITE)
 	if tmp == null:
-		push_warning("SaveManager: could not open %s for write" % SAVE_TMP_PATH)
+		push_warning("SaveManager: could not open %s for write" % save_tmp_path)
 		return false
 	tmp.store_string(JSON.stringify(data, "\t"))
 	tmp.close()
@@ -152,23 +175,23 @@ func _write_atomic(target: String, data: Dictionary) -> bool:
 	var target_rel: String = target.trim_prefix("user://")
 	if dir.file_exists(target_rel):
 		dir.remove(target_rel)
-	var err: int = dir.rename(SAVE_TMP_PATH.trim_prefix("user://"), target_rel)
+	var err: int = dir.rename(save_tmp_path.trim_prefix("user://"), target_rel)
 	if err != OK:
-		push_warning("SaveManager: rename %s -> %s failed (err %d)" % [SAVE_TMP_PATH, target, err])
+		push_warning("SaveManager: rename %s -> %s failed (err %d)" % [save_tmp_path, target, err])
 		return false
 	return true
 
 
 func _rotate_backups(primary: String) -> void:
 	# Oldest backup is discarded first to make room.
-	if FileAccess.file_exists(BACKUP_PATHS[2]):
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(BACKUP_PATHS[2]))
-	if FileAccess.file_exists(BACKUP_PATHS[1]):
-		_safe_rename(BACKUP_PATHS[1], BACKUP_PATHS[2])
-	if FileAccess.file_exists(BACKUP_PATHS[0]):
-		_safe_rename(BACKUP_PATHS[0], BACKUP_PATHS[1])
+	if FileAccess.file_exists(backup_paths[2]):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(backup_paths[2]))
+	if FileAccess.file_exists(backup_paths[1]):
+		_safe_rename(backup_paths[1], backup_paths[2])
+	if FileAccess.file_exists(backup_paths[0]):
+		_safe_rename(backup_paths[0], backup_paths[1])
 	if FileAccess.file_exists(primary):
-		_safe_rename(primary, BACKUP_PATHS[0])
+		_safe_rename(primary, backup_paths[0])
 
 
 func _safe_rename(from_path: String, to_path: String) -> void:
@@ -204,13 +227,20 @@ func load_and_resume() -> bool:
 			sys.call("deserialize", sys_data, version)
 	_stage_player_spawn(data)
 	GameState.skip_arrival_cinematic = true
+	var scene: String = String(data.get("scene_path", data.get("scene", "res://scenes/gate_room.tscn")))
 	# room.tscn is a template — it reads GameState.next_room_id at _ready to
 	# pick which ShipLayout row to build. On resume we already know the room
 	# (deserialized into current_room_id), so prime the same cross-scene
 	# baton door.gd uses. Without this the template scene loads with no row
 	# and the player spawns in a void with no floor.
 	GameState.next_room_id = GameState.current_room_id
-	var scene: String = String(data.get("scene_path", data.get("scene", "res://scenes/gate_room.tscn")))
+	# Salvage older/edited saves that recorded room.tscn with no room id
+	# (e.g. a roomless autosave written before the _can_autosave guard
+	# existed): drop the player in the gate room rather than the void.
+	if GameState.next_room_id == "" and scene == "res://scenes/room.tscn":
+		push_warning("SaveManager: save has empty room id for room.tscn; resuming in gate room")
+		scene = "res://scenes/gate_room.tscn"
+		GameState.pending_spawn_position = null  # let gate_room use its default spawn
 	_loading = false
 	save_loaded.emit()
 	SceneRouter.change_to(scene, "")
@@ -220,8 +250,8 @@ func load_and_resume() -> bool:
 # Reads from primary, then walks backups in order if the primary is
 # missing or malformed. Returns {} when nothing parseable was found.
 func _load_snapshot() -> Dictionary:
-	var candidates: Array[String] = [SAVE_PATH]
-	for p in BACKUP_PATHS:
+	var candidates: Array[String] = [save_path]
+	for p in backup_paths:
 		candidates.append(p)
 	for path in candidates:
 		if not FileAccess.file_exists(path):
@@ -262,8 +292,8 @@ func _stage_player_spawn(data: Dictionary) -> void:
 # (future) "Delete Save" option. Emits save_wiped so listeners can refresh
 # button states.
 func wipe() -> void:
-	var paths: Array[String] = [SAVE_PATH, SAVE_TMP_PATH]
-	for p in BACKUP_PATHS:
+	var paths: Array[String] = [save_path, save_tmp_path]
+	for p in backup_paths:
 		paths.append(p)
 	for path in paths:
 		if FileAccess.file_exists(path):

@@ -202,7 +202,7 @@ func _initialize() -> void:
 	var snapshot: Dictionary = gs.serialize()
 	_expect(snapshot.has("quest_step"), "serialize() includes quest_step")
 	_expect(String(snapshot.get("quest_step", "")) == gs.QUEST_FIND_RUSH, "serialize captures current quest step")
-	_expect(bool(snapshot.get("met_scott", false)), "serialize captures met_scott")
+	_expect(snapshot.get("met_scott", false) == true, "serialize captures met_scott")
 	_expect(int((snapshot.get("resources", {}) as Dictionary).get(gs.AIR_LIME_RESOURCE, 0)) == 2, "serialize captures resources")
 	_expect(float(snapshot.get("kino_pan_x", 0.0)) == 12.5, "serialize captures kino_pan_x")
 	_expect(float(snapshot.get("kino_zoom", 0.0)) == 1.7, "serialize captures kino_zoom")

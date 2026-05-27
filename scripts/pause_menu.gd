@@ -102,7 +102,7 @@ func _init_ui() -> void:
 	_btn_resume  = _build_button(vbox, "Resume",         _on_resume_pressed)
 	_btn_save    = _build_button(vbox, "Save Now",       _on_save_pressed)
 	_btn_kino    = _build_button(vbox, "Open Kino Map",  _on_kino_pressed)
-	_btn_title   = _build_button(vbox, "Quit to Title",  _on_title_pressed)
+	_btn_title   = _build_button(vbox, "Save and Quit",  _on_title_pressed)
 	_btn_restart = _build_button(vbox, "Restart Episode", _on_restart_pressed)
 
 	_status = Label.new()
@@ -273,7 +273,11 @@ func _on_kino_pressed() -> void:
 
 
 func _on_title_pressed() -> void:
-	# Save is preserved — Continue from the title menu picks it up.
+	# Save-and-quit: write the current state before leaving so Continue
+	# resumes exactly here. _can_autosave gating lives inside save(), so a
+	# title-screen press (no scene) is a safe no-op.
+	if SaveManager.has_method("save"):
+		SaveManager.save()
 	_close()
 	SceneRouter.change_to("res://scenes/title.tscn", "")
 

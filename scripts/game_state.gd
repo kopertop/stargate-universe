@@ -6,6 +6,11 @@ extends Node
 signal health_changed(value: float)
 signal oxygen_changed(value: float)
 signal objective_changed(text: String)
+# Fired only when quest_step actually advances to a different step (not on
+# every objective-text update). SaveManager listens to this to autosave at
+# each quest-progression beat — distinct from objective_changed, which can
+# fire for custom NPC objectives that don't move the quest forward.
+signal quest_step_changed(step: String)
 signal room_discovered(room_id: String)
 # Fired when the player enters a new room. Drives the Kino Remote player
 # marker and the in-world quest-waypoint diamond's re-targeting.
@@ -438,8 +443,11 @@ func _next_air_quest_step() -> String:
 	return QUEST_COMPLETE
 
 func _set_quest_step(step: String) -> void:
+	var changed: bool = step != quest_step
 	quest_step = step
 	set_objective(_objective_for_step(step))
+	if changed:
+		quest_step_changed.emit(step)
 
 func _objective_for_step(step: String) -> String:
 	match step:
@@ -713,11 +721,14 @@ func check_episode_complete() -> void:
 func complete_episode_air() -> void:
 	if episode_complete:
 		return
+	var changed: bool = quest_step != QUEST_COMPLETE
 	quest_step = QUEST_COMPLETE
 	episode_complete = true
 	set_objective(_objective_for_step(QUEST_COMPLETE))
 	add_log("Episode 1 complete: Destiny can breathe again.")
 	episode_completed.emit()
+	if changed:
+		quest_step_changed.emit(QUEST_COMPLETE)
 
 # --- save / wipe -------------------------------------------------------------
 #

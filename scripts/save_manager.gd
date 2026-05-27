@@ -63,7 +63,11 @@ func _install_autosave_hooks() -> void:
 	if _autosave_hooks_ready:
 		return
 	_autosave_hooks_ready = true
-	GameState.objective_changed.connect(_on_quest_changed)
+	# Autosave on the two beats the design calls for: each quest-step
+	# advance and each room transition. quest_step_changed (not
+	# objective_changed) is the precise trigger — it fires once per actual
+	# step change, avoiding redundant writes from custom-objective updates.
+	GameState.quest_step_changed.connect(_on_quest_changed)
 	GameState.current_room_changed.connect(_on_room_changed)
 
 
@@ -86,7 +90,7 @@ func has_save() -> bool:
 	return false
 
 
-func _on_quest_changed(_text: String) -> void:
+func _on_quest_changed(_step: String) -> void:
 	if _loading:
 		return
 	if _can_autosave():

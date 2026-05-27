@@ -4,8 +4,23 @@
 		"name": "Lime World",
 		"seed": 104729,
 		"radius": 34.0,
-		"lime_nodes": 4,
+		"terrain_extent": 240.0,
+		"terrain_resolution": 96,
+		"terrain_height": 9.0,
+		"rim_height": 34.0,
+		"landing_radius": 22.0,
+		"lime_nodes": 5,
 		"lime_per_node": 1,
-		"description": "A dry lime-rich planet dialed during the first Air crisis."
+		"lime_min_radius": 32.0,
+		"lime_max_radius": 66.0,
+		"description": "A dry lime-rich planet dialed during the first Air crisis.",
+		"atmosphere": {
+			"breathable": true,
+			"composition": "O2/N2 — breathable",
+			"temperature_c": 48,
+			"temperature_note": "HOT",
+			"radiation": "LOW",
+			"toxins": "NONE"
+		}
 	}
 ]

@@ -118,6 +118,8 @@ func _run_checks() -> void:
 		_check_scene(path, requires)
 	await _check_procedural_rooms()
 	_check_connection_reachability()
+	await _check_kino_dispenser()
+	await _check_gate_room_phase_e_crew()
 	_report()
 
 
@@ -429,6 +431,79 @@ func _check_connection_reachability() -> void:
 			_passes += 1
 		else:
 			_fail("connections", "%s unreachable from gate_room (broken adjacency)" % target)
+
+
+# Phase E: once Eli has reported to the gate (Brody's "no MALP" beat), the
+# quarters grows a Kino dispenser. Boot eli_quarters with reported_to_gate set
+# and assert the dispenser spawns + grants an orb on interact.
+func _check_kino_dispenser() -> void:
+	print("\n=== Phase E: Kino dispenser (eli_quarters) ===")
+	_game_state.call("reset")
+	_game_state.set("reported_to_gate", true)
+	_game_state.set("next_room_id", "eli_quarters")
+	var packed := load(ROOM_SCENE) as PackedScene
+	if packed == null:
+		_fail(ROOM_SCENE, "load() returned null for dispenser check")
+		return
+	var inst := packed.instantiate()
+	root.add_child(inst)
+	await process_frame
+	var disp: Node = inst.get_node_or_null("KinoDispenser")
+	if disp == null:
+		_fail("%s [eli_quarters]" % ROOM_SCENE, "KinoDispenser did not spawn with reported_to_gate=true")
+	else:
+		var before: int = int(_game_state.get("kino_orbs"))
+		disp.call("interact", null)
+		var after: int = int(_game_state.get("kino_orbs"))
+		if after == before + 1:
+			print("  OK (KinoDispenser.interact → kino_orbs %d→%d)" % [before, after])
+			_passes += 1
+		else:
+			_fail("%s [eli_quarters]" % ROOM_SCENE,
+				"KinoDispenser.interact() did not grant an orb (%d→%d)" % [before, after])
+	root.remove_child(inst)
+	await process_frame
+	inst.free()
+	_game_state.call("reset")
+
+
+# Phase E: Brody + Rush + Park cluster at the gate console during the scout
+# window. Boot gate_room with quest_step in that window and assert all three
+# uniquely-named tableau NPCs spawn. instant_mode guards the arrival cinematic.
+func _check_gate_room_phase_e_crew() -> void:
+	print("\n=== Phase E: gate-room scout crew (Brody/Rush/Park) ===")
+	var router: Node = root.get_node_or_null("SceneRouter")
+	var prev_instant: bool = router != null and router.get("instant_mode") == true
+	if router != null:
+		router.set("instant_mode", true)
+	_game_state.call("reset")
+	# FETCH_KINO sits inside the scout window but trips neither arrival cinematic
+	# (those gate on GO_TO_GATE / SCOUT_KINO), so the crew spawns cleanly.
+	_game_state.set("quest_step", "fetch_kino")  # GameState.QUEST_FETCH_KINO
+	var packed := load("res://scenes/gate_room.tscn") as PackedScene
+	if packed == null:
+		_fail("res://scenes/gate_room.tscn", "load() returned null for Phase E crew check")
+		if router != null:
+			router.set("instant_mode", prev_instant)
+		return
+	var inst := packed.instantiate()
+	root.add_child(inst)
+	await process_frame
+	var missing: Array[String] = []
+	for n in ["World/GateBrody", "World/GateRush", "World/GatePark"]:
+		if inst.get_node_or_null(n) == null:
+			missing.append(n)
+	if missing.size() > 0:
+		_fail("res://scenes/gate_room.tscn", "Phase E crew missing: " + ", ".join(missing))
+	else:
+		print("  OK (GateBrody/GateRush/GatePark spawned for scout window)")
+		_passes += 1
+	root.remove_child(inst)
+	await process_frame
+	inst.free()
+	_game_state.call("reset")
+	if router != null:
+		router.set("instant_mode", prev_instant)
 
 
 func _load_connections() -> Dictionary:

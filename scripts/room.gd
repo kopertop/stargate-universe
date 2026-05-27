@@ -21,6 +21,7 @@ const NpcScript: Script = preload("res://scripts/npc.gd")
 const ScrubberRushScript: Script = preload("res://scripts/scrubber_rush.gd")
 const GreerScript: Script = preload("res://scripts/greer.gd")
 const InfirmaryJamesScript: Script = preload("res://scripts/infirmary_james.gd")
+const KinoDispenserScript: Script = preload("res://scripts/kino_dispenser.gd")
 const Co2ScrubberScript: Script = preload("res://scripts/co2_scrubber.gd")
 const PowerConsoleScript: Script = preload("res://scripts/power_console.gd")
 const QuestWaypointScript: Script = preload("res://scripts/quest_waypoint.gd")
@@ -310,6 +311,10 @@ func _spawn_interactables() -> void:
 			# the desk and his bed for the FIND_REST → SLEEP quest beat.
 			_spawn_eli_kino_pickup()
 			_spawn_quarters_bed("My bed. Time to crash.")
+			# Kino dispenser appears once Phase E begins (Brody's "no MALP" beat
+			# sends Eli back here for a Kino to scout the planet).
+			if GameState.reported_to_gate:
+				_spawn_kino_dispenser()
 		"east_corridor":
 			# Sgt Greer holds the east corridor; the actual breach lives in the
 			# far-south Damaged Section now.
@@ -402,6 +407,18 @@ func _spawn_quarters_bed(first_time_log: String = "") -> void:
 # Eli left his Kino Remote on the desk in his quarters — RoomBuilder's
 # quarters-template builds a Kenney desk at (half_x - 0.7, 0.0, 0.0) when the
 # room is wider than 6 m. eli_quarters is 10 m × 12 m so the desk always spawns.
+# Kino dispenser barrel on the +X (right) wall, +Z side — clear of the desk
+# (centre) and bed. Spawned only once Phase E has begun (see dispatch).
+func _spawn_kino_dispenser() -> void:
+	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
+	var d_m: float = float(_room_data.get("height", 200)) * ShipLayout.SCALE
+	var disp: StaticBody3D = StaticBody3D.new()
+	disp.set_script(KinoDispenserScript)
+	disp.name = "KinoDispenser"
+	disp.position = Vector3(w_m * 0.5 - 0.9, 0.0, d_m * 0.5 - 2.5)
+	add_child(disp)
+
+
 # Kino prop sits on the desktop, pickup hitbox alongside.
 func _spawn_eli_kino_pickup() -> void:
 	# Position + scale baked from scenes/quarters_test.tscn workbench. RoomBuilder

@@ -23,6 +23,11 @@ const QuestWaypointScript: Script = preload("res://scripts/quest_waypoint.gd")
 const ShipAlertScript: Script = preload("res://scripts/ship_alert.gd")
 const QUEST_WAYPOINT_ANCHOR_HEIGHT: float = 2.4
 const QUEST_WAYPOINT_DOOR_HEIGHT: float = 1.8
+# Z of the gate-control / FTL consoles (and the Phase E crew clustered around
+# them). The Stargate sits at +Z (room_size.y*0.5 - 3.8 ≈ +12.2); putting the
+# consoles well into the -Z half keeps the operators back by the staircases
+# (STAIR_Z_CENTER ≈ -10) instead of crowding the event horizon.
+const GATE_CONSOLE_Z: float = -4.0
 
 # Railings are tall enough that the player's 0.6 m jump (jump² / 2·g ≈ 0.6 m
 # given the player's tunables) can't clear them. Combined with the per-rail
@@ -100,9 +105,14 @@ func _ready() -> void:
 
 	# Phase D → E bridge: Brody's "the gate dialed itself" call (end of the CO2
 	# scrubber scene) routes the player back here. Arriving satisfies the
-	# GO_TO_GATE objective and hands off to the Phase E gate beats.
+	# GO_TO_GATE objective and plays the "no MALP → I have an idea" beat that
+	# sends Eli to fetch a Kino. Returning later with a Kino plays Rush's
+	# approval and unlocks Kino Control.
 	if GameState.quest_step == GameState.QUEST_GO_TO_GATE:
 		GameState.report_to_gate()
+		_play_gate_arrival_scene()
+	elif GameState.quest_step == GameState.QUEST_SCOUT_KINO and not GameState.kino_plan_approved:
+		_play_rush_kino_approval()
 
 	# Quest diamond — same pattern as room.gd. Refresh on objective_changed.
 	_refresh_quest_waypoint()
@@ -216,6 +226,41 @@ func _start_ambient() -> void:
 	if _ambient_sfx != null and not _ambient_sfx.playing:
 		_ambient_sfx.play()
 
+# ----- Phase E gate beats ----------------------------------------------------
+
+# Brody flags the no-MALP problem; Eli has an idea. Quest is already at
+# FETCH_KINO (report_to_gate advanced it); this is the in-person dialog.
+func _play_gate_arrival_scene() -> void:
+	GameState.add_log("Dr Brody: We didn't bring a MALP — we've no idea what's on the other side.")
+	_play_gate_dialog([
+		{"speaker": "Dr Brody", "text": "We didn't bring a MALP. We have no idea what's on the other side of that gate.", "choices": [{"text": "...", "next": 1}]},
+		{"speaker": "Eli", "text": "Wait — I have an idea!", "choices": [{"text": "(head to my quarters)", "next": "exit"}]},
+	])
+
+
+# Player returned with a Kino — Rush approves, which (with kino_orbs > 0) leaves
+# the objective at SCOUT_KINO and unlocks Kino Control in the Kino Remote.
+func _play_rush_kino_approval() -> void:
+	GameState.kino_plan_approved = true
+	GameState.add_log("Dr Rush: Oh, that's bloody brilliant, Eli.")
+	_play_gate_dialog([
+		{"speaker": "Dr Rush", "text": "Oh, that's bloody brilliant, Eli. I suspect that's exactly what these devices are for.", "choices": [{"text": "Let's send one through.", "next": "exit"}]},
+	])
+
+
+# Play an in-person WoW dialog in the gate room. Skipped in instant_mode (tests
+# drive state directly); short beat so the HUD settles before it opens.
+func _play_gate_dialog(tree: Array) -> void:
+	var sr: Node = get_node_or_null("/root/SceneRouter")
+	if sr != null and sr.get("instant_mode"):
+		return
+	await get_tree().create_timer(0.8).timeout
+	if not is_inside_tree():
+		return
+	var player: Node = get_tree().get_first_node_in_group("player")
+	GameState.dialog_started.emit(player, tree)
+
+
 # ----- quest waypoint --------------------------------------------------------
 
 func _on_quest_objective_changed(_text: String) -> void:
@@ -227,6 +272,13 @@ func _on_quest_objective_changed(_text: String) -> void:
 # console holders), the cross-room target uses the ExitDoor instance defined
 # in gate_room.tscn (target_room_id = "stargate_corridor_east_connector").
 func _refresh_quest_waypoint() -> void:
+	# Scout beat: the objective is "open the Kino Remote", which has no spatial
+	# target — the HUD shows a [Tab] guide instead. Suppress the diamond + the
+	# HUD edge-arrow (which follows the quest_waypoint group) entirely.
+	if GameState.quest_step == GameState.QUEST_SCOUT_KINO:
+		_destroy_quest_waypoint()
+		return
+
 	var target: Dictionary = GameState.quest_target()
 	var target_room: String = String(target.get("room", ""))
 	var anchor_name: String = String(target.get("anchor", ""))
@@ -933,6 +985,45 @@ func _build_npcs() -> void:
 	if not GameState.air_crisis_started:
 		_build_medic_tableau()
 
+	# Phase E: Brody (at the gate console) plus Rush + Park, who "followed" Eli
+	# in to look at the dialed gate. Present from arrival through the Kino scout.
+	_build_gate_phase_e_crew()
+
+
+# Spawn Brody + Rush + Park clustered by the gate-control console during the
+# Phase E gate window (arrival → Kino scout). Unique node names so NPCState
+# doesn't cross-restore them to the control-room / infirmary versions.
+func _build_gate_phase_e_crew() -> void:
+	var q: String = GameState.quest_step
+	var in_window: bool = (q == GameState.QUEST_GO_TO_GATE
+		or q == GameState.QUEST_FETCH_KINO
+		or q == GameState.QUEST_SCOUT_KINO)
+	if not in_window or GameState.kino_scout_done:
+		return
+	var z_console: float = GATE_CONSOLE_Z
+	# Brody at the gate-control console (x -3.5), facing the player's arrival.
+	_build_tableau_npc(
+		"GateBrody", "Dr Brody",
+		Vector3(-5.2, 0.0, z_console - 1.0), 0.0,
+		"res://models/characters/scott.glb",
+		[{"speaker": "Dr Brody", "text": "Still no telemetry from the other side. We're flying blind here.", "choices": [{"text": "Working on it.", "next": "exit"}]}],
+		"", "stand", true,
+	)
+	_build_tableau_npc(
+		"GateRush", "Dr Rush",
+		Vector3(-1.4, 0.0, z_console - 1.6), 0.0,
+		"res://models/characters/rush.glb",
+		[{"speaker": "Dr Rush", "text": "Whenever you're ready, Mr Wallace. The gate won't stay open forever.", "choices": [{"text": "Right.", "next": "exit"}]}],
+		"", "stand", true,
+	)
+	_build_tableau_npc(
+		"GatePark", "Dr Park",
+		Vector3(0.8, 0.0, z_console - 1.6), 0.0,
+		"res://models/characters/park.glb",
+		[{"speaker": "Dr Park", "text": "A camera drone through a wormhole. Honestly? Worth a shot.", "choices": [{"text": "Let's find out.", "next": "exit"}]}],
+		"", "stand", true,
+	)
+
 
 # Medic vignette near the -X wall, behind the staircases:
 #   • Young lying face-up on the floor, unconscious and not interactable.
@@ -1128,8 +1219,7 @@ func _build_consoles() -> void:
 	# silhouette, same tweak surface as the control-room consoles. Per-console
 	# screen color is the optional differentiator if we ever want Gate Control
 	# vs FTL Countdown to read differently; for now both use the default blue.
-	var half_z: float = room_size.y * 0.5
-	var z_console: float = half_z - 10.5
+	var z_console: float = GATE_CONSOLE_Z
 	for spec in [
 		{"name": "GateControlConsole", "x": -3.5, "kind": "gate_control"},
 		{"name": "FTLConsole",         "x":  3.5, "kind": "ftl_countdown"},

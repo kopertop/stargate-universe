@@ -18,16 +18,17 @@ const PAGE_QUEST: int = 2
 const PAGE_LOG: int = 3
 const PAGE_INVENTORY: int = 4
 const PAGE_SHIP_SYSTEMS: int = 5
+const PAGE_KINO_CONTROL: int = 6
 # Short labels rendered on the nav buttons (Ancient operator typically
 # reads these in an unknown alphabet — for now plain ASCII). Indexed by PAGE_*.
-const PAGE_LABELS: PackedStringArray = ["MAP", "STATUS", "QUEST", "LOG", "INV", "SYSTEMS"]
+const PAGE_LABELS: PackedStringArray = ["MAP", "STATUS", "QUEST", "LOG", "INV", "SYSTEMS", "KINO"]
 
 # Per-surface menus. The handheld Kino is the player's personal device (map +
 # personal stats/quest/log/inventory). A wall-mounted control terminal is the
 # SHIP's interface — it shares the map but swaps the personal pages for ship
 # systems, and never exposes inventory/personal stats. Adding a new console
 # variant later is just a new page-set constant.
-const HANDHELD_PAGES: Array[int] = [PAGE_MAP, PAGE_STATUS, PAGE_QUEST, PAGE_LOG, PAGE_INVENTORY]
+const HANDHELD_PAGES: Array[int] = [PAGE_MAP, PAGE_STATUS, PAGE_QUEST, PAGE_LOG, PAGE_INVENTORY, PAGE_KINO_CONTROL]
 const CONSOLE_PAGES: Array[int] = [PAGE_MAP, PAGE_SHIP_SYSTEMS]
 const HANDHELD_TITLE: String = "KINO REMOTE — ANCIENT INTERFACE"
 const CONSOLE_TITLE: String = "DESTINY CONTROL TERMINAL"
@@ -282,6 +283,7 @@ func _init_ui() -> void:
 	_build_log_page(page_stack)
 	_build_inventory_page(page_stack)
 	_build_ship_systems_page(page_stack)
+	_build_kino_control_page(page_stack)
 
 	var footer: Label = Label.new()
 	footer.text = "[Tab] Close  •  [Esc] Resume"
@@ -452,6 +454,41 @@ func _build_ship_systems_page(parent: Control) -> void:
 	_label(page, "  CO2 scrubber:  —", 14, Color.WHITE).name = "SysScrubber"
 
 
+# Handheld-only page that appears during the SCOUT_KINO beat (gated by
+# _page_available). Lets the player launch a carried Kino orb through the open
+# gate and pilot it on the far side — the recon drone is spawned by planet.gd
+# when GameState.kino_pilot_mode is set.
+func _build_kino_control_page(parent: Control) -> void:
+	var page: VBoxContainer = VBoxContainer.new()
+	page.name = "KinoControl"
+	page.anchor_right = 1.0
+	page.anchor_bottom = 1.0
+	page.add_theme_constant_override("separation", 12)
+	parent.add_child(page)
+	_pages.append(page)
+	_label(page, "KINO CONTROL", 16, Color(0.55, 0.85, 1.0, 1.0))
+	var desc: Label = _label(page, "—", 14, Color(0.85, 0.92, 1.0, 0.95))
+	desc.name = "KinoControlDesc"
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	page.add_child(HSeparator.new())
+	_label(page, "  Kinos in hand:  —", 14, Color.WHITE).name = "KinoControlCount"
+	var launch: Button = Button.new()
+	launch.name = "LaunchKinoButton"
+	launch.text = "LAUNCH KINO"
+	launch.custom_minimum_size = Vector2(240, 58)
+	launch.focus_mode = Control.FOCUS_NONE
+	launch.add_theme_color_override("font_color", Color.WHITE)
+	launch.add_theme_color_override("font_hover_color", Color.WHITE)
+	launch.add_theme_color_override("font_pressed_color", Color.WHITE)
+	launch.add_theme_font_size_override("font_size", 18)
+	launch.add_theme_stylebox_override("normal", _button_stylebox(false))
+	launch.add_theme_stylebox_override("hover", _button_stylebox_hover())
+	launch.add_theme_stylebox_override("pressed", _button_stylebox(true))
+	launch.pressed.connect(_on_launch_kino)
+	page.add_child(launch)
+
+
 func _on_page_button(idx: int) -> void:
 	Audio.play("res://sounds/menu_click.ogg")
 	_select_page(idx)
@@ -524,10 +561,20 @@ func _apply_surface() -> void:
 	if _header_label != null:
 		_header_label.text = CONSOLE_TITLE if _console_mode else HANDHELD_TITLE
 	for i in range(_buttons.size()):
-		_buttons[i].visible = pages.has(i)
-	# Keep the current page if it belongs to this surface; otherwise fall back
-	# to the surface's first page (MAP today).
-	_select_page(_active_page if pages.has(_active_page) else pages[0])
+		_buttons[i].visible = pages.has(i) and _page_available(i)
+	# Keep the current page if it belongs to this surface AND is available;
+	# otherwise fall back to the surface's first page (MAP today).
+	var landing: int = _active_page if (pages.has(_active_page) and _page_available(_active_page)) else pages[0]
+	_select_page(landing)
+
+
+# Conditional page gating on top of the per-surface page list. Most pages are
+# always available; the Kino Control page only appears once Rush has approved
+# the scout plan and the player is holding an unspent orb (the SCOUT_KINO beat).
+func _page_available(page: int) -> bool:
+	if page == PAGE_KINO_CONTROL:
+		return GameState.kino_plan_approved and GameState.kino_orbs > 0 and not GameState.kino_scout_done
+	return true
 
 # Public close — mirrors open_remote() so external callers (control_console.gd,
 # playthrough_runner.gd) can dismiss the menu without reaching into the private
@@ -604,6 +651,7 @@ func _refresh() -> void:
 	_refresh_log()
 	_refresh_inventory()
 	_refresh_ship_systems()
+	_refresh_kino_control()
 
 # Rebuild the entire map page: dark backdrop, HUD chrome (title, deck label,
 # zoom slider, status readouts), and a single MapView Control whose _draw
@@ -1819,6 +1867,69 @@ func _refresh_log() -> void:
 	entries.reverse()
 	for line in entries:
 		_label(box, "  • " + line, 13, Color(0.85, 0.92, 1.0, 0.9))
+
+
+func _refresh_kino_control() -> void:
+	var page: Node = _pages[PAGE_KINO_CONTROL]
+	var desc: Label = page.get_node_or_null("KinoControlDesc") as Label
+	var count: Label = page.get_node_or_null("KinoControlCount") as Label
+	var launch: Button = page.get_node_or_null("LaunchKinoButton") as Button
+	if desc != null:
+		desc.text = "We can't risk stepping through blind. Launch a Kino to scout the far side, then pull it back before we commit."
+	if count != null:
+		count.text = "  Kinos in hand:  %d / %d" % [GameState.kino_orbs, GameState.KINO_ORB_MAX]
+	if launch != null:
+		var can_launch: bool = GameState.kino_orbs > 0 and not GameState.kino_scout_done
+		launch.disabled = not can_launch
+		launch.text = "LAUNCH KINO" if can_launch else "NO KINO IN HAND"
+
+
+# Spend a carried Kino orb and dive into the recon-drone flight. The Kino
+# launches RIGHT WHERE THE PLAYER STANDS (in the gate room) — the player must
+# pilot it through the active Stargate to reach the planet. We possess the
+# current scene with a ship-mode drone; the drone warps to the planet when it
+# crosses the gate.
+const KinoDroneScript: Script = preload("res://scripts/kino_drone.gd")
+const KINO_LAUNCH_HEIGHT: float = 1.6   # spawn the orb above the player's hands
+
+func _on_launch_kino() -> void:
+	if GameState.kino_orbs <= 0 or GameState.kino_scout_done:
+		return
+	if not GameState.consume_kino_orb():
+		return
+	Audio.play("res://sounds/menu_click.ogg")
+	GameState.kino_pilot_mode = true
+	_close()
+	_possess_ship_kino()
+
+
+# Spawn a ship-mode Kino at the player's position in the current scene and hand
+# it the camera. Frees the third-person player/view rig (the gate-room scene
+# reloads when the recon drone recalls, so nothing is lost) and hides the HUD.
+# Falls back to a direct planet warp if there's no live scene/player.
+func _possess_ship_kino() -> void:
+	var scene: Node = get_tree().current_scene
+	var player: Node3D = get_tree().get_first_node_in_group("player") as Node3D
+	if scene == null or player == null:
+		# No spawn key: planet.gd::_start_kino_recon owns the drone placement.
+		SceneRouter.change_to("res://scenes/planet.tscn", "")
+		return
+	var spawn: Vector3 = player.global_position + Vector3.UP * KINO_LAUNCH_HEIGHT
+	var yaw: float = player.rotation.y
+	player.queue_free()
+	var view: Node = scene.get_node_or_null("View")
+	if view != null:
+		view.queue_free()
+	var hud_layer: Node = scene.get_node_or_null("HUDLayer")
+	if hud_layer is CanvasLayer:
+		(hud_layer as CanvasLayer).visible = false
+	var drone: CharacterBody3D = KinoDroneScript.new()
+	drone.name = "KinoDrone"
+	drone.set("launch_in_ship", true)
+	drone.add_to_group("player")
+	drone.rotation.y = yaw
+	scene.add_child(drone)
+	drone.global_position = spawn
 
 
 func _refresh_inventory() -> void:

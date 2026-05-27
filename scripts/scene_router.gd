@@ -90,7 +90,13 @@ func _place_player_at_spawn() -> void:
 	# build a fresh transform that always places the player AT the door,
 	# facing away from it, so the camera lands behind them and continuing
 	# straight walks deeper into the room (not back through the entry door).
-	var forward: Vector3 = _direction_into_room(root, marker_n)
+	var into_room: Vector3 = _direction_into_room(root, marker_n)
+	# Prefer facing the active objective on arrival (unless this is the special
+	# gate spawn the cinematic/tests rely on), so the player isn't pointed across
+	# a narrow corridor straight into the near wall.
+	var forward: Vector3 = into_room
+	if marker_n.name != "FromGate":
+		forward = _arrival_facing(marker_n, into_room)
 	# Godot's default forward is -Z; rotating the body by `atan2(-fx, -fz)`
 	# aligns -Z with the world-space `forward` vector.
 	var yaw: float = atan2(-forward.x, -forward.z)
@@ -108,6 +114,22 @@ func _place_player_at_spawn() -> void:
 	if player.has_method("auto_walk_to"):
 		var walk_to: Vector3 = marker_n.global_position + forward * 0.4
 		player.call("auto_walk_to", walk_to, 5.0)
+
+# On arrival, prefer facing the active quest waypoint so the player heads toward
+# their objective instead of staring at whatever wall happens to be opposite the
+# entry door (a real problem in long corridors entered via a door on the short
+# wall). Falls back to `into_room` when there's no waypoint, it's right on top of
+# the spawn, or it sits back through the entry door (dot < -0.25).
+func _arrival_facing(marker_n: Node3D, into_room: Vector3) -> Vector3:
+	var wp: Node = get_tree().get_first_node_in_group("quest_waypoint")
+	if wp is Node3D:
+		var to_wp: Vector3 = (wp as Node3D).global_position - marker_n.global_position
+		to_wp.y = 0.0
+		if to_wp.length() > 1.0:
+			var dir: Vector3 = to_wp.normalized()
+			if dir.dot(into_room) > -0.25:
+				return dir
+	return into_room
 
 func _find_marker(node: Node, target_name: String) -> Node:
 	if node.name == target_name and node is Marker3D:

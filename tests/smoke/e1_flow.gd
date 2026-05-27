@@ -136,7 +136,24 @@ func _initialize() -> void:
 
 	gs.report_to_gate()
 	_expect(gs.reported_to_gate, "air: reporting to gate records flag")
-	_expect(gs.quest_step == gs.QUEST_DIAL_LIME_PLANET, "air: gate room -> dial lime planet")
+	_expect(gs.quest_step == gs.QUEST_FETCH_KINO, "air: gate room -> fetch a Kino (scout first)")
+
+	# Kino-scout beat: pull an orb from the quarters dispenser. Supply is
+	# unlimited but the player caps at KINO_ORB_MAX.
+	gs.acquire_kino_orb()
+	_expect(gs.kino_orbs == 1, "air: dispenser grants a Kino orb")
+	_expect(gs.quest_step == gs.QUEST_SCOUT_KINO, "air: holding a Kino -> send it through the gate")
+	gs.acquire_kino_orb()
+	gs.acquire_kino_orb()
+	gs.acquire_kino_orb()
+	_expect(gs.kino_orbs == gs.KINO_ORB_MAX, "air: Kino orbs cap at KINO_ORB_MAX")
+
+	# Launching a Kino spends one orb; the recon flight confirms the far side.
+	_expect(gs.consume_kino_orb(), "air: launching a Kino spends an orb")
+	_expect(gs.kino_orbs == gs.KINO_ORB_MAX - 1, "air: consume_kino_orb decrements")
+	gs.complete_kino_scout()
+	_expect(gs.kino_scout_done, "air: Kino scout records flag")
+	_expect(gs.quest_step == gs.QUEST_DIAL_LIME_PLANET, "air: scout done -> dial lime planet")
 
 	gs.dial_lime_planet()
 	_expect(gs.lime_planet_dialed, "air: lime planet dialed")
@@ -180,6 +197,9 @@ func _initialize() -> void:
 	_expect(gs.eli_quarters_visited == false, "mission: reset clears eli_quarters_visited")
 	_expect(gs.elevator_repaired == false, "mission: reset clears elevator_repaired")
 	_expect(gs.doors_traversed.is_empty(), "mission: reset clears doors_traversed")
+	_expect(gs.kino_orbs == 0, "mission: reset clears kino_orbs")
+	_expect(gs.kino_scout_done == false, "mission: reset clears kino_scout_done")
+	_expect(gs.kino_plan_approved == false, "mission: reset clears kino_plan_approved")
 	_expect(gs.breaches_sealed.is_empty(), "mission: reset clears breaches")
 	_expect(gs.met_scott == false, "mission: reset clears met_scott")
 	_expect(gs.met_rush == false, "mission: reset clears met_rush")
@@ -202,8 +222,13 @@ func _initialize() -> void:
 	gs.kino_zoom = 1.7
 	gs.kino_active_floor = 1
 	gs.kino_marker = {"floor": 0, "world_x": 100.0, "world_y": 200.0}
+	gs.kino_orbs = 2
+	gs.kino_scout_done = true
+	gs.kino_plan_approved = true
 
 	var snapshot: Dictionary = gs.serialize()
+	_expect(int(snapshot.get("kino_orbs", -1)) == 2, "serialize captures kino_orbs")
+	_expect(snapshot.get("kino_scout_done", false) == true, "serialize captures kino_scout_done")
 	_expect(snapshot.has("quest_step"), "serialize() includes quest_step")
 	_expect(String(snapshot.get("quest_step", "")) == gs.QUEST_FIND_RUSH, "serialize captures current quest step")
 	_expect(snapshot.get("met_scott", false) == true, "serialize captures met_scott")
@@ -219,6 +244,8 @@ func _initialize() -> void:
 
 	gs.deserialize(snapshot, 2)
 	_expect(gs.met_scott, "deserialize restores met_scott")
+	_expect(gs.kino_orbs == 2, "deserialize restores kino_orbs")
+	_expect(gs.kino_scout_done, "deserialize restores kino_scout_done")
 	_expect(gs.quest_step == gs.QUEST_FIND_RUSH, "deserialize restores quest_step")
 	_expect(gs.resource_count(gs.AIR_LIME_RESOURCE) == 2, "deserialize restores resources")
 	_expect(gs.rooms_discovered.size() == 1, "deserialize restores rooms_discovered")

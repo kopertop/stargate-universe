@@ -42,6 +42,7 @@ func _ready() -> void:
 	GameState.health_changed.connect(_on_health_changed)
 	GameState.oxygen_changed.connect(_on_oxygen_changed)
 	GameState.kino_changed.connect(_on_kino_changed)
+	GameState.quest_step_changed.connect(_on_quest_step_changed)
 	GameState.log_added.connect(_on_log_added)
 	GameState.dialogue_shown.connect(_on_dialogue_shown)
 	GameState.dialog_started.connect(_on_dialog_started)
@@ -154,9 +155,26 @@ func _on_health_changed(v: float) -> void:
 func _on_oxygen_changed(v: float) -> void:
 	_oxygen_bar.value = v
 
-func _on_kino_changed(acquired: bool) -> void:
-	_kino_hint.visible = acquired
-	_kino_hint.text = "[Tab]  Kino Remote"
+func _on_kino_changed(_acquired: bool) -> void:
+	_refresh_kino_hint()
+
+
+func _on_quest_step_changed(_step: String) -> void:
+	_refresh_kino_hint()
+
+
+# Kino Remote reminder (bottom-right). During the scout beat it becomes an
+# explicit guide — "Open the Kino Remote" — since that step's whole objective
+# is to open the remote and launch a Kino (no diamond is shown for it).
+func _refresh_kino_hint() -> void:
+	if not GameState.kino_acquired:
+		_kino_hint.visible = false
+		return
+	_kino_hint.visible = true
+	if GameState.quest_step == GameState.QUEST_SCOUT_KINO:
+		_kino_hint.text = "Open the Kino Remote  →  [Tab]"
+	else:
+		_kino_hint.text = "[Tab]  Kino Remote"
 
 func _on_dialogue_shown(character_name: String, line: String) -> void:
 	_dialog_name.text = character_name

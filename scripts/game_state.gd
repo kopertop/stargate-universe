@@ -61,6 +61,8 @@ const QUEST_SEAL_BREACH: String = "seal_breach"
 const QUEST_FIND_SCRUBBER: String = "find_scrubber"
 const QUEST_WAIT_FTL: String = "wait_ftl"
 const QUEST_GO_TO_GATE: String = "go_to_gate"
+const QUEST_FETCH_KINO: String = "fetch_kino"
+const QUEST_SCOUT_KINO: String = "scout_kino"
 const QUEST_DIAL_LIME_PLANET: String = "dial_lime_planet"
 const QUEST_MINE_LIME: String = "mine_lime"
 const QUEST_RETURN_DESTINY: String = "return_destiny"
@@ -68,6 +70,7 @@ const QUEST_REPAIR_SCRUBBER: String = "repair_scrubber"
 const QUEST_COMPLETE: String = "complete"
 const AIR_LIME_RESOURCE: String = "lime"
 const AIR_LIME_REQUIRED: int = 3
+const KINO_ORB_MAX: int = 3
 
 const QUEST_LABELS: Dictionary = {
 	QUEST_TALK_SCOTT: "Talk to Scott",
@@ -83,6 +86,8 @@ const QUEST_LABELS: Dictionary = {
 	QUEST_FIND_SCRUBBER: "Find CO2 scrubber",
 	QUEST_WAIT_FTL: "Trigger FTL drop",
 	QUEST_GO_TO_GATE: "Get to the Gate Room",
+	QUEST_FETCH_KINO: "Fetch a Kino",
+	QUEST_SCOUT_KINO: "Send a Kino through the gate",
 	QUEST_DIAL_LIME_PLANET: "Dial lime planet",
 	QUEST_MINE_LIME: "Mine lime",
 	QUEST_RETURN_DESTINY: "Return to Destiny",
@@ -109,6 +114,8 @@ const QUEST_TARGETS: Dictionary = {
 	QUEST_FIND_SCRUBBER: {"room": "south_corridor", "anchor": "ScrubberRush"},
 	QUEST_WAIT_FTL: {"room": "gate_room", "anchor": "FTLConsole"},
 	QUEST_GO_TO_GATE: {"room": "gate_room", "anchor": ""},
+	QUEST_FETCH_KINO: {"room": "eli_quarters", "anchor": "KinoDispenser"},
+	QUEST_SCOUT_KINO: {"room": "gate_room", "anchor": ""},
 	QUEST_DIAL_LIME_PLANET: {"room": "gate_room", "anchor": "GateControlConsole"},
 	QUEST_MINE_LIME: {"room": "", "anchor": ""},  # offworld — hide waypoint
 	QUEST_RETURN_DESTINY: {"room": "", "anchor": ""},  # offworld — hide waypoint
@@ -130,6 +137,10 @@ var next_room_id: String = ""
 # True for the next room load only — tells the gate-room arrival cinematic
 # to skip itself because we're resuming, not arriving.
 var skip_arrival_cinematic: bool = false
+# Launch baton: set true right before SceneRouter.change_to(planet) from Kino
+# Control, so planet.gd spawns + possesses the Kino drone instead of the player.
+# Transient (cleared by planet.gd on read); not part of the save snapshot.
+var kino_pilot_mode: bool = false
 
 var health: float = MAX_HEALTH
 var oxygen: float = MAX_OXYGEN
@@ -199,6 +210,15 @@ var lime_planet_dialed: bool = false
 # True once the player reaches the Gate Room after Dr Brody's "the gate
 # dialed itself" call (the GO_TO_GATE beat that ends the CO2 scrubber scene).
 var reported_to_gate: bool = false
+# Kino orbs the player is carrying. The quarters dispenser is unlimited but the
+# player can hold at most KINO_ORB_MAX; launching one (Kino Control) spends it.
+var kino_orbs: int = 0
+# True once a Kino has been flown through the gate and confirmed what's on the
+# far side (the SCOUT_KINO beat).
+var kino_scout_done: bool = false
+# One-shot: Rush's "that's bloody brilliant" approval has played (gate room,
+# after the player returns with a Kino orb).
+var kino_plan_approved: bool = false
 var returned_from_lime_planet: bool = false
 var resources: Dictionary = {AIR_LIME_RESOURCE: 0}
 # E1 story milestones — set by NPC interacts (npc.gd via met_flag).
@@ -283,6 +303,9 @@ func reset() -> void:
 	ftl_drop_triggered = false
 	lime_planet_dialed = false
 	reported_to_gate = false
+	kino_orbs = 0
+	kino_scout_done = false
+	kino_plan_approved = false
 	returned_from_lime_planet = false
 	resources.clear()
 	resources[AIR_LIME_RESOURCE] = 0
@@ -304,6 +327,7 @@ func reset() -> void:
 	pending_spawn_position = null
 	pending_spawn_yaw = 0.0
 	skip_arrival_cinematic = false
+	kino_pilot_mode = false
 	health_changed.emit(health)
 	oxygen_changed.emit(oxygen)
 	kino_changed.emit(kino_acquired)
@@ -450,6 +474,10 @@ func _next_air_quest_step() -> String:
 		return QUEST_WAIT_FTL
 	if not reported_to_gate:
 		return QUEST_GO_TO_GATE
+	if kino_orbs <= 0 and not kino_scout_done:
+		return QUEST_FETCH_KINO
+	if not kino_scout_done:
+		return QUEST_SCOUT_KINO
 	if not lime_planet_dialed:
 		return QUEST_DIAL_LIME_PLANET
 	if not has_resource(AIR_LIME_RESOURCE, AIR_LIME_REQUIRED):
@@ -499,6 +527,10 @@ func _objective_for_step(step: String) -> String:
 			return "Return to the Gate Room and trigger the FTL drop."
 		QUEST_GO_TO_GATE:
 			return "Dr Brody says the gate dialed itself. Get to the Gate Room."
+		QUEST_FETCH_KINO:
+			return "We can't risk going in blind. Grab a Kino from the dispenser in your quarters."
+		QUEST_SCOUT_KINO:
+			return "Back at the gate: open the Kino Remote (Tab) and launch a Kino through to scout the planet."
 		QUEST_DIAL_LIME_PLANET:
 			return "Use Gate Control in the Gate Room to dial the lime planet."
 		QUEST_MINE_LIME:
@@ -699,6 +731,36 @@ func report_to_gate() -> void:
 	reported_to_gate = true
 	advance_air_quest()
 
+
+# Pull a Kino orb from the quarters dispenser. Unlimited supply, but the player
+# can carry at most KINO_ORB_MAX at once.
+func acquire_kino_orb() -> void:
+	if kino_orbs >= KINO_ORB_MAX:
+		add_log("Can't carry more than %d Kinos at once." % KINO_ORB_MAX)
+		return
+	kino_orbs += 1
+	add_log("Took a Kino from the dispenser. Carrying %d/%d." % [kino_orbs, KINO_ORB_MAX])
+	advance_air_quest()
+
+
+# Spend a carried Kino orb (launching one through the gate). Returns false if
+# none are in hand.
+func consume_kino_orb() -> bool:
+	if kino_orbs <= 0:
+		return false
+	kino_orbs -= 1
+	return true
+
+
+# A launched Kino confirmed what's on the far side of the gate (the SCOUT_KINO
+# beat) — clears the way to physically step through and mine.
+func complete_kino_scout() -> void:
+	if kino_scout_done:
+		return
+	kino_scout_done = true
+	add_log("Kino recon confirmed: breathable atmosphere, lime deposits near the gate.")
+	advance_air_quest()
+
 func trigger_ftl_drop() -> void:
 	if not scrubber_diagnosed:
 		add_log("FTL controls stay locked until the scrubber fault is identified.")
@@ -837,6 +899,9 @@ func serialize() -> Dictionary:
 		"ftl_drop_game_time": ftl_drop_game_time,
 		"lime_planet_dialed": lime_planet_dialed,
 		"reported_to_gate": reported_to_gate,
+		"kino_orbs": kino_orbs,
+		"kino_scout_done": kino_scout_done,
+		"kino_plan_approved": kino_plan_approved,
 		"returned_from_lime_planet": returned_from_lime_planet,
 		"resources": resources.duplicate(true),
 		"kino_pan_x": kino_pan_x,
@@ -876,6 +941,9 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	ftl_drop_game_time = float(data.get("ftl_drop_game_time", -1.0))
 	lime_planet_dialed = data.get("lime_planet_dialed", false) == true
 	reported_to_gate = data.get("reported_to_gate", false) == true
+	kino_orbs = int(data.get("kino_orbs", 0))
+	kino_scout_done = data.get("kino_scout_done", false) == true
+	kino_plan_approved = data.get("kino_plan_approved", false) == true
 	returned_from_lime_planet = data.get("returned_from_lime_planet", false) == true
 	resources.clear()
 	var loaded_resources: Variant = data.get("resources", {})

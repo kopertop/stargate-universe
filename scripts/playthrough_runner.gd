@@ -196,8 +196,21 @@ func _drive() -> void:
 		"gate_room",
 	])
 	_expect(GameState.reported_to_gate, "quest: arriving gate room reports in")
+	_expect(GameState.quest_step == GameState.QUEST_FETCH_KINO, "quest: gate room -> fetch a Kino to scout")
+
+	# === STEP 9b: Kino-first scout (Phase E) ===
+	# Brody has no MALP, so we scout with a Kino before committing. The recon
+	# flight is player-driven (mouse + 6-axis keys) and can't run headless, so
+	# we exercise the GameState beats directly: pull an orb from the dispenser
+	# (FETCH_KINO -> SCOUT_KINO) and confirm the recon (SCOUT_KINO -> mine lime).
+	# The real dispenser Interactable + drone possession are covered by scene_boot.
+	GameState.acquire_kino_orb()
+	_expect(GameState.kino_orbs == 1, "quest: Kino dispenser grants an orb")
+	_expect(GameState.quest_step == GameState.QUEST_SCOUT_KINO, "quest: holding a Kino -> scout the planet")
+	GameState.complete_kino_scout()
+	_expect(GameState.kino_scout_done, "quest: Kino recon confirmed")
 	_expect(GameState.is_lime_gate_open(), "quest: ship gate open to lime world")
-	_expect(GameState.quest_step == GameState.QUEST_MINE_LIME, "quest: gate room -> mine lime")
+	_expect(GameState.quest_step == GameState.QUEST_MINE_LIME, "quest: scout done -> mine lime")
 	await _shot("gate_room_lime_dial")
 	await _demo_hold()
 

@@ -41,13 +41,13 @@ var _moving: bool = false
 # right after instancing the preloaded script and adding it to the tree — kept
 # as an instance method so the script never references its own class_name (which
 # fails to resolve during a headless load).
-func setup(display_name: String, glb_path: String, idx: int) -> void:
+func setup(display_name: String, glb_path: String, idx: int, tint: Color = Color.WHITE) -> void:
 	slot = idx
 	# Join here too (not just _enter_tree): the headless harness defers tree
 	# callbacks, and the cutscene muster / compass need membership immediately.
 	add_to_group("away_team")
 	add_to_group("companion")
-	_build_body(display_name, glb_path)
+	_build_body(display_name, glb_path, tint)
 
 # Join on _enter_tree (fires synchronously on add_child) rather than _ready, so
 # group membership is set the instant a companion is parented — including in the
@@ -56,7 +56,7 @@ func _enter_tree() -> void:
 	add_to_group("away_team")
 	add_to_group("companion")
 
-func _build_body(display_name: String, glb_path: String) -> void:
+func _build_body(display_name: String, glb_path: String, tint: Color = Color.WHITE) -> void:
 	_model = Node3D.new()
 	_model.name = "Model"
 	_model.scale = Vector3(2.2, 2.2, 2.2)
@@ -68,6 +68,12 @@ func _build_body(display_name: String, glb_path: String) -> void:
 		_model.add_child(inst)
 		var colormap: Texture2D = load(COLORMAP_PATH) as Texture2D
 		NpcScript.apply_kenney_colormap(inst, colormap)
+		if tint != Color.WHITE:
+			# Re-tint the just-applied colormap material per-instance — the atlas
+			# colour × tint shifts the (peach) skin column toward brown without
+			# touching the GLB itself, so Greer can share Scott's body model and
+			# still read as a different character.
+			_apply_tint(inst, tint)
 		_anim = _find_anim(inst)
 		_play_clip("idle")
 	var tag: Label3D = Label3D.new()
@@ -207,6 +213,23 @@ func _play_clip(clip: String) -> void:
 			if _anim.current_animation != String(nm):
 				_anim.play(String(nm))
 			return
+
+func _apply_tint(root: Node, tint: Color) -> void:
+	# apply_kenney_colormap above set the SAME StandardMaterial3D as
+	# material_override on every MeshInstance3D, so we have to duplicate before
+	# mutating albedo_color or every Kenney character on screen would tint.
+	var stack: Array = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is MeshInstance3D:
+			var mi: MeshInstance3D = n as MeshInstance3D
+			if mi.material_override is StandardMaterial3D:
+				var mat: StandardMaterial3D = (mi.material_override as StandardMaterial3D).duplicate() as StandardMaterial3D
+				mat.albedo_color = tint
+				mi.material_override = mat
+		for c in n.get_children():
+			stack.append(c)
+
 
 func _find_anim(root: Node) -> AnimationPlayer:
 	var stack: Array = [root]

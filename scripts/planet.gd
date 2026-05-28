@@ -68,16 +68,18 @@ func _spawn_compass() -> void:
 
 # Greer, Park and Scott followed Eli through the gate. They follow him on the
 # surface and fan out to mine lime, then rush back through the gate when the
-# departure timer fires (group "away_team"). No greer.glb yet — fall back to a
-# stand-in body but keep the correct nametag.
+# departure timer fires (group "away_team"). Greer reuses Scott's GLB (Kenney
+# `character-male-d`, beret + uniform — the most military-looking of the six
+# Mini-Characters males) with a warm-brown tint applied per-instance, so on
+# screen the away team reads as two same-silhouette soldiers with different
+# skin tones (none of the Kenney mini-chars ship with a darker-skin variant).
+const SCOTT_GLB: String = "res://models/characters/scott.glb"
+const GREER_TINT: Color = Color(0.66, 0.50, 0.38)   # warm brown — skin reads as brown, uniform as olive-drab
 func _spawn_away_team(near: Vector3) -> void:
-	var greer_glb: String = "res://models/characters/greer.glb"
-	if not ResourceLoader.exists(greer_glb):
-		greer_glb = "res://models/characters/rush.glb"
 	var roster: Array = [
-		{"name": "Greer", "glb": greer_glb},
-		{"name": "Park", "glb": "res://models/characters/park.glb"},
-		{"name": "Lt Scott", "glb": "res://models/characters/scott.glb"},
+		{"name": "Greer", "glb": SCOTT_GLB, "tint": GREER_TINT},
+		{"name": "Park", "glb": "res://models/characters/park.glb", "tint": Color.WHITE},
+		{"name": "Lt Scott", "glb": SCOTT_GLB, "tint": Color.WHITE},
 	]
 	for i in roster.size():
 		var entry: Dictionary = roster[i]
@@ -86,7 +88,7 @@ func _spawn_away_team(near: Vector3) -> void:
 		c.name = "Companion_" + String(entry["name"]).replace(" ", "")
 		add_child(c)
 		c.global_position = at
-		c.call("setup", String(entry["name"]), String(entry["glb"]), i)
+		c.call("setup", String(entry["name"]), String(entry["glb"]), i, entry["tint"])
 
 # Replace the third-person player rig with a pilotable Kino. The drone owns its
 # own camera + overlay; freeing the player/view rig stops their camera and

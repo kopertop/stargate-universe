@@ -78,11 +78,12 @@ const QUEST_COMPLETE: String = "complete"
 const AIR_LIME_RESOURCE: String = "lime"
 const AIR_LIME_REQUIRED: int = 3
 # Phase G ongoing scrubber loop.
-# Decay drains a full 100% charge in roughly 25 minutes of unpaused gameplay —
-# generous so the player can comfortably revisit the lime planet to top up.
-const SCRUBBER_DECAY_PER_SEC: float = 100.0 / (25.0 * 60.0)
 # One lime = one cartridge bar = a third of full charge.
 const SCRUBBER_LIME_RECHARGE: float = 100.0 / float(AIR_LIME_REQUIRED)
+# Decay rate: each bar of charge lasts 1 hour of real wall-clock time, so a
+# full 100% charge buys 3 hours of life before a top-up is needed. _process
+# runs on real frame delta (not in-game time), so this IS wall-clock seconds.
+const SCRUBBER_DECAY_PER_SEC: float = SCRUBBER_LIME_RECHARGE / 3600.0
 # Below this percentage the bar gauge shows red and a one-shot warning logs.
 const SCRUBBER_WARN_PERCENT: float = 33.0
 # At 0% the scrubber bleeds oxygen slowly until the player tops it up; the

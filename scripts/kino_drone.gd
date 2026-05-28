@@ -22,6 +22,10 @@ const ACCEL_DAMP: float = 5.0         # velocity lerp factor (higher = snappier)
 const MOUSE_SENS: float = 0.0025      # radians per pixel of mouse motion
 const LIME_CONFIRM_RANGE: float = 7.0 # metres to a lime node before "confirmed"
 const GATE_CROSS_RADIUS: float = 2.6  # metres from the ship gate that warps us through
+# The orb body renders on this visual layer; the pilot's own camera culls it
+# (so it doesn't fill the first-person view), but every OTHER camera (Eli's
+# third-person view) sees the Kino flying / hovering where it was left.
+const ORB_VIEW_LAYER: int = 20
 
 # Spawner-set BEFORE add_child (so _ready sees the right mode + heading).
 var launch_in_ship: bool = false
@@ -46,6 +50,7 @@ func _ready() -> void:
 	if SceneRouter.instant_mode:
 		return
 	_build_collision()
+	_build_body()
 	_build_camera_rig()
 	_build_overlay()
 	_yaw = rotation.y
@@ -63,10 +68,45 @@ func _build_collision() -> void:
 	cs.shape = sphere
 	add_child(cs)
 
+# Visible Kino orb — a dark sphere with a glowing cyan eye. Rendered only to
+# OTHER cameras (see ORB_VIEW_LAYER) so the pilot's first-person view stays clear
+# but Eli (and onlookers) can see the Kino in flight and where it was left.
+func _build_body() -> void:
+	var shell: MeshInstance3D = MeshInstance3D.new()
+	shell.name = "OrbBody"
+	var sphere: SphereMesh = SphereMesh.new()
+	sphere.radius = 0.17
+	sphere.height = 0.34
+	shell.mesh = sphere
+	var m: StandardMaterial3D = StandardMaterial3D.new()
+	m.albedo_color = Color(0.10, 0.11, 0.14)
+	m.metallic = 0.6
+	m.roughness = 0.4
+	shell.material_override = m
+	shell.layers = 1 << (ORB_VIEW_LAYER - 1)
+	add_child(shell)
+
+	var eye: MeshInstance3D = MeshInstance3D.new()
+	var lens: SphereMesh = SphereMesh.new()
+	lens.radius = 0.07
+	lens.height = 0.14
+	eye.mesh = lens
+	var em: StandardMaterial3D = StandardMaterial3D.new()
+	em.albedo_color = Color(0.55, 0.85, 1.0)
+	em.emission_enabled = true
+	em.emission = Color(0.55, 0.85, 1.0)
+	em.emission_energy_multiplier = 3.0
+	eye.material_override = em
+	eye.layers = 1 << (ORB_VIEW_LAYER - 1)
+	eye.position = Vector3(0.0, 0.0, -0.13)   # front-facing eye (−Z)
+	add_child(eye)
+
 func _build_camera_rig() -> void:
 	_camera = Camera3D.new()
 	_camera.fov = 72.0
 	_camera.current = true
+	# Cull the orb body from the pilot's own view (it's inside/at the camera).
+	_camera.cull_mask = ((1 << 20) - 1) & ~(1 << (ORB_VIEW_LAYER - 1))
 	add_child(_camera)
 	# A soft scan-glow so terrain near the orb reads on a dim graybox planet.
 	var glow: OmniLight3D = OmniLight3D.new()
@@ -220,8 +260,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_pitch = clampf(_pitch, deg_to_rad(-89.0), deg_to_rad(89.0))
 		rotation.y = _yaw
 		_camera.rotation.x = _pitch
-	elif event.is_action_pressed("interact") and not launch_in_ship:
-		_recall()
+	elif event.is_action_pressed("interact"):
+		_exit_kino()
 
 func _physics_process(delta: float) -> void:
 	if _ending or _camera == null:
@@ -299,20 +339,94 @@ func _check_lime_proximity() -> void:
 func _refresh_hint() -> void:
 	if _hint == null:
 		return
-	var controls: String = "[WASD] Fly   [Shift] Boost   [Space] Up   [Ctrl] Down   [Mouse] Look"
+	var controls: String = "[WASD] Fly   [Shift] Boost   [Space] Up   [Ctrl] Down   [Mouse] Look   [E] Close Kino Remote"
 	if launch_in_ship:
 		_hint.text = controls + "\nFly through the active Stargate to scout the far side"
 	elif _lime_confirmed:
-		_hint.text = controls + "\nLime confirmed — press [E] to recall the Kino"
+		_hint.text = controls + "\nLime confirmed — the Kino stays here when you close the remote"
 	else:
-		_hint.text = controls + "\nScout for lime (it may be hidden behind the ridges), then press [E] to recall"
+		_hint.text = controls + "\nScout for lime (it may be hidden behind the ridges)"
 
-func _recall() -> void:
+# [E] CLOSES THE KINO REMOTE — returns the player to their body. The player only
+# CONTROLS the Kino, never becomes it; the Kino is left LIVE where it is (FIFO-
+# tracked, retrievable later from the remote). Same scene as the body → restore
+# control in place; different scene → warp back to the body's scene + spot.
+func _exit_kino() -> void:
 	if _ending:
 		return
 	_ending = true
 	velocity = Vector3.ZERO
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	GameState.kino_pilot_mode = false
-	GameState.complete_kino_scout()
-	SceneRouter.change_to("res://scenes/gate_room.tscn", "FromGate")
+	# Leave the Kino where it is (FIFO, capped). Captured before any scene change.
+	GameState.deploy_kino(GameState.current_scene_path, global_position)
+	# First planet recon confirms the scout (advances the quest).
+	if GameState.current_scene_path == "res://scenes/planet.tscn" and not GameState.kino_scout_done:
+		GameState.complete_kino_scout()
+	var body_scene: String = GameState.kino_return_scene
+	if body_scene == "" or body_scene == GameState.current_scene_path:
+		_close_in_place()
+	else:
+		_close_to_scene(body_scene)
+	# Body restored — clear the return/target batons so the NEXT launch can't
+	# inherit a stale destination. (_close_to_scene already copied what it needs
+	# into pending_spawn_position before this runs.)
+	GameState.kino_return_scene = ""
+	GameState.kino_return_room_id = ""
+	GameState.kino_return_position = null
+	GameState.kino_pilot_target_scene = ""
+	GameState.kino_pilot_target_pos = null
+
+# Body is in THIS scene: hand control straight back to it (unlock, drop the
+# holding pose + prop, restore the third-person camera + HUD), leaving the Kino
+# hovering inert where it was.
+func _close_in_place() -> void:
+	var player: Node3D = get_tree().get_first_node_in_group("player") as Node3D
+	if player != null:
+		if player.has_method("set_input_locked"):
+			player.call("set_input_locked", false)
+		if player.has_method("set_pose_override"):
+			player.call("set_pose_override", "")
+		var prop: Node = player.get_node_or_null("KinoRemoteProp")
+		if prop != null:
+			prop.queue_free()
+	var scene: Node = get_tree().current_scene
+	if scene != null:
+		var hud: Node = scene.get_node_or_null("HUDLayer")
+		if hud is CanvasLayer:
+			(hud as CanvasLayer).visible = true
+		var view: Node = scene.get_node_or_null("View")
+		if view != null:
+			var vcam: Camera3D = view.get_node_or_null("SpringArm/Camera") as Camera3D
+			if vcam == null:
+				vcam = view.get_node_or_null("Camera") as Camera3D
+			if vcam != null:
+				vcam.current = true
+			if view.has_method("snap_to_target"):
+				view.call("snap_to_target")
+	GameState.add_log("Closed the Kino remote — the Kino is still where you left it.")
+	_make_inert()
+
+# Body is in a DIFFERENT scene: warp back to it at the exact spot it was left.
+func _close_to_scene(scene_path: String) -> void:
+	if GameState.kino_return_position is Vector3:
+		GameState.pending_spawn_position = GameState.kino_return_position
+		GameState.pending_spawn_yaw = GameState.kino_return_yaw
+		GameState.skip_arrival_cinematic = true
+	# Procedural rooms need their id so room.tscn rebuilds the right room.
+	if scene_path == "res://scenes/room.tscn":
+		GameState.next_room_id = GameState.kino_return_room_id
+	SceneRouter.change_to(scene_path, "")
+
+# Stop driving the orb and shed the pilot-only camera/overlay, leaving a quiet
+# hovering Kino behind (visible to Eli's view via ORB_VIEW_LAYER).
+func _make_inert() -> void:
+	set_physics_process(false)
+	set_process_unhandled_input(false)
+	velocity = Vector3.ZERO
+	if _camera != null:
+		_camera.queue_free()
+		_camera = null
+	for c in get_children():
+		if c is CanvasLayer:
+			c.queue_free()

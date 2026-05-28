@@ -39,18 +39,24 @@ func _start_kino_recon(planet_data: Dictionary) -> void:
 	# Start a few metres up so the orb hovers over the landing zone, not on it.
 	var spawn: Vector3 = marker.global_position + Vector3.UP * 4.0
 	var spawn_yaw: float = marker.global_transform.basis.get_euler().y
-	# The Kino just came THROUGH the gate, so frame it on arrival: push the spawn
-	# a few metres out from the return gate and face the drone back at it, so the
-	# player clearly sees the gate they emerged from before scouting.
-	var return_gate: Node3D = _world.get_node_or_null("PlanetReturnStargate") as Node3D
-	if return_gate != null:
-		var away: Vector3 = spawn - return_gate.global_position
-		away.y = 0.0
-		if away.length() > 0.5:
-			spawn += away.normalized() * 5.0
-			var toward: Vector3 = return_gate.global_position - spawn
-			toward.y = 0.0
-			spawn_yaw = atan2(-toward.x, -toward.z)
+	# Re-taking control of a Kino already left on the planet → spawn it AT that
+	# tracked spot. A fresh scout arrival (no target) → frame it emerging from the
+	# return gate (pushed back a few metres, facing the gate it came through).
+	var target: Variant = GameState.kino_pilot_target_pos
+	if target is Vector3 and GameState.kino_pilot_target_scene == "res://scenes/planet.tscn":
+		spawn = target
+		GameState.kino_pilot_target_pos = null
+		GameState.kino_pilot_target_scene = ""
+	else:
+		var return_gate: Node3D = _world.get_node_or_null("PlanetReturnStargate") as Node3D
+		if return_gate != null:
+			var away: Vector3 = spawn - return_gate.global_position
+			away.y = 0.0
+			if away.length() > 0.5:
+				spawn += away.normalized() * 5.0
+				var toward: Vector3 = return_gate.global_position - spawn
+				toward.y = 0.0
+				spawn_yaw = atan2(-toward.x, -toward.z)
 	if is_instance_valid(_player):
 		_player.queue_free()
 	if is_instance_valid(_view):
@@ -60,7 +66,7 @@ func _start_kino_recon(planet_data: Dictionary) -> void:
 		(hud_layer as CanvasLayer).visible = false
 	var drone: CharacterBody3D = KinoDroneScript.new()
 	drone.name = "KinoDrone"
-	drone.add_to_group("player")  # SceneRouter / camera lookups expect this group
+	# Not in group "player": the recon drone is a camera, not the player body.
 	drone.set("launch_in_ship", false)
 	var atmo: Variant = planet_data.get("atmosphere", {})
 	drone.set("atmosphere", atmo if atmo is Dictionary else {})

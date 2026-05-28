@@ -120,6 +120,7 @@ func _run_checks() -> void:
 	_check_connection_reachability()
 	await _check_kino_dispenser()
 	await _check_gate_room_phase_e_crew()
+	await _check_post_scout_gate()
 	_report()
 
 
@@ -497,6 +498,49 @@ func _check_gate_room_phase_e_crew() -> void:
 		_fail("res://scenes/gate_room.tscn", "Phase E crew missing: " + ", ".join(missing))
 	else:
 		print("  OK (GateBrody/GateRush/GatePark spawned for scout window)")
+		_passes += 1
+	root.remove_child(inst)
+	await process_frame
+	inst.free()
+	_game_state.call("reset")
+	if router != null:
+		router.set("instant_mode", prev_instant)
+
+
+# Phase E return: at MINE_LIME (after the Kino scout) Lt Scott is supportive
+# rather than nagging "find Rush", and the gate crew stays present so Rush can
+# brief the away party. instant_mode guards the briefing cinematic.
+func _check_post_scout_gate() -> void:
+	print("\n=== Phase E: post-scout gate (supportive Scott + crew) ===")
+	var router: Node = root.get_node_or_null("SceneRouter")
+	var prev_instant: bool = router != null and router.get("instant_mode") == true
+	if router != null:
+		router.set("instant_mode", true)
+	_game_state.call("reset")
+	_game_state.set("quest_step", "mine_lime")
+	_game_state.set("kino_scout_done", true)
+	_game_state.set("away_party_briefed", true)  # suppress the one-shot dialog
+	var packed := load("res://scenes/gate_room.tscn") as PackedScene
+	var inst := packed.instantiate()
+	root.add_child(inst)
+	await process_frame
+	var scott := inst.get_node_or_null("World/LtScott")
+	var rush := inst.get_node_or_null("World/GateRush")
+	var ok: bool = true
+	if scott == null:
+		_fail("res://scenes/gate_room.tscn", "LtScott missing at MINE_LIME")
+		ok = false
+	else:
+		var tree: Array = scott.get("repeat_dialogue_tree")
+		var line: String = String((tree[0] as Dictionary).get("text", "")) if tree.size() > 0 else ""
+		if line.find("find Rush") != -1 or line == "":
+			_fail("res://scenes/gate_room.tscn", "Lt Scott still nags 'find Rush' at MINE_LIME: '%s'" % line)
+			ok = false
+	if rush == null:
+		_fail("res://scenes/gate_room.tscn", "Gate crew (GateRush) absent at MINE_LIME — no one to brief the away party")
+		ok = false
+	if ok:
+		print("  OK (Scott supportive + gate crew present for the away-party briefing)")
 		_passes += 1
 	root.remove_child(inst)
 	await process_frame

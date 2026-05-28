@@ -36,6 +36,9 @@ var _current_interactable: Node = null
 # disabled, or the player clicks empty space / another interactable.
 var _clicked_target: Node = null
 var _input_locked: bool = false   # locked during cutscene / scene transitions
+# When set, the locked idle pose plays this clip instead of "idle" (e.g.
+# "holding-both" while Eli holds the Kino remote, piloting the drone).
+var _pose_override: String = ""
 var _auto_walking: bool = false
 var _auto_walk_target: Vector3 = Vector3.ZERO
 var _auto_walk_speed: float = 5.0
@@ -110,7 +113,10 @@ func _apply_idle(delta: float) -> void:
 	_apply_gravity(delta)
 	velocity = Vector3(0.0, -_gravity_velocity, 0.0)
 	move_and_slide()
-	_play_anim("idle", 0.15)
+	# A pose override (e.g. "holding-both" while piloting the Kino) takes the
+	# place of plain idle. Driven every frame so the locomotion logic can't
+	# stomp it back to "idle".
+	_play_anim(_pose_override if _pose_override != "" else "idle", 0.15)
 
 func _handle_movement(delta: float) -> void:
 	# Camera-relative input.
@@ -353,6 +359,10 @@ func set_input_locked(locked: bool) -> void:
 	_input_locked = locked
 	if locked:
 		_move_velocity = Vector3.ZERO
+
+# Override the locked-idle pose with a specific clip (""/empty restores idle).
+func set_pose_override(anim: String) -> void:
+	_pose_override = anim
 
 # Drive the player toward a world-space target on a straight line. Locks input
 # for the duration. Used by door transitions to sell "walked through the door"

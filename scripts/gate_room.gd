@@ -113,6 +113,8 @@ func _ready() -> void:
 		_play_gate_arrival_scene()
 	elif GameState.quest_step == GameState.QUEST_SCOUT_KINO and not GameState.kino_plan_approved:
 		_play_rush_kino_approval()
+	elif GameState.quest_step == GameState.QUEST_MINE_LIME and not GameState.away_party_briefed:
+		_play_post_scout_briefing()
 
 	# Quest diamond — same pattern as room.gd. Refresh on objective_changed.
 	_refresh_quest_waypoint()
@@ -245,6 +247,18 @@ func _play_rush_kino_approval() -> void:
 	GameState.add_log("Dr Rush: Oh, that's bloody brilliant, Eli.")
 	_play_gate_dialog([
 		{"speaker": "Dr Rush", "text": "Oh, that's bloody brilliant, Eli. I suspect that's exactly what these devices are for.", "choices": [{"text": "Let's send one through.", "next": "exit"}]},
+	])
+
+
+# Returned from the Kino scout (quest MINE_LIME). The crew's still here: Eli
+# reports the good news, Rush orders an away party, Eli volunteers. One-shot.
+func _play_post_scout_briefing() -> void:
+	GameState.away_party_briefed = true
+	GameState.add_log("Kino recon: breathable atmosphere and lime deposits near the gate.")
+	_play_gate_dialog([
+		{"speaker": "Eli", "text": "Hey — it's breathable! AND there's lime deposits right near the gate.", "choices": [{"text": "(show Rush the readings)", "next": 1}]},
+		{"speaker": "Dr Rush", "text": "Well then, Sergeant — I think you should put together a little away party to go mine some lime.", "choices": [{"text": "...", "next": 2}]},
+		{"speaker": "Lt Scott", "text": "You heard him. Greer, Park — gear up. We're taking a walk.", "choices": [{"text": "I'll come too!", "next": "exit"}]},
 	])
 
 
@@ -917,7 +931,7 @@ func _build_npcs() -> void:
 	scott.set("repeat_dialogue_tree", [
 		{
 			"speaker": "Lt Scott",
-			"text": "Hurry up Eli, find Rush!",
+			"text": _scott_repeat_line(),
 			"choices": [
 				{"text": "On it.", "next": "exit"},
 			],
@@ -986,19 +1000,38 @@ func _build_npcs() -> void:
 		_build_medic_tableau()
 
 	# Phase E: Brody (at the gate console) plus Rush + Park, who "followed" Eli
-	# in to look at the dialed gate. Present from arrival through the Kino scout.
+	# in to look at the dialed gate. Present from arrival through the lime run.
 	_build_gate_phase_e_crew()
+
+
+# Lt Scott's repeat line is quest-aware: a nudge toward Rush early on, but once
+# the Kino scout confirms the lime world he's supportive about the away mission
+# (he leads it). Default preserves the early "find Rush" nudge.
+func _scott_repeat_line() -> String:
+	match GameState.quest_step:
+		GameState.QUEST_MINE_LIME:
+			return "Breathable air and lime on the far side — good work, Eli. I guess we'd better go mine some."
+		GameState.QUEST_RETURN_DESTINY:
+			return "Grab what lime you can and get back to the gate."
+		GameState.QUEST_REPAIR_SCRUBBER:
+			return "Get that lime to the scrubber — we're counting on you."
+		_:
+			return "Hurry up Eli, find Rush!"
 
 
 # Spawn Brody + Rush + Park clustered by the gate-control console during the
 # Phase E gate window (arrival → Kino scout). Unique node names so NPCState
 # doesn't cross-restore them to the control-room / infirmary versions.
 func _build_gate_phase_e_crew() -> void:
+	# Present from the gate report through the lime run: Brody/Rush/Park stay to
+	# brief the away party once the Kino scout confirms the planet (MINE_LIME).
 	var q: String = GameState.quest_step
 	var in_window: bool = (q == GameState.QUEST_GO_TO_GATE
 		or q == GameState.QUEST_FETCH_KINO
-		or q == GameState.QUEST_SCOUT_KINO)
-	if not in_window or GameState.kino_scout_done:
+		or q == GameState.QUEST_SCOUT_KINO
+		or q == GameState.QUEST_DIAL_LIME_PLANET
+		or q == GameState.QUEST_MINE_LIME)
+	if not in_window:
 		return
 	var z_console: float = GATE_CONSOLE_Z
 	# Brody at the gate-control console (x -3.5), facing the player's arrival.

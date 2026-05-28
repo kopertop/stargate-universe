@@ -29,6 +29,9 @@ signal kino_closed()
 # Kino map's door-pip dim-on-traverse and survives save/load via
 # doors_traversed.
 signal door_traversed(key: String)
+# Fired when a Kino is deployed/dropped from the tracked list — lets the Kino
+# map (or any future retrieval UI) refresh its deployed-Kino markers.
+signal deployed_kinos_changed()
 # Placeholder status readouts shown on the Kino map HUD chrome. Future power
 # / hull systems will fire these — defaults render as "OFFLINE" until any
 # value is published.
@@ -71,6 +74,9 @@ const QUEST_COMPLETE: String = "complete"
 const AIR_LIME_RESOURCE: String = "lime"
 const AIR_LIME_REQUIRED: int = 3
 const KINO_ORB_MAX: int = 3
+# How many DEPLOYED Kinos (left out in the world) we keep track of at once.
+# Deploying another past this drops the oldest tracked location (FIFO).
+const KINO_DEPLOYED_MAX: int = 3
 
 const QUEST_LABELS: Dictionary = {
 	QUEST_TALK_SCOTT: "Talk to Scott",
@@ -141,6 +147,23 @@ var skip_arrival_cinematic: bool = false
 # Control, so planet.gd spawns + possesses the Kino drone instead of the player.
 # Transient (cleared by planet.gd on read); not part of the save snapshot.
 var kino_pilot_mode: bool = false
+# Where Eli's body was standing when the Kino launched. While piloting, Eli STAYS
+# put (he doesn't "become" the Kino), so exiting kino control returns the player
+# to this exact spot rather than a door spawn marker. Transient (set at launch,
+# consumed on return; a kino flight is never saved mid-way).
+var kino_return_position: Variant = null   # Vector3 or null
+var kino_return_yaw: float = 0.0
+# Scene the body is waiting in, so closing the Kino remote returns there even if
+# the kino was being flown in a DIFFERENT scene (e.g. body on the ship, kino on
+# the planet). Empty = current scene. kino_return_room_id restores the procedural
+# room id when the body scene is room.tscn.
+var kino_return_scene: String = ""
+var kino_return_room_id: String = ""
+# Where to spawn the CONTROLLED kino on the next scene load when taking control
+# of a deployed kino in another scene. null pos = the scene's own default spawn
+# (e.g. facing the planet gate).
+var kino_pilot_target_scene: String = ""
+var kino_pilot_target_pos: Variant = null   # Vector3 or null
 
 var health: float = MAX_HEALTH
 var oxygen: float = MAX_OXYGEN
@@ -213,12 +236,20 @@ var reported_to_gate: bool = false
 # Kino orbs the player is carrying. The quarters dispenser is unlimited but the
 # player can hold at most KINO_ORB_MAX; launching one (Kino Control) spends it.
 var kino_orbs: int = 0
+# Kinos left DEPLOYED out in the world (not in inventory). FIFO, newest last,
+# capped at KINO_DEPLOYED_MAX — deploying another past the cap drops the oldest
+# tracked location. Each entry: {"scene": String, "x"/"y"/"z": float}. World-
+# state (read by future quest steps / map markers / retrieval — see issue #36).
+var deployed_kinos: Array = []
 # True once a Kino has been flown through the gate and confirmed what's on the
 # far side (the SCOUT_KINO beat).
 var kino_scout_done: bool = false
 # One-shot: Rush's "that's bloody brilliant" approval has played (gate room,
 # after the player returns with a Kino orb).
 var kino_plan_approved: bool = false
+# One-shot: the post-scout away-party briefing has played (gate room, MINE_LIME
+# step, after the Kino recon returns). Gates the "let's mine some lime" dialog.
+var away_party_briefed: bool = false
 var returned_from_lime_planet: bool = false
 var resources: Dictionary = {AIR_LIME_RESOURCE: 0}
 # E1 story milestones — set by NPC interacts (npc.gd via met_flag).
@@ -304,8 +335,10 @@ func reset() -> void:
 	lime_planet_dialed = false
 	reported_to_gate = false
 	kino_orbs = 0
+	deployed_kinos.clear()
 	kino_scout_done = false
 	kino_plan_approved = false
+	away_party_briefed = false
 	returned_from_lime_planet = false
 	resources.clear()
 	resources[AIR_LIME_RESOURCE] = 0
@@ -328,6 +361,12 @@ func reset() -> void:
 	pending_spawn_yaw = 0.0
 	skip_arrival_cinematic = false
 	kino_pilot_mode = false
+	kino_return_position = null
+	kino_return_yaw = 0.0
+	kino_return_scene = ""
+	kino_return_room_id = ""
+	kino_pilot_target_scene = ""
+	kino_pilot_target_pos = null
 	health_changed.emit(health)
 	oxygen_changed.emit(oxygen)
 	kino_changed.emit(kino_acquired)
@@ -752,6 +791,30 @@ func consume_kino_orb() -> bool:
 	return true
 
 
+# Record a Kino left out in the world at `pos` in `scene_path`. FIFO-capped at
+# KINO_DEPLOYED_MAX: deploying another past the cap drops the OLDEST tracked
+# location.
+func deploy_kino(scene_path: String, pos: Vector3) -> void:
+	deployed_kinos.append({"scene": scene_path, "x": pos.x, "y": pos.y, "z": pos.z})
+	while deployed_kinos.size() > KINO_DEPLOYED_MAX:
+		deployed_kinos.pop_front()
+	add_log("Kino deployed (%d/%d tracked)." % [deployed_kinos.size(), KINO_DEPLOYED_MAX])
+	deployed_kinos_changed.emit()
+
+
+# World-space positions of Kinos deployed in a given scene (for re-spawn /
+# map markers / retrieval). Order is oldest→newest.
+func deployed_kinos_in_scene(scene_path: String) -> Array:
+	var out: Array = []
+	for k in deployed_kinos:
+		if String((k as Dictionary).get("scene", "")) == scene_path:
+			out.append(Vector3(
+				float((k as Dictionary).get("x", 0.0)),
+				float((k as Dictionary).get("y", 0.0)),
+				float((k as Dictionary).get("z", 0.0))))
+	return out
+
+
 # A launched Kino confirmed what's on the far side of the gate (the SCOUT_KINO
 # beat) — clears the way to physically step through and mine.
 func complete_kino_scout() -> void:
@@ -900,8 +963,10 @@ func serialize() -> Dictionary:
 		"lime_planet_dialed": lime_planet_dialed,
 		"reported_to_gate": reported_to_gate,
 		"kino_orbs": kino_orbs,
+		"deployed_kinos": deployed_kinos.duplicate(true),
 		"kino_scout_done": kino_scout_done,
 		"kino_plan_approved": kino_plan_approved,
+		"away_party_briefed": away_party_briefed,
 		"returned_from_lime_planet": returned_from_lime_planet,
 		"resources": resources.duplicate(true),
 		"kino_pan_x": kino_pan_x,
@@ -942,8 +1007,20 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	lime_planet_dialed = data.get("lime_planet_dialed", false) == true
 	reported_to_gate = data.get("reported_to_gate", false) == true
 	kino_orbs = int(data.get("kino_orbs", 0))
+	deployed_kinos.clear()
+	var loaded_kinos: Variant = data.get("deployed_kinos", [])
+	if loaded_kinos is Array:
+		for k in loaded_kinos:
+			if k is Dictionary:
+				deployed_kinos.append({
+					"scene": String((k as Dictionary).get("scene", "")),
+					"x": float((k as Dictionary).get("x", 0.0)),
+					"y": float((k as Dictionary).get("y", 0.0)),
+					"z": float((k as Dictionary).get("z", 0.0)),
+				})
 	kino_scout_done = data.get("kino_scout_done", false) == true
 	kino_plan_approved = data.get("kino_plan_approved", false) == true
+	away_party_briefed = data.get("away_party_briefed", false) == true
 	returned_from_lime_planet = data.get("returned_from_lime_planet", false) == true
 	resources.clear()
 	var loaded_resources: Variant = data.get("resources", {})

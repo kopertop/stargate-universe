@@ -188,6 +188,17 @@ func _initialize() -> void:
 	gs.check_episode_complete()
 	_expect(completed_emits.size() == 1, "mission: completion is one-shot")
 
+	# Deployed-Kino tracking: FIFO capped at KINO_DEPLOYED_MAX, oldest dropped.
+	gs.deployed_kinos.clear()
+	gs.deploy_kino("res://scenes/planet.tscn", Vector3(1, 0, 1))
+	gs.deploy_kino("res://scenes/gate_room.tscn", Vector3(2, 0, 2))
+	gs.deploy_kino("res://scenes/planet.tscn", Vector3(3, 0, 3))
+	_expect(gs.deployed_kinos.size() == 3, "kino: tracks up to KINO_DEPLOYED_MAX deployments")
+	gs.deploy_kino("res://scenes/planet.tscn", Vector3(4, 0, 4))
+	_expect(gs.deployed_kinos.size() == gs.KINO_DEPLOYED_MAX, "kino: deploying a 4th stays capped at 3")
+	_expect(float((gs.deployed_kinos[0] as Dictionary).get("x", -1.0)) == 2.0, "kino: oldest deployment dropped (FIFO pop_front)")
+	_expect(gs.deployed_kinos_in_scene("res://scenes/planet.tscn").size() == 2, "kino: deployed_kinos_in_scene filters by scene")
+
 	# Reset before the save tests so they observe a clean slate.
 	gs.episode_completed.disconnect(on_done)
 	gs.reset()
@@ -198,8 +209,11 @@ func _initialize() -> void:
 	_expect(gs.elevator_repaired == false, "mission: reset clears elevator_repaired")
 	_expect(gs.doors_traversed.is_empty(), "mission: reset clears doors_traversed")
 	_expect(gs.kino_orbs == 0, "mission: reset clears kino_orbs")
+	_expect(gs.deployed_kinos.is_empty(), "mission: reset clears deployed_kinos")
 	_expect(gs.kino_scout_done == false, "mission: reset clears kino_scout_done")
 	_expect(gs.kino_plan_approved == false, "mission: reset clears kino_plan_approved")
+	_expect(gs.away_party_briefed == false, "mission: reset clears away_party_briefed")
+	_expect(gs.kino_return_position == null, "mission: reset clears kino_return_position")
 	_expect(gs.breaches_sealed.is_empty(), "mission: reset clears breaches")
 	_expect(gs.met_scott == false, "mission: reset clears met_scott")
 	_expect(gs.met_rush == false, "mission: reset clears met_rush")
@@ -225,10 +239,13 @@ func _initialize() -> void:
 	gs.kino_orbs = 2
 	gs.kino_scout_done = true
 	gs.kino_plan_approved = true
+	gs.away_party_briefed = true
+	gs.deployed_kinos = [{"scene": "res://scenes/planet.tscn", "x": 5.0, "y": 0.0, "z": -3.0}]
 
 	var snapshot: Dictionary = gs.serialize()
 	_expect(int(snapshot.get("kino_orbs", -1)) == 2, "serialize captures kino_orbs")
 	_expect(snapshot.get("kino_scout_done", false) == true, "serialize captures kino_scout_done")
+	_expect(snapshot.get("away_party_briefed", false) == true, "serialize captures away_party_briefed")
 	_expect(snapshot.has("quest_step"), "serialize() includes quest_step")
 	_expect(String(snapshot.get("quest_step", "")) == gs.QUEST_FIND_RUSH, "serialize captures current quest step")
 	_expect(snapshot.get("met_scott", false) == true, "serialize captures met_scott")
@@ -245,7 +262,9 @@ func _initialize() -> void:
 	gs.deserialize(snapshot, 2)
 	_expect(gs.met_scott, "deserialize restores met_scott")
 	_expect(gs.kino_orbs == 2, "deserialize restores kino_orbs")
+	_expect(gs.deployed_kinos.size() == 1 and float((gs.deployed_kinos[0] as Dictionary).get("x", -1.0)) == 5.0, "deserialize restores deployed_kinos")
 	_expect(gs.kino_scout_done, "deserialize restores kino_scout_done")
+	_expect(gs.away_party_briefed, "deserialize restores away_party_briefed")
 	_expect(gs.quest_step == gs.QUEST_FIND_RUSH, "deserialize restores quest_step")
 	_expect(gs.resource_count(gs.AIR_LIME_RESOURCE) == 2, "deserialize restores resources")
 	_expect(gs.rooms_discovered.size() == 1, "deserialize restores rooms_discovered")

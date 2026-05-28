@@ -454,10 +454,10 @@ func _build_ship_systems_page(parent: Control) -> void:
 	_label(page, "  CO2 scrubber:  —", 14, Color.WHITE).name = "SysScrubber"
 
 
-# Handheld-only page that appears during the SCOUT_KINO beat (gated by
-# _page_available). Lets the player launch a carried Kino orb through the open
-# gate and pilot it on the far side — the recon drone is spawned by planet.gd
-# when GameState.kino_pilot_mode is set.
+# Handheld Kino fleet control. Available once you hold an orb or have a Kino
+# deployed in the field (see _page_available). Lets you launch a new Kino and
+# take control of ANY live Kino at any time — including ones left on the planet.
+# The action list is rebuilt each refresh since the deployed set changes.
 func _build_kino_control_page(parent: Control) -> void:
 	var page: VBoxContainer = VBoxContainer.new()
 	page.name = "KinoControl"
@@ -473,20 +473,36 @@ func _build_kino_control_page(parent: Control) -> void:
 	desc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	page.add_child(HSeparator.new())
 	_label(page, "  Kinos in hand:  —", 14, Color.WHITE).name = "KinoControlCount"
-	var launch: Button = Button.new()
-	launch.name = "LaunchKinoButton"
-	launch.text = "LAUNCH KINO"
-	launch.custom_minimum_size = Vector2(240, 58)
-	launch.focus_mode = Control.FOCUS_NONE
-	launch.add_theme_color_override("font_color", Color.WHITE)
-	launch.add_theme_color_override("font_hover_color", Color.WHITE)
-	launch.add_theme_color_override("font_pressed_color", Color.WHITE)
-	launch.add_theme_font_size_override("font_size", 18)
-	launch.add_theme_stylebox_override("normal", _button_stylebox(false))
-	launch.add_theme_stylebox_override("hover", _button_stylebox_hover())
-	launch.add_theme_stylebox_override("pressed", _button_stylebox(true))
-	launch.pressed.connect(_on_launch_kino)
-	page.add_child(launch)
+	var list: VBoxContainer = VBoxContainer.new()
+	list.name = "KinoActionList"
+	list.add_theme_constant_override("separation", 8)
+	page.add_child(list)
+
+
+func _kino_action_button(text: String, primary: bool) -> Button:
+	var b: Button = Button.new()
+	b.text = text
+	b.custom_minimum_size = Vector2(300, 48)
+	b.focus_mode = Control.FOCUS_NONE
+	b.add_theme_color_override("font_color", Color.WHITE)
+	b.add_theme_color_override("font_hover_color", Color.WHITE)
+	b.add_theme_color_override("font_pressed_color", Color.WHITE)
+	b.add_theme_font_size_override("font_size", 16)
+	b.add_theme_stylebox_override("normal", _button_stylebox(primary))
+	b.add_theme_stylebox_override("hover", _button_stylebox_hover())
+	b.add_theme_stylebox_override("pressed", _button_stylebox(true))
+	return b
+
+
+# Friendly label for a deployed Kino's scene path.
+func _scene_short_name(scene_path: String) -> String:
+	if scene_path.ends_with("planet.tscn"):
+		return "Planet"
+	if scene_path.ends_with("gate_room.tscn"):
+		return "Gate Room"
+	if scene_path.ends_with("room.tscn"):
+		return "Ship"
+	return scene_path.get_file().get_basename().capitalize()
 
 
 func _on_page_button(idx: int) -> void:
@@ -569,11 +585,12 @@ func _apply_surface() -> void:
 
 
 # Conditional page gating on top of the per-surface page list. Most pages are
-# always available; the Kino Control page only appears once Rush has approved
-# the scout plan and the player is holding an unspent orb (the SCOUT_KINO beat).
+# always available; the Kino Control page appears as soon as you have a Kino to
+# work with — an orb in hand to launch, OR a live Kino deployed in the field
+# (which you can re-take control of at any time, from any scene).
 func _page_available(page: int) -> bool:
 	if page == PAGE_KINO_CONTROL:
-		return GameState.kino_plan_approved and GameState.kino_orbs > 0 and not GameState.kino_scout_done
+		return GameState.kino_orbs > 0 or not GameState.deployed_kinos.is_empty()
 	return true
 
 # Public close — mirrors open_remote() so external callers (control_console.gd,
@@ -1869,31 +1886,43 @@ func _refresh_log() -> void:
 		_label(box, "  • " + line, 13, Color(0.85, 0.92, 1.0, 0.9))
 
 
+const KinoDroneScript: Script = preload("res://scripts/kino_drone.gd")
+const KINO_LAUNCH_HEIGHT: float = 1.6   # spawn the orb above the player's hands
+
 func _refresh_kino_control() -> void:
 	var page: Node = _pages[PAGE_KINO_CONTROL]
 	var desc: Label = page.get_node_or_null("KinoControlDesc") as Label
 	var count: Label = page.get_node_or_null("KinoControlCount") as Label
-	var launch: Button = page.get_node_or_null("LaunchKinoButton") as Button
+	var list: VBoxContainer = page.get_node_or_null("KinoActionList") as VBoxContainer
 	if desc != null:
-		desc.text = "We can't risk stepping through blind. Launch a Kino to scout the far side, then pull it back before we commit."
+		desc.text = "Launch a Kino to scout, or take control of any Kino you've left out in the field — wherever it is."
 	if count != null:
 		count.text = "  Kinos in hand:  %d / %d" % [GameState.kino_orbs, GameState.KINO_ORB_MAX]
-	if launch != null:
-		var can_launch: bool = GameState.kino_orbs > 0 and not GameState.kino_scout_done
-		launch.disabled = not can_launch
-		launch.text = "LAUNCH KINO" if can_launch else "NO KINO IN HAND"
+	if list == null:
+		return
+	for c in list.get_children():
+		c.queue_free()
+	if GameState.kino_orbs > 0:
+		var launch: Button = _kino_action_button("LAUNCH NEW KINO", true)
+		launch.pressed.connect(_on_launch_kino)
+		list.add_child(launch)
+	_label(list, "  Live Kinos:", 13, Color(0.55, 0.85, 1.0, 0.85))
+	if GameState.deployed_kinos.is_empty():
+		_label(list, "    (none deployed)", 13, Color(0.7, 0.75, 0.85, 0.8))
+	else:
+		for i in range(GameState.deployed_kinos.size()):
+			var k: Dictionary = GameState.deployed_kinos[i]
+			var loc: String = _scene_short_name(String(k.get("scene", "")))
+			var b: Button = _kino_action_button("PILOT KINO %d  —  %s" % [i + 1, loc], false)
+			b.pressed.connect(_on_pilot_deployed.bind(i))
+			list.add_child(b)
 
 
-# Spend a carried Kino orb and dive into the recon-drone flight. The Kino
-# launches RIGHT WHERE THE PLAYER STANDS (in the gate room) — the player must
-# pilot it through the active Stargate to reach the planet. We possess the
-# current scene with a ship-mode drone; the drone warps to the planet when it
-# crosses the gate.
-const KinoDroneScript: Script = preload("res://scripts/kino_drone.gd")
-const KINO_LAUNCH_HEIGHT: float = 1.6   # spawn the orb above the player's hands
-
+# Spend a carried orb and dive into a fresh Kino, launched right where the player
+# stands (Eli stays put, holding the remote). In the gate room the player flies
+# it through the active Stargate to reach the planet.
 func _on_launch_kino() -> void:
-	if GameState.kino_orbs <= 0 or GameState.kino_scout_done:
+	if GameState.kino_orbs <= 0:
 		return
 	if not GameState.consume_kino_orb():
 		return
@@ -1903,33 +1932,132 @@ func _on_launch_kino() -> void:
 	_possess_ship_kino()
 
 
-# Spawn a ship-mode Kino at the player's position in the current scene and hand
-# it the camera. Frees the third-person player/view rig (the gate-room scene
-# reloads when the recon drone recalls, so nothing is lost) and hides the HUD.
+# Take control of an already-deployed (live) Kino — from any scene. If it's in
+# the current scene, possess it in place; otherwise warp to its scene and the
+# scene spawns the controlled Kino at its tracked position. Either way the
+# player's BODY is recorded so closing the remote returns there.
+func _on_pilot_deployed(index: int) -> void:
+	if index < 0 or index >= GameState.deployed_kinos.size():
+		return
+	var entry: Dictionary = GameState.deployed_kinos[index]
+	var scene_path: String = String(entry.get("scene", ""))
+	var pos: Vector3 = Vector3(float(entry.get("x", 0.0)), float(entry.get("y", 0.0)), float(entry.get("z", 0.0)))
+	var same_scene: bool = scene_path == "" or scene_path == GameState.current_scene_path
+	# Cross-scene control is supported for the planet (fly a Kino on the surface
+	# from the ship). A Kino left elsewhere on the ship is retaken from its room.
+	if not same_scene and scene_path != "res://scenes/planet.tscn":
+		GameState.add_log("That Kino is in another section — go there to take control.")
+		return
+	Audio.play("res://sounds/menu_click.ogg")
+	_record_body()
+	GameState.deployed_kinos.remove_at(index)   # now the active, piloted Kino
+	GameState.deployed_kinos_changed.emit()
+	GameState.kino_pilot_mode = true
+	_close()
+	if same_scene:
+		_possess_kino_here(pos, false)
+	else:
+		GameState.kino_pilot_target_scene = scene_path
+		GameState.kino_pilot_target_pos = pos
+		SceneRouter.change_to(scene_path, "")
+
+
+# Record the player's body (scene + transform) so [E] returns control there.
+func _record_body() -> void:
+	GameState.kino_return_scene = GameState.current_scene_path
+	GameState.kino_return_room_id = GameState.current_room_id
+	var player: Node3D = get_tree().get_first_node_in_group("player") as Node3D
+	if player != null:
+		GameState.kino_return_position = player.global_position
+		GameState.kino_return_yaw = player.rotation.y
+
+
+# Launch a ship-mode Kino at the player's position. Records the body + possesses
+# the current scene; the drone flies through the gate to reach the planet.
 # Falls back to a direct planet warp if there's no live scene/player.
 func _possess_ship_kino() -> void:
 	var scene: Node = get_tree().current_scene
 	var player: Node3D = get_tree().get_first_node_in_group("player") as Node3D
 	if scene == null or player == null:
-		# No spawn key: planet.gd::_start_kino_recon owns the drone placement.
 		SceneRouter.change_to("res://scenes/planet.tscn", "")
 		return
-	var spawn: Vector3 = player.global_position + Vector3.UP * KINO_LAUNCH_HEIGHT
-	var yaw: float = player.rotation.y
-	player.queue_free()
-	var view: Node = scene.get_node_or_null("View")
-	if view != null:
-		view.queue_free()
+	_record_body()
+	var fwd: Vector3 = -player.global_transform.basis.z
+	fwd.y = 0.0
+	fwd = fwd.normalized() if fwd.length() > 0.01 else Vector3.FORWARD
+	var spawn: Vector3 = player.global_position + fwd * 0.8 + Vector3.UP * KINO_LAUNCH_HEIGHT
+	_possess_kino_here(spawn, true)
+
+
+# Spawn + possess a Kino in the CURRENT scene at `spawn_pos`. If a player body is
+# present (the gate room), it STAYS PUT holding the remote (input locked, hands-
+# in-front pose). The drone takes the camera. `in_ship` enables gate-crossing.
+func _possess_kino_here(spawn_pos: Vector3, in_ship: bool) -> void:
+	var scene: Node = get_tree().current_scene
+	if scene == null:
+		return
+	var player: Node3D = get_tree().get_first_node_in_group("player") as Node3D
+	if player != null:
+		if player.has_method("set_input_locked"):
+			player.call("set_input_locked", true)
+		if player.has_method("set_pose_override"):
+			player.call("set_pose_override", "holding-both")
+		_attach_remote_prop(player)
 	var hud_layer: Node = scene.get_node_or_null("HUDLayer")
 	if hud_layer is CanvasLayer:
 		(hud_layer as CanvasLayer).visible = false
 	var drone: CharacterBody3D = KinoDroneScript.new()
 	drone.name = "KinoDrone"
-	drone.set("launch_in_ship", true)
-	drone.add_to_group("player")
-	drone.rotation.y = yaw
+	drone.set("launch_in_ship", in_ship)
+	# NOT in group "player": the body (if any) is still the player.
+	if player != null:
+		drone.rotation.y = player.rotation.y
 	scene.add_child(drone)
-	drone.global_position = spawn
+	drone.global_position = spawn_pos
+
+
+# A small "Kino remote" prop parented to Eli so the player (looking back) and
+# onlookers see him gripping the controller while he pilots the Kino. Paired
+# with the "holding-both" pose, it sits between his hands out in front (Godot
+# forward is -Z) at chest height, screen tilted up toward his face.
+func _attach_remote_prop(player: Node3D) -> void:
+	if player.get_node_or_null("KinoRemoteProp") != null:
+		return
+	var prop: Node3D = Node3D.new()
+	prop.name = "KinoRemoteProp"
+	# Between the hands, forward of the chest. Tuned against the holding-both pose
+	# at the character's 1.6x model scale (hands land ~0.7 m up, ~0.4 m forward).
+	prop.position = Vector3(0.0, 0.72, -0.42)
+	prop.rotation_degrees = Vector3(-35.0, 0.0, 0.0)   # tilt the screen up
+	player.add_child(prop)
+
+	var body: MeshInstance3D = MeshInstance3D.new()
+	var box: BoxMesh = BoxMesh.new()
+	box.size = Vector3(0.20, 0.05, 0.30)
+	body.mesh = box
+	body.material_override = _remote_mat(Color(0.10, 0.12, 0.16), false)
+	prop.add_child(body)
+
+	var screen: MeshInstance3D = MeshInstance3D.new()
+	var sbox: BoxMesh = BoxMesh.new()
+	sbox.size = Vector3(0.15, 0.02, 0.22)
+	screen.mesh = sbox
+	screen.position = Vector3(0.0, 0.035, 0.0)
+	screen.material_override = _remote_mat(Color(0.45, 0.80, 1.0), true)
+	prop.add_child(screen)
+
+
+func _remote_mat(col: Color, glow: bool) -> StandardMaterial3D:
+	var m: StandardMaterial3D = StandardMaterial3D.new()
+	m.albedo_color = col
+	if glow:
+		m.emission_enabled = true
+		m.emission = col
+		m.emission_energy_multiplier = 2.2
+	else:
+		m.metallic = 0.4
+		m.roughness = 0.5
+	return m
 
 
 func _refresh_inventory() -> void:

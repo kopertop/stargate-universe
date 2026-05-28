@@ -7,6 +7,7 @@ const PLANETS_PATH: String = "res://data/planets.json"
 const PLANET_ID: String = "air_lime_world"
 const PlanetGeneratorRef: Script = preload("res://scripts/planet_generator.gd")
 const KinoDroneScript: Script = preload("res://scripts/kino_drone.gd")
+const PlanetTimerScript: Script = preload("res://scripts/planet_timer.gd")
 
 @onready var _world: Node3D = $World
 @onready var _player: Node3D = $Player
@@ -30,6 +31,11 @@ func _ready() -> void:
 		_view.snap_to_target()
 	if GameState.quest_step == GameState.QUEST_MINE_LIME:
 		GameState.add_log("Planet scan confirmed lime deposits near the active gate.")
+		# Start the gate-window countdown for the on-foot mining run (the Kino
+		# scout already returned above). Inert in instant_mode (headless tests).
+		var timer: Node = PlanetTimerScript.new()
+		timer.name = "DepartureTimer"
+		add_child(timer)
 
 # Replace the third-person player rig with a pilotable Kino. The drone owns its
 # own camera + overlay; freeing the player/view rig stops their camera and

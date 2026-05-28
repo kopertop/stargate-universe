@@ -65,6 +65,11 @@ func change_to(scene_path: String, spawn_point: String = "") -> void:
 	scene_changed.emit(scene_path)
 	await _fade_to(0.0)
 	is_transitioning = false
+	# A cutscene that ends by transporting the player here (armed via
+	# Cinematic.close_on_next_scene_change) keeps its letterbox up through the
+	# cut; lift it now that the destination scene has faded in.
+	if Cinematic.wants_scene_change_close():
+		await Cinematic.letterbox_out()
 
 func _place_player_at_spawn() -> void:
 	if _pending_spawn == "":

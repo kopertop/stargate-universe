@@ -43,6 +43,12 @@ var _auto_walking: bool = false
 var _auto_walk_target: Vector3 = Vector3.ZERO
 var _auto_walk_speed: float = 5.0
 var _auto_walk_arrive_dist: float = 0.18
+# Cinematic dash: collision-FREE sprint to a point (used by cutscenes so the
+# actor can never snag on terrain/props). Moves by direct position + a ground
+# ray, with body collision disabled — clipping is intentionally off here.
+var _cinematic_dash: bool = false
+var _dash_target: Vector3 = Vector3.ZERO
+var _dash_speed: float = 12.0
 
 # Footsteps — random individual samples (slices of the Ship Footsteps pack)
 # played on a distance-based cadence: one step per ~FOOTSTEP_STRIDE metres of
@@ -99,6 +105,9 @@ func _find_animation_player(root: Node) -> AnimationPlayer:
 	return null
 
 func _physics_process(delta: float) -> void:
+	if _cinematic_dash:
+		_drive_cinematic_dash(delta)
+		return
 	if _auto_walking:
 		_drive_auto_walk(delta)
 		return
@@ -373,6 +382,50 @@ func auto_walk_to(target_world_pos: Vector3, speed: float = 5.0) -> void:
 	_auto_walk_speed = max(speed, 0.1)
 	_auto_walking = true
 	_input_locked = true
+
+# Cinematic dash — collision-FREE sprint to a world point. For cutscenes only:
+# the actor cannot snag on terrain/props (clipping off) and won't trip scene
+# triggers (collision_layer cleared). Emits auto_walk_finished on arrival.
+func cinematic_dash_to(target_world_pos: Vector3, speed: float = 12.0) -> void:
+	_dash_target = target_world_pos
+	_dash_speed = maxf(speed, 0.1)
+	_cinematic_dash = true
+	_auto_walking = false
+	_input_locked = true
+	collision_layer = 0          # don't trip Area triggers (e.g. the return gate)
+	collision_mask = 0           # we move by position, not move_and_slide
+
+func _drive_cinematic_dash(delta: float) -> void:
+	var to_target: Vector3 = _dash_target - global_position
+	to_target.y = 0.0
+	var dist: float = to_target.length()
+	if dist < _auto_walk_arrive_dist:
+		_cinematic_dash = false
+		_play_anim("idle", 0.1)
+		auto_walk_finished.emit()
+		return
+	var dir: Vector3 = to_target.normalized()
+	var np: Vector3 = global_position + dir * _dash_speed * delta
+	np.y = _ground_y(np, global_position.y)
+	global_position = np
+	_facing_yaw = atan2(-dir.x, -dir.z)
+	rotation.y = lerp_angle(rotation.y, _facing_yaw, delta * 16.0)
+	_play_anim("sprint", 0.1)
+	if _animation != null:
+		_animation.speed_scale = 1.0
+
+# Ground height under `at` via a downward ray against the terrain (layer 1), so
+# the dash follows hills instead of clipping through or floating over them.
+func _ground_y(at: Vector3, fallback: float) -> float:
+	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+	if space == null:
+		return fallback
+	var q: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(
+		Vector3(at.x, at.y + 30.0, at.z), Vector3(at.x, at.y - 80.0, at.z), 1)
+	var hit: Dictionary = space.intersect_ray(q)
+	if hit.has("position"):
+		return (hit["position"] as Vector3).y
+	return fallback
 
 func _drive_auto_walk(delta: float) -> void:
 	var to_target: Vector3 = _auto_walk_target - global_position

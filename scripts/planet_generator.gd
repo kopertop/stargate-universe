@@ -154,15 +154,15 @@ static func _build_lime_nodes(world: Node3D, planet_data: Dictionary, rng: Rando
 	var amount: int = int(planet_data.get("lime_per_node", 1))
 	var min_r: float = float(planet_data.get("lime_min_radius", 40.0))
 	var max_r: float = float(planet_data.get("lime_max_radius", 95.0))
+	# Lime reads as WHITE rock / sand (a chalky mineral deposit), not crystals.
+	# A faint white emission keeps deposits spottable from the Kino / at distance.
 	var lime_mat: StandardMaterial3D = StandardMaterial3D.new()
-	lime_mat.albedo_color = Color(0.70, 0.92, 0.34)
+	lime_mat.albedo_color = Color(0.93, 0.94, 0.91)
+	lime_mat.roughness = 0.9
+	lime_mat.metallic = 0.0
 	lime_mat.emission_enabled = true
-	lime_mat.emission = Color(0.38, 0.75, 0.14)
-	lime_mat.emission_energy_multiplier = 1.4
-	lime_mat.roughness = 0.55
-	var stone_mat: StandardMaterial3D = StandardMaterial3D.new()
-	stone_mat.albedo_color = Color(0.34, 0.32, 0.27)
-	stone_mat.roughness = 0.85
+	lime_mat.emission = Color(0.86, 0.90, 0.96)
+	lime_mat.emission_energy_multiplier = 0.28
 
 	for i in count:
 		var angle: float = (TAU / float(count)) * float(i) + rng.randf_range(-0.4, 0.4)
@@ -184,10 +184,11 @@ static func _build_lime_nodes(world: Node3D, planet_data: Dictionary, rng: Rando
 		cs.position = Vector3(0.0, 0.65, 0.0)
 		node.add_child(cs)
 
-		_add_box(node, Vector3(0.0, 0.25, 0.0), Vector3(1.25, 0.5, 1.0), stone_mat)
-		_add_crystal(node, Vector3(-0.28, 0.82, 0.0), 0.55, lime_mat)
-		_add_crystal(node, Vector3(0.18, 0.70, 0.18), 0.42, lime_mat)
-		_add_crystal(node, Vector3(0.36, 0.58, -0.20), 0.32, lime_mat)
+		# A low pile of white rock chunks (chalky lime deposit).
+		_add_box(node, Vector3(0.0, 0.22, 0.0), Vector3(1.15, 0.44, 0.95), lime_mat)
+		_add_box(node, Vector3(-0.34, 0.50, 0.10), Vector3(0.52, 0.46, 0.50), lime_mat)
+		_add_box(node, Vector3(0.30, 0.44, -0.22), Vector3(0.46, 0.40, 0.52), lime_mat)
+		_add_box(node, Vector3(0.10, 0.64, 0.22), Vector3(0.34, 0.32, 0.36), lime_mat)
 		world.add_child(node)
 
 static func _build_rocks(world: Node3D, rng: RandomNumberGenerator, tp: Dictionary) -> void:
@@ -237,14 +238,4 @@ static func _add_box(parent: Node3D, pos: Vector3, size: Vector3, mat: StandardM
 	mi.mesh = mesh
 	mi.material_override = mat
 	mi.position = pos
-	parent.add_child(mi)
-
-static func _add_crystal(parent: Node3D, pos: Vector3, height: float, mat: StandardMaterial3D) -> void:
-	var mi: MeshInstance3D = MeshInstance3D.new()
-	var mesh: BoxMesh = BoxMesh.new()
-	mesh.size = Vector3(0.24, height, 0.24)
-	mi.mesh = mesh
-	mi.material_override = mat
-	mi.position = pos
-	mi.rotation = Vector3(0.18, pos.x * 3.0 + pos.z, 0.24)
 	parent.add_child(mi)

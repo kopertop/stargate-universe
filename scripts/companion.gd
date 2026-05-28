@@ -28,6 +28,11 @@ const ARRIVE: float = 0.3
 
 # Index in the away team — spreads idle follow offsets so companions don't stack.
 var slot: int = 0
+# Stationary companions (e.g. the team posted at the ship gate before they go
+# through to the planet) skip the follow / mine state machine and just hold
+# their pose until a rush_to() coroutine moves them. Set this before adding to
+# the tree (or any time before _process actually decides what to do).
+var stationary: bool = false
 
 var _model: Node3D = null
 var _anim: AnimationPlayer = null
@@ -97,6 +102,9 @@ func rush_to(target: Vector3) -> void:
 func _process(delta: float) -> void:
 	if _rushing:
 		_step_toward(_rush_target, RUSH_SPEED, delta)
+		return
+	if stationary:
+		_set_moving(false)
 		return
 	var player: Node3D = get_tree().get_first_node_in_group("player") as Node3D
 	if player == null:

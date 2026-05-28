@@ -19,6 +19,7 @@ const GATE_CONSOLE_SCRIPT: Script = preload("res://scripts/gate_console.gd")
 const NPC_SCRIPT: Script = preload("res://scripts/npc.gd")
 const PLANET_GATE_SCRIPT: Script = preload("res://scripts/planet_gate.gd")
 const QuestWaypointScript: Script = preload("res://scripts/quest_waypoint.gd")
+const CompanionScript: Script = preload("res://scripts/companion.gd")
 # Preload bypasses class_name registration timing — same reason as room.gd.
 const ShipAlertScript: Script = preload("res://scripts/ship_alert.gd")
 const QUEST_WAYPOINT_ANCHOR_HEIGHT: float = 2.4
@@ -66,6 +67,12 @@ var _from_east_connector_marker: Marker3D
 var _gate_portal: Area3D
 var _arrival_running: bool = false
 var _quest_waypoint: Node3D = null
+# Phase F gate-walk-through choreography: when the player arrives at MINE_LIME
+# (post-briefing) the away team is already lined up in front of the gate. The
+# player's gate portal stays disabled until the team has walked through first.
+var _gate_team: Array[Node3D] = []
+var _gate_player_locked: bool = false
+var _team_walkthrough_running: bool = false
 
 func _ready() -> void:
 	# Tell the save system this is a real gameplay scene.
@@ -115,6 +122,12 @@ func _ready() -> void:
 		_play_rush_kino_approval()
 	elif GameState.quest_step == GameState.QUEST_MINE_LIME and not GameState.away_party_briefed:
 		_play_post_scout_briefing()
+	# After Scott's briefing (this run, or a prior session that already saw it),
+	# the away team should be waiting at the active gate ready to step through.
+	if (GameState.quest_step == GameState.QUEST_MINE_LIME
+			and GameState.away_party_briefed
+			and not GameState.returned_from_lime_planet):
+		_assemble_away_team_at_gate()
 
 	# Quest diamond — same pattern as room.gd. Refresh on objective_changed.
 	_refresh_quest_waypoint()
@@ -222,7 +235,8 @@ func _refresh_lime_gate_state() -> void:
 	if _stargate != null and "active" in _stargate:
 		_stargate.active = gate_open
 	if _gate_portal != null:
-		_gate_portal.monitoring = gate_open
+		# Player gate stays disabled until the away team walks through first.
+		_gate_portal.monitoring = gate_open and not _gate_player_locked
 
 func _start_ambient() -> void:
 	if _ambient_sfx != null and not _ambient_sfx.playing:
@@ -260,6 +274,106 @@ func _play_post_scout_briefing() -> void:
 		{"speaker": "Dr Rush", "text": "Well then, Sergeant — I think you should put together a little away party to go mine some lime.", "choices": [{"text": "...", "next": 2}]},
 		{"speaker": "Lt Scott", "text": "You heard him. Greer, Park — gear up. We're taking a walk.", "choices": [{"text": "I'll come too!", "next": "exit"}]},
 	])
+
+
+# Phase F: post-briefing, the away team is already lined up in front of the
+# active gate (Greer / Park / Scott, same roster as the planet side). The
+# player's gate portal is locked off until they walk up behind the team — a
+# trigger Area3D fires the walkthrough coroutine, which sends each companion
+# through the event horizon one-by-one and then re-opens the gate for the
+# player. Skipped in instant_mode so headless tests still walk the gate
+# straight through.
+func _assemble_away_team_at_gate() -> void:
+	if not _gate_team.is_empty():
+		return
+	var sr: Node = get_node_or_null("/root/SceneRouter")
+	if sr != null and sr.get("instant_mode"):
+		return
+	# Stand them on the dais facing the gate. Gate is at z = room_size.y*0.5-3.8
+	# (≈+12.2); the FromGate marker sits at y=1.05 z≈+10.5, so y=1.05 is the
+	# right floor height. Spread the trio along X.
+	var gate_z: float = room_size.y * 0.5 - 3.8
+	var line_z: float = gate_z - 2.4         # ≈ +9.8 — a couple metres south of the event horizon
+	var line_y: float = 1.05
+	const SCOTT_GLB: String = "res://models/characters/scott.glb"
+	const GREER_TINT: Color = Color(0.66, 0.50, 0.38)
+	# Roster order matches the planet-side spawn (Greer left, Park centre,
+	# Scott right) and the cutscene's group "away_team" muster.
+	var roster: Array = [
+		{"name": "Greer", "glb": SCOTT_GLB, "tint": GREER_TINT, "x": -1.6},
+		{"name": "Park", "glb": "res://models/characters/park.glb", "tint": Color.WHITE, "x": 0.0},
+		{"name": "Lt Scott", "glb": SCOTT_GLB, "tint": Color.WHITE, "x": 1.6},
+	]
+	for i in roster.size():
+		var entry: Dictionary = roster[i]
+		var c: Node3D = CompanionScript.new()
+		c.name = "GateTeam_" + String(entry["name"]).replace(" ", "")
+		c.set("stationary", true)
+		_world.add_child(c)
+		c.position = Vector3(float(entry["x"]), line_y, line_z)
+		c.rotation.y = 0.0    # model holder is internally flipped 180° → visible front faces +Z (the gate)
+		c.call("setup", String(entry["name"]), String(entry["glb"]), i, entry["tint"])
+		_gate_team.append(c)
+	# Lock the player out of the gate until the team has walked through.
+	_gate_player_locked = true
+	_refresh_lime_gate_state()
+	# Scott already joined the team at the gate — hide his briefing-spot NPC
+	# (built by _build_npcs near the dais) so we don't have two Scotts on screen.
+	var briefing_scott: Node = _world.get_node_or_null("LtScott")
+	if briefing_scott is Node3D:
+		(briefing_scott as Node3D).visible = false
+		if "enabled" in briefing_scott:
+			briefing_scott.set("enabled", false)
+	# Drop a trigger volume a few metres south of the team. Walking up behind
+	# them fires the choreographed walkthrough exactly once.
+	var trigger: Area3D = Area3D.new()
+	trigger.name = "TeamWalkthroughTrigger"
+	trigger.position = Vector3(0.0, line_y, line_z - 2.4)
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = Vector3(6.0, 2.4, 1.5)
+	cs.shape = box
+	trigger.add_child(cs)
+	# The player capsule sits on layer 1; only react to it (not crew bodies).
+	trigger.collision_mask = 1
+	trigger.body_entered.connect(_on_team_walkthrough_trigger)
+	_world.add_child(trigger)
+	GameState.add_log("Lt Scott: We'll head through first — keep tight, Eli.")
+
+
+func _on_team_walkthrough_trigger(body: Node) -> void:
+	if _team_walkthrough_running:
+		return
+	if not (body is Node3D) or not body.is_in_group("player"):
+		return
+	_team_walkthrough_running = true
+	_run_team_walkthrough()
+
+
+func _run_team_walkthrough() -> void:
+	var gate_z: float = room_size.y * 0.5 - 3.8
+	# Walk each companion forward to the event horizon, staggered so they file
+	# through one at a time. rush_to() flips the companion into its cinematic
+	# sprint mode and ARRIVE handles the visible=false.
+	for i in _gate_team.size():
+		var c: Node3D = _gate_team[i]
+		if not is_instance_valid(c):
+			continue
+		var target: Vector3 = Vector3(c.global_position.x, c.global_position.y, gate_z + 0.6)
+		c.call("rush_to", target)
+		await get_tree().create_timer(0.45).timeout
+		# Wait until this one's through, then flash + hide before launching the next.
+		while is_instance_valid(c) and c.get("_rushing") == true:
+			await get_tree().process_frame
+		if is_instance_valid(c):
+			c.visible = false
+	# Whole team through — open the gate for the player and free the trigger.
+	_gate_player_locked = false
+	_refresh_lime_gate_state()
+	var trigger: Node = _world.get_node_or_null("TeamWalkthroughTrigger")
+	if trigger != null:
+		trigger.queue_free()
+	GameState.add_log("Away team's through. Your turn.")
 
 
 # Play an in-person WoW dialog in the gate room. Skipped in instant_mode (tests

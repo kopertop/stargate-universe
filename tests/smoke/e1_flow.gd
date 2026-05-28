@@ -289,6 +289,45 @@ func _initialize() -> void:
 	gs.deserialize(lime_snapshot, 1)
 	_expect(gs.is_lime_discovered("LimeNode1"), "deserialize restores lime_discovered")
 
+	# --- Phase G: ongoing scrubber resource loop ------------------------------
+	# Force the loop's preconditions (skip the full repair flow — tested above).
+	gs.scrubber_diagnosed = true
+	gs.scrubber_repaired = true
+	gs.scrubber_level = 100.0
+	gs.resources[gs.AIR_LIME_RESOURCE] = 0
+	# Tick one minute of simulated decay. Manually call the tick (so the
+	# autoload SceneRouter check is bypassed) — we already trust _process is the
+	# wrapper.
+	var pre_level: float = gs.scrubber_level
+	gs.call("_tick_scrubber", 60.0)
+	_expect(gs.scrubber_level < pre_level, "scrubber_level decays under repair")
+	_expect(gs.scrubber_level > 0.0, "decay is gradual, not instant")
+
+	# Top-up without lime fails cleanly.
+	_expect(not gs.top_up_scrubber(), "top_up_scrubber fails without lime")
+	# Drop the level well below full so the +33% top-up isn't capped at 100.
+	gs.scrubber_level = 20.0
+	gs.add_resource(gs.AIR_LIME_RESOURCE, 1, "test")
+	var pre_top: float = gs.scrubber_level
+	_expect(gs.top_up_scrubber(), "top_up_scrubber returns true with lime")
+	_expect(gs.scrubber_level > pre_top + 30.0, "top-up adds ~33% per lime")
+	_expect(gs.resource_count(gs.AIR_LIME_RESOURCE) == 0, "top-up spends the lime")
+
+	# Drain past the warn threshold so the warn latch fires exactly once.
+	gs.scrubber_level = 40.0
+	gs.set("_scrubber_warned", false)
+	gs.call("_tick_scrubber", 60.0 * 30.0)   # well past the 33% crossing
+	_expect(gs.scrubber_level <= gs.SCRUBBER_WARN_PERCENT, "decay crosses warn threshold")
+	_expect(gs.get("_scrubber_warned") == true, "warn latch fires on threshold")
+
+	# At zero the critical latch fires + oxygen starts bleeding.
+	gs.scrubber_level = 0.0
+	gs.set("_scrubber_critical", false)
+	gs.oxygen = gs.MAX_OXYGEN
+	gs.call("_tick_scrubber", 60.0)
+	_expect(gs.get("_scrubber_critical") == true, "critical latch fires when scrubber drops to 0")
+	_expect(gs.oxygen < gs.MAX_OXYGEN, "empty scrubber bleeds oxygen (slow E1-forgiving rate)")
+
 	# --- Phase F: away-team companion (follow + mine + rush) -----------------
 	# Duck-typed load so we don't depend on the `Companion` class_name being
 	# registered in this same headless run (see godot class_name gotcha).

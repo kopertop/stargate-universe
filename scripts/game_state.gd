@@ -13,6 +13,9 @@ signal objective_changed(text: String)
 signal quest_step_changed(step: String)
 signal room_discovered(room_id: String)
 signal lime_discovered_changed()
+# Fires whenever scrubber_level changes (decay tick or top-up). Drives the
+# in-world bar gauge + the Kino System Status readout.
+signal scrubber_level_changed(level: float)
 # Fired when the player enters a new room. Drives the Kino Remote player
 # marker and the in-world quest-waypoint diamond's re-targeting.
 signal current_room_changed(room_id: String)
@@ -74,6 +77,18 @@ const QUEST_REPAIR_SCRUBBER: String = "repair_scrubber"
 const QUEST_COMPLETE: String = "complete"
 const AIR_LIME_RESOURCE: String = "lime"
 const AIR_LIME_REQUIRED: int = 3
+# Phase G ongoing scrubber loop.
+# Decay drains a full 100% charge in roughly 25 minutes of unpaused gameplay —
+# generous so the player can comfortably revisit the lime planet to top up.
+const SCRUBBER_DECAY_PER_SEC: float = 100.0 / (25.0 * 60.0)
+# One lime = one cartridge bar = a third of full charge.
+const SCRUBBER_LIME_RECHARGE: float = 100.0 / float(AIR_LIME_REQUIRED)
+# Below this percentage the bar gauge shows red and a one-shot warning logs.
+const SCRUBBER_WARN_PERCENT: float = 33.0
+# At 0% the scrubber bleeds oxygen slowly until the player tops it up; the
+# E1-forgiving rate is one oxygen point per minute, so even a stranded player
+# has a long window to react.
+const SCRUBBER_O2_BLEED_PER_SEC: float = 1.0 / 60.0
 const KINO_ORB_MAX: int = 3
 # How many DEPLOYED Kinos (left out in the world) we keep track of at once.
 # Deploying another past this drops the oldest tracked location (FIFO).
@@ -232,8 +247,13 @@ var scrubber_diagnosed: bool = false
 var scrubber_repaired: bool = false
 # CO2 scrubber lime charge, 0–100%. Drives the 3-bar panel gauge (each bar =
 # one third: 0%=3 red, 33%=1 green, 66%=2 green, 100%=3 green). Loading lime on
-# repair sets it to 100; Phase G will decay it over time.
+# repair sets it to 100; in Phase G it decays over time and the player tops it
+# up with more lime (1 lime = 1 bar of charge) — the ongoing E1 → E2 loop.
 var scrubber_level: float = 0.0
+# Threshold latches so a warning fires exactly once per crossing (re-armed when
+# the level rises back above the threshold via a top-up).
+var _scrubber_warned: bool = false
+var _scrubber_critical: bool = false
 var ftl_drop_triggered: bool = false
 var lime_planet_dialed: bool = false
 # True once the player reaches the Gate Room after Dr Brody's "the gate
@@ -309,6 +329,38 @@ func _ready() -> void:
 		sm.call("register_system", "game_state", self)
 
 
+# Phase G: tick the scrubber's lime charge down over time and bleed oxygen
+# slowly once it bottoms out. Gated on SceneRouter.instant_mode so headless
+# tests (which can run for many simulated frames) don't drift scrubber_level
+# out from under their assertions.
+func _process(delta: float) -> void:
+	if not scrubber_repaired:
+		return
+	var router: Node = _autoload_node("SceneRouter")
+	if router != null and router.get("instant_mode") == true:
+		return
+	_tick_scrubber(delta)
+
+
+func _tick_scrubber(delta: float) -> void:
+	var prev: float = scrubber_level
+	if scrubber_level > 0.0:
+		scrubber_level = maxf(0.0, scrubber_level - SCRUBBER_DECAY_PER_SEC * delta)
+		scrubber_level_changed.emit(scrubber_level)
+	else:
+		# Out of lime: oxygen drains slowly so the player feels the pressure
+		# without being instantly punished (E1 is forgiving — no stranding).
+		consume_oxygen(SCRUBBER_O2_BLEED_PER_SEC * delta)
+	# Threshold latches run regardless of which branch we took, so a tick that
+	# only bleeds oxygen still fires the empty-alarm on its first frame.
+	if not _scrubber_warned and prev > SCRUBBER_WARN_PERCENT and scrubber_level <= SCRUBBER_WARN_PERCENT:
+		_scrubber_warned = true
+		add_log("CO2 scrubber charge below %d%% — lime needed soon." % int(SCRUBBER_WARN_PERCENT))
+	if not _scrubber_critical and scrubber_level <= 0.0:
+		_scrubber_critical = true
+		add_log("CO2 scrubber EMPTY — oxygen bleeding off, top up with lime immediately.")
+
+
 func reset() -> void:
 	health = MAX_HEALTH
 	oxygen = MAX_OXYGEN
@@ -338,6 +390,8 @@ func reset() -> void:
 	scrubber_diagnosed = false
 	scrubber_repaired = false
 	scrubber_level = 0.0
+	_scrubber_warned = false
+	_scrubber_critical = false
 	ftl_drop_triggered = false
 	lime_planet_dialed = false
 	reported_to_gate = false
@@ -896,9 +950,30 @@ func repair_scrubber_with_lime() -> bool:
 		return false
 	scrubber_repaired = true
 	scrubber_level = 100.0
+	_scrubber_warned = false
+	_scrubber_critical = false
+	scrubber_level_changed.emit(scrubber_level)
 	restore_oxygen(MAX_OXYGEN)
 	add_log("CO2 scrubber repaired. Life support is stabilising across this section.")
 	complete_episode_air()
+	return true
+
+# Phase G: spend one lime to add one bar of charge (33%) back to the scrubber.
+# Caps at 100%. No-op when the scrubber isn't repaired yet, already at full,
+# or the player has no lime. Returns true if a top-up actually happened.
+func top_up_scrubber() -> bool:
+	if not scrubber_repaired or scrubber_level >= 100.0:
+		return false
+	if not spend_resource(AIR_LIME_RESOURCE, 1, "CO2 scrubber top-up"):
+		return false
+	scrubber_level = minf(100.0, scrubber_level + SCRUBBER_LIME_RECHARGE)
+	# Coming back above thresholds re-arms the one-shot warnings.
+	if scrubber_level > SCRUBBER_WARN_PERCENT:
+		_scrubber_warned = false
+	if scrubber_level > 0.0:
+		_scrubber_critical = false
+	add_log("Topped up the CO2 scrubber. Charge at %d%%." % int(round(scrubber_level)))
+	scrubber_level_changed.emit(scrubber_level)
 	return true
 
 

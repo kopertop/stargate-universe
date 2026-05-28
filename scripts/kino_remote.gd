@@ -153,6 +153,10 @@ func _ready() -> void:
 	GameState.oxygen_changed.connect(_on_status_changed)
 	GameState.power_changed.connect(_on_status_changed)
 	GameState.hull_changed.connect(_on_status_changed)
+	# Phase G: keep the System Status scrubber percent in sync with the decay
+	# loop while the remote is open — without this, the readout staled the
+	# moment the panel was opened mid-decay.
+	GameState.scrubber_level_changed.connect(_on_scrubber_level_changed)
 
 
 func _on_room_discovered(_room_id: String) -> void:
@@ -168,6 +172,13 @@ func _on_door_traversed(_key: String) -> void:
 func _on_status_changed(_value: float) -> void:
 	if _open:
 		_refresh_status_readouts()
+
+
+func _on_scrubber_level_changed(_level: float) -> void:
+	# Refresh the System Status page's scrubber percent while the remote is open
+	# so the player sees decay tick down (and top-ups tick back up) live.
+	if _open:
+		_refresh_ship_systems()
 
 
 func _on_current_room_changed(_room_id: String) -> void:
@@ -1843,7 +1854,15 @@ func _refresh_ship_systems() -> void:
 			breach.text = "  Exposed section:  sealed"
 	if scrubber != null:
 		if GameState.scrubber_repaired:
-			scrubber.text = "  CO2 scrubber:  online"
+			# Phase G: include the live lime-charge percentage so the player can
+			# see at a glance when a top-up run is due.
+			var pct: int = int(round(GameState.scrubber_level))
+			if pct <= 0:
+				scrubber.text = "  CO2 scrubber:  EMPTY — lime needed"
+			elif pct <= int(GameState.SCRUBBER_WARN_PERCENT):
+				scrubber.text = "  CO2 scrubber:  low (%d%%)" % pct
+			else:
+				scrubber.text = "  CO2 scrubber:  online (%d%%)" % pct
 		elif GameState.scrubber_diagnosed:
 			scrubber.text = "  CO2 scrubber:  FAULT — lime required"
 		elif GameState.air_crisis_started:

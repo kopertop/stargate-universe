@@ -176,6 +176,7 @@ static func _build_lime_nodes(world: Node3D, planet_data: Dictionary, rng: Rando
 		node.set("resource_type", GameState.AIR_LIME_RESOURCE)
 		node.set("amount", amount)
 		node.set("source_label", String(planet_data.get("name", "lime planet")))
+		node.add_to_group("lime_node")   # shared handle for companions + compass
 
 		var cs: CollisionShape3D = CollisionShape3D.new()
 		var shape: BoxShape3D = BoxShape3D.new()

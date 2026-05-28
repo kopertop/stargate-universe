@@ -8,6 +8,7 @@ const PLANET_ID: String = "air_lime_world"
 const PlanetGeneratorRef: Script = preload("res://scripts/planet_generator.gd")
 const KinoDroneScript: Script = preload("res://scripts/kino_drone.gd")
 const PlanetTimerScript: Script = preload("res://scripts/planet_timer.gd")
+const CompanionScript: Script = preload("res://scripts/companion.gd")
 
 @onready var _world: Node3D = $World
 @onready var _player: Node3D = $Player
@@ -36,6 +37,33 @@ func _ready() -> void:
 		var timer: Node = PlanetTimerScript.new()
 		timer.name = "DepartureTimer"
 		add_child(timer)
+		# The away team (Greer, Park, Scott) lands with Eli to help mine. Live
+		# play only — headless playthrough must not have companions auto-mining
+		# lime and skewing resource assertions.
+		if not SceneRouter.instant_mode:
+			_spawn_away_team(_player.global_position)
+
+# Greer, Park and Scott followed Eli through the gate. They follow him on the
+# surface and fan out to mine lime, then rush back through the gate when the
+# departure timer fires (group "away_team"). No greer.glb yet — fall back to a
+# stand-in body but keep the correct nametag.
+func _spawn_away_team(near: Vector3) -> void:
+	var greer_glb: String = "res://models/characters/greer.glb"
+	if not ResourceLoader.exists(greer_glb):
+		greer_glb = "res://models/characters/rush.glb"
+	var roster: Array = [
+		{"name": "Greer", "glb": greer_glb},
+		{"name": "Park", "glb": "res://models/characters/park.glb"},
+		{"name": "Lt Scott", "glb": "res://models/characters/scott.glb"},
+	]
+	for i in roster.size():
+		var entry: Dictionary = roster[i]
+		var at: Vector3 = near + Vector3(-2.4 + float(i) * 2.4, 0.0, 2.4)
+		var c: Node3D = CompanionScript.new()
+		c.name = "Companion_" + String(entry["name"]).replace(" ", "")
+		add_child(c)
+		c.global_position = at
+		c.call("setup", String(entry["name"]), String(entry["glb"]), i)
 
 # Replace the third-person player rig with a pilotable Kino. The drone owns its
 # own camera + overlay; freeing the player/view rig stops their camera and

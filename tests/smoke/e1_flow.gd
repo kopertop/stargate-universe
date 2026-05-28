@@ -273,6 +273,25 @@ func _initialize() -> void:
 	_expect(gs.kino_zoom == 1.7, "deserialize restores kino_zoom")
 	_expect(int((gs.kino_marker as Dictionary).get("floor", -1)) == 0, "deserialize restores kino_marker.floor")
 
+	# --- Phase F: away-team companion (follow + mine + rush) -----------------
+	# Duck-typed load so we don't depend on the `Companion` class_name being
+	# registered in this same headless run (see godot class_name gotcha).
+	var comp_script: Script = load("res://scripts/companion.gd") as Script
+	_expect(comp_script != null, "load Companion script")
+	if comp_script != null:
+		var comp: Node = comp_script.new()
+		root.add_child(comp)
+		# Pass a non-existent model path so the body-build skips the GLB load; we
+		# only care about group membership + the cutscene API here.
+		comp.call("setup", "Test", "res://nonexistent.glb", 0)
+		_expect(comp.is_in_group("away_team"), "companion joins away_team (cutscene muster)")
+		_expect(comp.is_in_group("companion"), "companion joins companion group (compass)")
+		_expect(comp.has_method("rush_to"), "companion exposes rush_to for the cutscene")
+		comp.call("rush_to", Vector3(5.0, 0.0, 5.0))
+		_expect(comp.get("_rushing") == true, "rush_to arms the cutscene sprint")
+		root.remove_child(comp)
+		comp.free()
+
 	root.remove_child(gs)
 	gs.free()
 

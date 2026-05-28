@@ -68,12 +68,29 @@ func _run() -> void:
 	var timer: Node = planet.get_node_or_null("DepartureTimer")
 	var player: Node3D = get_first_node_in_group("player") as Node3D
 	var gate: Node3D = _find_gate()
+	var companions: int = get_nodes_in_group("away_team").size()
 	print("SHOT setup planet=", planet.scene_file_path,
-		" timer=", timer != null, " player=", player != null, " gate=", gate != null)
+		" timer=", timer != null, " player=", player != null, " gate=", gate != null,
+		" companions=", companions, " lime_nodes=", get_nodes_in_group("lime_node").size())
 	if timer == null or player == null or gate == null:
 		print("SHOT_ERROR missing node(s)")
 		quit(1)
 		return
+
+	# Settle a bit so companions step into their follow positions, then grab a
+	# landing-zone still from a temporary overhead camera (the player's own view
+	# camera is jammed against the gate, so it can't see the team).
+	for _s in 40:
+		await process_frame
+	var look_cam: Camera3D = Camera3D.new()
+	planet.add_child(look_cam)
+	look_cam.global_position = player.global_position + Vector3(0.0, 14.0, 12.0)
+	look_cam.look_at(player.global_position, Vector3.UP)
+	look_cam.current = true
+	await process_frame
+	_save_cam(out_prefix + "_idle.png")
+	look_cam.queue_free()
+	await process_frame
 
 	# Teleport the player far from the gate so the dash is long enough to read on
 	# camera. +Z is away from the gate (gate faces -Z). Keep current height — the

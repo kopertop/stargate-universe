@@ -2038,7 +2038,9 @@ func _possess_kino_here(spawn_pos: Vector3, in_ship: bool) -> void:
 # A small "Kino remote" prop parented to Eli so the player (looking back) and
 # onlookers see him gripping the controller while he pilots the Kino. Paired
 # with the "holding-both" pose, it sits between his hands out in front (Godot
-# forward is -Z) at chest height, screen tilted up toward his face.
+# forward is -Z) at chest height. Held LANDSCAPE (long axis on X) with the
+# screen tilted UP and BACK toward Eli's face so onlookers see the back of
+# the device, not the screen.
 func _attach_remote_prop(player: Node3D) -> void:
 	if player.get_node_or_null("KinoRemoteProp") != null:
 		return
@@ -2046,20 +2048,25 @@ func _attach_remote_prop(player: Node3D) -> void:
 	prop.name = "KinoRemoteProp"
 	# Between the hands, forward of the chest. Tuned against the holding-both pose
 	# at the character's 1.6x model scale (hands land ~0.7 m up, ~0.4 m forward).
+	# +X rotation tilts +Y toward +Z (Godot right-hand rule) — i.e. the screen
+	# face tips up and BACK toward Eli, so the player looking down sees the
+	# screen but a front-on camera sees the back of the device.
 	prop.position = Vector3(0.0, 0.72, -0.42)
-	prop.rotation_degrees = Vector3(-35.0, 0.0, 0.0)   # tilt the screen up
+	prop.rotation_degrees = Vector3(45.0, 0.0, 0.0)
 	player.add_child(prop)
 
+	# Landscape orientation: long axis on X (wider than deep), so the device
+	# reads as a 2-handed tablet/remote rather than a portrait phone.
 	var body: MeshInstance3D = MeshInstance3D.new()
 	var box: BoxMesh = BoxMesh.new()
-	box.size = Vector3(0.20, 0.05, 0.30)
+	box.size = Vector3(0.30, 0.05, 0.20)
 	body.mesh = box
 	body.material_override = _remote_mat(Color(0.10, 0.12, 0.16), false)
 	prop.add_child(body)
 
 	var screen: MeshInstance3D = MeshInstance3D.new()
 	var sbox: BoxMesh = BoxMesh.new()
-	sbox.size = Vector3(0.15, 0.02, 0.22)
+	sbox.size = Vector3(0.22, 0.02, 0.15)
 	screen.mesh = sbox
 	screen.position = Vector3(0.0, 0.035, 0.0)
 	screen.material_override = _remote_mat(Color(0.45, 0.80, 1.0), true)

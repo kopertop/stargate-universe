@@ -273,6 +273,22 @@ func _initialize() -> void:
 	_expect(gs.kino_zoom == 1.7, "deserialize restores kino_zoom")
 	_expect(int((gs.kino_marker as Dictionary).get("floor", -1)) == 0, "deserialize restores kino_marker.floor")
 
+	# --- Phase F: discovered-lime tracking (compass fog-of-war) --------------
+	gs.discover_lime("LimeNode1")
+	gs.discover_lime("LimeNode1")
+	_expect(gs.lime_discovered.size() == 1, "discover_lime is idempotent")
+	_expect(gs.is_lime_discovered("LimeNode1"), "is_lime_discovered true after discover")
+	_expect(not gs.is_lime_discovered("LimeNode9"), "undiscovered lime reads false")
+	gs.discover_lime("")
+	_expect(gs.lime_discovered.size() == 1, "discover_lime ignores empty key")
+	var lime_snapshot: Dictionary = gs.serialize()
+	_expect((lime_snapshot.get("lime_discovered", []) as Array).has("LimeNode1"),
+		"serialize captures lime_discovered")
+	gs.reset()
+	_expect(gs.lime_discovered.is_empty(), "reset clears lime_discovered")
+	gs.deserialize(lime_snapshot, 1)
+	_expect(gs.is_lime_discovered("LimeNode1"), "deserialize restores lime_discovered")
+
 	# --- Phase F: away-team companion (follow + mine + rush) -----------------
 	# Duck-typed load so we don't depend on the `Companion` class_name being
 	# registered in this same headless run (see godot class_name gotcha).

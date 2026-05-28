@@ -12,6 +12,7 @@ signal objective_changed(text: String)
 # fire for custom NPC objectives that don't move the quest forward.
 signal quest_step_changed(step: String)
 signal room_discovered(room_id: String)
+signal lime_discovered_changed()
 # Fired when the player enters a new room. Drives the Kino Remote player
 # marker and the in-world quest-waypoint diamond's re-targeting.
 signal current_room_changed(room_id: String)
@@ -185,6 +186,11 @@ var rooms_discovered: Array[String] = []
 # through. Both directions resolve to the same key via door_key(). Drives the
 # Kino map's bright-vs-dim pip styling and survives save/load.
 var doors_traversed: Array[String] = []
+# Stable keys (the deterministic node name, e.g. "LimeNode3") of lime deposits
+# the team has spotted — on foot or via a passing Kino. Only discovered deposits
+# show on the planet compass (F3). The planet seed is fixed, so a given key
+# always maps to the same world position, and discovery survives save/load.
+var lime_discovered: Array[String] = []
 var breaches_sealed: Array[String] = []
 # Placeholder status readouts for the Kino map HUD chrome. The underlying
 # systems (power grid, hull integrity) haven't been built yet — these stay at
@@ -314,6 +320,7 @@ func reset() -> void:
 	elevator_repaired = false
 	rooms_discovered.clear()
 	doors_traversed.clear()
+	lime_discovered.clear()
 	breaches_sealed.clear()
 	power_percent = STATUS_OFFLINE
 	hull_percent = STATUS_OFFLINE
@@ -398,6 +405,17 @@ func discover_room(room_id: String, display_name: String = "") -> void:
 	room_discovered.emit(room_id)
 	if display_name != "":
 		add_log("Discovered: " + display_name)
+
+# Mark a lime deposit as spotted (by the player or a passing Kino). Idempotent;
+# emits lime_discovered_changed so an open compass refreshes live.
+func discover_lime(key: String) -> void:
+	if key == "" or lime_discovered.has(key):
+		return
+	lime_discovered.append(key)
+	lime_discovered_changed.emit()
+
+func is_lime_discovered(key: String) -> bool:
+	return lime_discovered.has(key)
 
 
 # Stable, direction-agnostic key for a door connecting two rooms. Sorted so
@@ -940,6 +958,7 @@ func serialize() -> Dictionary:
 		# round-trip test before it became a save-corruption bug).
 		"rooms_discovered": rooms_discovered.duplicate(),
 		"doors_traversed": doors_traversed.duplicate(),
+		"lime_discovered": lime_discovered.duplicate(),
 		"breaches_sealed": breaches_sealed.duplicate(),
 		"current_room_id": current_room_id,
 		"objective": current_objective,
@@ -1035,6 +1054,9 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	doors_traversed.clear()
 	for d in data.get("doors_traversed", []):
 		doors_traversed.append(String(d))
+	lime_discovered.clear()
+	for lk in data.get("lime_discovered", []):
+		lime_discovered.append(String(lk))
 	breaches_sealed.clear()
 	for b in data.get("breaches_sealed", []):
 		breaches_sealed.append(String(b))

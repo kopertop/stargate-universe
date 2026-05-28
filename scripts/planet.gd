@@ -9,6 +9,7 @@ const PlanetGeneratorRef: Script = preload("res://scripts/planet_generator.gd")
 const KinoDroneScript: Script = preload("res://scripts/kino_drone.gd")
 const PlanetTimerScript: Script = preload("res://scripts/planet_timer.gd")
 const CompanionScript: Script = preload("res://scripts/companion.gd")
+const PlanetCompassScript: Script = preload("res://scripts/planet_compass.gd")
 
 @onready var _world: Node3D = $World
 @onready var _player: Node3D = $Player
@@ -42,6 +43,28 @@ func _ready() -> void:
 		# lime and skewing resource assertions.
 		if not SceneRouter.instant_mode:
 			_spawn_away_team(_player.global_position)
+			_spawn_compass()
+
+# Build the planet compass HUD (F3) under its own CanvasLayer so the Cinematic
+# overlay's HUD-hide pass auto-sweeps it during the departure cutscene.
+func _spawn_compass() -> void:
+	var layer: CanvasLayer = CanvasLayer.new()
+	layer.name = "PlanetCompassLayer"
+	layer.layer = 12
+	add_child(layer)
+	var compass: Control = PlanetCompassScript.new()
+	compass.name = "PlanetCompass"
+	compass.anchor_left = 0.5
+	compass.anchor_right = 0.5
+	# Slot below the GATE WINDOW countdown label (which sits around y=14..40);
+	# the compass strip occupies ~58 px from offset_top, so 46..104 keeps both
+	# readouts vertically clear.
+	compass.offset_left = -180.0
+	compass.offset_right = 180.0
+	compass.offset_top = 46.0
+	compass.offset_bottom = 110.0
+	layer.add_child(compass)
+	compass.call("set_scene_path", "res://scenes/planet.tscn")
 
 # Greer, Park and Scott followed Eli through the gate. They follow him on the
 # surface and fan out to mine lime, then rush back through the gate when the

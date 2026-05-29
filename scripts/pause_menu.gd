@@ -131,6 +131,7 @@ func _build_button(parent: Node, label: String, handler: Callable) -> Button:
 	b.add_theme_stylebox_override("pressed", _button_stylebox(true))
 	b.add_theme_stylebox_override("focus", _button_stylebox(true))
 	b.pressed.connect(handler)
+	Audio.attach_ui_hover(b)
 	parent.add_child(b)
 	return b
 

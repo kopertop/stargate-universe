@@ -261,6 +261,7 @@ func _init_ui() -> void:
 		b.add_theme_stylebox_override("pressed", _button_stylebox(true))
 		b.add_theme_stylebox_override("focus", _button_stylebox(true))
 		b.pressed.connect(_on_page_button.bind(i))
+		Audio.attach_ui_hover(b)
 		btn_col.add_child(b)
 		_buttons.append(b)
 
@@ -502,6 +503,7 @@ func _kino_action_button(text: String, primary: bool) -> Button:
 	b.add_theme_stylebox_override("normal", _button_stylebox(primary))
 	b.add_theme_stylebox_override("hover", _button_stylebox_hover())
 	b.add_theme_stylebox_override("pressed", _button_stylebox(true))
+	Audio.attach_ui_hover(b)
 	return b
 
 
@@ -864,6 +866,7 @@ func _rebuild_level_bar() -> void:
 		b.add_theme_stylebox_override("normal", _button_stylebox(active))
 		b.add_theme_stylebox_override("hover", _button_stylebox_hover())
 		b.pressed.connect(_on_level_button.bind(int(f)))
+		Audio.attach_ui_hover(b)
 		_level_bar.add_child(b)
 
 

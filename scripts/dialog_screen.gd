@@ -143,6 +143,7 @@ func _lay_out_choices(choices: Array) -> void:
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var nxt: Variant = choice.get("next", "exit")
 		btn.pressed.connect(_on_choice_pressed.bind(nxt))
+		Audio.attach_ui_hover(btn)
 		_choices_box.add_child(btn)
 	if _choices_box.get_child_count() > 0:
 		(_choices_box.get_child(0) as Control).grab_focus()

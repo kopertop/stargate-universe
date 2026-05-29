@@ -38,6 +38,12 @@ func _ready() -> void:
 	_btn_exit.pressed.connect(_on_exit_pressed)
 	_back_btn.pressed.connect(_on_back_pressed)
 
+	# Menu-hover SFX: fire a short blip when keyboard / controller / mouse
+	# focus lands on any of these. Throttled inside Audio.play_ui_hover.
+	for b in [_btn_continue, _btn_new_game, _btn_settings, _btn_characters,
+			_btn_exit, _back_btn, _difficulty_option]:
+		Audio.attach_ui_hover(b)
+
 	# Destructive-action guard: New Game wipes the save file. Without this
 	# prompt a misclick during a long playthrough silently destroys hours
 	# of progress, so we gate it behind an explicit confirm whenever a

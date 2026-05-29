@@ -25,7 +25,6 @@ config/icon="res://icon.png"
 [autoload]
 
 Audio="*res://scripts/audio.gd"
-AmbientAudio="*res://scripts/ambient_audio.gd"
 TestCapture="*res://scripts/test_capture.gd"
 SaveManager="*res://scripts/save_manager.gd"
 GameClock="*res://scripts/game_clock.gd"

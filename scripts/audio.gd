@@ -16,7 +16,7 @@ var queue = []  # The queue of sounds to play.
 # navigation) OR receives mouse hover. Throttled so a fast mouse-drag across a
 # list of buttons doesn't machine-gun the SFX bus. Centralised here so swapping
 # the file to a dedicated ui_hover.ogg in future is a one-line change.
-const UI_HOVER_SOUND: String = "res://sounds/radio_click.ogg"
+const UI_HOVER_SOUND: String = "res://sounds/bong_001.ogg"   # Kenney Interface Sounds — short menu hover blip
 const UI_HOVER_MIN_INTERVAL_MS: int = 70
 var _last_ui_hover_ms: int = -10000
 

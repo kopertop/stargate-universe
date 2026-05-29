@@ -164,33 +164,60 @@ static func _build_lime_nodes(world: Node3D, planet_data: Dictionary, rng: Rando
 	lime_mat.emission = Color(0.86, 0.90, 0.96)
 	lime_mat.emission_energy_multiplier = 0.28
 
+	var label: String = String(planet_data.get("name", "lime planet"))
+	var idx: int = 0
+
+	# Standard spread — evenly distributed around the gate at mid radii.
 	for i in count:
 		var angle: float = (TAU / float(count)) * float(i) + rng.randf_range(-0.4, 0.4)
 		var dist: float = rng.randf_range(min_r, max_r)
-		var x: float = cos(angle) * dist
-		var z: float = sin(angle) * dist
-		var node: StaticBody3D = StaticBody3D.new()
-		node.set_script(RESOURCE_NODE_SCRIPT)
-		node.name = "LimeNode%d" % (i + 1)
-		node.position = Vector3(x, _height(x, z, tp), z)
-		node.set("resource_type", GameState.AIR_LIME_RESOURCE)
-		node.set("amount", amount)
-		node.set("source_label", String(planet_data.get("name", "lime planet")))
-		node.add_to_group("lime_node")   # shared handle for companions + compass
+		idx += 1
+		_spawn_lime_deposit(world, idx, angle, dist, amount, label, lime_mat, tp)
 
-		var cs: CollisionShape3D = CollisionShape3D.new()
-		var shape: BoxShape3D = BoxShape3D.new()
-		shape.size = Vector3(1.2, 1.2, 1.2)
-		cs.shape = shape
-		cs.position = Vector3(0.0, 0.65, 0.0)
-		node.add_child(cs)
+	# Optional far cluster — N deposits packed into a small angular arc at the
+	# very edge of the map. Drives a "venture-far" risk/reward beat on top of
+	# the convenient near-gate spread.
+	var far_count: int = int(planet_data.get("lime_far_count", 0))
+	if far_count > 0:
+		var far_min: float = float(planet_data.get("lime_far_min_radius", min_r * 4.0))
+		var far_max: float = float(planet_data.get("lime_far_max_radius", min_r * 5.0))
+		var far_arc: float = float(planet_data.get("lime_far_arc", 0.6))  # radians of spread
+		var cluster_center: float = rng.randf_range(0.0, TAU)
+		for j in far_count:
+			var angle: float = cluster_center + rng.randf_range(-far_arc * 0.5, far_arc * 0.5)
+			var dist: float = rng.randf_range(far_min, far_max)
+			idx += 1
+			_spawn_lime_deposit(world, idx, angle, dist, amount, label, lime_mat, tp)
 
-		# A low pile of white rock chunks (chalky lime deposit).
-		_add_box(node, Vector3(0.0, 0.22, 0.0), Vector3(1.15, 0.44, 0.95), lime_mat)
-		_add_box(node, Vector3(-0.34, 0.50, 0.10), Vector3(0.52, 0.46, 0.50), lime_mat)
-		_add_box(node, Vector3(0.30, 0.44, -0.22), Vector3(0.46, 0.40, 0.52), lime_mat)
-		_add_box(node, Vector3(0.10, 0.64, 0.22), Vector3(0.34, 0.32, 0.36), lime_mat)
-		world.add_child(node)
+
+# Build one mineable lime deposit at (angle, radius) on the heightmapped
+# terrain. Shared by the standard spread and the optional far cluster.
+static func _spawn_lime_deposit(world: Node3D, idx: int, angle: float, dist: float,
+		amount: int, source_label: String, lime_mat: StandardMaterial3D, tp: Dictionary) -> void:
+	var x: float = cos(angle) * dist
+	var z: float = sin(angle) * dist
+	var node: StaticBody3D = StaticBody3D.new()
+	node.set_script(RESOURCE_NODE_SCRIPT)
+	node.name = "LimeNode%d" % idx
+	node.position = Vector3(x, _height(x, z, tp), z)
+	node.set("resource_type", GameState.AIR_LIME_RESOURCE)
+	node.set("amount", amount)
+	node.set("source_label", source_label)
+	node.add_to_group("lime_node")   # shared handle for companions + compass
+
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var shape: BoxShape3D = BoxShape3D.new()
+	shape.size = Vector3(1.2, 1.2, 1.2)
+	cs.shape = shape
+	cs.position = Vector3(0.0, 0.65, 0.0)
+	node.add_child(cs)
+
+	# A low pile of white rock chunks (chalky lime deposit).
+	_add_box(node, Vector3(0.0, 0.22, 0.0), Vector3(1.15, 0.44, 0.95), lime_mat)
+	_add_box(node, Vector3(-0.34, 0.50, 0.10), Vector3(0.52, 0.46, 0.50), lime_mat)
+	_add_box(node, Vector3(0.30, 0.44, -0.22), Vector3(0.46, 0.40, 0.52), lime_mat)
+	_add_box(node, Vector3(0.10, 0.64, 0.22), Vector3(0.34, 0.32, 0.36), lime_mat)
+	world.add_child(node)
 
 static func _build_rocks(world: Node3D, rng: RandomNumberGenerator, tp: Dictionary) -> void:
 	var rock_mat: StandardMaterial3D = StandardMaterial3D.new()

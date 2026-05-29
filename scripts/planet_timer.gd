@@ -12,9 +12,9 @@ extends Node
 # MINE_LIME, never the Kino scout). Skips itself entirely in instant_mode so
 # headless tests don't run a live clock or cinematic.
 
-const DURATION: float = 600.0      # 10 minutes
-const WARN_AMBER: float = 120.0    # 2 min — first warning
-const WARN_RED: float = 30.0       # final warning
+const DURATION: float = 180.0      # 3 minutes — first-planet starter pressure
+const WARN_AMBER: float = 60.0     # 1 min — first warning
+const WARN_RED: float = 20.0       # final warning
 const RUN_SPEED: float = 13.0      # cutscene dash speed toward the gate
 const ARRIVAL_DIST: float = 3.5    # within this of the gate counts as "made it"
 const CUTSCENE_MAX_FRAMES: int = 720   # ~12s safety cap if a runner snags
@@ -35,7 +35,7 @@ func _ready() -> void:
 		return
 	_build_hud()
 	_update_label()
-	GameState.add_log("Gate window open — Destiny jumps to FTL in 10 minutes. Mine what lime you can.")
+	GameState.add_log("Gate window open — Destiny jumps to FTL in 3 minutes. Mine what lime you can.")
 
 func _build_hud() -> void:
 	var layer: CanvasLayer = CanvasLayer.new()
@@ -63,11 +63,11 @@ func _process(delta: float) -> void:
 	_update_label()
 	if not _amber_fired and _remaining <= WARN_AMBER:
 		_amber_fired = true
-		GameState.add_log("Two minutes to FTL jump. Start wrapping up.")
+		GameState.add_log("One minute to FTL jump. Start wrapping up.")
 		Audio.play("res://sounds/radio_click.ogg")
 	if not _red_fired and _remaining <= WARN_RED:
 		_red_fired = true
-		GameState.add_log("Thirty seconds! Everyone back to the gate!")
+		GameState.add_log("Twenty seconds! Everyone back to the gate!")
 		Audio.play("res://sounds/radio_click.ogg")
 	if _remaining <= 0.0:
 		_ended = true

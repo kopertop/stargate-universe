@@ -64,26 +64,42 @@ func _process(_dt: float) -> void:
 func _draw() -> void:
 	# `_draw` runs synchronously after queue_redraw within the same frame, but a
 	# scene change between _process and _draw could leave `_player` freed-but-
-	# non-null. is_instance_valid blocks the rotation.y read on a dead handle.
+	# non-null. is_instance_valid blocks the rotation read on a dead handle.
 	if _player == null or not is_instance_valid(_player):
 		return
 	var bar: Rect2 = Rect2(0.0, TOP_PAD, STRIP_W, STRIP_H)
 	draw_rect(bar, BG, true)
 	draw_rect(bar, FRAME, false)
-	var yaw: float = _player.rotation.y
-	_draw_cardinals(yaw)
-	_draw_markers(_player.global_position, yaw)
+	_draw_cardinals()
+	_draw_markers(_player.global_position)
 
-func _draw_cardinals(yaw: float) -> void:
-	# World yaw of each cardinal (Godot: forward = -Z, so N is yaw 0; +Y is up).
+
+# Bearing of a world-space vector (point or direction) in the player's local
+# frame: 0 = straight ahead, +π/2 = directly to the right, ±π = behind,
+# -π/2 = directly to the left. Y is zeroed because the planet is flat — height
+# offsets must not skew the horizontal bearing.
+#
+# Why this beats `wrapf(world_yaw - player.rotation.y, ...)`: Godot's +Y
+# rotation is counterclockwise viewed from above (player at yaw=+π/2 actually
+# faces WEST), so the naive subtraction inverts the left/right sign relative
+# to player intuition. Going through `basis.inverse()` collapses every
+# orientation case into a single XZ comparison with no sign traps.
+func _bearing(world_offset: Vector3) -> float:
+	var flat: Vector3 = Vector3(world_offset.x, 0.0, world_offset.z)
+	var local: Vector3 = _player.basis.inverse() * flat
+	return atan2(local.x, -local.z)
+
+
+func _draw_cardinals() -> void:
+	# Fixed WORLD directions — N is -Z, E is +X, S is +Z, W is -X.
 	var cardinals: Array = [
-		{"label": "N", "yaw": 0.0},
-		{"label": "E", "yaw": PI / 2.0},
-		{"label": "S", "yaw": PI},
-		{"label": "W", "yaw": -PI / 2.0},
+		{"label": "N", "dir": Vector3(0, 0, -1)},
+		{"label": "E", "dir": Vector3(1, 0, 0)},
+		{"label": "S", "dir": Vector3(0, 0, 1)},
+		{"label": "W", "dir": Vector3(-1, 0, 0)},
 	]
 	for c in cardinals:
-		var rel: float = wrapf(float(c["yaw"]) - yaw, -PI, PI)
+		var rel: float = _bearing(c["dir"] as Vector3)
 		if absf(rel) > HALF_FOV:
 			continue
 		var x: float = STRIP_W / 2.0 + (rel / HALF_FOV) * (STRIP_W / 2.0)
@@ -92,32 +108,30 @@ func _draw_cardinals(yaw: float) -> void:
 			draw_string(_font, Vector2(x - 4.0, TOP_PAD - 2.0), String(c["label"]),
 				HORIZONTAL_ALIGNMENT_LEFT, -1.0, 11, TICK)
 
-func _draw_markers(ppos: Vector3, yaw: float) -> void:
+func _draw_markers(ppos: Vector3) -> void:
 	var gate: Node3D = _find_gate()
 	if gate != null:
-		_draw_pip(gate.global_position, GATE_COL, "Gate", ppos, yaw)
+		_draw_pip(gate.global_position, GATE_COL, "Gate", ppos)
 	for c in get_tree().get_nodes_in_group("companion"):
 		if c is Node3D:
-			_draw_pip((c as Node3D).global_position, COMP_COL, "", ppos, yaw)
+			_draw_pip((c as Node3D).global_position, COMP_COL, "", ppos)
 	for n in get_tree().get_nodes_in_group("lime_node"):
 		if n is Node3D and n.has_method("is_discovered") and n.call("is_discovered") == true:
-			_draw_pip((n as Node3D).global_position, LIME_COL, "", ppos, yaw)
+			_draw_pip((n as Node3D).global_position, LIME_COL, "", ppos)
 	if _scene_path != "":
 		for k in GameState.deployed_kinos_in_scene(_scene_path):
 			if k is Dictionary:
 				var d: Dictionary = k
 				var p: Vector3 = Vector3(
 					float(d.get("x", 0.0)), float(d.get("y", 0.0)), float(d.get("z", 0.0)))
-				_draw_pip(p, KINO_COL, "K", ppos, yaw)
+				_draw_pip(p, KINO_COL, "K", ppos)
 
-func _draw_pip(target: Vector3, color: Color, glyph: String, ppos: Vector3, yaw: float) -> void:
+func _draw_pip(target: Vector3, color: Color, glyph: String, ppos: Vector3) -> void:
 	var delta: Vector3 = target - ppos
-	delta.y = 0.0
-	var dist: float = delta.length()
+	var dist: float = Vector2(delta.x, delta.z).length()    # planar (no Y) — planets are flat
 	if dist < 0.01:
 		return
-	var target_yaw: float = atan2(delta.x, -delta.z)
-	var rel: float = wrapf(target_yaw - yaw, -PI, PI)
+	var rel: float = _bearing(delta)
 	var off_strip: bool = absf(rel) > HALF_FOV
 	var clamped: float = clampf(rel, -HALF_FOV, HALF_FOV)
 	var x: float = STRIP_W / 2.0 + (clamped / HALF_FOV) * (STRIP_W / 2.0)

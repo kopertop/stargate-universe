@@ -21,7 +21,7 @@
     "id": "rations",
     "name": "Rations",
     "category": "resource",
-    "icon": "",
+    "icon": "res://sprites/ui/items/rations.png",
     "description": "Vacuum-sealed crew meals salvaged from a supply crate. Keeps the crew fed.",
     "stackable": true,
     "show_in_inventory": true

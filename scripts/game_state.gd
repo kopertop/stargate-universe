@@ -245,6 +245,10 @@ var kino_plan_approved: bool = false
 # step, after the Kino recon returns). Gates the "let's mine some lime" dialog.
 var away_party_briefed: bool = false
 var returned_from_lime_planet: bool = false
+# Transient (NOT persisted): set just before a planet→gate-room return so the
+# gate room spawns the away team that came back WITH the player and lands them
+# past the platform. Consumed (cleared) by gate_room on arrival.
+var pending_planet_return: bool = false
 var resources: Dictionary = {AIR_LIME_RESOURCE: 0}
 # E1 story milestones — set by NPC interacts (npc.gd via met_flag).
 # met_scott: Lt Scott briefs the player on arrival; gates objective priority
@@ -391,6 +395,7 @@ func reset() -> void:
 	kino_plan_approved = false
 	away_party_briefed = false
 	returned_from_lime_planet = false
+	pending_planet_return = false
 	resources.clear()
 	resources[AIR_LIME_RESOURCE] = 0
 	met_scott = false

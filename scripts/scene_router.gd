@@ -100,7 +100,13 @@ func _place_player_at_spawn() -> void:
 	# gate spawn the cinematic/tests rely on), so the player isn't pointed across
 	# a narrow corridor straight into the near wall.
 	var forward: Vector3 = into_room
-	if marker_n.name != "FromGate":
+	if marker_n.name == "FromPlanet":
+		# Returning from the planet: the marker sits past the platform with its
+		# -Z authored to point into the room (toward the exit). The door/waypoint
+		# heuristic would flip the player back toward the gate, so trust the
+		# marker's own facing here.
+		forward = -marker_n.global_transform.basis.z
+	elif marker_n.name != "FromGate":
 		forward = _arrival_facing(marker_n, into_room)
 	# Godot's default forward is -Z; rotating the body by `atan2(-fx, -fz)`
 	# aligns -Z with the world-space `forward` vector.

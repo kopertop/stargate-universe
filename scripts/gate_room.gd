@@ -105,6 +105,12 @@ func _ready() -> void:
 	# Place the spawn markers now that the room geometry is in place.
 	_create_spawn_markers()
 
+	# Returning through the gate from the lime planet: the away team came back
+	# WITH the player — spawn them standing just behind the FromPlanet landing.
+	if GameState.pending_planet_return:
+		GameState.pending_planet_return = false
+		_spawn_returned_away_team()
+
 	# Discover + run arrival branch. If resuming from save, skip the cinematic.
 	var first_visit: bool = not GameState.rooms_discovered.has("gate_room")
 	GameState.discover_room("gate_room", "Gate Room")
@@ -172,6 +178,16 @@ func _create_spawn_markers() -> void:
 	_from_east_connector_marker = $FromStargateCorridorEastConnector
 	_from_east_connector_marker.position = _from_corridor_marker.position
 	_from_east_connector_marker.rotation = _from_corridor_marker.rotation
+	# "FromPlanet" — returning through the gate from the lime planet. Unlike the
+	# prologue's FromGate (on the dais), the player steps off the platform and
+	# ends up on the main floor SOUTH of it, facing into the room (-Z, toward
+	# the exit). Created in code (no .tscn node) — must be a Marker3D so
+	# SceneRouter._find_marker resolves it.
+	var from_planet: Marker3D = Marker3D.new()
+	from_planet.name = "FromPlanet"
+	from_planet.position = Vector3(0.0, 0.05, room_size.y * 0.5 - 12.0)
+	from_planet.rotation = Vector3.ZERO  # -Z forward = into the room / toward the exit
+	add_child(from_planet)
 
 func _apply_pending_save_spawn() -> void:
 	if _player == null:
@@ -339,6 +355,46 @@ func _assemble_away_team_at_gate() -> void:
 	trigger.body_entered.connect(_on_team_walkthrough_trigger)
 	_world.add_child(trigger)
 	GameState.add_log("Lt Scott: We'll head through first — keep tight, Eli.")
+
+
+# The away team that mined with the player on the planet steps back through the
+# gate too. Stand them on the main floor just north of the FromPlanet landing
+# (between the player and the gate), facing into the room — "we made it back."
+# Stationary; no walkthrough trigger (that's the departure flow only).
+func _spawn_returned_away_team() -> void:
+	var sr: Node = get_node_or_null("/root/SceneRouter")
+	if sr != null and sr.get("instant_mode"):
+		return
+	if _world == null:
+		return
+	const SCOTT_GLB: String = "res://models/characters/scott.glb"
+	const GREER_TINT: Color = Color(0.66, 0.50, 0.38)
+	var roster: Array = [
+		{"name": "Greer", "glb": SCOTT_GLB, "tint": GREER_TINT, "x": -1.8},
+		{"name": "Park", "glb": "res://models/characters/park.glb", "tint": Color.WHITE, "x": 0.0},
+		{"name": "Lt Scott", "glb": SCOTT_GLB, "tint": Color.WHITE, "x": 1.8},
+	]
+	# A couple metres north (gateward) of the FromPlanet landing (z≈+4), on the
+	# main floor. rotation.y = PI → the internally-flipped model faces -Z, i.e.
+	# toward the player who lands just south of them.
+	var line_z: float = room_size.y * 0.5 - 9.0
+	for i in roster.size():
+		var entry: Dictionary = roster[i]
+		var c: Node3D = CompanionScript.new()
+		c.name = "ReturnTeam_" + String(entry["name"]).replace(" ", "")
+		c.set("stationary", true)
+		_world.add_child(c)
+		c.position = Vector3(float(entry["x"]), 0.05, line_z)
+		c.rotation.y = PI
+		c.call("setup", String(entry["name"]), String(entry["glb"]), i, entry["tint"])
+	# Scott is part of the returned team — hide the briefing-spot LtScott NPC so
+	# there aren't two Scotts on screen (same fix as _assemble_away_team_at_gate).
+	var briefing_scott: Node = _world.get_node_or_null("LtScott")
+	if briefing_scott is Node3D:
+		(briefing_scott as Node3D).visible = false
+		if "enabled" in briefing_scott:
+			briefing_scott.set("enabled", false)
+	GameState.add_log("The away team steps back through the gate onto Destiny.")
 
 
 func _on_team_walkthrough_trigger(body: Node) -> void:

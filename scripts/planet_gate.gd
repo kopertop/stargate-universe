@@ -46,4 +46,7 @@ func _travel(body: Node) -> void:
 			return
 		_transitioning = true
 		GameState.return_from_lime_planet()
+		# Bring the away team back through with the player; gate_room consumes
+		# this flag and lands them past the platform alongside the player.
+		GameState.pending_planet_return = true
 		await SceneRouter.change_to(target_scene, target_spawn)

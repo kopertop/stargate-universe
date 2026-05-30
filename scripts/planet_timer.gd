@@ -44,6 +44,7 @@ var _final_pulse_t: float = 0.0    # elapsed-time accumulator for the persistent
 var _last_klaxon_second: int = 999
 var _ended: bool = false
 var _label: Label = null
+var _objective_label: Label = null
 var _pulse_tween: Tween = null
 
 func _ready() -> void:
@@ -77,6 +78,52 @@ func _build_hud() -> void:
 	# so use the control's size at the moment of pulse instead.
 	_label.pivot_offset = Vector2(130.0, 14.0)
 	_label.resized.connect(_recenter_pivot)
+
+	# Lime-objective sub-label — sits just under the countdown so the player
+	# can see "Collect at least N lime deposits — X/N" at a glance without
+	# opening the Kino remote. Updates live on GameState.resource_changed.
+	_objective_label = Label.new()
+	_objective_label.name = "LimeObjective"
+	_objective_label.anchor_left = 0.5
+	_objective_label.anchor_right = 0.5
+	_objective_label.offset_left = -180.0
+	_objective_label.offset_right = 180.0
+	_objective_label.offset_top = 44.0
+	_objective_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_objective_label.add_theme_font_size_override("font_size", 16)
+	_objective_label.add_theme_color_override("font_color", NORMAL_COL)
+	_objective_label.add_theme_color_override("font_outline_color", Color(0.0, 0.05, 0.10, 0.9))
+	_objective_label.add_theme_constant_override("outline_size", 5)
+	layer.add_child(_objective_label)
+	_refresh_lime_objective()
+	if not GameState.resource_changed.is_connected(_on_resource_changed):
+		GameState.resource_changed.connect(_on_resource_changed)
+
+
+func _exit_tree() -> void:
+	# GameState is an autoload that outlives this Node — disconnect explicitly
+	# so the signal can't hold a callable into a freed object after the
+	# planet scene tears down.
+	if GameState.resource_changed.is_connected(_on_resource_changed):
+		GameState.resource_changed.disconnect(_on_resource_changed)
+
+
+func _on_resource_changed(type: String, _count: int) -> void:
+	if type == GameState.AIR_LIME_RESOURCE:
+		_refresh_lime_objective()
+
+
+func _refresh_lime_objective() -> void:
+	if _objective_label == null:
+		return
+	var have: int = GameState.resource_count(GameState.AIR_LIME_RESOURCE)
+	var need: int = GameState.AIR_LIME_REQUIRED
+	if have >= need:
+		_objective_label.text = "Lime collected — %d/%d  ✓  head back to the gate" % [have, need]
+		_objective_label.add_theme_color_override("font_color", Color(0.55, 0.95, 0.50, 1.0))
+	else:
+		_objective_label.text = "Collect at least %d lime deposits — %d/%d" % [need, have, need]
+		_objective_label.add_theme_color_override("font_color", NORMAL_COL)
 
 func _process(delta: float) -> void:
 	if _ended:

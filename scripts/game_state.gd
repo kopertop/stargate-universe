@@ -13,6 +13,10 @@ signal objective_changed(text: String)
 signal quest_step_changed(step: String)
 signal room_discovered(room_id: String)
 signal lime_discovered_changed()
+# Fires whenever an inventoried resource count changes (mining, top-up,
+# scrubber repair, etc.). Drives the planet-side lime objective counter
+# and any future resource HUD.
+signal resource_changed(type: String, count: int)
 # Fires whenever scrubber_level changes (decay tick or top-up). Drives the
 # in-world bar gauge + the Kino System Status readout.
 signal scrubber_level_changed(level: float)
@@ -696,6 +700,7 @@ func add_resource(type: String, amount: int, source: String = "") -> bool:
 	resources[type] = next_amount
 	var source_suffix: String = "" if source == "" else " from " + source
 	add_log("Collected %d %s%s. Total: %d." % [amount, type, source_suffix, next_amount])
+	resource_changed.emit(type, next_amount)
 	advance_air_quest()
 	return true
 
@@ -712,6 +717,7 @@ func spend_resource(type: String, amount: int, reason: String = "") -> bool:
 	resources[type] = current - amount
 	var reason_suffix: String = "" if reason == "" else " for " + reason
 	add_log("Spent %d %s%s. Remaining: %d." % [amount, type, reason_suffix, resource_count(type)])
+	resource_changed.emit(type, resource_count(type))
 	advance_air_quest()
 	return true
 

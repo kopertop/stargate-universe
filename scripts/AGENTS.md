@@ -7,8 +7,15 @@ extension. Most have an adjacent `.uid` sidecar (Godot 4.6 resource UID).
 
 ### Autoloads (in `project.godot`)
 - `audio.gd` — Sound bank dispatcher.
-- `game_state.gd` — Persistent game state: quests, resources, save/load, the
-  `QUEST_TARGETS` table for the diamond waypoint, `current_room_id` signal.
+- `game_state.gd` — Persistent game state: world-state flags, resources,
+  save/load, `current_room_id` signal. Quest step + objective text is
+  delegated to `quest_log.gd` (back-compat shims keep `quest_step` /
+  `quest_target()` / `quest_step_label()` working).
+- `quest_log.gd` — Data-driven quest runtime. Loads `data/quests.json`,
+  re-derives the active step on every world-state mutation via a hybrid
+  predicate/event advance rule. Owns labels, objectives, anchors. The
+  CONDITIONS + OBJECTIVE_FNS registries are `match`-on-string in the
+  same file; adding a predicate = one `match` arm + a JSON reference.
 - `scene_router.gd` — Cross-scene transitions with named spawn markers.
 - `ship_layout.gd` — Room data loader + BFS pathfinding over
   `data/room_connections.json` (`path_through_rooms`, `next_room_toward`).

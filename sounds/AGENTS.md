@@ -6,8 +6,31 @@ carry-overs; project-specific audio gets added under the same convention.
 ## Contents
 
 - `break.ogg` — Reused as gate-shutdown SFX in `gate_room.tscn`.
-- `coin.ogg`, `fall.ogg`, `jump.ogg`, `land.ogg`, `walking.ogg` — Kenney
-  starter-kit SFX, still referenced for player movement.
+- `coin.ogg`, `fall.ogg`, `jump.ogg`, `land.ogg` — Kenney starter-kit SFX.
+  (`walking.ogg` is the old looping footstep bed — superseded by the
+  `footstep_NN.ogg` set below, kept only as the scene's default stream.)
+- `footstep_01.ogg` … `footstep_10.ogg` — Individual footstep samples sliced
+  from the "ES Ship Footsteps" pack (silence-split, ~0.25–0.4s each).
+  `player.gd` plays a random one every ~1.9 m of floor travel (distance-based
+  cadence, auto-scales with speed) with per-step pitch jitter.
+- `klaxon.ogg` — Heavy bell strike (Kenney Impact Sounds /
+  impactBell_heavy_001). Played 3× by `bed.gd` on the post-sleep wake-up.
+- `flicker.ogg` — Electrical glitch (Kenney Interface Sounds / glitch_002).
+  Played at random 6–14s intervals by `ambient_audio.gd` while the air
+  crisis is active; also fires once mid-klaxon during wake-up.
+- `menu_open.ogg` — Confirmation bong (Kenney Interface Sounds / bong_001).
+  Plays when Kino Remote / control terminal panel opens.
+- `menu_close.ogg` — Soft close chirp (Kenney Interface Sounds / close_001).
+- `menu_click.ogg` — UI tab click (Kenney Interface Sounds / click_001).
+- `terminal_boot.ogg` — Computer power-on tone (Kenney Sci-Fi Sounds /
+  computerNoise_001). Plays diegetically when E-ing a control console.
+- `radio_click.ogg` — CB-radio static squelch (CbRadioStatic_S08TE.400,
+  converted from MP3). Plays when a radio connection OPENS — Scott's
+  wake-up order (bed.gd), the Rush-absent exchange (room.gd), and the
+  blocked-door beat (kino_remote.gd::begin_breach_beat).
+- `radio_off.ogg` — Walkie-talkie sign-off beep (WalkieTalkie_S08TE.1343,
+  converted from MP3). Plays when a radio transmission CLOSES, bookending
+  the static-open. Same three radio moments.
 
 ## Conventions
 

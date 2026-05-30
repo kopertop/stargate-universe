@@ -15,10 +15,20 @@ const RoomBuilderRef: Script = preload("res://scripts/room_builder.gd")
 const BedScript: Script = preload("res://scripts/bed.gd")
 const KinoPickupScript: Script = preload("res://scripts/kino_pickup.gd")
 const HullSealSwitchScript: Script = preload("res://scripts/hull_seal_switch.gd")
+const ShuttleCrateScript: Script = preload("res://scripts/shuttle_crate.gd")
+const ShuttleDoorPanelScript: Script = preload("res://scripts/shuttle_door_panel.gd")
 const NpcScript: Script = preload("res://scripts/npc.gd")
+const ScrubberRushScript: Script = preload("res://scripts/scrubber_rush.gd")
+const GreerScript: Script = preload("res://scripts/greer.gd")
+const InfirmaryJamesScript: Script = preload("res://scripts/infirmary_james.gd")
+const KinoDispenserScript: Script = preload("res://scripts/kino_dispenser.gd")
 const Co2ScrubberScript: Script = preload("res://scripts/co2_scrubber.gd")
 const PowerConsoleScript: Script = preload("res://scripts/power_console.gd")
 const QuestWaypointScript: Script = preload("res://scripts/quest_waypoint.gd")
+# Preload (not class_name lookup) — class_name registration can lag in
+# headless `-s` runs so the bare identifier sometimes resolves at parse-time
+# and sometimes doesn't. preload always works.
+const ShipAlertScript: Script = preload("res://scripts/ship_alert.gd")
 # Vertical offset above an in-room anchor (NPC head, console top, pickup body)
 # where the diamond sits. Tuned so it clears nametag Label3Ds.
 const QUEST_WAYPOINT_ANCHOR_HEIGHT: float = 2.4
@@ -32,8 +42,10 @@ const WAYPOINT_OFFSET_BY_ANCHOR: Dictionary = {
 	"KinoPickup": 0.35,        # tiny remote on a desk — diamond sits just above
 	"Bed": 1.1,                # bunk-height
 	"HullSealSwitch": 0.7,     # wall switch at chest height
+	"ShuttleDoorPanel": 0.7,   # wall panel beside the jammed door
 	"PowerConsole": 0.7,       # wall console
 	"CO2Scrubber": 1.4,        # scrubber housing top
+	"ControlConsoleNearest": 1.4, # nearest-console sentinel (see _find_nearest_in_group)
 }
 
 # Set this in the editor to preview a specific room when running the scene
@@ -47,6 +59,12 @@ const WAYPOINT_OFFSET_BY_ANCHOR: Dictionary = {
 
 var _room_data: Dictionary = {}
 var _quest_waypoint: Node3D = null
+# Multiple diamonds for the Shuttle Dock crate-search phase: one per un-looted
+# crate. Separate from the single _quest_waypoint used by every other beat.
+var _crate_waypoints: Array[Node3D] = []
+# True once the red-alert tint has been applied to this scene, so the objective
+# handler knows whether it needs to clear the tint when the breach is sealed.
+var _alert_applied: bool = false
 
 
 func _ready() -> void:
@@ -75,12 +93,26 @@ func _ready() -> void:
 	_setup_doors()
 	_spawn_interactables()
 	_place_player()
+	# Red-alert tint applies to lights + WorldEnvironment if the air crisis
+	# is active. Runs after RoomBuilder.build so it catches every light the
+	# accent functions just spawned. Idempotent on re-entry.
+	if ShipAlertScript.is_alert_active():
+		ShipAlertScript.apply_to_scene(self)
+		_alert_applied = true
 	GameState.discover_room(room_id, String(_room_data.get("name", room_id)))
 	GameState.set_current_room(room_id)
 	if room_id == "quarters_room_1":
 		GameState.mark_quarters_found()
 	elif room_id == "eli_quarters":
 		GameState.mark_eli_quarters_found()
+
+	# Post-crisis return to the control room: Rush is gone, Eli radios Scott,
+	# Scott hands the problem to Eli, and the quest advances to "access a
+	# control terminal".
+	if (room_id == "control_interface_room"
+			and GameState.air_crisis_started
+			and GameState.quest_step == GameState.QUEST_RETURN_TO_CONTROL):
+		_trigger_rush_absent_beat()
 
 	# Persist for save/load — F5 reloads this scene with the same room_id.
 	GameState.current_scene_path = "res://scenes/room.tscn"
@@ -279,21 +311,49 @@ func _spawn_interactables() -> void:
 			# the desk and his bed for the FIND_REST → SLEEP quest beat.
 			_spawn_eli_kino_pickup()
 			_spawn_quarters_bed("My bed. Time to crash.")
+			# Kino dispenser appears once Phase E begins (Brody's "no MALP" beat
+			# sends Eli back here for a Kino to scout the planet).
+			if GameState.reported_to_gate:
+				_spawn_kino_dispenser()
 		"east_corridor":
-			_spawn_hull_breach()
+			# Sgt Greer holds the east corridor; the actual breach lives in the
+			# far-south Damaged Section now.
 			_spawn_sgt_greer()
+		"breached_section_south":
+			# Shuttle Dock: jammed door venting atmo from the damaged shuttle to
+			# the west, a dead door panel beside it, and 3 lootable crates (one
+			# holds the actuator). The Phase C seal mini-quest lives here.
+			_spawn_shuttle_dock()
 		"control_interface_room":
-			# Only Rush — Young, James, Park have moved to the gate room with the
-			# unconscious-tableau (Young laid out, James + Park treating him).
-			_spawn_dr_rush()
+			# Pre-crisis: Rush is at his console. Once the air crisis starts he
+			# has left to chase the fault elsewhere — the player arrives to an
+			# empty control room, radios Scott, and works the terminal alone
+			# (see _trigger_rush_absent_beat). Young, James, Park are in the
+			# gate room with the unconscious-Young tableau.
+			if not GameState.air_crisis_started:
+				_spawn_dr_rush()
 		"engineering_bay":
 			_spawn_power_console()
-		"hydroponics":
-			_spawn_co2_scrubber()
 		"south_corridor":
-			_spawn_chloe()
+			# The CO2 scrubber wall panel always exists (it's a fixture), but the
+			# corridor stays EMPTY of people until the player seals the Shuttle
+			# Dock breach below — nobody's down here while it's still venting.
+			# After the seal: Chloe is about, and during the Phase D window
+			# (breach sealed, scrubber not yet diagnosed) Rush + Park work the
+			# panel. Once diagnosed they don't respawn (they've moved on).
+			var scrubber: StaticBody3D = _spawn_co2_scrubber()
+			if not GameState.breaches_sealed.is_empty():
+				_spawn_chloe()
+				if GameState.air_crisis_started and not GameState.scrubber_diagnosed:
+					_spawn_scrubber_crew(scrubber.position)
 		"north_corridor":
 			_spawn_soldier()
+		"infirmary":
+			# Post-crisis, James has moved Young here to recover. Pre-crisis the
+			# pair are still in the gate-room arrival tableau, so the ward is
+			# empty (just the room shell).
+			if GameState.air_crisis_started:
+				_spawn_infirmary_ward()
 
 
 # Bed against the -Z wall, matching the position used by RoomBuilder._accent_quarters.
@@ -347,6 +407,18 @@ func _spawn_quarters_bed(first_time_log: String = "") -> void:
 # Eli left his Kino Remote on the desk in his quarters — RoomBuilder's
 # quarters-template builds a Kenney desk at (half_x - 0.7, 0.0, 0.0) when the
 # room is wider than 6 m. eli_quarters is 10 m × 12 m so the desk always spawns.
+# Kino dispenser barrel on the +X (right) wall, +Z side — clear of the desk
+# (centre) and bed. Spawned only once Phase E has begun (see dispatch).
+func _spawn_kino_dispenser() -> void:
+	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
+	var d_m: float = float(_room_data.get("height", 200)) * ShipLayout.SCALE
+	var disp: StaticBody3D = StaticBody3D.new()
+	disp.set_script(KinoDispenserScript)
+	disp.name = "KinoDispenser"
+	disp.position = Vector3(w_m * 0.5 - 0.9, 0.0, d_m * 0.5 - 2.5)
+	add_child(disp)
+
+
 # Kino prop sits on the desktop, pickup hitbox alongside.
 func _spawn_eli_kino_pickup() -> void:
 	# Position + scale baked from scenes/quarters_test.tscn workbench. RoomBuilder
@@ -368,9 +440,12 @@ func _spawn_eli_kino_pickup() -> void:
 		var inst: Node = glb.instantiate()
 		holder.add_child(inst)
 
-	# Pickup hitbox — generous interact zone since the remote itself is small.
-	# Sized in world space (NOT scaled by the holder), so set as a SIBLING of
-	# the visual prop rather than a child.
+	# Pickup hitbox — DELIBERATELY large. The kino prop on the desk is tiny
+	# (~0.05 m at scale 0.2) so a tight box requires pixel-precise aim with
+	# the camera. Box is sized to cover the whole desktop surface above the
+	# kino so the player can E from any approach angle as long as their
+	# camera points at the desk. Tall (0.9 m) so the chest-height interact
+	# ray catches it from a step back, too.
 	var pickup: StaticBody3D = StaticBody3D.new()
 	pickup.set_script(KinoPickupScript)
 	pickup.name = "KinoPickup"
@@ -378,150 +453,131 @@ func _spawn_eli_kino_pickup() -> void:
 	pickup.set("prop_to_hide", NodePath("../KinoProp"))
 	var cs: CollisionShape3D = CollisionShape3D.new()
 	var box: BoxShape3D = BoxShape3D.new()
-	box.size = Vector3(0.45, 0.40, 0.30)
+	box.size = Vector3(1.0, 0.9, 1.4)
 	cs.shape = box
 	pickup.add_child(cs)
 	add_child(pickup)
 
 
-# Hull breach in the east_corridor: jagged dark hole on the +X wall with red
-# warning trim, plus an emergency seal switch on the opposite wall. If the
-# breach is already sealed (loaded save), swap the hole for a clean patch panel
-# and the switch's _ready() will leave itself disabled.
-func _spawn_hull_breach() -> void:
+# Shuttle Dock (breached_section_south). The west wall holds a jammed bulkhead
+# door ajar — venting atmosphere from the damaged shuttle beyond — with a dead
+# control panel just south of it. Three lootable crates line the east wall;
+# the middle one holds the Small Fuse the panel needs. Fitting it grinds
+# the door shut and seals the breach. If already sealed (loaded save) the door
+# spawns closed and the panel screen reads green.
+func _spawn_shuttle_dock() -> void:
 	const BREACH_ID: String = "breach_a"
 	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
 	var d_m: float = float(_room_data.get("height", 200)) * ShipLayout.SCALE
 	var half_x: float = w_m * 0.5
 	var half_z: float = d_m * 0.5
-	# 14 m in from the -Z end — well past the south door's arrival marker so
-	# the player has to walk a stretch of corridor before stumbling on it.
-	var breach_z: float = -half_z + 14.0
 	var sealed: bool = GameState.breaches_sealed.has(BREACH_ID)
+	var door_z: float = 0.0
 
+	# --- Jammed bulkhead door on the -X (west) wall ---
+	var leaf: Node3D = _spawn_jammed_door(Vector3(-half_x + 0.06, 1.3, door_z), sealed)
+
+	# --- Door control panel to the LEFT of the door (south/+Z side — the
+	# player's left when they enter from the north and face the west wall) ---
+	var panel_pos: Vector3 = Vector3(-half_x + 0.22, 1.3, door_z + 1.7)
+	var panel: StaticBody3D = StaticBody3D.new()
+	panel.set_script(ShuttleDoorPanelScript)
+	panel.name = "ShuttleDoorPanel"
+	panel.position = panel_pos
+	var p_cs: CollisionShape3D = CollisionShape3D.new()
+	var p_box: BoxShape3D = BoxShape3D.new()
+	p_box.size = Vector3(0.5, 0.7, 0.6)
+	p_cs.shape = p_box
+	panel.add_child(p_cs)
+	add_child(panel)
+	# Grind the jammed door shut when the panel reports a successful seal.
+	if leaf != null:
+		panel.connect("door_sealed", _close_jammed_door.bind(leaf))
+	# Rush radios in the moment the breach is sealed, pointing the player at the
+	# CO2 scrubber (Phase D). The handler early-returns in instant_mode so tests
+	# don't hang on the coroutine.
+	panel.connect("door_sealed", _play_breach_sealed_radio)
+	_add_mesh_box(self, panel_pos, Vector3(0.06, 0.6, 0.5), _flat_mat(Color(0.20, 0.20, 0.22), 0.5, 0.45))
+	var screen_col: Color = Color(0.30, 0.9, 0.5) if sealed else Color(1.0, 0.3, 0.1)
+	_add_mesh_box(self, panel_pos + Vector3(0.02, 0.0, 0.0), Vector3(0.04, 0.34, 0.34), _emis_mat(screen_col, 3.0))
+	var plabel: Label3D = Label3D.new()
+	plabel.text = "DOOR CONTROL"
+	plabel.pixel_size = 0.004
+	plabel.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	plabel.outline_size = 6
+	plabel.shaded = false
+	plabel.modulate = Color(0.95, 0.92, 0.78, 1.0)
+	plabel.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
+	plabel.position = panel_pos + Vector3(0.05, 0.55, 0.0)
+	add_child(plabel)
+
+	# --- Three supply crates along the +X wall. Contents: a Large Fuse (wrong
+	# size), the Small Fuse the door needs (crate 2), and ration packs — the
+	# player searches all three, none is a dead end. The crate owns its own
+	# collider + body/lid meshes (see shuttle_crate.gd) so it can pop its lid
+	# off when looted. ---
+	var crate_contents: Array[String] = ["large", "small", "rations"]
+	for i in 3:
+		var crate: StaticBody3D = StaticBody3D.new()
+		crate.set_script(ShuttleCrateScript)
+		crate.name = "ShuttleCrate%d" % (i + 1)
+		crate.position = Vector3(half_x - 1.3, 0.0, -2.6 + float(i) * 2.6)
+		crate.set("fuse_type", crate_contents[i])
+		add_child(crate)
+		# Refresh the per-crate diamonds after a loot. interacted fires BEFORE
+		# the crate's _on_interact sets _looted, so defer until the loot has
+		# actually applied.
+		crate.connect("interacted", _on_crate_interacted)
+
+
+# A bulkhead door on the west wall: slightly ajar when unsealed (a dark vent
+# gap behind it reads as the venting shuttle bay), flush-closed when sealed.
+# Returns the door leaf MeshInstance so the panel can grind it shut on repair.
+func _spawn_jammed_door(pos: Vector3, sealed: bool) -> Node3D:
 	var wrap: Node3D = Node3D.new()
-	wrap.name = "HullBreach"
-	wrap.position = Vector3(half_x - 0.02, 1.6, breach_z)
+	wrap.name = "JammedDoor"
+	wrap.position = pos
 	add_child(wrap)
+	# Dark vent gap behind the door — the damaged shuttle / open space beyond.
+	_add_mesh_box(wrap, Vector3(-0.05, 0.0, 0.0), Vector3(0.06, 2.2, 1.9), _flat_mat(Color(0.02, 0.03, 0.05), 0.0, 1.0))
+	var leaf: MeshInstance3D = MeshInstance3D.new()
+	leaf.name = "Leaf"
+	var leaf_box: BoxMesh = BoxMesh.new()
+	leaf_box.size = Vector3(0.12, 2.2, 1.8)
+	leaf.mesh = leaf_box
+	leaf.material_override = _flat_mat(Color(0.42, 0.44, 0.48), 0.7, 0.4)
+	# Ajar (slid +Z) when unsealed; centred (shut) when sealed.
+	leaf.position = Vector3(0.0, 0.0, 0.0 if sealed else 1.0)
+	wrap.add_child(leaf)
+	if not sealed:
+		_add_mesh_box(wrap, Vector3(0.05, 0.0, -0.95), Vector3(0.04, 2.2, 0.08), _emis_mat(Color(1.0, 0.55, 0.1), 3.0))
+	return leaf
 
-	if sealed:
-		var patch_mat: StandardMaterial3D = StandardMaterial3D.new()
-		patch_mat.albedo_color = Color(0.55, 0.50, 0.42)
-		patch_mat.metallic = 0.7
-		patch_mat.roughness = 0.4
-		var patch_mi: MeshInstance3D = MeshInstance3D.new()
-		var patch_box: BoxMesh = BoxMesh.new()
-		patch_box.size = Vector3(0.06, 1.6, 1.8)
-		patch_mi.mesh = patch_box
-		patch_mi.material_override = patch_mat
-		wrap.add_child(patch_mi)
-		# Rivet dots — small bright cylinders along the patch edges read as
-		# "this was welded shut" without needing a separate model.
-		var rivet_mat: StandardMaterial3D = StandardMaterial3D.new()
-		rivet_mat.albedo_color = Color(0.8, 0.75, 0.6)
-		rivet_mat.metallic = 0.9
-		rivet_mat.roughness = 0.25
-		for ry in [-0.6, 0.0, 0.6]:
-			for rz in [-0.75, 0.75]:
-				var rivet_mesh: SphereMesh = SphereMesh.new()
-				rivet_mesh.radius = 0.04
-				rivet_mesh.height = 0.08
-				var rivet: MeshInstance3D = MeshInstance3D.new()
-				rivet.mesh = rivet_mesh
-				rivet.material_override = rivet_mat
-				rivet.position = Vector3(-0.04, ry, rz)
-				wrap.add_child(rivet)
-	else:
-		var hole_mat: StandardMaterial3D = StandardMaterial3D.new()
-		hole_mat.albedo_color = Color(0.02, 0.02, 0.03)
-		hole_mat.metallic = 0.0
-		hole_mat.roughness = 1.0
-		var hole_mi: MeshInstance3D = MeshInstance3D.new()
-		var hole_box: BoxMesh = BoxMesh.new()
-		hole_box.size = Vector3(0.10, 1.4, 1.6)
-		hole_mi.mesh = hole_box
-		hole_mi.material_override = hole_mat
-		wrap.add_child(hole_mi)
 
-		var trim_mat: StandardMaterial3D = StandardMaterial3D.new()
-		trim_mat.albedo_color = Color(1.0, 0.18, 0.10)
-		trim_mat.emission_enabled = true
-		trim_mat.emission = Color(1.0, 0.20, 0.10)
-		trim_mat.emission_energy_multiplier = 3.5
-		# Four warning bars framing the hole (top/bottom/left/right).
-		for trim in [
-			{"pos": Vector3(-0.03, 0.75, 0.0), "size": Vector3(0.04, 0.08, 1.7)},
-			{"pos": Vector3(-0.03, -0.75, 0.0), "size": Vector3(0.04, 0.08, 1.7)},
-			{"pos": Vector3(-0.03, 0.0, 0.85), "size": Vector3(0.04, 1.5, 0.08)},
-			{"pos": Vector3(-0.03, 0.0, -0.85), "size": Vector3(0.04, 1.5, 0.08)},
-		]:
-			var bar_mi: MeshInstance3D = MeshInstance3D.new()
-			var bar_box: BoxMesh = BoxMesh.new()
-			bar_box.size = trim["size"]
-			bar_mi.mesh = bar_box
-			bar_mi.material_override = trim_mat
-			bar_mi.position = trim["pos"]
-			wrap.add_child(bar_mi)
+func _close_jammed_door(leaf: Node3D) -> void:
+	if leaf == null or not is_instance_valid(leaf):
+		return
+	var t: Tween = create_tween()
+	t.set_trans(Tween.TRANS_SINE)
+	t.tween_property(leaf, "position:z", 0.0, 0.8)
 
-		# Debris on the floor beneath the hole.
-		var debris_mat: StandardMaterial3D = StandardMaterial3D.new()
-		debris_mat.albedo_color = Color(0.18, 0.16, 0.14)
-		debris_mat.metallic = 0.4
-		debris_mat.roughness = 0.7
-		for i in 5:
-			var d_mi: MeshInstance3D = MeshInstance3D.new()
-			var d_box: BoxMesh = BoxMesh.new()
-			var s: float = 0.18 + float(i) * 0.05
-			d_box.size = Vector3(s * 0.6, 0.10, s)
-			d_mi.mesh = d_box
-			d_mi.material_override = debris_mat
-			d_mi.position = Vector3(-0.4 - float(i) * 0.05, -1.5, -0.4 + float(i) * 0.2)
-			d_mi.rotation = Vector3(0.0, deg_to_rad(15.0 * float(i)), deg_to_rad(8.0 * float(i)))
-			wrap.add_child(d_mi)
 
-	# Switch on the -X wall, opposite the breach, at chest height. Even when
-	# already sealed we still spawn it so the prompt reads "Hull integrity
-	# holding." instead of leaving the panel missing entirely.
-	var switch: StaticBody3D = StaticBody3D.new()
-	switch.set_script(HullSealSwitchScript)
-	switch.name = "HullSealSwitch"
-	switch.position = Vector3(-half_x + 0.25, 1.4, breach_z)
-	switch.set("breach_id", BREACH_ID)
-	var s_cs: CollisionShape3D = CollisionShape3D.new()
-	var s_box: BoxShape3D = BoxShape3D.new()
-	s_box.size = Vector3(0.5, 0.6, 0.5)
-	s_cs.shape = s_box
-	switch.add_child(s_cs)
-	add_child(switch)
+# Inline StandardMaterial3D helpers for the procedural shuttle-dock props.
+func _flat_mat(col: Color, metallic: float, roughness: float) -> StandardMaterial3D:
+	var m: StandardMaterial3D = StandardMaterial3D.new()
+	m.albedo_color = col
+	m.metallic = metallic
+	m.roughness = roughness
+	return m
 
-	# Switch visual: dark housing + bright emissive button. Parent to the room
-	# (not the switch body) so the visible mesh doesn't double-count as a
-	# collision shape on layer 4.
-	var housing_mat: StandardMaterial3D = StandardMaterial3D.new()
-	housing_mat.albedo_color = Color(0.20, 0.20, 0.22)
-	housing_mat.metallic = 0.5
-	housing_mat.roughness = 0.45
-	var housing_mi: MeshInstance3D = MeshInstance3D.new()
-	var housing_box: BoxMesh = BoxMesh.new()
-	housing_box.size = Vector3(0.06, 0.55, 0.45)
-	housing_mi.mesh = housing_box
-	housing_mi.material_override = housing_mat
-	housing_mi.position = switch.position
-	add_child(housing_mi)
 
-	var btn_mat: StandardMaterial3D = StandardMaterial3D.new()
-	var btn_color: Color = Color(0.30, 0.85, 1.0) if sealed else Color(1.0, 0.30, 0.10)
-	btn_mat.albedo_color = btn_color
-	btn_mat.emission_enabled = true
-	btn_mat.emission = btn_color
-	btn_mat.emission_energy_multiplier = 3.0
-	var btn_mi: MeshInstance3D = MeshInstance3D.new()
-	var btn_box: BoxMesh = BoxMesh.new()
-	btn_box.size = Vector3(0.04, 0.22, 0.22)
-	btn_mi.mesh = btn_box
-	btn_mi.material_override = btn_mat
-	btn_mi.position = switch.position + Vector3(0.02, 0.0, 0.0)
-	add_child(btn_mi)
+func _emis_mat(col: Color, energy: float) -> StandardMaterial3D:
+	var m: StandardMaterial3D = StandardMaterial3D.new()
+	m.albedo_color = col
+	m.emission_enabled = true
+	m.emission = col
+	m.emission_energy_multiplier = energy
+	return m
 
 
 # Engineering Bay power console — wall-mounted breaker switch on the -X wall.
@@ -582,56 +638,56 @@ func _spawn_power_console() -> void:
 	add_child(label)
 
 
-func _spawn_co2_scrubber() -> void:
-	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
+func _spawn_co2_scrubber() -> StaticBody3D:
 	var d_m: float = float(_room_data.get("height", 200)) * ShipLayout.SCALE
 	var half_z: float = d_m * 0.5
+	# Recessed wall panel on the -Z (north) wall, west half of the corridor:
+	# in view as the player arrives from the south_spur door (~x -5) and clear
+	# of the control-approach door (~x +34) and Chloe (~x +12). co2_scrubber.gd
+	# owns the visual (frame + sliding hatch + internals) so it can animate the
+	# hatch open during the Phase D reveal scene.
 	var scrubber: StaticBody3D = StaticBody3D.new()
 	scrubber.set_script(Co2ScrubberScript)
 	scrubber.name = "CO2Scrubber"
-	scrubber.position = Vector3(-w_m * 0.22, 0.0, half_z - 3.0)
-
-	var cs: CollisionShape3D = CollisionShape3D.new()
-	var box: BoxShape3D = BoxShape3D.new()
-	box.size = Vector3(1.6, 1.8, 1.1)
-	cs.shape = box
-	cs.position = Vector3(0.0, 0.9, 0.0)
-	scrubber.add_child(cs)
-
-	var housing_mat: StandardMaterial3D = StandardMaterial3D.new()
-	housing_mat.albedo_color = Color(0.18, 0.20, 0.22)
-	housing_mat.metallic = 0.65
-	housing_mat.roughness = 0.38
-	var warning_mat: StandardMaterial3D = StandardMaterial3D.new()
-	warning_mat.albedo_color = Color(1.0, 0.42, 0.12)
-	warning_mat.emission_enabled = true
-	warning_mat.emission = Color(1.0, 0.35, 0.10)
-	warning_mat.emission_energy_multiplier = 2.6
-	var lime_mat: StandardMaterial3D = StandardMaterial3D.new()
-	lime_mat.albedo_color = Color(0.72, 0.92, 0.38)
-	lime_mat.emission_enabled = true
-	lime_mat.emission = Color(0.42, 0.78, 0.18)
-	lime_mat.emission_energy_multiplier = 0.9
-
-	_add_mesh_box(scrubber, Vector3(0.0, 0.85, 0.0), Vector3(1.4, 1.5, 0.8), housing_mat)
-	_add_mesh_box(scrubber, Vector3(0.0, 1.52, -0.43), Vector3(1.1, 0.14, 0.08), warning_mat)
-	_add_mesh_box(scrubber, Vector3(-0.42, 0.72, -0.46), Vector3(0.24, 0.56, 0.08), lime_mat)
-	_add_mesh_box(scrubber, Vector3(0.0, 0.72, -0.46), Vector3(0.24, 0.56, 0.08), lime_mat)
-	_add_mesh_box(scrubber, Vector3(0.42, 0.72, -0.46), Vector3(0.24, 0.56, 0.08), lime_mat)
-
-	var label: Label3D = Label3D.new()
-	label.name = "Label"
-	label.text = "CO2 SCRUBBER"
-	label.pixel_size = 0.004
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.outline_size = 6
-	label.shaded = false
-	label.modulate = Color(0.75, 0.95, 1.0, 1.0)
-	label.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
-	label.position = Vector3(0.0, 2.0, 0.0)
-	scrubber.add_child(label)
-
+	scrubber.position = Vector3(-10.0, 0.0, -half_z + 0.15)
 	add_child(scrubber)
+	return scrubber
+
+
+# Rush + Park stand shoulder-to-shoulder right in front of the open scrubber
+# panel for the Phase D reveal — both within ~1 m of the panel and ~1.1 m apart,
+# centred on it, so they read as a pair working the exposed bank. The scene's
+# dialogue is driven by scrubber_rush.gd; these are the on-screen figures.
+func _spawn_scrubber_crew(panel_pos: Vector3) -> void:
+	# Rush carries the whole multi-speaker scene (scrubber_rush.gd sets its own
+	# dialogue_tree + drives the FTL beat), so pass an empty tree + its script.
+	# Node name MUST differ from the control-room "DrRush" — NPCState keys saved
+	# position by node name, so a shared name cross-restores this Rush to the
+	# control-room Rush's spot. Display name stays "Dr Rush".
+	_spawn_npc(
+		"ScrubberRush",
+		"Dr Rush",
+		panel_pos + Vector3(-0.55, 0.0, 1.0),
+		0.0,  # face -Z, toward the panel
+		"res://models/characters/rush.glb",
+		[],
+		"",
+		ScrubberRushScript,
+	)
+	_spawn_npc(
+		"DrPark",
+		"Dr Park",
+		panel_pos + Vector3(0.6, 0.0, 1.0),
+		0.0,
+		"res://models/characters/park.glb",
+		[
+			{
+				"speaker": "Dr Park",
+				"text": "Rush thinks it's the scrubber. I'm hoping he's wrong, for once.",
+				"choices": [{"text": "Same.", "next": "exit"}],
+			},
+		],
+	)
 
 
 func _add_mesh_box(parent: Node3D, pos: Vector3, size: Vector3, mat: StandardMaterial3D) -> void:
@@ -756,6 +812,67 @@ func _spawn_dr_rush() -> void:
 	add_child(rush)
 
 
+# Post-crisis "Rush isn't here" beat. Eli radios Scott, Scott hands the
+# problem off, and the quest advances RETURN_TO_CONTROL → access-terminal.
+# Skipped (state flipped synchronously) under SceneRouter.instant_mode so
+# the headless playthrough doesn't have to wait out the radio timers.
+func _trigger_rush_absent_beat() -> void:
+	var sr: Node = get_node_or_null("/root/SceneRouter")
+	if sr != null and sr.get("instant_mode"):
+		GameState.mark_control_room_returned()
+		return
+	_play_rush_absent_radio()
+
+
+func _play_rush_absent_radio() -> void:
+	# Advance the quest up front so it sticks even if the player closes the
+	# comm early. Short beat after arrival so the HUD is settled before the
+	# dialog opens; is_inside_tree() guards the freed-mid-await case.
+	GameState.mark_control_room_returned()
+	await get_tree().create_timer(0.8).timeout
+	if not is_inside_tree():
+		return
+	var line_eli: String = "Uhh… Scott? Rush isn't here."
+	var line_scott: String = "Well then, Eli — it's up to you. Find out what's going on."
+	GameState.add_log("Eli: " + line_eli)
+	GameState.add_log("Lt Scott (radio): " + line_scott)
+	_play_radio_dialog([
+		{"speaker": "Eli", "text": line_eli, "choices": [{"text": "(key the radio)", "next": 1}]},
+		{"speaker": "Lt Scott", "text": line_scott, "choices": [{"text": "Understood.", "next": "exit"}]},
+	])
+
+
+# Rush radios the player the instant the jammed shuttle door is sealed: praise
+# + the next objective (the CO2 scrubber in the south corridor).
+func _play_breach_sealed_radio() -> void:
+	var sr: Node = get_node_or_null("/root/SceneRouter")
+	if sr != null and sr.get("instant_mode"):
+		return
+	await get_tree().create_timer(0.8).timeout
+	if not is_inside_tree():
+		return
+	var line: String = "Good work, Eli. Now get over to the south corridor — I think I found what's causing the CO2 buildup."
+	GameState.add_log("Dr Rush (radio): " + line)
+	_play_radio_dialog([
+		{"speaker": "Dr Rush", "text": line, "choices": [{"text": "On my way.", "next": "exit"}]},
+	])
+
+
+# Play a radio comm as a WoW-style dialog (single-choice continues) instead of
+# timed captions, bookended by the radio click/off SFX. Quest/state changes
+# happen at the call site (up front) so they stick if the player closes early.
+func _play_radio_dialog(tree: Array) -> void:
+	Audio.play("res://sounds/radio_click.ogg")
+	if not GameState.dialog_closed.is_connected(_on_radio_dialog_closed):
+		GameState.dialog_closed.connect(_on_radio_dialog_closed, CONNECT_ONE_SHOT)
+	var player: Node = get_tree().get_first_node_in_group("player")
+	GameState.dialog_started.emit(player, tree)
+
+
+func _on_radio_dialog_closed() -> void:
+	Audio.play("res://sounds/radio_off.ogg")
+
+
 # Generic NPC spawn — mirrors the manual _spawn_dr_rush construction so the
 # six secondary crew members can share a single code path. Returns the
 # StaticBody3D so callers can tweak post-hoc if needed.
@@ -766,10 +883,11 @@ func _spawn_npc(
 		yaw: float,
 		glb_path: String,
 		dialog_tree: Array,
-		met_flag: String = ""
+		met_flag: String = "",
+		script: Script = NpcScript
 	) -> StaticBody3D:
 	var body: StaticBody3D = StaticBody3D.new()
-	body.set_script(NpcScript)
+	body.set_script(script)
 	body.name = npc_name
 	body.position = pos
 	body.rotation.y = yaw
@@ -864,7 +982,7 @@ func _spawn_dr_james() -> void:
 		"Dr James",
 		Vector3(-4.5, 0.0, 3.8),
 		PI * 0.25,
-		"res://models/characters/eli.glb",
+		"res://models/characters/james.glb",
 		[
 			{
 				"speaker": "Dr James",
@@ -903,7 +1021,7 @@ func _spawn_dr_park() -> void:
 		"Dr Park",
 		Vector3(3.2, 0.0, 5.0),
 		-PI * 0.25,
-		"res://models/characters/eli.glb",
+		"res://models/characters/park.glb",
 		[
 			{
 				"speaker": "Dr Park",
@@ -937,40 +1055,81 @@ func _spawn_dr_park() -> void:
 # Sergeant pulling corridor watch in the east corridor — alongside the hull
 # breach that the player is meant to seal. Direct, blunt, useful.
 func _spawn_sgt_greer() -> void:
+	# greer.gd builds his line dynamically from the quest step (a single "go
+	# here next" hint), so the passed tree is unused.
 	_spawn_npc(
 		"SgtGreer",
 		"Sgt Greer",
 		Vector3(0.0, 0.0, 8.0),
 		PI,  # face north (-z) so he's watching back toward the gate room
 		"res://models/characters/scott.glb",
+		[],
+		"met_greer",
+		GreerScript,
+	)
+
+
+# Infirmary ward (simple first pass): Colonel Young recovering on a bed against
+# the -Z wall, a desk against the +X wall, and Lt James pacing between the two.
+func _spawn_infirmary_ward() -> void:
+	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
+	var d_m: float = float(_room_data.get("height", 200)) * ShipLayout.SCALE
+	var half_x: float = w_m * 0.5
+	var half_z: float = d_m * 0.5
+
+	# Bed (frame + mattress), long axis along Z, west of centre on the -Z wall.
+	var bed_pos: Vector3 = Vector3(-2.5, 0.0, -half_z + 1.8)
+	_add_mesh_box(self, bed_pos + Vector3(0.0, 0.25, 0.0), Vector3(1.0, 0.5, 2.2), _flat_mat(Color(0.20, 0.22, 0.26), 0.4, 0.6))
+	_add_mesh_box(self, bed_pos + Vector3(0.0, 0.55, 0.0), Vector3(0.9, 0.16, 2.0), _flat_mat(Color(0.78, 0.80, 0.84), 0.1, 0.7))
+
+	# Young laid on his back on the mattress (model tipped 90° onto its back,
+	# lifted to the mattress top). Unique node name so NPCState doesn't cross-
+	# restore him to the gate-room "ColonelYoung" tableau spot.
+	var young: StaticBody3D = _spawn_npc(
+		"InfirmaryYoung",
+		"Colonel Young",
+		bed_pos + Vector3(0.0, 0.55, -0.4),
+		0.0,
+		"res://models/characters/scott.glb",
 		[
 			{
-				"speaker": "Sgt Greer",
-				"text": "You see that breach down the hall? Don't walk past it. Seal it, then come back through this way. Got me?",
-				"choices": [
-					{"text": "Where's the switch?", "next": 1},
-					{"text": "What if it gets worse?", "next": 2},
-					{"text": "Copy that.", "next": "exit"},
-				],
-			},
-			{
-				"speaker": "Sgt Greer",
-				"text": "Opposite wall from the breach. Big yellow handle. You can't miss it unless you're trying. Hit it, panel slams down, problem stops.",
-				"choices": [
-					{"text": "What if it gets worse?", "next": 2},
-					{"text": "On it.", "next": "exit"},
-				],
-			},
-			{
-				"speaker": "Sgt Greer",
-				"text": "Then we lose the corridor and probably anyone in it. So don't make me come do it for you. Move.",
-				"choices": [
-					{"text": "Moving.", "next": "exit"},
-				],
+				"speaker": "Colonel Young",
+				"text": "I'm fine, Wallace — just banged up. Rush and Scott have it. Do what they tell you and we'll get through this.",
+				"choices": [{"text": "Rest up, Colonel.", "next": "exit"}],
 			},
 		],
-		"met_greer",
 	)
+	var ym: Node3D = young.get_node_or_null("Model") as Node3D
+	if ym != null:
+		ym.rotation = Vector3(-PI * 0.5, PI, 0.0)
+		ym.position = Vector3(0.0, 0.18, 0.7)
+
+	# Desk against the +X wall.
+	var desk_pos: Vector3 = Vector3(half_x - 1.2, 0.0, -half_z + 2.4)
+	_add_mesh_box(self, desk_pos + Vector3(0.0, 0.75, 0.0), Vector3(1.6, 0.1, 0.8), _flat_mat(Color(0.22, 0.24, 0.28), 0.5, 0.5))
+	_add_mesh_box(self, desk_pos + Vector3(0.0, 0.35, 0.0), Vector3(1.4, 0.7, 0.6), _flat_mat(Color(0.14, 0.15, 0.18), 0.4, 0.6))
+
+	# James paces between the bedside and her desk.
+	var bedside: Vector3 = bed_pos + Vector3(1.5, 0.0, 0.4)
+	var deskside: Vector3 = desk_pos + Vector3(-1.4, 0.0, 0.0)
+	var james: StaticBody3D = _spawn_npc(
+		"InfirmaryJames",
+		"Lt James",
+		bedside,
+		0.0,
+		"res://models/characters/james.glb",
+		[
+			{
+				"speaker": "Lt James",
+				"text": "He's stable — concussion, a couple of cracked ribs. I've got him. You just keep the air on, all right?",
+				"choices": [{"text": "Will do.", "next": "exit"}],
+			},
+		],
+		"",
+		InfirmaryJamesScript,
+	)
+	james.set("pace_a", bedside)
+	james.set("pace_b", deskside)
 
 
 # Civilian along the south corridor — Chloe, the IOA daughter. She's already
@@ -981,7 +1140,7 @@ func _spawn_chloe() -> void:
 		"Chloe Armstrong",
 		Vector3(12.0, 0.0, 0.0),
 		-PI * 0.5,  # face -x, back toward gate room
-		"res://models/characters/eli.glb",
+		"res://models/characters/chloe.glb",
 		[
 			{
 				"speaker": "Chloe Armstrong",
@@ -1024,11 +1183,11 @@ func _spawn_soldier() -> void:
 		[
 			{
 				"speaker": "Soldier",
-				"text": "Ma'am. Sir. Sorry — half of us don't know who's who yet. Need directions?",
+				"text": "Mr Wallace — sir. Heading anywhere in particular, or just walking the deck?",
 				"choices": [
 					{"text": "What's down this corridor?", "next": 1},
 					{"text": "Everything okay up here?", "next": 2},
-					{"text": "I'm good. Carry on.", "next": "exit"},
+					{"text": "Just passing through. Carry on.", "next": "exit"},
 				],
 			},
 			{
@@ -1055,6 +1214,21 @@ func _spawn_soldier() -> void:
 
 func _on_quest_objective_changed(_text: String) -> void:
 	_refresh_quest_waypoint()
+	_refresh_alert_state()
+
+
+# Re-evaluate the red-alert tint when the quest advances mid-room. Sealing the
+# Shuttle Dock breach flips is_alert_active() to false, so the room reverts from
+# red to its normal lighting without a reload (other rooms come up untinted on
+# their next build).
+func _refresh_alert_state() -> void:
+	var should_alert: bool = ShipAlertScript.is_alert_active()
+	if should_alert and not _alert_applied:
+		ShipAlertScript.apply_to_scene(self)
+		_alert_applied = true
+	elif _alert_applied and not should_alert:
+		ShipAlertScript.clear_scene(self)
+		_alert_applied = false
 
 
 # Position the floating diamond either above the in-room anchor for the
@@ -1065,6 +1239,16 @@ func _refresh_quest_waypoint() -> void:
 	var target: Dictionary = GameState.quest_target()
 	var target_room: String = String(target.get("room", ""))
 	var anchor_name: String = String(target.get("anchor", ""))
+
+	# Multi-marker case: the Shuttle Dock crate-search phase puts a diamond over
+	# every UN-looted crate. Each clears as its crate is emptied; all clear once
+	# the Small Fuse turns up (handing back to the single panel marker below).
+	if (target_room == room_id and anchor_name == "ShuttleObjective"
+			and GameState.door_panel_examined and not GameState.small_fuse_found):
+		_destroy_quest_waypoint()
+		_refresh_crate_waypoints()
+		return
+	_clear_crate_waypoints()
 
 	if target_room == "":
 		_destroy_quest_waypoint()
@@ -1079,6 +1263,24 @@ func _refresh_quest_waypoint() -> void:
 		if anchor_name == "":
 			pos = Vector3(0.0, QUEST_WAYPOINT_ANCHOR_HEIGHT, 0.0)
 			placed = true
+		elif anchor_name == "ControlConsoleNearest":
+			# All four control consoles are identical, so point the diamond at
+			# whichever one is closest to the player — wherever they're
+			# standing in the room, the objective marker is on a console they
+			# can see, not a fixed cardinal one that may be behind them.
+			var console: Node3D = _find_nearest_in_group("control_console")
+			if console != null:
+				pos = console.global_position + Vector3(0.0, WAYPOINT_OFFSET_BY_ANCHOR.get("ControlConsoleNearest", 1.4), 0.0)
+				placed = true
+		elif anchor_name == "ShuttleObjective":
+			# Panel marker. The crate-search phase (door examined, no fuse yet)
+			# is handled by the multi-marker case above; here the single diamond
+			# sits on the panel both before the player examines it and once the
+			# Small Fuse is in hand to fit it.
+			var panel: Node3D = get_node_or_null("ShuttleDoorPanel") as Node3D
+			if panel != null:
+				pos = panel.global_position + Vector3(0.0, WAYPOINT_OFFSET_BY_ANCHOR.get("ShuttleDoorPanel", 0.7), 0.0)
+				placed = true
 		else:
 			var anchor: Node = get_node_or_null(anchor_name)
 			if anchor is Node3D:
@@ -1113,6 +1315,57 @@ func _destroy_quest_waypoint() -> void:
 	if _quest_waypoint != null and is_instance_valid(_quest_waypoint):
 		_quest_waypoint.queue_free()
 	_quest_waypoint = null
+
+
+# Rebuild one diamond per un-looted Shuttle Dock crate. Cheap to rebuild from
+# scratch (three crates) so we don't track per-crate marker identity.
+func _refresh_crate_waypoints() -> void:
+	_clear_crate_waypoints()
+	for c in get_tree().get_nodes_in_group("shuttle_crate"):
+		var crate: Node3D = c as Node3D
+		if crate == null or crate.get("_looted") == true:
+			continue
+		var wp: Node3D = Node3D.new()
+		wp.set_script(QuestWaypointScript)
+		wp.name = "CrateWaypoint"
+		world.add_child(wp)
+		var pos: Vector3 = crate.global_position + Vector3(0.0, 1.3, 0.0)
+		wp.global_position = pos
+		if wp.has_method("set_target_position"):
+			wp.call("set_target_position", pos)
+		_crate_waypoints.append(wp)
+
+
+func _clear_crate_waypoints() -> void:
+	for wp in _crate_waypoints:
+		if wp != null and is_instance_valid(wp):
+			wp.queue_free()
+	_crate_waypoints.clear()
+
+
+# Crate loot fires interacted BEFORE _on_interact sets _looted, so defer the
+# diamond refresh until the loot has applied (the emptied crate's diamond then
+# drops; finding the Small Fuse clears them all and hands off to the panel).
+func _on_crate_interacted(_by: Node) -> void:
+	_refresh_quest_waypoint.call_deferred()
+
+
+# Nearest Node3D in the given group to the player. Drives the
+# DIAGNOSE_LIFE_SUPPORT (control_console) and SEAL_BREACH (shuttle_crate)
+# waypoints so the diamond tracks whichever interchangeable target is closest.
+func _find_nearest_in_group(group: String) -> Node3D:
+	var nearest: Node3D = null
+	var best_dist: float = INF
+	var origin: Vector3 = player.global_position if player != null else Vector3.ZERO
+	for node in get_tree().get_nodes_in_group(group):
+		if not (node is Node3D):
+			continue
+		var n3: Node3D = node
+		var d: float = origin.distance_to(n3.global_position)
+		if d < best_dist:
+			best_dist = d
+			nearest = n3
+	return nearest
 
 
 # Door iteration: doors are direct children of self (added in _stamp_door) and

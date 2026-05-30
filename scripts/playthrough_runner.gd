@@ -50,6 +50,10 @@ func _begin() -> void:
 		print("  (screenshot capture → ", _shot_dir, ")")
 		DirAccess.make_dir_recursive_absolute(_shot_dir)
 	SceneRouter.instant_mode = not _demo_mode
+	# Redirect save I/O to a test-only prefix BEFORE any autosave can fire.
+	# Otherwise this integration test writes and wipes the player's real
+	# user://save.json, destroying actual progress on every test run.
+	SaveManager.configure_test_paths()
 	get_tree().create_timer(TIMEOUT_SEC).timeout.connect(_on_timeout)
 	GameState.reset()
 	_drive()
@@ -125,61 +129,88 @@ func _drive() -> void:
 	_expect(GameState.quest_step == GameState.QUEST_SLEEP, "quest: device inspected -> sleep")
 	await _interact_node(_find_node_named("Bed"), "sleep")
 	_expect(GameState.air_crisis_started, "quest: sleep starts Air crisis")
-	_expect(GameState.quest_step == GameState.QUEST_DIAGNOSE_LIFE_SUPPORT, "quest: crisis -> diagnose life support")
+	_expect(GameState.quest_step == GameState.QUEST_RETURN_TO_CONTROL, "quest: crisis -> return to control room")
 
-	# === STEP 6: diagnose life support in gate room ===
-	# Leaves from Eli's quarters now (not Crew Quarters Alpha on the upper floor).
+	# === STEP 6: return to the control room, find Rush gone, work the terminal ===
+	# Scott's wake-up radio sends Eli back to the control room. Arriving
+	# fires the "Rush isn't here" beat (room.gd::_trigger_rush_absent_beat),
+	# which in instant_mode synchronously marks the room returned and
+	# advances the quest to "access a control terminal".
 	await _travel_path([
 		"cr_corridor_2",
 		"control_interface_room",
-		"control_approach_north",
-		"north_corridor",
-		"east_corridor",
-		"stargate_corridor_east_connector",
-		"gate_room",
 	])
-	var gate_ctrl: Node = _find_console("gate_control")
-	_expect(gate_ctrl != null, "gate_room: Gate Control console present")
-	await _interact_node(gate_ctrl, "life support diagnostic")
-	_expect(GameState.life_support_diagnosed, "quest: life support diagnosed")
-	_expect(GameState.quest_step == GameState.QUEST_SEAL_BREACH, "quest: diagnostic -> seal breach")
+	_expect(GameState.control_room_returned, "quest: arriving control room flips returned flag")
+	_expect(GameState.quest_step == GameState.QUEST_DIAGNOSE_LIFE_SUPPORT, "quest: rush absent -> access terminal")
+	var ctrl_console: Node = _find_node_named("ControlConsoleEast")
+	_expect(ctrl_console != null, "control_interface_room: Control Console East present")
+	await _interact_node(ctrl_console, "control terminal access")
+	_expect(GameState.life_support_diagnosed, "quest: control terminal accessed -> life support diagnosed")
+	_expect(GameState.quest_step == GameState.QUEST_SEAL_BREACH, "quest: terminal access -> seal breach")
+	# Close the menu the console just opened so subsequent travel steps can
+	# walk the player around the ship.
+	KinoRemote.close_remote()
 
-	# === STEP 7: lock off exposed ship section ===
+	# === STEP 7: seal the jammed door in the far-south Damaged Section ===
+	# Reached from the control room via the south approach + south corridor +
+	# the new south access spur.
 	await _travel_path([
-		"stargate_corridor_east_connector",
-		"east_corridor",
+		"control_approach_south",
+		"south_corridor",
+		"south_spur",
+		"breached_section_south",
 	])
-	await _interact_node(_find_node_named("HullSealSwitch"), "hull seal switch")
-	_expect(GameState.breaches_sealed.has("breach_a"), "quest: breach sealed")
+	# Examine the dead panel (learn it needs a fuse), loot the small fuse from
+	# a crate, then fit it at the panel to seal the breach.
+	await _interact_node(_find_node_named("ShuttleDoorPanel"), "examine dead door panel")
+	_expect(GameState.door_panel_examined, "quest: examining panel reveals the fuse need")
+	_expect(not GameState.breaches_sealed.has("breach_a"), "quest: door not sealed without a fuse")
+	await _interact_node(_find_node_named("ShuttleCrate2"), "search fuse crate")
+	_expect(GameState.small_fuse_found, "quest: small fuse looted from crate")
+	await _interact_node(_find_node_named("ShuttleDoorPanel"), "fit small fuse")
+	_expect(GameState.breaches_sealed.has("breach_a"), "quest: jammed door sealed")
 	_expect(GameState.quest_step == GameState.QUEST_FIND_SCRUBBER, "quest: breach -> find scrubber")
 
-	# === STEP 8: diagnose broken CO2 scrubber ===
+	# === STEP 8: CO2 scrubber reveal scene (Phase D) ===
+	# Rush's radio points us back to the south corridor. Working the wall panel
+	# plays the reveal: only lime fixes it, Destiny drops from FTL, and the gate
+	# dials a lime world on its own — all folded into one scene completion.
 	await _travel_path([
-		"north_corridor",
-		"elevator_north",
-		"elevator_room_floor_1",
-		"hydroponics",
+		"south_spur",
+		"south_corridor",
 	])
-	await _interact_node(_find_node_named("CO2Scrubber"), "scrubber diagnosis")
+	# The scene is triggered by talking to Dr Rush at the open panel; instant_mode
+	# short-circuits his dialog straight to the folded completion.
+	await _interact_node(_find_node_named("ScrubberRush"), "scrubber reveal scene (talk to Rush)")
 	_expect(GameState.scrubber_diagnosed, "quest: scrubber diagnosed")
-	_expect(GameState.quest_step == GameState.QUEST_WAIT_FTL, "quest: scrubber -> FTL drop")
+	_expect(GameState.ftl_drop_triggered, "quest: scene drops Destiny from FTL")
+	_expect(GameState.lime_planet_dialed, "quest: scene auto-dials the lime world")
+	_expect(GameState.quest_step == GameState.QUEST_GO_TO_GATE, "quest: scene -> get to gate room")
 
-	# === STEP 9: trigger FTL drop and dial lime planet ===
+	# === STEP 9: answer Brody's call — get to the Gate Room ===
+	# Arriving satisfies GO_TO_GATE (gate_room.gd calls report_to_gate), and the
+	# already-dialed gate hands straight off to the lime run.
 	await _travel_path([
-		"elevator_room_floor_1",
-		"elevator_north",
-		"north_corridor",
 		"east_corridor",
 		"stargate_corridor_east_connector",
 		"gate_room",
 	])
-	var ftl: Node = _find_console("ftl_countdown")
-	_expect(ftl != null, "gate_room: FTL console present")
-	await _interact_node(ftl, "FTL drop")
-	_expect(GameState.ftl_drop_triggered, "quest: FTL drop triggered")
-	await _interact_node(_find_console("gate_control"), "dial lime planet")
-	_expect(GameState.lime_planet_dialed, "quest: lime planet dialed")
-	_expect(GameState.is_lime_gate_open(), "quest: ship gate open to lime planet")
+	_expect(GameState.reported_to_gate, "quest: arriving gate room reports in")
+	_expect(GameState.quest_step == GameState.QUEST_FETCH_KINO, "quest: gate room -> fetch a Kino to scout")
+
+	# === STEP 9b: Kino-first scout (Phase E) ===
+	# Brody has no MALP, so we scout with a Kino before committing. The recon
+	# flight is player-driven (mouse + 6-axis keys) and can't run headless, so
+	# we exercise the GameState beats directly: pull an orb from the dispenser
+	# (FETCH_KINO -> SCOUT_KINO) and confirm the recon (SCOUT_KINO -> mine lime).
+	# The real dispenser Interactable + drone possession are covered by scene_boot.
+	GameState.acquire_kino_orb()
+	_expect(GameState.kino_orbs == 1, "quest: Kino dispenser grants an orb")
+	_expect(GameState.quest_step == GameState.QUEST_SCOUT_KINO, "quest: holding a Kino -> scout the planet")
+	GameState.complete_kino_scout()
+	_expect(GameState.kino_scout_done, "quest: Kino recon confirmed")
+	_expect(GameState.is_lime_gate_open(), "quest: ship gate open to lime world")
+	_expect(GameState.quest_step == GameState.QUEST_MINE_LIME, "quest: scout done -> mine lime")
 	await _shot("gate_room_lime_dial")
 	await _demo_hold()
 
@@ -206,20 +237,63 @@ func _drive() -> void:
 	await _demo_hold()
 
 	# === STEP 11: repair scrubber and complete Episode 1 ===
+	# Lime in hand, back to the south-corridor scrubber to finish the repair.
 	await _travel_path([
 		"stargate_corridor_east_connector",
 		"east_corridor",
-		"north_corridor",
-		"elevator_north",
-		"elevator_room_floor_1",
-		"hydroponics",
+		"south_corridor",
 	])
 	await _interact_node(_find_node_named("CO2Scrubber"), "scrubber repair")
 	_expect(GameState.scrubber_repaired, "quest: scrubber repaired")
 	_expect(GameState.episode_complete, "quest: Episode 1 complete")
 	await _shot("scrubber_repair")
 	await _demo_hold()
+	_verify_save_round_trip()
 	_report()
+
+
+# After driving the full E1 flow, exercise the SaveManager pipeline:
+# (1) the autosave signal hooks must have written a save during play,
+# (2) the on-disk JSON must include the new schema's systems block with
+#     game_state + game_clock + npc_state populated, and
+# (3) wipe() must clear the primary + every backup so the test cleans
+#     up after itself.
+func _verify_save_round_trip() -> void:
+	_expect(FileAccess.file_exists(SaveManager.save_path),
+		"autosave: primary save.json exists after playthrough")
+	var f: FileAccess = FileAccess.open(SaveManager.save_path, FileAccess.READ)
+	if f == null:
+		_fail("autosave: could not open save.json for read")
+		return
+	var raw: String = f.get_as_text()
+	f.close()
+	var parsed: Variant = JSON.parse_string(raw)
+	_expect(parsed is Dictionary, "autosave: save.json parses as JSON dict")
+	if not (parsed is Dictionary):
+		return
+	var data: Dictionary = parsed
+	_expect(int(data.get("version", 0)) >= 2, "autosave: schema version >= 2")
+	var systems: Variant = data.get("systems", {})
+	_expect(systems is Dictionary and (systems as Dictionary).has("game_state"),
+		"autosave: systems.game_state present")
+	_expect(systems is Dictionary and (systems as Dictionary).has("game_clock"),
+		"autosave: systems.game_clock present")
+	_expect(systems is Dictionary and (systems as Dictionary).has("npc_state"),
+		"autosave: systems.npc_state present")
+	var player: Variant = data.get("player", {})
+	_expect(player is Dictionary and (player as Dictionary).has("pos"),
+		"autosave: player.pos present")
+	# GameClock should have ticked above zero during playthrough.
+	if systems is Dictionary and (systems as Dictionary).has("game_clock"):
+		var gc: Variant = (systems as Dictionary)["game_clock"]
+		if gc is Dictionary:
+			_expect(float((gc as Dictionary).get("elapsed_seconds", 0.0)) > 0.0,
+				"autosave: GameClock.elapsed_seconds > 0 after play")
+	SaveManager.wipe()
+	_expect(not FileAccess.file_exists(SaveManager.save_path),
+		"autosave: wipe() removes primary save")
+	for bak in SaveManager.backup_paths:
+		_expect(not FileAccess.file_exists(bak), "autosave: wipe() removes " + bak)
 
 
 # --- transitions ---------------------------------------------------------
@@ -293,7 +367,7 @@ func _activate_gate(gate: Node, label: String) -> void:
 
 func _wait_until(predicate: Callable, label: String, max_frames: int = 90) -> bool:
 	for i in max_frames:
-		if bool(predicate.call()):
+		if predicate.call():
 			return true
 		await get_tree().process_frame
 	_dismiss_dialogs()

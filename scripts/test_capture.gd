@@ -1,5 +1,7 @@
 extends Node
 
+# @no-save: dev-only screenshot helper; never engaged during real play.
+#
 # Auto-screenshot helper for AI-driven iteration.
 # Enabled when the project is launched with `--cli-arg capture` (or any positional arg
 # containing "capture"). Walks the player a couple metres forward from spawn so the

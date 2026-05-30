@@ -1,5 +1,8 @@
 extends Node
 
+# @no-save: end-of-episode card UI — transient; the underlying
+# episode_complete flag lives on GameState and is what gets persisted.
+#
 # Autoload. Listens for GameState.episode_completed and shows a one-time
 # end-of-episode card. Pauses gameplay; "Return to Title" resets state.
 

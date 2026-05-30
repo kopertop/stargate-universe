@@ -1,5 +1,10 @@
 extends Node
 
+# @no-save: UI overlay only. The persisted state it cares about (pan,
+# zoom, active floor, placed marker) is mirrored to GameState fields
+# (kino_pan_x/y, kino_zoom, kino_active_floor, kino_marker) which DO
+# ride along in the save snapshot via game_state's serialize().
+#
 # Autoload. Owns the Kino Remote overlay UI — a five-page menu styled to
 # match the in-fiction handheld prop: a vertical strip of 5 blue buttons on
 # the left, an oval-styled "screen" panel on the right that shows the
@@ -12,9 +17,21 @@ const PAGE_STATUS: int = 1
 const PAGE_QUEST: int = 2
 const PAGE_LOG: int = 3
 const PAGE_INVENTORY: int = 4
-# Short labels rendered on the 5 blue buttons (Ancient operator typically
-# reads these in an unknown alphabet — for now plain ASCII).
-const PAGE_LABELS: PackedStringArray = ["MAP", "STATUS", "QUEST", "LOG", "INV"]
+const PAGE_SHIP_SYSTEMS: int = 5
+const PAGE_KINO_CONTROL: int = 6
+# Short labels rendered on the nav buttons (Ancient operator typically
+# reads these in an unknown alphabet — for now plain ASCII). Indexed by PAGE_*.
+const PAGE_LABELS: PackedStringArray = ["MAP", "STATUS", "QUEST", "LOG", "INV", "SYSTEMS", "KINO"]
+
+# Per-surface menus. The handheld Kino is the player's personal device (map +
+# personal stats/quest/log/inventory). A wall-mounted control terminal is the
+# SHIP's interface — it shares the map but swaps the personal pages for ship
+# systems, and never exposes inventory/personal stats. Adding a new console
+# variant later is just a new page-set constant.
+const HANDHELD_PAGES: Array[int] = [PAGE_MAP, PAGE_STATUS, PAGE_QUEST, PAGE_LOG, PAGE_INVENTORY, PAGE_KINO_CONTROL]
+const CONSOLE_PAGES: Array[int] = [PAGE_MAP, PAGE_SHIP_SYSTEMS]
+const HANDHELD_TITLE: String = "KINO REMOTE — ANCIENT INTERFACE"
+const CONSOLE_TITLE: String = "DESTINY CONTROL TERMINAL"
 
 # Map projection padding: leaves a small margin around each deck's bounding box
 # so rooms at the edge don't render flush against the panel border.
@@ -39,6 +56,16 @@ const MAP_GRID_PITCH: float = 50.0
 const ROOM_OUTLINE_COLOR: Color = Color(0.55, 0.85, 1.0, 0.95)
 const ROOM_FILL_COLOR: Color = Color(0.20, 0.55, 0.95, 0.10)
 const ROOM_OUTLINE_CURRENT_COLOR: Color = Color(0.80, 0.95, 1.0, 1.0)
+# Quest-target room — amber alert outline + warmer fill so the player can
+# see at a glance WHICH room the current objective is in (e.g. the jammed
+# door the control terminal just flagged).
+const ROOM_OUTLINE_TARGET_COLOR: Color = Color(1.0, 0.62, 0.25, 1.0)
+const ROOM_FILL_TARGET_COLOR: Color = Color(1.0, 0.45, 0.18, 0.16)
+# Breach-beat colours: hot alarm red for the trap door + flooded rooms, and a
+# red↔grey pulse for the jammed (half-open) door that's the real objective.
+const BREACH_RED: Color = Color(1.0, 0.13, 0.10)
+const BREACH_JAMMED_GREY: Color = Color(0.55, 0.56, 0.60)
+const BREACH_DOOR_CLICK_RADIUS: float = 46.0
 const PIP_OPEN_COLOR: Color = Color(0.55, 0.90, 1.0, 1.0)
 const PIP_TRAVERSED_COLOR: Color = Color(0.45, 0.65, 0.85, 0.6)
 const PIP_LOCKED_COLOR: Color = Color(1.0, 0.65, 0.20, 1.0)
@@ -53,6 +80,7 @@ const ZOOM_DEFAULT: float = 1.0
 var _layer: CanvasLayer
 var _root: Control
 var _screen: PanelContainer
+var _header_label: Label = null
 var _pages: Array[Control] = []
 var _buttons: Array[Button] = []
 var _active_page: int = PAGE_MAP
@@ -72,6 +100,28 @@ var _is_panning: bool = false
 var _pan_last_mouse: Vector2 = Vector2.ZERO
 # 0.5–2.5 multiplier applied to the AABB→viewport scale.
 var _zoom: float = ZOOM_DEFAULT
+# True when the panel was opened from a wall-mounted control terminal (vs the
+# handheld Kino on Tab). The console has the ship's own schematic, so it
+# shows EVERY room on the active floor; the handheld keeps fog-of-war and
+# only shows discovered rooms. Reset on close.
+var _console_mode: bool = false
+
+# --- Blocked-door beat -------------------------------------------------------
+# A scripted, map-driven sequence run from the control terminal: Scott flags a
+# sealed door (pulsing red on the map); the player clicks it to OPEN (connected
+# rooms flood red, Scott panics); clicks again to CLOSE; then a different room
+# pulses red↔grey to reveal the jammed half-open door that's the real seal
+# objective. Phases: 0 = sealed (clickable), 1 = open/flooding (clickable),
+# 2 = resolved (jammed room revealed, no longer clickable).
+var _breach_active: bool = false
+var _breach_phase: int = 0
+var _breach_time: float = 0.0
+var _breach_trap_from: String = ""
+var _breach_trap_to: String = ""
+var _breach_jammed_room: String = ""
+var _breach_flood_rooms: Array = []
+var _breach_klaxon_timer: Timer = null
+
 # Which floor is currently shown. -1 means "track GameState.current_room_id";
 # any other value overrides via the level-switcher bar.
 var _active_floor_override: int = -1
@@ -103,6 +153,10 @@ func _ready() -> void:
 	GameState.oxygen_changed.connect(_on_status_changed)
 	GameState.power_changed.connect(_on_status_changed)
 	GameState.hull_changed.connect(_on_status_changed)
+	# Phase G: keep the System Status scrubber percent in sync with the decay
+	# loop while the remote is open — without this, the readout staled the
+	# moment the panel was opened mid-decay.
+	GameState.scrubber_level_changed.connect(_on_scrubber_level_changed)
 
 
 func _on_room_discovered(_room_id: String) -> void:
@@ -118,6 +172,13 @@ func _on_door_traversed(_key: String) -> void:
 func _on_status_changed(_value: float) -> void:
 	if _open:
 		_refresh_status_readouts()
+
+
+func _on_scrubber_level_changed(_level: float) -> void:
+	# Refresh the System Status page's scrubber percent while the remote is open
+	# so the player sees decay tick down (and top-ups tick back up) live.
+	if _open:
+		_refresh_ship_systems()
 
 
 func _on_current_room_changed(_room_id: String) -> void:
@@ -165,12 +226,12 @@ func _init_ui() -> void:
 	vbox.add_theme_constant_override("separation", 10)
 	frame.add_child(vbox)
 
-	var header: Label = Label.new()
-	header.text = "KINO REMOTE — ANCIENT INTERFACE"
-	header.add_theme_color_override("font_color", Color(0.55, 0.85, 1.0, 1))
-	header.add_theme_font_size_override("font_size", 20)
-	header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(header)
+	_header_label = Label.new()
+	_header_label.text = HANDHELD_TITLE
+	_header_label.add_theme_color_override("font_color", Color(0.55, 0.85, 1.0, 1))
+	_header_label.add_theme_font_size_override("font_size", 20)
+	_header_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(_header_label)
 
 	# Body row: [button strip] | [oval screen]
 	var body: HBoxContainer = HBoxContainer.new()
@@ -200,6 +261,7 @@ func _init_ui() -> void:
 		b.add_theme_stylebox_override("pressed", _button_stylebox(true))
 		b.add_theme_stylebox_override("focus", _button_stylebox(true))
 		b.pressed.connect(_on_page_button.bind(i))
+		Audio.attach_ui_hover(b)
 		btn_col.add_child(b)
 		_buttons.append(b)
 
@@ -232,6 +294,8 @@ func _init_ui() -> void:
 	_build_quest_page(page_stack)
 	_build_log_page(page_stack)
 	_build_inventory_page(page_stack)
+	_build_ship_systems_page(page_stack)
+	_build_kino_control_page(page_stack)
 
 	var footer: Label = Label.new()
 	footer.text = "[Tab] Close  •  [Esc] Resume"
@@ -381,8 +445,81 @@ func _build_inventory_page(parent: Control) -> void:
 	inv.name = "InventoryBox"
 	page.add_child(inv)
 
+# Console-only page: ship-level systems (power / O2 / hull) and a life-support
+# diagnostics block. Distinct from the personal STATUS page (Eli's vitals) — a
+# control terminal reads the ship, not the crewman holding it.
+func _build_ship_systems_page(parent: Control) -> void:
+	var page: VBoxContainer = VBoxContainer.new()
+	page.name = "ShipSystems"
+	page.anchor_right = 1.0
+	page.anchor_bottom = 1.0
+	page.add_theme_constant_override("separation", 10)
+	parent.add_child(page)
+	_pages.append(page)
+	_label(page, "SHIP SYSTEMS", 16, Color(0.55, 0.85, 1.0, 1.0))
+	_label(page, "  Main power:  —", 14, Color.WHITE).name = "SysPower"
+	_label(page, "  Atmosphere O2:  —", 14, Color.WHITE).name = "SysOxygen"
+	_label(page, "  Hull integrity:  —", 14, Color.WHITE).name = "SysHull"
+	page.add_child(HSeparator.new())
+	_label(page, "LIFE SUPPORT", 16, Color(0.55, 0.85, 1.0, 1.0))
+	_label(page, "  Exposed section:  —", 14, Color.WHITE).name = "SysBreach"
+	_label(page, "  CO2 scrubber:  —", 14, Color.WHITE).name = "SysScrubber"
+
+
+# Handheld Kino fleet control. Available once you hold an orb or have a Kino
+# deployed in the field (see _page_available). Lets you launch a new Kino and
+# take control of ANY live Kino at any time — including ones left on the planet.
+# The action list is rebuilt each refresh since the deployed set changes.
+func _build_kino_control_page(parent: Control) -> void:
+	var page: VBoxContainer = VBoxContainer.new()
+	page.name = "KinoControl"
+	page.anchor_right = 1.0
+	page.anchor_bottom = 1.0
+	page.add_theme_constant_override("separation", 12)
+	parent.add_child(page)
+	_pages.append(page)
+	_label(page, "KINO CONTROL", 16, Color(0.55, 0.85, 1.0, 1.0))
+	var desc: Label = _label(page, "—", 14, Color(0.85, 0.92, 1.0, 0.95))
+	desc.name = "KinoControlDesc"
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	page.add_child(HSeparator.new())
+	_label(page, "  Kinos in hand:  —", 14, Color.WHITE).name = "KinoControlCount"
+	var list: VBoxContainer = VBoxContainer.new()
+	list.name = "KinoActionList"
+	list.add_theme_constant_override("separation", 8)
+	page.add_child(list)
+
+
+func _kino_action_button(text: String, primary: bool) -> Button:
+	var b: Button = Button.new()
+	b.text = text
+	b.custom_minimum_size = Vector2(300, 48)
+	b.focus_mode = Control.FOCUS_NONE
+	b.add_theme_color_override("font_color", Color.WHITE)
+	b.add_theme_color_override("font_hover_color", Color.WHITE)
+	b.add_theme_color_override("font_pressed_color", Color.WHITE)
+	b.add_theme_font_size_override("font_size", 16)
+	b.add_theme_stylebox_override("normal", _button_stylebox(primary))
+	b.add_theme_stylebox_override("hover", _button_stylebox_hover())
+	b.add_theme_stylebox_override("pressed", _button_stylebox(true))
+	Audio.attach_ui_hover(b)
+	return b
+
+
+# Friendly label for a deployed Kino's scene path.
+func _scene_short_name(scene_path: String) -> String:
+	if scene_path.ends_with("planet.tscn"):
+		return "Planet"
+	if scene_path.ends_with("gate_room.tscn"):
+		return "Gate Room"
+	if scene_path.ends_with("room.tscn"):
+		return "Ship"
+	return scene_path.get_file().get_basename().capitalize()
+
 
 func _on_page_button(idx: int) -> void:
+	Audio.play("res://sounds/menu_click.ogg")
 	_select_page(idx)
 
 
@@ -402,37 +539,140 @@ func _label(parent: Node, text: String, size: int, color: Color) -> Label:
 	return l
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("kino_remote") and GameState.kino_acquired:
-		_toggle()
-		get_viewport().set_input_as_handled()
+	if event.is_action_pressed("kino_remote"):
+		# Tab always CLOSES an open surface — including a console-opened map the
+		# player can't reopen yet (no handheld Kino). Only OPENING via Tab is
+		# gated on kino_acquired, so a diegetic console map isn't a soft-lock.
+		if _open:
+			_close()
+			get_viewport().set_input_as_handled()
+		elif GameState.kino_acquired:
+			# Tab = handheld Kino: fog-of-war, only discovered rooms.
+			_console_mode = false
+			_open_remote()
+			get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("pause") and _open:
 		_close()
 		get_viewport().set_input_as_handled()
 
-func _toggle() -> void:
-	if _open:
-		_close()
-	else:
-		_open_remote()
+# Public open API for external callers (control_console.gd). The Tab-key
+# path keeps the kino_acquired gate; this entrypoint lets diegetic in-world
+# consoles open
+# the same surface even before the player has picked up the handheld remote,
+# since the menu represents the console's interface in that case rather than
+# the player's pocket prop.
+func open_remote(force: bool = false, console_mode: bool = false) -> void:
+	if not force and not GameState.kino_acquired:
+		return
+	_console_mode = console_mode
+	_open_remote()
+
 
 func _open_remote() -> void:
 	if not _initialized:
 		_init_ui()
+	_load_persisted_ui_state()
 	_open = true
 	_root.visible = true
+	_apply_surface()
 	_refresh()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	get_tree().paused = true
+	Audio.play("res://sounds/menu_open.ogg")
+
+
+# Configure the menu for the active surface: the handheld Kino (personal device)
+# vs a wall-mounted control terminal (ship interface). Sets the title, shows
+# only that surface's nav buttons, and lands on a valid page. Driven by
+# _console_mode, which open_remote() set from its console_mode argument.
+func _apply_surface() -> void:
+	var pages: Array[int] = CONSOLE_PAGES if _console_mode else HANDHELD_PAGES
+	if _header_label != null:
+		_header_label.text = CONSOLE_TITLE if _console_mode else HANDHELD_TITLE
+	for i in range(_buttons.size()):
+		_buttons[i].visible = pages.has(i) and _page_available(i)
+	# Keep the current page if it belongs to this surface AND is available;
+	# otherwise fall back to the surface's first page (MAP today).
+	var landing: int = _active_page if (pages.has(_active_page) and _page_available(_active_page)) else pages[0]
+	_select_page(landing)
+
+
+# Conditional page gating on top of the per-surface page list. Most pages are
+# always available; the Kino Control page appears as soon as you have a Kino to
+# work with — an orb in hand to launch, OR a live Kino deployed in the field
+# (which you can re-take control of at any time, from any scene).
+func _page_available(page: int) -> bool:
+	if page == PAGE_KINO_CONTROL:
+		return GameState.kino_orbs > 0 or not GameState.deployed_kinos.is_empty()
+	return true
+
+# Public close — mirrors open_remote() so external callers (control_console.gd,
+# playthrough_runner.gd) can dismiss the menu without reaching into the private
+# _close() path.
+func close_remote() -> void:
+	if _open:
+		_close()
+
 
 func _close() -> void:
 	_open = false
+	_console_mode = false
+	# Tear down any in-progress breach beat so it doesn't linger / keep the
+	# klaxon looping after the panel closes.
+	if _breach_active:
+		_breach_active = false
+		_stop_breach_klaxon()
+		_clear_breach_caption()
+	_persist_ui_state()
 	if _root != null:
 		_root.visible = false
 	get_tree().paused = false
+	Audio.play("res://sounds/menu_close.ogg")
 	# Reset mouselook through view.gd — closing the Kino doesn't restore
 	# Input.mouse_mode on its own, so RMB-held-during-open leaves the cursor
 	# visible until the next RMB tap.
 	GameState.kino_closed.emit()
+
+
+# Mirror current UI state into GameState so it rides along in the next
+# autosave. Called from _close() and from the marker placement path so a
+# dropped pin survives a sudden quit followed by Continue.
+func _persist_ui_state() -> void:
+	GameState.kino_pan_x = _pan_offset.x
+	GameState.kino_pan_y = _pan_offset.y
+	GameState.kino_zoom = _zoom
+	GameState.kino_active_floor = _active_floor_override
+	if _placed_marker is Dictionary:
+		var m: Dictionary = _placed_marker
+		var world: Variant = m.get("world", null)
+		if world is Vector2:
+			GameState.kino_marker = {
+				"floor": int(m.get("floor", 0)),
+				"world_x": (world as Vector2).x,
+				"world_y": (world as Vector2).y,
+			}
+		else:
+			GameState.kino_marker = {}
+	else:
+		GameState.kino_marker = {}
+
+
+# Read GameState fields into our locals. Called from _open_remote so the
+# user sees the same pan / zoom / marker they left the previous session
+# on. Defaults are safe if GameState carries the initial values.
+func _load_persisted_ui_state() -> void:
+	_pan_offset = Vector2(GameState.kino_pan_x, GameState.kino_pan_y)
+	_zoom = GameState.kino_zoom if GameState.kino_zoom > 0.0 else ZOOM_DEFAULT
+	_active_floor_override = GameState.kino_active_floor
+	var raw: Variant = GameState.kino_marker
+	if raw is Dictionary and (raw as Dictionary).has("world_x"):
+		var d: Dictionary = raw
+		_placed_marker = {
+			"floor": int(d.get("floor", 0)),
+			"world": Vector2(float(d.get("world_x", 0.0)), float(d.get("world_y", 0.0))),
+		}
+	else:
+		_placed_marker = null
 
 func _refresh() -> void:
 	_refresh_map()
@@ -440,6 +680,8 @@ func _refresh() -> void:
 	_refresh_quest()
 	_refresh_log()
 	_refresh_inventory()
+	_refresh_ship_systems()
+	_refresh_kino_control()
 
 # Rebuild the entire map page: dark backdrop, HUD chrome (title, deck label,
 # zoom slider, status readouts), and a single MapView Control whose _draw
@@ -624,6 +866,7 @@ func _rebuild_level_bar() -> void:
 		b.add_theme_stylebox_override("normal", _button_stylebox(active))
 		b.add_theme_stylebox_override("hover", _button_stylebox_hover())
 		b.pressed.connect(_on_level_button.bind(int(f)))
+		Audio.attach_ui_hover(b)
 		_level_bar.add_child(b)
 
 
@@ -671,10 +914,32 @@ func _active_route_target() -> String:
 	return target
 
 
+# Room IDs the map should render. Handheld Kino → fog-of-war (only
+# discovered). Console mode → every room on the active floor (the ship's
+# own schematic). Returned as a plain Array of id strings.
+func _visible_room_ids() -> Array:
+	if not _console_mode:
+		return GameState.rooms_discovered
+	var ids: Array = []
+	var floor_id: int = _active_floor()
+	for r in ShipLayout.all_rooms():
+		if int(r.get("floor", 0)) == floor_id:
+			ids.append(String(r.get("id", "")))
+	return ids
+
+
+func _is_room_visible(room_id: String) -> bool:
+	if not _console_mode:
+		return GameState.rooms_discovered.has(room_id)
+	var r: Dictionary = ShipLayout.room(room_id)
+	return not r.is_empty() and int(r.get("floor", 0)) == _active_floor()
+
+
 # Compute ONE transform for the active floor, filling the entire MapView
-# rect. AABB is taken over discovered rooms on that floor only, so the
-# fit auto-tightens as the player explores. `_pan_offset` and `_zoom`
-# layer on top so click-drag + wheel-zoom move the visible window.
+# rect. AABB is taken over visible rooms on that floor only, so the
+# fit auto-tightens as the player explores (or covers the whole floor in
+# console mode). `_pan_offset` and `_zoom` layer on top so click-drag +
+# wheel-zoom move the visible window.
 func _compute_deck_transforms() -> void:
 	_deck_transform = {}
 	if _map_view == null:
@@ -685,7 +950,7 @@ func _compute_deck_transforms() -> void:
 	var floor_id: int = _active_floor()
 	var aabb: Rect2 = Rect2()
 	var has_any: bool = false
-	for room_id in GameState.rooms_discovered:
+	for room_id in _visible_room_ids():
 		var room: Dictionary = ShipLayout.room(room_id)
 		if room.is_empty() or int(room.get("floor", 0)) != floor_id:
 			continue
@@ -788,9 +1053,172 @@ func _on_map_view_draw(canvas: CanvasItem) -> void:
 	_draw_quest_markers(canvas)
 	_draw_placed_marker(canvas)
 	_draw_route(canvas)
+	# Blocked-door beat overlay (pulsing trap door, flooded rooms, jammed room).
+	_draw_breach_overlay(canvas)
 	# Outer chrome.
 	_draw_corner_brackets(canvas, _map_view.size)
 	_draw_north_arrow(canvas, _map_view.size)
+
+
+# Drives the breach-beat pulse animation. Only ticks while the beat is live;
+# kino_remote runs PROCESS_MODE_ALWAYS so this animates under the paused map.
+func _process(delta: float) -> void:
+	if _breach_active:
+		_breach_time += delta
+		if _map_view != null:
+			_map_view.queue_redraw()
+
+
+# Entry point for the control-terminal blocked-door beat. trap_from/trap_to
+# name the sealed door (its on-map midpoint becomes the click target);
+# flood_rooms pulse red while it's open; jammed_room pulses red↔grey once it's
+# shut, revealing the real objective.
+func begin_breach_beat(trap_from: String, trap_to: String, jammed_room: String, flood_rooms: Array) -> void:
+	_breach_active = true
+	_breach_phase = 0
+	_breach_time = 0.0
+	_breach_trap_from = trap_from
+	_breach_trap_to = trap_to
+	_breach_jammed_room = jammed_room
+	_breach_flood_rooms = flood_rooms
+	Audio.play("res://sounds/radio_click.ogg")
+	# Caption rendered on the map panel (dialogue_shown would be hidden behind
+	# the full-screen map). add_log keeps it in the journal too.
+	_set_breach_caption("Lt Scott [radio]: Eli — we found a sealed door. Can you open it from there?")
+	GameState.add_log("Lt Scott (radio): We found a sealed door — can you open it from there?")
+	if _map_view != null:
+		_map_view.queue_redraw()
+
+
+# Screen-space midpoint of the trap door (between its two rooms' centres). The
+# click target is a generous radius around this point.
+func _breach_door_px() -> Variant:
+	var a: Variant = _room_to_px(_breach_trap_from)
+	var b: Variant = _room_to_px(_breach_trap_to)
+	if a is Vector2 and b is Vector2:
+		return ((a as Vector2) + (b as Vector2)) * 0.5
+	return null
+
+
+func _is_click_on_breach_door(pos: Vector2) -> bool:
+	var dp: Variant = _breach_door_px()
+	return dp is Vector2 and pos.distance_to(dp) <= BREACH_DOOR_CLICK_RADIUS
+
+
+# Click handler: phase 0 → open (flood + panic), phase 1 → close (reveal jammed).
+func _advance_breach() -> void:
+	if _breach_phase == 0:
+		_breach_phase = 1
+		_start_breach_klaxon()
+		Audio.play("res://sounds/radio_click.ogg")
+		_set_breach_caption("Lt Scott [radio]: —! CLOSE IT! CLOSE IT, ELI, CLOSE IT!")
+		GameState.add_log("Lt Scott (radio): CLOSE IT! CLOSE IT!")
+	elif _breach_phase == 1:
+		_breach_phase = 2
+		_stop_breach_klaxon()
+		Audio.play("res://sounds/radio_off.ogg")
+		_set_breach_caption("Lt Scott [radio]: …okay. That section's a furnace — leave it. But look, south of you — that door's only half shut. It's jammed. THAT's venting our air. Get down there and force it closed.")
+		GameState.add_log("Lt Scott (radio): Jammed door, half-open, in the Damaged Section to the south. Force it shut.")
+		GameState.blocked_door_beat_done = true
+	if _map_view != null:
+		_map_view.queue_redraw()
+
+
+func _start_breach_klaxon() -> void:
+	if _breach_klaxon_timer == null:
+		_breach_klaxon_timer = Timer.new()
+		_breach_klaxon_timer.process_mode = Node.PROCESS_MODE_ALWAYS
+		_breach_klaxon_timer.wait_time = 0.85
+		_breach_klaxon_timer.timeout.connect(_emit_breach_klaxon)
+		add_child(_breach_klaxon_timer)
+	_emit_breach_klaxon()
+	_breach_klaxon_timer.start()
+
+
+# Dedicated loud player — the shared Audio pool clamps at -10 dB, too quiet
+# for an alarm meant to convey panic. Stream is preloaded (not load() per
+# tick) since this fires every 0.85 s while the klaxon timer runs.
+const BREACH_KLAXON_STREAM: AudioStream = preload("res://sounds/klaxon.ogg")
+
+func _emit_breach_klaxon() -> void:
+	var p: AudioStreamPlayer = AudioStreamPlayer.new()
+	p.stream = BREACH_KLAXON_STREAM
+	p.bus = "SFX"
+	p.volume_db = 6.0
+	p.process_mode = Node.PROCESS_MODE_ALWAYS
+	p.finished.connect(p.queue_free)
+	add_child(p)
+	p.play()
+
+
+func _stop_breach_klaxon() -> void:
+	if _breach_klaxon_timer != null:
+		_breach_klaxon_timer.stop()
+
+
+# Scott's breach lines render as a caption on the map panel itself —
+# dialogue_shown would draw behind the full-screen map and never be seen.
+func _set_breach_caption(text: String) -> void:
+	if _root == null:
+		return
+	var label: Label = _root.get_node_or_null("BreachCaption") as Label
+	if label == null:
+		label = Label.new()
+		label.name = "BreachCaption"
+		label.anchor_left = 0.0
+		label.anchor_right = 1.0
+		label.offset_left = 150
+		label.offset_right = -150
+		label.offset_top = 150
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		label.add_theme_font_size_override("font_size", 19)
+		label.add_theme_color_override("font_color", Color(1.0, 0.84, 0.78))
+		label.add_theme_color_override("font_outline_color", Color(0.15, 0.0, 0.0))
+		label.add_theme_constant_override("outline_size", 6)
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_root.add_child(label)
+	label.text = text
+
+
+func _clear_breach_caption() -> void:
+	if _root == null:
+		return
+	var label: Node = _root.get_node_or_null("BreachCaption")
+	if label != null:
+		label.queue_free()
+
+
+func _draw_breach_overlay(canvas: CanvasItem) -> void:
+	if not _breach_active:
+		return
+	var pulse: float = 0.5 + 0.5 * sin(_breach_time * 6.0)
+	# Phase 1: connected rooms flood red.
+	if _breach_phase == 1:
+		for rid in _breach_flood_rooms:
+			var rr: Variant = _room_rect_px(rid)
+			if rr is Rect2:
+				var fill: Color = BREACH_RED
+				fill.a = 0.22 + 0.40 * pulse
+				canvas.draw_rect(rr, fill, true)
+				canvas.draw_rect(rr, Color(1.0, 0.35, 0.25, 0.95), false, 2.5)
+	# Phase 2: jammed room pulses red↔grey — "half shut, jammed".
+	if _breach_phase == 2:
+		var jr: Variant = _room_rect_px(_breach_jammed_room)
+		if jr is Rect2:
+			var jfill: Color = BREACH_RED.lerp(BREACH_JAMMED_GREY, pulse)
+			jfill.a = 0.38
+			canvas.draw_rect(jr, jfill, true)
+			var jline: Color = Color(1.0, 0.35, 0.25, 0.95).lerp(Color(0.65, 0.66, 0.70, 0.9), pulse)
+			canvas.draw_rect(jr, jline, false, 3.0)
+	# Trap door marker — pulsing red ring at the door midpoint (phases 0+1).
+	if _breach_phase <= 1:
+		var dp: Variant = _breach_door_px()
+		if dp is Vector2:
+			var p: Vector2 = dp
+			var radius: float = 9.0 + 6.0 * pulse
+			canvas.draw_circle(p, radius, Color(1.0, 0.15, 0.12, 0.45 + 0.45 * pulse))
+			canvas.draw_arc(p, radius + 5.0, 0.0, TAU, 28, Color(1.0, 0.45, 0.3, 0.95), 2.0)
 
 
 # Faint blueprint grid inside one room's rect. Pitch = 18px in screen space —
@@ -943,17 +1371,25 @@ func _draw_elevator_glyph(canvas: CanvasItem, centre: Vector2, radius: float, co
 # ghosts for the active deck. Drawn in 3 passes so pips and glyphs land on
 # top of room fills, and connection lines sit behind pips.
 func _draw_deck_geometry(canvas: CanvasItem, floor_id: int, _rect: Rect2) -> void:
-	for room_id in GameState.rooms_discovered:
+	for room_id in _visible_room_ids():
 		var room: Dictionary = ShipLayout.room(room_id)
 		if room.is_empty() or int(room.get("floor", 0)) != floor_id:
 			continue
 		_draw_room_outline(canvas, room)
 	_draw_connection_lines(canvas, floor_id)
-	for room_id in GameState.rooms_discovered:
+	for room_id in _visible_room_ids():
 		var room: Dictionary = ShipLayout.room(room_id)
 		if room.is_empty() or int(room.get("floor", 0)) != floor_id:
 			continue
 		_draw_door_pips_for_room(canvas, room)
+
+
+# True when this room holds the active quest target — drives the amber
+# alert highlight so the problem room (jammed door, scrubber, etc.) stands
+# out from ordinary discovered rooms.
+func _is_quest_target_room(room_id: String) -> bool:
+	var q: Dictionary = GameState.quest_target()
+	return String(q.get("room", "")) == room_id
 
 
 func _draw_room_outline(canvas: CanvasItem, room: Dictionary) -> void:
@@ -963,13 +1399,20 @@ func _draw_room_outline(canvas: CanvasItem, room: Dictionary) -> void:
 		return
 	var rect: Rect2 = rect_var
 	var is_current: bool = (room_id == GameState.current_room_id)
-	var outline: Color = ROOM_OUTLINE_CURRENT_COLOR if is_current else ROOM_OUTLINE_COLOR
-	canvas.draw_rect(rect, ROOM_FILL_COLOR, true)
+	var is_target: bool = _is_quest_target_room(room_id)
+	var outline: Color = ROOM_OUTLINE_COLOR
+	var fill: Color = ROOM_FILL_COLOR
+	if is_current:
+		outline = ROOM_OUTLINE_CURRENT_COLOR
+	elif is_target:
+		outline = ROOM_OUTLINE_TARGET_COLOR
+		fill = ROOM_FILL_TARGET_COLOR
+	canvas.draw_rect(rect, fill, true)
 	# Faint blueprint grid clipped to this room's interior. Pitch in JSON
 	# units (100) projected to pixels so grid spacing stays consistent across
 	# rooms regardless of how zoom and AABB-fit scale individual rects.
 	_draw_room_grid(canvas, rect)
-	canvas.draw_rect(rect, outline, false, (2.5 if is_current else 1.5))
+	canvas.draw_rect(rect, outline, false, (2.5 if (is_current or is_target) else 1.5))
 	# Room-type glyph centred in the rect (stargate / console / home / etc.).
 	_draw_room_glyph(canvas, room, rect, is_current)
 	# Name label — uppercase + multi-line auto-wrap when the room is narrow,
@@ -1012,14 +1455,14 @@ func _draw_room_outline(canvas: CanvasItem, room: Dictionary) -> void:
 # Helps the player see topology before they walk through the door.
 func _draw_connection_lines(canvas: CanvasItem, floor_id: int) -> void:
 	var seen: Dictionary = {}
-	for room_id in GameState.rooms_discovered:
+	for room_id in _visible_room_ids():
 		var room: Dictionary = ShipLayout.room(room_id)
 		if room.is_empty() or int(room.get("floor", 0)) != floor_id:
 			continue
 		for edge in ShipLayout.outgoing_edges(room_id):
 			var e: Dictionary = edge
 			var to_id: String = String(e.get("to", ""))
-			if to_id == "" or not GameState.rooms_discovered.has(to_id):
+			if to_id == "" or not _is_room_visible(to_id):
 				continue
 			var key: String = GameState.door_key(room_id, to_id)
 			if seen.has(key):
@@ -1069,7 +1512,7 @@ func _draw_door_pips_for_room(canvas: CanvasItem, room: Dictionary) -> void:
 # traversed > open.
 func _pip_state(source_id: String, target_id: String, dir: String) -> String:
 	var target_room: Dictionary = ShipLayout.room(target_id)
-	if not target_room.is_empty() and bool(target_room.get("locked", false)):
+	if not target_room.is_empty() and target_room.get("locked", false):
 		return "hardlock"
 	if dir == "elevator" and not GameState.elevator_repaired:
 		return "lock"
@@ -1155,6 +1598,10 @@ func _draw_player_marker(canvas: CanvasItem) -> void:
 
 
 func _draw_quest_markers(canvas: CanvasItem) -> void:
+	# Suppressed during the breach beat — the red trap door + flooded rooms
+	# are the focus; the quest diamond/route would compete with them.
+	if _breach_active:
+		return
 	var quest: Dictionary = GameState.quest_target()
 	var quest_room: String = String(quest.get("room", ""))
 	if quest_room != "":
@@ -1164,6 +1611,9 @@ func _draw_quest_markers(canvas: CanvasItem) -> void:
 
 
 func _draw_route(canvas: CanvasItem) -> void:
+	# No dotted route during the breach beat (see _draw_quest_markers).
+	if _breach_active:
+		return
 	var target_id: String = _active_route_target()
 	if target_id == "":
 		return
@@ -1246,6 +1696,11 @@ func _handle_mouse_button(mb: InputEventMouseButton) -> void:
 	match mb.button_index:
 		MOUSE_BUTTON_LEFT:
 			if mb.pressed:
+				# During the breach beat, a click on the trap door toggles it
+				# (open ↔ close) instead of starting a pan drag.
+				if _breach_active and _breach_phase <= 1 and _is_click_on_breach_door(mb.position):
+					_advance_breach()
+					return
 				_is_panning = true
 				_pan_last_mouse = mb.position
 			else:
@@ -1299,9 +1754,11 @@ func _place_marker_at(screen_pt: Vector2) -> void:
 			var existing_px_var: Variant = _world_to_px(floor_id, m["world"])
 			if existing_px_var is Vector2 and (existing_px_var as Vector2).distance_to(screen_pt) < 14.0:
 				_placed_marker = null
+				_persist_ui_state()
 				_map_view.queue_redraw()
 				return
 	_placed_marker = {"floor": floor_id, "world": world_var}
+	_persist_ui_state()
 	if _map_view != null:
 		_map_view.queue_redraw()
 
@@ -1378,6 +1835,44 @@ func _refresh_status() -> void:
 		else:
 			scan.text = "  Planet scan: no active offworld scan"
 
+func _refresh_ship_systems() -> void:
+	var page: Node = _pages[PAGE_SHIP_SYSTEMS]
+	var power: Label = page.get_node_or_null("SysPower") as Label
+	var oxygen: Label = page.get_node_or_null("SysOxygen") as Label
+	var hull: Label = page.get_node_or_null("SysHull") as Label
+	var breach: Label = page.get_node_or_null("SysBreach") as Label
+	var scrubber: Label = page.get_node_or_null("SysScrubber") as Label
+	if power != null:
+		power.text = "  Main power:  %s" % _format_status("", GameState.power_percent).strip_edges()
+	if oxygen != null:
+		oxygen.text = "  Atmosphere O2:  %d%%" % int(GameState.oxygen)
+	if hull != null:
+		hull.text = "  Hull integrity:  %s" % _format_status("", GameState.hull_percent).strip_edges()
+	if breach != null:
+		if not GameState.air_crisis_started:
+			breach.text = "  Exposed section:  nominal"
+		elif GameState.breaches_sealed.is_empty():
+			breach.text = "  Exposed section:  VENTING — seal required"
+		else:
+			breach.text = "  Exposed section:  sealed"
+	if scrubber != null:
+		if GameState.scrubber_repaired:
+			# Phase G: include the live lime-charge percentage so the player can
+			# see at a glance when a top-up run is due.
+			var pct: int = int(round(GameState.scrubber_level))
+			if pct <= 0:
+				scrubber.text = "  CO2 scrubber:  EMPTY — lime needed"
+			elif pct <= int(GameState.SCRUBBER_WARN_PERCENT):
+				scrubber.text = "  CO2 scrubber:  low (%d%%)" % pct
+			else:
+				scrubber.text = "  CO2 scrubber:  online (%d%%)" % pct
+		elif GameState.scrubber_diagnosed:
+			scrubber.text = "  CO2 scrubber:  FAULT — lime required"
+		elif GameState.air_crisis_started:
+			scrubber.text = "  CO2 scrubber:  FAULT detected"
+		else:
+			scrubber.text = "  CO2 scrubber:  nominal"
+
 func _refresh_quest() -> void:
 	var page: Node = _pages[PAGE_QUEST]
 	var cur: Label = page.get_node_or_null("CurrentObjective") as Label
@@ -1411,6 +1906,187 @@ func _refresh_log() -> void:
 	entries.reverse()
 	for line in entries:
 		_label(box, "  • " + line, 13, Color(0.85, 0.92, 1.0, 0.9))
+
+
+const KinoDroneScript: Script = preload("res://scripts/kino_drone.gd")
+const KINO_LAUNCH_HEIGHT: float = 1.6   # spawn the orb above the player's hands
+
+func _refresh_kino_control() -> void:
+	var page: Node = _pages[PAGE_KINO_CONTROL]
+	var desc: Label = page.get_node_or_null("KinoControlDesc") as Label
+	var count: Label = page.get_node_or_null("KinoControlCount") as Label
+	var list: VBoxContainer = page.get_node_or_null("KinoActionList") as VBoxContainer
+	if desc != null:
+		desc.text = "Launch a Kino to scout, or take control of any Kino you've left out in the field — wherever it is."
+	if count != null:
+		count.text = "  Kinos in hand:  %d / %d" % [GameState.kino_orbs, GameState.KINO_ORB_MAX]
+	if list == null:
+		return
+	for c in list.get_children():
+		c.queue_free()
+	if GameState.kino_orbs > 0:
+		var launch: Button = _kino_action_button("LAUNCH NEW KINO", true)
+		launch.pressed.connect(_on_launch_kino)
+		list.add_child(launch)
+	_label(list, "  Live Kinos:", 13, Color(0.55, 0.85, 1.0, 0.85))
+	if GameState.deployed_kinos.is_empty():
+		_label(list, "    (none deployed)", 13, Color(0.7, 0.75, 0.85, 0.8))
+	else:
+		for i in range(GameState.deployed_kinos.size()):
+			var k: Dictionary = GameState.deployed_kinos[i]
+			var loc: String = _scene_short_name(String(k.get("scene", "")))
+			var b: Button = _kino_action_button("PILOT KINO %d  —  %s" % [i + 1, loc], false)
+			b.pressed.connect(_on_pilot_deployed.bind(i))
+			list.add_child(b)
+
+
+# Spend a carried orb and dive into a fresh Kino, launched right where the player
+# stands (Eli stays put, holding the remote). In the gate room the player flies
+# it through the active Stargate to reach the planet.
+func _on_launch_kino() -> void:
+	if GameState.kino_orbs <= 0:
+		return
+	if not GameState.consume_kino_orb():
+		return
+	Audio.play("res://sounds/menu_click.ogg")
+	GameState.kino_pilot_mode = true
+	_close()
+	_possess_ship_kino()
+
+
+# Take control of an already-deployed (live) Kino — from any scene. If it's in
+# the current scene, possess it in place; otherwise warp to its scene and the
+# scene spawns the controlled Kino at its tracked position. Either way the
+# player's BODY is recorded so closing the remote returns there.
+func _on_pilot_deployed(index: int) -> void:
+	if index < 0 or index >= GameState.deployed_kinos.size():
+		return
+	var entry: Dictionary = GameState.deployed_kinos[index]
+	var scene_path: String = String(entry.get("scene", ""))
+	var pos: Vector3 = Vector3(float(entry.get("x", 0.0)), float(entry.get("y", 0.0)), float(entry.get("z", 0.0)))
+	var same_scene: bool = scene_path == "" or scene_path == GameState.current_scene_path
+	# Cross-scene control is supported for the planet (fly a Kino on the surface
+	# from the ship). A Kino left elsewhere on the ship is retaken from its room.
+	if not same_scene and scene_path != "res://scenes/planet.tscn":
+		GameState.add_log("That Kino is in another section — go there to take control.")
+		return
+	Audio.play("res://sounds/menu_click.ogg")
+	_record_body()
+	GameState.deployed_kinos.remove_at(index)   # now the active, piloted Kino
+	GameState.deployed_kinos_changed.emit()
+	GameState.kino_pilot_mode = true
+	_close()
+	if same_scene:
+		_possess_kino_here(pos, false)
+	else:
+		GameState.kino_pilot_target_scene = scene_path
+		GameState.kino_pilot_target_pos = pos
+		SceneRouter.change_to(scene_path, "")
+
+
+# Record the player's body (scene + transform) so [E] returns control there.
+func _record_body() -> void:
+	GameState.kino_return_scene = GameState.current_scene_path
+	GameState.kino_return_room_id = GameState.current_room_id
+	var player: Node3D = get_tree().get_first_node_in_group("player") as Node3D
+	if player != null:
+		GameState.kino_return_position = player.global_position
+		GameState.kino_return_yaw = player.rotation.y
+
+
+# Launch a ship-mode Kino at the player's position. Records the body + possesses
+# the current scene; the drone flies through the gate to reach the planet.
+# Falls back to a direct planet warp if there's no live scene/player.
+func _possess_ship_kino() -> void:
+	var scene: Node = get_tree().current_scene
+	var player: Node3D = get_tree().get_first_node_in_group("player") as Node3D
+	if scene == null or player == null:
+		SceneRouter.change_to("res://scenes/planet.tscn", "")
+		return
+	_record_body()
+	var fwd: Vector3 = -player.global_transform.basis.z
+	fwd.y = 0.0
+	fwd = fwd.normalized() if fwd.length() > 0.01 else Vector3.FORWARD
+	var spawn: Vector3 = player.global_position + fwd * 0.8 + Vector3.UP * KINO_LAUNCH_HEIGHT
+	_possess_kino_here(spawn, true)
+
+
+# Spawn + possess a Kino in the CURRENT scene at `spawn_pos`. If a player body is
+# present (the gate room), it STAYS PUT holding the remote (input locked, hands-
+# in-front pose). The drone takes the camera. `in_ship` enables gate-crossing.
+func _possess_kino_here(spawn_pos: Vector3, in_ship: bool) -> void:
+	var scene: Node = get_tree().current_scene
+	if scene == null:
+		return
+	var player: Node3D = get_tree().get_first_node_in_group("player") as Node3D
+	if player != null:
+		if player.has_method("set_input_locked"):
+			player.call("set_input_locked", true)
+		if player.has_method("set_pose_override"):
+			player.call("set_pose_override", "holding-both")
+		_attach_remote_prop(player)
+	var hud_layer: Node = scene.get_node_or_null("HUDLayer")
+	if hud_layer is CanvasLayer:
+		(hud_layer as CanvasLayer).visible = false
+	var drone: CharacterBody3D = KinoDroneScript.new()
+	drone.name = "KinoDrone"
+	drone.set("launch_in_ship", in_ship)
+	# NOT in group "player": the body (if any) is still the player.
+	if player != null:
+		drone.rotation.y = player.rotation.y
+	scene.add_child(drone)
+	drone.global_position = spawn_pos
+
+
+# A small "Kino remote" prop parented to Eli so the player (looking back) and
+# onlookers see him gripping the controller while he pilots the Kino. Paired
+# with the "holding-both" pose, it sits between his hands out in front (Godot
+# forward is -Z) at chest height. Held LANDSCAPE (long axis on X) with the
+# screen tilted UP and BACK toward Eli's face so onlookers see the back of
+# the device, not the screen.
+func _attach_remote_prop(player: Node3D) -> void:
+	if player.get_node_or_null("KinoRemoteProp") != null:
+		return
+	var prop: Node3D = Node3D.new()
+	prop.name = "KinoRemoteProp"
+	# Between the hands, forward of the chest. Tuned against the holding-both pose
+	# at the character's 1.6x model scale (hands land ~0.7 m up, ~0.4 m forward).
+	# +X rotation tilts +Y toward +Z (Godot right-hand rule) — i.e. the screen
+	# face tips up and BACK toward Eli, so the player looking down sees the
+	# screen but a front-on camera sees the back of the device.
+	prop.position = Vector3(0.0, 0.72, -0.42)
+	prop.rotation_degrees = Vector3(45.0, 0.0, 0.0)
+	player.add_child(prop)
+
+	# Landscape orientation: long axis on X (wider than deep), so the device
+	# reads as a 2-handed tablet/remote rather than a portrait phone.
+	var body: MeshInstance3D = MeshInstance3D.new()
+	var box: BoxMesh = BoxMesh.new()
+	box.size = Vector3(0.30, 0.05, 0.20)
+	body.mesh = box
+	body.material_override = _remote_mat(Color(0.10, 0.12, 0.16), false)
+	prop.add_child(body)
+
+	var screen: MeshInstance3D = MeshInstance3D.new()
+	var sbox: BoxMesh = BoxMesh.new()
+	sbox.size = Vector3(0.22, 0.02, 0.15)
+	screen.mesh = sbox
+	screen.position = Vector3(0.0, 0.035, 0.0)
+	screen.material_override = _remote_mat(Color(0.45, 0.80, 1.0), true)
+	prop.add_child(screen)
+
+
+func _remote_mat(col: Color, glow: bool) -> StandardMaterial3D:
+	var m: StandardMaterial3D = StandardMaterial3D.new()
+	m.albedo_color = col
+	if glow:
+		m.emission_enabled = true
+		m.emission = col
+		m.emission_energy_multiplier = 2.2
+	else:
+		m.metallic = 0.4
+		m.roughness = 0.5
+	return m
 
 
 func _refresh_inventory() -> void:

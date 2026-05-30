@@ -1,5 +1,8 @@
 extends Node
 
+# @no-save: static ship topology loaded from data/ship_layout.json — read-only
+# at runtime, so nothing to persist (the layout itself never changes).
+#
 # Destiny ship layout: 19 rooms, 7 template types, two floors. Loaded from
 # data/ship_layout.json (the canonical source of truth, mirrored from the
 # sibling stargate-evolution project). Autoload — read via `ShipLayout.room(id)`.

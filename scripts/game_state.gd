@@ -6,15 +6,26 @@ extends Node
 signal health_changed(value: float)
 signal oxygen_changed(value: float)
 signal objective_changed(text: String)
+# Fired only when quest_step actually advances to a different step (not on
+# every objective-text update). SaveManager listens to this to autosave at
+# each quest-progression beat — distinct from objective_changed, which can
+# fire for custom NPC objectives that don't move the quest forward.
+signal quest_step_changed(step: String)
 signal room_discovered(room_id: String)
+signal lime_discovered_changed()
+# Fires whenever an inventoried resource count changes (mining, top-up,
+# scrubber repair, etc.). Drives the planet-side lime objective counter
+# and any future resource HUD.
+signal resource_changed(type: String, count: int)
+# Fires whenever scrubber_level changes (decay tick or top-up). Drives the
+# in-world bar gauge + the Kino System Status readout.
+signal scrubber_level_changed(level: float)
 # Fired when the player enters a new room. Drives the Kino Remote player
 # marker and the in-world quest-waypoint diamond's re-targeting.
 signal current_room_changed(room_id: String)
 signal kino_changed(acquired: bool)
 signal episode_completed()
 signal log_added(line: String)
-signal save_written()
-signal save_wiped()
 # Fired by npc.gd each time a dialogue line is shown. The HUD listens and
 # renders the line inside the sci-fi dialog panel; log_added still captures
 # the same text for the journal.
@@ -26,6 +37,9 @@ signal kino_closed()
 # Kino map's door-pip dim-on-traverse and survives save/load via
 # doors_traversed.
 signal door_traversed(key: String)
+# Fired when a Kino is deployed/dropped from the tracked list — lets the Kino
+# map (or any future retrieval UI) refresh its deployed-Kino markers.
+signal deployed_kinos_changed()
 # Placeholder status readouts shown on the Kino map HUD chrome. Future power
 # / hull systems will fire these — defaults render as "OFFLINE" until any
 # value is published.
@@ -36,10 +50,13 @@ signal dialog_started(npc: Node3D, tree: Array)
 # kino_pickup) await a dialog's natural end without having to track the
 # DialogScreen instance directly.
 signal dialog_closed()
+# Fired by dialog_screen.gd when it renders a dialog node carrying an "action"
+# key. Lets a data-driven dialog tree trigger a side effect mid-conversation
+# (e.g. the Phase D scrubber scene firing the FTL-drop blur on Brody's line).
+signal dialog_action(action_id: String)
 
 const MAX_HEALTH: float = 100.0
 const MAX_OXYGEN: float = 100.0
-const SAVE_PATH: String = "user://save.json"
 
 const EPISODE_AIR: String = "air"
 const QUEST_TALK_SCOTT: String = "talk_scott"
@@ -49,10 +66,14 @@ const QUEST_FIND_KINO: String = "find_kino"
 const QUEST_RESTORE_POWER: String = "restore_power"
 const QUEST_FIND_QUARTERS: String = "find_quarters"
 const QUEST_SLEEP: String = "sleep"
+const QUEST_RETURN_TO_CONTROL: String = "return_to_control"
 const QUEST_DIAGNOSE_LIFE_SUPPORT: String = "diagnose_life_support"
 const QUEST_SEAL_BREACH: String = "seal_breach"
 const QUEST_FIND_SCRUBBER: String = "find_scrubber"
 const QUEST_WAIT_FTL: String = "wait_ftl"
+const QUEST_GO_TO_GATE: String = "go_to_gate"
+const QUEST_FETCH_KINO: String = "fetch_kino"
+const QUEST_SCOUT_KINO: String = "scout_kino"
 const QUEST_DIAL_LIME_PLANET: String = "dial_lime_planet"
 const QUEST_MINE_LIME: String = "mine_lime"
 const QUEST_RETURN_DESTINY: String = "return_destiny"
@@ -60,6 +81,23 @@ const QUEST_REPAIR_SCRUBBER: String = "repair_scrubber"
 const QUEST_COMPLETE: String = "complete"
 const AIR_LIME_RESOURCE: String = "lime"
 const AIR_LIME_REQUIRED: int = 3
+# Phase G ongoing scrubber loop.
+# One lime = one cartridge bar = a third of full charge.
+const SCRUBBER_LIME_RECHARGE: float = 100.0 / float(AIR_LIME_REQUIRED)
+# Decay rate: each bar of charge lasts 1 hour of real wall-clock time, so a
+# full 100% charge buys 3 hours of life before a top-up is needed. _process
+# runs on real frame delta (not in-game time), so this IS wall-clock seconds.
+const SCRUBBER_DECAY_PER_SEC: float = SCRUBBER_LIME_RECHARGE / 3600.0
+# Below this percentage the bar gauge shows red and a one-shot warning logs.
+const SCRUBBER_WARN_PERCENT: float = 33.0
+# At 0% the scrubber bleeds oxygen slowly until the player tops it up; the
+# E1-forgiving rate is one oxygen point per minute, so even a stranded player
+# has a long window to react.
+const SCRUBBER_O2_BLEED_PER_SEC: float = 1.0 / 60.0
+const KINO_ORB_MAX: int = 3
+# How many DEPLOYED Kinos (left out in the world) we keep track of at once.
+# Deploying another past this drops the oldest tracked location (FIFO).
+const KINO_DEPLOYED_MAX: int = 3
 
 const QUEST_LABELS: Dictionary = {
 	QUEST_TALK_SCOTT: "Talk to Scott",
@@ -69,10 +107,14 @@ const QUEST_LABELS: Dictionary = {
 	QUEST_RESTORE_POWER: "Restore main power",
 	QUEST_FIND_QUARTERS: "Find quarters",
 	QUEST_SLEEP: "Sleep",
-	QUEST_DIAGNOSE_LIFE_SUPPORT: "Diagnose life support",
-	QUEST_SEAL_BREACH: "Lock off exposed section",
+	QUEST_RETURN_TO_CONTROL: "Return to the Control Room",
+	QUEST_DIAGNOSE_LIFE_SUPPORT: "Access a control terminal",
+	QUEST_SEAL_BREACH: "Seal the jammed door",
 	QUEST_FIND_SCRUBBER: "Find CO2 scrubber",
 	QUEST_WAIT_FTL: "Trigger FTL drop",
+	QUEST_GO_TO_GATE: "Get to the Gate Room",
+	QUEST_FETCH_KINO: "Fetch a Kino",
+	QUEST_SCOUT_KINO: "Send a Kino through the gate",
 	QUEST_DIAL_LIME_PLANET: "Dial lime planet",
 	QUEST_MINE_LIME: "Mine lime",
 	QUEST_RETURN_DESTINY: "Return to Destiny",
@@ -93,14 +135,18 @@ const QUEST_TARGETS: Dictionary = {
 	QUEST_RESTORE_POWER: {"room": "engineering_bay", "anchor": "PowerConsole"},
 	QUEST_FIND_QUARTERS: {"room": "quarters_room_1", "anchor": ""},
 	QUEST_SLEEP: {"room": "eli_quarters", "anchor": "Bed"},
-	QUEST_DIAGNOSE_LIFE_SUPPORT: {"room": "gate_room", "anchor": "GateControlConsole"},
-	QUEST_SEAL_BREACH: {"room": "east_corridor", "anchor": "HullSealSwitch"},
-	QUEST_FIND_SCRUBBER: {"room": "hydroponics", "anchor": "CO2Scrubber"},
+	QUEST_RETURN_TO_CONTROL: {"room": "control_interface_room", "anchor": ""},
+	QUEST_DIAGNOSE_LIFE_SUPPORT: {"room": "control_interface_room", "anchor": "ControlConsoleNearest"},
+	QUEST_SEAL_BREACH: {"room": "breached_section_south", "anchor": "ShuttleObjective"},
+	QUEST_FIND_SCRUBBER: {"room": "south_corridor", "anchor": "ScrubberRush"},
 	QUEST_WAIT_FTL: {"room": "gate_room", "anchor": "FTLConsole"},
+	QUEST_GO_TO_GATE: {"room": "gate_room", "anchor": ""},
+	QUEST_FETCH_KINO: {"room": "eli_quarters", "anchor": "KinoDispenser"},
+	QUEST_SCOUT_KINO: {"room": "gate_room", "anchor": ""},
 	QUEST_DIAL_LIME_PLANET: {"room": "gate_room", "anchor": "GateControlConsole"},
 	QUEST_MINE_LIME: {"room": "", "anchor": ""},  # offworld — hide waypoint
 	QUEST_RETURN_DESTINY: {"room": "", "anchor": ""},  # offworld — hide waypoint
-	QUEST_REPAIR_SCRUBBER: {"room": "hydroponics", "anchor": "CO2Scrubber"},
+	QUEST_REPAIR_SCRUBBER: {"room": "south_corridor", "anchor": "CO2Scrubber"},
 	QUEST_COMPLETE: {"room": "", "anchor": ""},
 }
 
@@ -118,6 +164,27 @@ var next_room_id: String = ""
 # True for the next room load only — tells the gate-room arrival cinematic
 # to skip itself because we're resuming, not arriving.
 var skip_arrival_cinematic: bool = false
+# Launch baton: set true right before SceneRouter.change_to(planet) from Kino
+# Control, so planet.gd spawns + possesses the Kino drone instead of the player.
+# Transient (cleared by planet.gd on read); not part of the save snapshot.
+var kino_pilot_mode: bool = false
+# Where Eli's body was standing when the Kino launched. While piloting, Eli STAYS
+# put (he doesn't "become" the Kino), so exiting kino control returns the player
+# to this exact spot rather than a door spawn marker. Transient (set at launch,
+# consumed on return; a kino flight is never saved mid-way).
+var kino_return_position: Variant = null   # Vector3 or null
+var kino_return_yaw: float = 0.0
+# Scene the body is waiting in, so closing the Kino remote returns there even if
+# the kino was being flown in a DIFFERENT scene (e.g. body on the ship, kino on
+# the planet). Empty = current scene. kino_return_room_id restores the procedural
+# room id when the body scene is room.tscn.
+var kino_return_scene: String = ""
+var kino_return_room_id: String = ""
+# Where to spawn the CONTROLLED kino on the next scene load when taking control
+# of a deployed kino in another scene. null pos = the scene's own default spawn
+# (e.g. facing the planet gate).
+var kino_pilot_target_scene: String = ""
+var kino_pilot_target_pos: Variant = null   # Vector3 or null
 
 var health: float = MAX_HEALTH
 var oxygen: float = MAX_OXYGEN
@@ -139,6 +206,11 @@ var rooms_discovered: Array[String] = []
 # through. Both directions resolve to the same key via door_key(). Drives the
 # Kino map's bright-vs-dim pip styling and survives save/load.
 var doors_traversed: Array[String] = []
+# Stable keys (the deterministic node name, e.g. "LimeNode3") of lime deposits
+# the team has spotted — on foot or via a passing Kino. Only discovered deposits
+# show on the planet compass (F3). The planet seed is fixed, so a given key
+# always maps to the same world position, and discovery survives save/load.
+var lime_discovered: Array[String] = []
 var breaches_sealed: Array[String] = []
 # Placeholder status readouts for the Kino map HUD chrome. The underlying
 # systems (power grid, hull integrity) haven't been built yet — these stay at
@@ -158,11 +230,57 @@ var episode_complete: bool = false
 var log_entries: Array[String] = []
 var prologue_complete: bool = false
 var air_crisis_started: bool = false
+# True once the player has returned to the Control Interface Room after the
+# air crisis, found Rush absent, and radioed Scott. Gates the
+# RETURN_TO_CONTROL → DIAGNOSE_LIFE_SUPPORT (access terminal) transition.
+var control_room_returned: bool = false
 var life_support_diagnosed: bool = false
+# True once the player has played out the "blocked door" beat at the control
+# terminal — opened the sealed section (ship strobes red), panicked, and shut
+# it again. One-shot: gates the beat so it doesn't replay on console re-access.
+var blocked_door_beat_done: bool = false
+# True once the player examines the jammed-door panel and learns its fuse
+# slot is blown — only THEN does the objective send them to the crates for a
+# fuse (don't hand the player the answer before they've looked at the door).
+var door_panel_examined: bool = false
+# Fuses looted from the Shuttle Dock crates. The jammed door panel needs a
+# SMALL fuse; a large fuse also turns up (wrong size for the door — kept for
+# flavor / future use). One crate holds the small fuse the player needs.
+var small_fuse_found: bool = false
+var large_fuse_found: bool = false
 var scrubber_diagnosed: bool = false
 var scrubber_repaired: bool = false
+# CO2 scrubber lime charge, 0–100%. Drives the 3-bar panel gauge (each bar =
+# one third: 0%=3 red, 33%=1 green, 66%=2 green, 100%=3 green). Loading lime on
+# repair sets it to 100; in Phase G it decays over time and the player tops it
+# up with more lime (1 lime = 1 bar of charge) — the ongoing E1 → E2 loop.
+var scrubber_level: float = 0.0
+# Threshold latches so a warning fires exactly once per crossing (re-armed when
+# the level rises back above the threshold via a top-up).
+var _scrubber_warned: bool = false
+var _scrubber_critical: bool = false
 var ftl_drop_triggered: bool = false
 var lime_planet_dialed: bool = false
+# True once the player reaches the Gate Room after Dr Brody's "the gate
+# dialed itself" call (the GO_TO_GATE beat that ends the CO2 scrubber scene).
+var reported_to_gate: bool = false
+# Kino orbs the player is carrying. The quarters dispenser is unlimited but the
+# player can hold at most KINO_ORB_MAX; launching one (Kino Control) spends it.
+var kino_orbs: int = 0
+# Kinos left DEPLOYED out in the world (not in inventory). FIFO, newest last,
+# capped at KINO_DEPLOYED_MAX — deploying another past the cap drops the oldest
+# tracked location. Each entry: {"scene": String, "x"/"y"/"z": float}. World-
+# state (read by future quest steps / map markers / retrieval — see issue #36).
+var deployed_kinos: Array = []
+# True once a Kino has been flown through the gate and confirmed what's on the
+# far side (the SCOUT_KINO beat).
+var kino_scout_done: bool = false
+# One-shot: Rush's "that's bloody brilliant" approval has played (gate room,
+# after the player returns with a Kino orb).
+var kino_plan_approved: bool = false
+# One-shot: the post-scout away-party briefing has played (gate room, MINE_LIME
+# step, after the Kino recon returns). Gates the "let's mine some lime" dialog.
+var away_party_briefed: bool = false
 var returned_from_lime_planet: bool = false
 var resources: Dictionary = {AIR_LIME_RESOURCE: 0}
 # E1 story milestones — set by NPC interacts (npc.gd via met_flag).
@@ -172,6 +290,81 @@ var resources: Dictionary = {AIR_LIME_RESOURCE: 0}
 # with kino + quarters + breach, this is the E1 completion gate.
 var met_scott: bool = false
 var met_rush: bool = false
+
+# Stamped by trigger_ftl_drop() with GameClock.elapsed_seconds at the
+# moment the FTL window opens. The gate console computes the live
+# countdown as FTL_COUNTDOWN_START_SECONDS - (GameClock.elapsed_seconds -
+# ftl_drop_game_time), so the displayed value is preserved across saves
+# without depending on wall-clock time. -1 means the FTL drop hasn't
+# happened yet.
+var ftl_drop_game_time: float = -1.0
+
+# Kino Remote map UI state — persisted so the player's preferred pan/zoom
+# and any placed marker survives close + reopen and save + resume.
+# `kino_marker` is empty when no marker is placed; otherwise:
+#   { "floor": int, "world_x": float, "world_y": float }
+var kino_pan_x: float = 0.0
+var kino_pan_y: float = 0.0
+var kino_zoom: float = 1.0
+var kino_active_floor: int = -1
+var kino_marker: Dictionary = {}
+
+
+# Resolve an autoload by name, tolerating the headless -s SceneTree test
+# context where GameState is instantiated as a bare node. An ABSOLUTE path
+# like get_node_or_null("/root/X") errors ("Can't use get_node() with
+# absolute paths from outside the active scene tree") when this node was
+# add_child'd to the tree root without a current scene — so we navigate
+# from get_tree().root with a RELATIVE name instead, guarded by
+# is_inside_tree().
+func _autoload_node(autoload_name: String) -> Node:
+	if not is_inside_tree():
+		return null
+	var tree: SceneTree = get_tree()
+	if tree == null or tree.root == null:
+		return null
+	return tree.root.get_node_or_null(autoload_name)
+
+
+func _ready() -> void:
+	# Autoload-tolerant: e1_flow.gd and other -s SceneTree script tests
+	# instantiate GameState directly with no SaveManager in the tree.
+	var sm: Node = _autoload_node("SaveManager")
+	if sm != null and sm.has_method("register_system"):
+		sm.call("register_system", "game_state", self)
+
+
+# Phase G: tick the scrubber's lime charge down over time and bleed oxygen
+# slowly once it bottoms out. Gated on SceneRouter.instant_mode so headless
+# tests (which can run for many simulated frames) don't drift scrubber_level
+# out from under their assertions.
+func _process(delta: float) -> void:
+	if not scrubber_repaired:
+		return
+	var router: Node = _autoload_node("SceneRouter")
+	if router != null and router.get("instant_mode") == true:
+		return
+	_tick_scrubber(delta)
+
+
+func _tick_scrubber(delta: float) -> void:
+	var prev: float = scrubber_level
+	if scrubber_level > 0.0:
+		scrubber_level = maxf(0.0, scrubber_level - SCRUBBER_DECAY_PER_SEC * delta)
+		scrubber_level_changed.emit(scrubber_level)
+	else:
+		# Out of lime: oxygen drains slowly so the player feels the pressure
+		# without being instantly punished (E1 is forgiving — no stranding).
+		consume_oxygen(SCRUBBER_O2_BLEED_PER_SEC * delta)
+	# Threshold latches run regardless of which branch we took, so a tick that
+	# only bleeds oxygen still fires the empty-alarm on its first frame.
+	if not _scrubber_warned and prev > SCRUBBER_WARN_PERCENT and scrubber_level <= SCRUBBER_WARN_PERCENT:
+		_scrubber_warned = true
+		add_log("CO2 scrubber charge below %d%% — lime needed soon." % int(SCRUBBER_WARN_PERCENT))
+	if not _scrubber_critical and scrubber_level <= 0.0:
+		_scrubber_critical = true
+		add_log("CO2 scrubber EMPTY — oxygen bleeding off, top up with lime immediately.")
+
 
 func reset() -> void:
 	health = MAX_HEALTH
@@ -184,6 +377,7 @@ func reset() -> void:
 	elevator_repaired = false
 	rooms_discovered.clear()
 	doors_traversed.clear()
+	lime_discovered.clear()
 	breaches_sealed.clear()
 	power_percent = STATUS_OFFLINE
 	hull_percent = STATUS_OFFLINE
@@ -192,16 +386,53 @@ func reset() -> void:
 	log_entries.clear()
 	prologue_complete = false
 	air_crisis_started = false
+	control_room_returned = false
+	blocked_door_beat_done = false
+	door_panel_examined = false
+	small_fuse_found = false
+	large_fuse_found = false
 	life_support_diagnosed = false
 	scrubber_diagnosed = false
 	scrubber_repaired = false
+	scrubber_level = 0.0
+	_scrubber_warned = false
+	_scrubber_critical = false
 	ftl_drop_triggered = false
 	lime_planet_dialed = false
+	reported_to_gate = false
+	kino_orbs = 0
+	deployed_kinos.clear()
+	kino_scout_done = false
+	kino_plan_approved = false
+	away_party_briefed = false
 	returned_from_lime_planet = false
 	resources.clear()
 	resources[AIR_LIME_RESOURCE] = 0
 	met_scott = false
 	met_rush = false
+	ftl_drop_game_time = -1.0
+	kino_pan_x = 0.0
+	kino_pan_y = 0.0
+	kino_zoom = 1.0
+	kino_active_floor = -1
+	kino_marker = {}
+	# Clear scene-staging batons BEFORE advance_air_quest() emits
+	# objective_changed. Otherwise the autosave hook sees a stale
+	# current_scene_path (the room we were in when Restart was pressed) plus
+	# a freshly-cleared current_room_id, and writes a roomless save that
+	# void-falls on Continue. The next scene's _ready repopulates these.
+	current_scene_path = ""
+	next_room_id = ""
+	pending_spawn_position = null
+	pending_spawn_yaw = 0.0
+	skip_arrival_cinematic = false
+	kino_pilot_mode = false
+	kino_return_position = null
+	kino_return_yaw = 0.0
+	kino_return_scene = ""
+	kino_return_room_id = ""
+	kino_pilot_target_scene = ""
+	kino_pilot_target_pos = null
 	health_changed.emit(health)
 	oxygen_changed.emit(oxygen)
 	kino_changed.emit(kino_acquired)
@@ -233,6 +464,17 @@ func discover_room(room_id: String, display_name: String = "") -> void:
 	room_discovered.emit(room_id)
 	if display_name != "":
 		add_log("Discovered: " + display_name)
+
+# Mark a lime deposit as spotted (by the player or a passing Kino). Idempotent;
+# emits lime_discovered_changed so an open compass refreshes live.
+func discover_lime(key: String) -> void:
+	if key == "" or lime_discovered.has(key):
+		return
+	lime_discovered.append(key)
+	lime_discovered_changed.emit()
+
+func is_lime_discovered(key: String) -> bool:
+	return lime_discovered.has(key)
 
 
 # Stable, direction-agnostic key for a door connecting two rooms. Sorted so
@@ -336,6 +578,8 @@ func _next_air_quest_step() -> String:
 	prologue_complete = true
 	if not air_crisis_started:
 		return QUEST_SLEEP
+	if not control_room_returned:
+		return QUEST_RETURN_TO_CONTROL
 	if not life_support_diagnosed:
 		return QUEST_DIAGNOSE_LIFE_SUPPORT
 	if breaches_sealed.is_empty():
@@ -344,6 +588,12 @@ func _next_air_quest_step() -> String:
 		return QUEST_FIND_SCRUBBER
 	if not ftl_drop_triggered:
 		return QUEST_WAIT_FTL
+	if not reported_to_gate:
+		return QUEST_GO_TO_GATE
+	if kino_orbs <= 0 and not kino_scout_done:
+		return QUEST_FETCH_KINO
+	if not kino_scout_done:
+		return QUEST_SCOUT_KINO
 	if not lime_planet_dialed:
 		return QUEST_DIAL_LIME_PLANET
 	if not has_resource(AIR_LIME_RESOURCE, AIR_LIME_REQUIRED):
@@ -355,8 +605,11 @@ func _next_air_quest_step() -> String:
 	return QUEST_COMPLETE
 
 func _set_quest_step(step: String) -> void:
+	var changed: bool = step != quest_step
 	quest_step = step
 	set_objective(_objective_for_step(step))
+	if changed:
+		quest_step_changed.emit(step)
 
 func _objective_for_step(step: String) -> String:
 	match step:
@@ -374,14 +627,26 @@ func _objective_for_step(step: String) -> String:
 			return "Take the elevator to the upper deck: find Crew Quarters Alpha."
 		QUEST_SLEEP:
 			return "Get some rest. Lay down on the bed in your quarters."
+		QUEST_RETURN_TO_CONTROL:
+			return "Scott's orders: get to the Control Interface Room and find Rush."
 		QUEST_DIAGNOSE_LIFE_SUPPORT:
-			return "Diagnose failing life support at the Gate Room console."
+			return "Access a control terminal in the Control Interface Room."
 		QUEST_SEAL_BREACH:
-			return "Lock off the exposed ship section in the East Corridor."
+			if not door_panel_examined:
+				return "A jammed shuttle door is venting atmosphere in the Shuttle Dock (far south). Get to the door panel and try it."
+			if not small_fuse_found:
+				return "The door panel's fuse is blown. Search the Shuttle Dock crates for a Small Fuse."
+			return "Fit the Small Fuse into the door panel to force the jammed door shut."
 		QUEST_FIND_SCRUBBER:
-			return "Find the broken CO2 scrubber in Hydroponics."
+			return "Talk to Dr Rush at the open life-support panel in the south corridor."
 		QUEST_WAIT_FTL:
 			return "Return to the Gate Room and trigger the FTL drop."
+		QUEST_GO_TO_GATE:
+			return "Dr Brody says the gate dialed itself. Get to the Gate Room."
+		QUEST_FETCH_KINO:
+			return "We can't risk going in blind. Grab a Kino from the dispenser in your quarters."
+		QUEST_SCOUT_KINO:
+			return "Back at the gate: open the Kino Remote (Tab) and launch a Kino through to scout the planet."
 		QUEST_DIAL_LIME_PLANET:
 			return "Use Gate Control in the Gate Room to dial the lime planet."
 		QUEST_MINE_LIME:
@@ -389,7 +654,7 @@ func _objective_for_step(step: String) -> String:
 		QUEST_RETURN_DESTINY:
 			return "Return through the planet gate to Destiny."
 		QUEST_REPAIR_SCRUBBER:
-			return "Bring lime to the CO2 scrubber in Hydroponics."
+			return "Bring lime to the CO2 scrubber in the south corridor."
 		QUEST_COMPLETE:
 			return "Episode 1: Air — Complete"
 		_:
@@ -421,6 +686,18 @@ func set_objective(text: String) -> void:
 	current_objective = text
 	objective_changed.emit(text)
 
+
+# Live counter shown by the top-left objective label while the player is on
+# the lime planet. Until the threshold is met it reads "Collect at least N
+# lime deposits — X/N"; once X >= N it flips to a "head back to the gate"
+# completion line. Pulled into GameState (not planet_timer.gd) so the same
+# string can be regenerated on save/load and asserted from headless tests
+# without spinning up the planet scene.
+static func lime_objective_text(have: int, need: int) -> String:
+	if have >= need:
+		return "Lime collected — %d/%d  ✓  head back to the gate" % [have, need]
+	return "Collect at least %d lime deposits — %d/%d" % [need, have, need]
+
 func add_log(line: String) -> void:
 	log_entries.append(line)
 	log_added.emit(line)
@@ -435,6 +712,7 @@ func add_resource(type: String, amount: int, source: String = "") -> bool:
 	resources[type] = next_amount
 	var source_suffix: String = "" if source == "" else " from " + source
 	add_log("Collected %d %s%s. Total: %d." % [amount, type, source_suffix, next_amount])
+	resource_changed.emit(type, next_amount)
 	advance_air_quest()
 	return true
 
@@ -451,6 +729,7 @@ func spend_resource(type: String, amount: int, reason: String = "") -> bool:
 	resources[type] = current - amount
 	var reason_suffix: String = "" if reason == "" else " for " + reason
 	add_log("Spent %d %s%s. Remaining: %d." % [amount, type, reason_suffix, resource_count(type)])
+	resource_changed.emit(type, resource_count(type))
 	advance_air_quest()
 	return true
 
@@ -469,13 +748,69 @@ func start_air_crisis() -> void:
 	oxygen = minf(oxygen, 62.0)
 	oxygen_changed.emit(oxygen)
 	add_log("Destiny drops out of FTL. Alarms report rising CO2 in life support.")
-	dialogue_shown.emit("Eli", "That's not a normal alarm. The air just got worse.")
+	# Dialog announcement is intentionally NOT fired here — callers play their
+	# own cinematic (bed.gd fades to black on sleep, then wakes the player up
+	# and calls announce_air_crisis()). Direct state-only callers (smoke tests)
+	# skip the dialog entirely.
 	# Emergency override flips the inter-deck elevator online so the player can
 	# reach Hydroponics on the upper floor without first solving the power
 	# console. (That console used to gate the prologue; now it's free flavor.)
 	if not elevator_repaired:
 		unlock_elevator()
 	advance_air_quest()
+
+
+# Wake-up dialog beat — fired after bed.gd's sleep cinematic finishes its
+# fade-in so the line reads as the player coming to and noticing the alarm,
+# not as a popup the moment they pressed E on the bed.
+func announce_air_crisis() -> void:
+	if not air_crisis_started:
+		return
+	dialogue_shown.emit("Eli", "That's not a normal alarm. The air just got worse.")
+
+
+# Marks the post-crisis return to the control room (Rush absent, Eli radios
+# Scott). Advances RETURN_TO_CONTROL → DIAGNOSE_LIFE_SUPPORT so the next
+# objective is "access a control terminal". The radio exchange itself is
+# played by room.gd on entry; this just flips the state.
+func mark_control_room_returned() -> void:
+	if control_room_returned:
+		return
+	control_room_returned = true
+	advance_air_quest()
+
+
+# First time the player works the dead door panel: they learn the fuse slot
+# is blown. Flips the objective + waypoint from the panel to the crates.
+func examine_door_panel() -> void:
+	if door_panel_examined:
+		return
+	door_panel_examined = true
+	advance_air_quest()
+
+
+# Looting a fuse from a Shuttle Dock crate. The small fuse is the one the
+# door panel needs (flips the objective + waypoint to the panel); the large
+# fuse is the wrong size for the door.
+func find_small_fuse() -> void:
+	if small_fuse_found:
+		return
+	small_fuse_found = true
+	add_log("Found a Small Fuse — this should fit the door panel.")
+	advance_air_quest()
+
+
+func find_large_fuse() -> void:
+	if large_fuse_found:
+		return
+	large_fuse_found = true
+	add_log("Found a Large Fuse. Too big for the door panel — pocket it anyway.")
+
+
+# Generic crate loot for the non-fuse crate: a ration pack the player pockets.
+# Stocks the shared resource pool so the dock crate isn't a dead end.
+func find_rations() -> void:
+	add_resource("rations", 1, "a supply crate")
 
 func diagnose_life_support() -> void:
 	if not air_crisis_started:
@@ -501,6 +836,85 @@ func diagnose_scrubber() -> void:
 	add_log("CO2 scrubber is cracked. It needs lime before the cartridge bed can reset.")
 	advance_air_quest()
 
+
+# End of the Phase D scrubber scene (Rush opens the wall panel, the crew agree
+# lime is the only fix). One call collapses the old player-driven beats: the
+# scrubber is diagnosed, Destiny drops from FTL, and the gate dials a known
+# lime-bearing world on its own. The objective then becomes "get to the Gate
+# Room" (Dr Brody's call) — the Phase E entry point.
+func complete_scrubber_scene() -> void:
+	if scrubber_diagnosed:
+		return
+	scrubber_diagnosed = true
+	ftl_drop_triggered = true
+	var gc: Node = _autoload_node("GameClock")
+	ftl_drop_game_time = float(gc.get("elapsed_seconds")) if gc != null else 0.0
+	lime_planet_dialed = true
+	add_log("Rush: the scrubber's beyond salvage — it needs lime. Destiny lurches out of FTL; the gate dials a lime-bearing world on its own.")
+	advance_air_quest()
+
+
+# Player reaches the Gate Room after Brody's "the gate dialed itself" call.
+func report_to_gate() -> void:
+	if reported_to_gate:
+		return
+	reported_to_gate = true
+	advance_air_quest()
+
+
+# Pull a Kino orb from the quarters dispenser. Unlimited supply, but the player
+# can carry at most KINO_ORB_MAX at once.
+func acquire_kino_orb() -> void:
+	if kino_orbs >= KINO_ORB_MAX:
+		add_log("Can't carry more than %d Kinos at once." % KINO_ORB_MAX)
+		return
+	kino_orbs += 1
+	add_log("Took a Kino from the dispenser. Carrying %d/%d." % [kino_orbs, KINO_ORB_MAX])
+	advance_air_quest()
+
+
+# Spend a carried Kino orb (launching one through the gate). Returns false if
+# none are in hand.
+func consume_kino_orb() -> bool:
+	if kino_orbs <= 0:
+		return false
+	kino_orbs -= 1
+	return true
+
+
+# Record a Kino left out in the world at `pos` in `scene_path`. FIFO-capped at
+# KINO_DEPLOYED_MAX: deploying another past the cap drops the OLDEST tracked
+# location.
+func deploy_kino(scene_path: String, pos: Vector3) -> void:
+	deployed_kinos.append({"scene": scene_path, "x": pos.x, "y": pos.y, "z": pos.z})
+	while deployed_kinos.size() > KINO_DEPLOYED_MAX:
+		deployed_kinos.pop_front()
+	add_log("Kino deployed (%d/%d tracked)." % [deployed_kinos.size(), KINO_DEPLOYED_MAX])
+	deployed_kinos_changed.emit()
+
+
+# World-space positions of Kinos deployed in a given scene (for re-spawn /
+# map markers / retrieval). Order is oldest→newest.
+func deployed_kinos_in_scene(scene_path: String) -> Array:
+	var out: Array = []
+	for k in deployed_kinos:
+		if String((k as Dictionary).get("scene", "")) == scene_path:
+			out.append(Vector3(
+				float((k as Dictionary).get("x", 0.0)),
+				float((k as Dictionary).get("y", 0.0)),
+				float((k as Dictionary).get("z", 0.0))))
+	return out
+
+
+# A launched Kino confirmed what's on the far side of the gate (the SCOUT_KINO
+# beat) — clears the way to physically step through and mine.
+func complete_kino_scout() -> void:
+	if kino_scout_done:
+		return
+	kino_scout_done = true
+	add_log("Kino recon confirmed: breathable atmosphere, lime deposits near the gate.")
+	advance_air_quest()
+
 func trigger_ftl_drop() -> void:
 	if not scrubber_diagnosed:
 		add_log("FTL controls stay locked until the scrubber fault is identified.")
@@ -510,6 +924,12 @@ func trigger_ftl_drop() -> void:
 		add_log("Destiny is already out of FTL. Gate systems are available.")
 		return
 	ftl_drop_triggered = true
+	# Stamp the moment so gate_console can compute a stable countdown
+	# anchored to GameClock — survives save / resume without depending on
+	# wall-clock time. Tolerates GameClock absence so the headless
+	# e1_flow.gd test (no autoloads) can still exercise this path.
+	var gc: Node = _autoload_node("GameClock")
+	ftl_drop_game_time = float(gc.get("elapsed_seconds")) if gc != null else 0.0
 	add_log("FTL drop triggered. Destiny falls into normal space near a viable gate address.")
 	advance_air_quest()
 
@@ -548,10 +968,39 @@ func repair_scrubber_with_lime() -> bool:
 	if not spend_resource(AIR_LIME_RESOURCE, AIR_LIME_REQUIRED, "CO2 scrubber repair"):
 		return false
 	scrubber_repaired = true
+	scrubber_level = 100.0
+	_scrubber_warned = false
+	_scrubber_critical = false
+	scrubber_level_changed.emit(scrubber_level)
 	restore_oxygen(MAX_OXYGEN)
 	add_log("CO2 scrubber repaired. Life support is stabilising across this section.")
 	complete_episode_air()
 	return true
+
+# Phase G: spend one lime to add one bar of charge (33%) back to the scrubber.
+# Caps at 100%. No-op when the scrubber isn't repaired yet, already at full,
+# or the player has no lime. Returns true if a top-up actually happened.
+func top_up_scrubber() -> bool:
+	if not scrubber_repaired or scrubber_level >= 100.0:
+		return false
+	if not spend_resource(AIR_LIME_RESOURCE, 1, "CO2 scrubber top-up"):
+		return false
+	scrubber_level = minf(100.0, scrubber_level + SCRUBBER_LIME_RECHARGE)
+	# Coming back above thresholds re-arms the one-shot warnings.
+	if scrubber_level > SCRUBBER_WARN_PERCENT:
+		_scrubber_warned = false
+	if scrubber_level > 0.0:
+		_scrubber_critical = false
+	add_log("Topped up the CO2 scrubber. Charge at %d%%." % int(round(scrubber_level)))
+	scrubber_level_changed.emit(scrubber_level)
+	return true
+
+
+# Green-bar count (0–3) for the scrubber panel gauge, derived from
+# scrubber_level. 0%→0, 33%→1, 66%→2, 100%→3. Phase G decay of scrubber_level
+# will make this drop back through 2 and 1 over time.
+func scrubber_green_bars() -> int:
+	return clampi(roundi(scrubber_level / (100.0 / 3.0)), 0, 3)
 
 # Episode 1 completion now happens after the Air crisis loop resolves, not at
 # the old Rush + Kino + quarters + breach milestone.
@@ -562,50 +1011,34 @@ func check_episode_complete() -> void:
 func complete_episode_air() -> void:
 	if episode_complete:
 		return
+	var changed: bool = quest_step != QUEST_COMPLETE
 	quest_step = QUEST_COMPLETE
 	episode_complete = true
 	set_objective(_objective_for_step(QUEST_COMPLETE))
 	add_log("Episode 1 complete: Destiny can breathe again.")
 	episode_completed.emit()
+	if changed:
+		quest_step_changed.emit(QUEST_COMPLETE)
 
 # --- save / wipe -------------------------------------------------------------
 #
-# F5 quick-save and F9 wipe are intentionally bare-bones: the savefile captures
-# enough state that the player resumes inside whichever room they left, with
-# their progression flags intact. Inventory and world objects below the scene
-# layer are NOT serialized — Phase A's loop is too small to need it.
+# File I/O lives on SaveManager — this autoload only owns its serialize /
+# deserialize contract per the ISaveableSystem pattern in
+# design/gdd/save-load-interface.md. SaveManager auto-saves on every
+# objective_changed + current_room_changed emit and rotates 3 backups for
+# corruption recovery.
 
-func _unhandled_input(event: InputEvent) -> void:
-	if not (event is InputEventKey):
-		return
-	if not event.pressed or event.echo:
-		return
-	if event.keycode == KEY_F5:
-		_quicksave()
-		get_viewport().set_input_as_handled()
-	elif event.keycode == KEY_F9:
-		wipe_save()
-		get_viewport().set_input_as_handled()
+func has_save() -> bool:
+	# Forward to SaveManager when autoloads are active; gracefully report
+	# "no save" in script tests where the SaveManager autoload is absent.
+	var sm: Node = _autoload_node("SaveManager")
+	if sm != null and sm.has_method("has_save"):
+		return sm.call("has_save") == true
+	return false
 
-func _quicksave() -> void:
-	# Only save when a real gameplay scene has registered itself. Title menu
-	# and headless tests leave current_scene_path empty.
-	if current_scene_path == "":
-		add_log("Save unavailable — nothing to record yet.")
-		return
-	var player: Node = get_tree().get_first_node_in_group("player")
-	if player == null or not (player is Node3D):
-		add_log("Save unavailable — no player in scene.")
-		return
-	var p3: Node3D = player
-	save_game(current_scene_path, p3.global_position, p3.rotation.y)
 
-func save_game(scene_path: String, pos: Vector3, yaw: float) -> void:
-	var data: Dictionary = {
-		"version": 1,
-		"scene": scene_path,
-		"pos": [pos.x, pos.y, pos.z],
-		"yaw": yaw,
+func serialize() -> Dictionary:
+	return {
 		"health": health,
 		"oxygen": oxygen,
 		"current_episode": current_episode,
@@ -614,74 +1047,94 @@ func save_game(scene_path: String, pos: Vector3, yaw: float) -> void:
 		"quarters_found": quarters_found,
 		"eli_quarters_visited": eli_quarters_visited,
 		"elevator_repaired": elevator_repaired,
-		"rooms_discovered": rooms_discovered,
-		"doors_traversed": doors_traversed,
-		"breaches_sealed": breaches_sealed,
+		# Duplicate every collection so a downstream reset() can't mutate
+		# the snapshot through a shared reference (caught by the e1_flow
+		# round-trip test before it became a save-corruption bug).
+		"rooms_discovered": rooms_discovered.duplicate(),
+		"doors_traversed": doors_traversed.duplicate(),
+		"lime_discovered": lime_discovered.duplicate(),
+		"breaches_sealed": breaches_sealed.duplicate(),
 		"current_room_id": current_room_id,
 		"objective": current_objective,
 		"episode_complete": episode_complete,
-		"log_entries": log_entries,
+		"log_entries": log_entries.duplicate(),
 		"met_scott": met_scott,
 		"met_rush": met_rush,
 		"prologue_complete": prologue_complete,
 		"air_crisis_started": air_crisis_started,
+		"control_room_returned": control_room_returned,
+		"blocked_door_beat_done": blocked_door_beat_done,
+		"door_panel_examined": door_panel_examined,
+		"small_fuse_found": small_fuse_found,
+		"large_fuse_found": large_fuse_found,
 		"life_support_diagnosed": life_support_diagnosed,
 		"scrubber_diagnosed": scrubber_diagnosed,
 		"scrubber_repaired": scrubber_repaired,
+		"scrubber_level": scrubber_level,
 		"ftl_drop_triggered": ftl_drop_triggered,
+		"ftl_drop_game_time": ftl_drop_game_time,
 		"lime_planet_dialed": lime_planet_dialed,
+		"reported_to_gate": reported_to_gate,
+		"kino_orbs": kino_orbs,
+		"deployed_kinos": deployed_kinos.duplicate(true),
+		"kino_scout_done": kino_scout_done,
+		"kino_plan_approved": kino_plan_approved,
+		"away_party_briefed": away_party_briefed,
 		"returned_from_lime_planet": returned_from_lime_planet,
-		"resources": resources,
+		"resources": resources.duplicate(true),
+		"kino_pan_x": kino_pan_x,
+		"kino_pan_y": kino_pan_y,
+		"kino_zoom": kino_zoom,
+		"kino_active_floor": kino_active_floor,
+		"kino_marker": kino_marker.duplicate(true),
 	}
-	var file: FileAccess = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
-	if file == null:
-		add_log("Save failed (couldn't open %s)." % SAVE_PATH)
-		return
-	file.store_string(JSON.stringify(data, "\t"))
-	file.close()
-	add_log("Quicksave written.")
-	save_written.emit()
 
-func has_save() -> bool:
-	return FileAccess.file_exists(SAVE_PATH)
 
-# Load the save file and switch to the saved scene at the saved position.
-# Called by the title screen "Continue" path. Returns false if no save.
-func load_and_resume() -> bool:
-	if not has_save():
-		return false
-	var file: FileAccess = FileAccess.open(SAVE_PATH, FileAccess.READ)
-	if file == null:
-		return false
-	var raw: String = file.get_as_text()
-	file.close()
-	var parsed: Variant = JSON.parse_string(raw)
-	if not (parsed is Dictionary):
-		push_warning("save.json is malformed")
-		return false
-	var data: Dictionary = parsed
-	# Hydrate persistent state.
+func deserialize(data: Dictionary, _version: int) -> void:
 	health = float(data.get("health", MAX_HEALTH))
 	oxygen = float(data.get("oxygen", MAX_OXYGEN))
 	current_episode = String(data.get("current_episode", EPISODE_AIR))
 	quest_step = String(data.get("quest_step", QUEST_TALK_SCOTT))
-	kino_acquired = bool(data.get("kino_acquired", false))
-	quarters_found = bool(data.get("quarters_found", false))
-	eli_quarters_visited = bool(data.get("eli_quarters_visited", false))
-	elevator_repaired = bool(data.get("elevator_repaired", false))
-	episode_complete = bool(data.get("episode_complete", false))
+	kino_acquired = data.get("kino_acquired", false) == true
+	quarters_found = data.get("quarters_found", false) == true
+	eli_quarters_visited = data.get("eli_quarters_visited", false) == true
+	elevator_repaired = data.get("elevator_repaired", false) == true
+	episode_complete = data.get("episode_complete", false) == true
 	current_room_id = String(data.get("current_room_id", ""))
 	current_objective = String(data.get("objective", current_objective))
-	met_scott = bool(data.get("met_scott", false))
-	met_rush = bool(data.get("met_rush", false))
-	prologue_complete = bool(data.get("prologue_complete", false))
-	air_crisis_started = bool(data.get("air_crisis_started", false))
-	life_support_diagnosed = bool(data.get("life_support_diagnosed", false))
-	scrubber_diagnosed = bool(data.get("scrubber_diagnosed", false))
-	scrubber_repaired = bool(data.get("scrubber_repaired", false))
-	ftl_drop_triggered = bool(data.get("ftl_drop_triggered", false))
-	lime_planet_dialed = bool(data.get("lime_planet_dialed", false))
-	returned_from_lime_planet = bool(data.get("returned_from_lime_planet", false))
+	met_scott = data.get("met_scott", false) == true
+	met_rush = data.get("met_rush", false) == true
+	prologue_complete = data.get("prologue_complete", false) == true
+	air_crisis_started = data.get("air_crisis_started", false) == true
+	control_room_returned = data.get("control_room_returned", false) == true
+	blocked_door_beat_done = data.get("blocked_door_beat_done", false) == true
+	door_panel_examined = data.get("door_panel_examined", false) == true
+	small_fuse_found = data.get("small_fuse_found", false) == true
+	large_fuse_found = data.get("large_fuse_found", false) == true
+	life_support_diagnosed = data.get("life_support_diagnosed", false) == true
+	scrubber_diagnosed = data.get("scrubber_diagnosed", false) == true
+	scrubber_repaired = data.get("scrubber_repaired", false) == true
+	scrubber_level = float(data.get("scrubber_level", 0.0))
+	ftl_drop_triggered = data.get("ftl_drop_triggered", false) == true
+	ftl_drop_game_time = float(data.get("ftl_drop_game_time", -1.0))
+	lime_planet_dialed = data.get("lime_planet_dialed", false) == true
+	reported_to_gate = data.get("reported_to_gate", false) == true
+	kino_orbs = int(data.get("kino_orbs", 0))
+	deployed_kinos.clear()
+	var loaded_kinos: Variant = data.get("deployed_kinos", [])
+	if loaded_kinos is Array:
+		for k in loaded_kinos:
+			if k is Dictionary:
+				deployed_kinos.append({
+					"scene": String((k as Dictionary).get("scene", "")),
+					"x": float((k as Dictionary).get("x", 0.0)),
+					"y": float((k as Dictionary).get("y", 0.0)),
+					"z": float((k as Dictionary).get("z", 0.0)),
+				})
+	kino_scout_done = data.get("kino_scout_done", false) == true
+	kino_plan_approved = data.get("kino_plan_approved", false) == true
+	away_party_briefed = data.get("away_party_briefed", false) == true
+	returned_from_lime_planet = data.get("returned_from_lime_planet", false) == true
 	resources.clear()
 	var loaded_resources: Variant = data.get("resources", {})
 	if loaded_resources is Dictionary:
@@ -695,38 +1148,24 @@ func load_and_resume() -> bool:
 	doors_traversed.clear()
 	for d in data.get("doors_traversed", []):
 		doors_traversed.append(String(d))
+	lime_discovered.clear()
+	for lk in data.get("lime_discovered", []):
+		lime_discovered.append(String(lk))
 	breaches_sealed.clear()
 	for b in data.get("breaches_sealed", []):
 		breaches_sealed.append(String(b))
 	log_entries.clear()
 	for l in data.get("log_entries", []):
 		log_entries.append(String(l))
+	kino_pan_x = float(data.get("kino_pan_x", 0.0))
+	kino_pan_y = float(data.get("kino_pan_y", 0.0))
+	kino_zoom = float(data.get("kino_zoom", 1.0))
+	kino_active_floor = int(data.get("kino_active_floor", -1))
+	var marker_raw: Variant = data.get("kino_marker", {})
+	kino_marker = marker_raw if marker_raw is Dictionary else {}
 	advance_air_quest()
-	# Fire signals so the HUD picks the loaded values up.
+	# Republish so the HUD, Kino, and quest waypoint pick up loaded values.
 	health_changed.emit(health)
 	oxygen_changed.emit(oxygen)
 	objective_changed.emit(current_objective)
 	kino_changed.emit(kino_acquired)
-	# Stage the spawn override for the next scene load. Defensive against
-	# malformed/edited saves — if the "pos" entry isn't a 3-element array,
-	# fall back to gate-room origin rather than crashing on out-of-bounds.
-	var raw_pos: Variant = data.get("pos", null)
-	if raw_pos is Array and (raw_pos as Array).size() == 3:
-		var pos_arr: Array = raw_pos
-		pending_spawn_position = Vector3(float(pos_arr[0]), float(pos_arr[1]), float(pos_arr[2]))
-	else:
-		push_warning("save.json: 'pos' missing or malformed, defaulting to origin")
-		pending_spawn_position = Vector3.ZERO
-	pending_spawn_yaw = float(data.get("yaw", 0.0))
-	skip_arrival_cinematic = true
-	var scene: String = String(data.get("scene", "res://scenes/gate_room.tscn"))
-	SceneRouter.change_to(scene, "")
-	return true
-
-func wipe_save() -> void:
-	if FileAccess.file_exists(SAVE_PATH):
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
-		add_log("Save wiped.")
-		save_wiped.emit()
-	else:
-		add_log("Nothing to wipe.")

@@ -19,8 +19,16 @@ const GATE_CONSOLE_SCRIPT: Script = preload("res://scripts/gate_console.gd")
 const NPC_SCRIPT: Script = preload("res://scripts/npc.gd")
 const PLANET_GATE_SCRIPT: Script = preload("res://scripts/planet_gate.gd")
 const QuestWaypointScript: Script = preload("res://scripts/quest_waypoint.gd")
+const CompanionScript: Script = preload("res://scripts/companion.gd")
+# Preload bypasses class_name registration timing — same reason as room.gd.
+const ShipAlertScript: Script = preload("res://scripts/ship_alert.gd")
 const QUEST_WAYPOINT_ANCHOR_HEIGHT: float = 2.4
 const QUEST_WAYPOINT_DOOR_HEIGHT: float = 1.8
+# Z of the gate-control / FTL consoles (and the Phase E crew clustered around
+# them). The Stargate sits at +Z (room_size.y*0.5 - 3.8 ≈ +12.2); putting the
+# consoles well into the -Z half keeps the operators back by the staircases
+# (STAIR_Z_CENTER ≈ -10) instead of crowding the event horizon.
+const GATE_CONSOLE_Z: float = -4.0
 
 # Railings are tall enough that the player's 0.6 m jump (jump² / 2·g ≈ 0.6 m
 # given the player's tunables) can't clear them. Combined with the per-rail
@@ -59,6 +67,12 @@ var _from_east_connector_marker: Marker3D
 var _gate_portal: Area3D
 var _arrival_running: bool = false
 var _quest_waypoint: Node3D = null
+# Phase F gate-walk-through choreography: when the player arrives at MINE_LIME
+# (post-briefing) the away team is already lined up in front of the gate. The
+# player's gate portal stays disabled until the team has walked through first.
+var _gate_team: Array[Node3D] = []
+var _gate_player_locked: bool = false
+var _team_walkthrough_running: bool = false
 
 func _ready() -> void:
 	# Tell the save system this is a real gameplay scene.
@@ -73,6 +87,12 @@ func _ready() -> void:
 	_build_consoles()
 	_build_npcs()
 	_build_lighting_props()
+
+	# Red-alert tint catches every light spawned by the build helpers above.
+	# Tints the WorldEnvironment ambient too so the gate room reads as the
+	# same emergency state as the procedural rooms.
+	if ShipAlertScript.is_alert_active():
+		ShipAlertScript.apply_to_scene(self)
 
 	# Spawn the gate model on the dais.
 	_stargate = STARGATE_SCENE.instantiate()
@@ -89,6 +109,25 @@ func _ready() -> void:
 	var first_visit: bool = not GameState.rooms_discovered.has("gate_room")
 	GameState.discover_room("gate_room", "Gate Room")
 	GameState.set_current_room("gate_room")
+
+	# Phase D → E bridge: Brody's "the gate dialed itself" call (end of the CO2
+	# scrubber scene) routes the player back here. Arriving satisfies the
+	# GO_TO_GATE objective and plays the "no MALP → I have an idea" beat that
+	# sends Eli to fetch a Kino. Returning later with a Kino plays Rush's
+	# approval and unlocks Kino Control.
+	if GameState.quest_step == GameState.QUEST_GO_TO_GATE:
+		GameState.report_to_gate()
+		_play_gate_arrival_scene()
+	elif GameState.quest_step == GameState.QUEST_SCOUT_KINO and not GameState.kino_plan_approved:
+		_play_rush_kino_approval()
+	elif GameState.quest_step == GameState.QUEST_MINE_LIME and not GameState.away_party_briefed:
+		_play_post_scout_briefing()
+	# After Scott's briefing (this run, or a prior session that already saw it),
+	# the away team should be waiting at the active gate ready to step through.
+	if (GameState.quest_step == GameState.QUEST_MINE_LIME
+			and GameState.away_party_briefed
+			and not GameState.returned_from_lime_planet):
+		_assemble_away_team_at_gate()
 
 	# Quest diamond — same pattern as room.gd. Refresh on objective_changed.
 	_refresh_quest_waypoint()
@@ -196,11 +235,159 @@ func _refresh_lime_gate_state() -> void:
 	if _stargate != null and "active" in _stargate:
 		_stargate.active = gate_open
 	if _gate_portal != null:
-		_gate_portal.monitoring = gate_open
+		# Player gate stays disabled until the away team walks through first.
+		_gate_portal.monitoring = gate_open and not _gate_player_locked
 
 func _start_ambient() -> void:
 	if _ambient_sfx != null and not _ambient_sfx.playing:
 		_ambient_sfx.play()
+
+# ----- Phase E gate beats ----------------------------------------------------
+
+# Brody flags the no-MALP problem; Eli has an idea. Quest is already at
+# FETCH_KINO (report_to_gate advanced it); this is the in-person dialog.
+func _play_gate_arrival_scene() -> void:
+	GameState.add_log("Dr Brody: We didn't bring a MALP — we've no idea what's on the other side.")
+	_play_gate_dialog([
+		{"speaker": "Dr Brody", "text": "We didn't bring a MALP. We have no idea what's on the other side of that gate.", "choices": [{"text": "...", "next": 1}]},
+		{"speaker": "Eli", "text": "Wait — I have an idea!", "choices": [{"text": "(head to my quarters)", "next": "exit"}]},
+	])
+
+
+# Player returned with a Kino — Rush approves, which (with kino_orbs > 0) leaves
+# the objective at SCOUT_KINO and unlocks Kino Control in the Kino Remote.
+func _play_rush_kino_approval() -> void:
+	GameState.kino_plan_approved = true
+	GameState.add_log("Dr Rush: Oh, that's bloody brilliant, Eli.")
+	_play_gate_dialog([
+		{"speaker": "Dr Rush", "text": "Oh, that's bloody brilliant, Eli. I suspect that's exactly what these devices are for.", "choices": [{"text": "Let's send one through.", "next": "exit"}]},
+	])
+
+
+# Returned from the Kino scout (quest MINE_LIME). The crew's still here: Eli
+# reports the good news, Rush orders an away party, Eli volunteers. One-shot.
+func _play_post_scout_briefing() -> void:
+	GameState.away_party_briefed = true
+	GameState.add_log("Kino recon: breathable atmosphere and lime deposits near the gate.")
+	_play_gate_dialog([
+		{"speaker": "Eli", "text": "Hey — it's breathable! AND there's lime deposits right near the gate.", "choices": [{"text": "(show Rush the readings)", "next": 1}]},
+		{"speaker": "Dr Rush", "text": "Well then, Sergeant — I think you should put together a little away party to go mine some lime.", "choices": [{"text": "...", "next": 2}]},
+		{"speaker": "Lt Scott", "text": "You heard him. Greer, Park — gear up. We're taking a walk.", "choices": [{"text": "I'll come too!", "next": "exit"}]},
+	])
+
+
+# Phase F: post-briefing, the away team is already lined up in front of the
+# active gate (Greer / Park / Scott, same roster as the planet side). The
+# player's gate portal is locked off until they walk up behind the team — a
+# trigger Area3D fires the walkthrough coroutine, which sends each companion
+# through the event horizon one-by-one and then re-opens the gate for the
+# player. Skipped in instant_mode so headless tests still walk the gate
+# straight through.
+func _assemble_away_team_at_gate() -> void:
+	if not _gate_team.is_empty():
+		return
+	var sr: Node = get_node_or_null("/root/SceneRouter")
+	if sr != null and sr.get("instant_mode"):
+		return
+	# Stand them on the dais facing the gate. Gate is at z = room_size.y*0.5-3.8
+	# (≈+12.2); the FromGate marker sits at y=1.05 z≈+10.5, so y=1.05 is the
+	# right floor height. Spread the trio along X.
+	var gate_z: float = room_size.y * 0.5 - 3.8
+	var line_z: float = gate_z - 2.4         # ≈ +9.8 — a couple metres south of the event horizon
+	var line_y: float = 1.05
+	const SCOTT_GLB: String = "res://models/characters/scott.glb"
+	const GREER_TINT: Color = Color(0.66, 0.50, 0.38)
+	# Roster order matches the planet-side spawn (Greer left, Park centre,
+	# Scott right) and the cutscene's group "away_team" muster.
+	var roster: Array = [
+		{"name": "Greer", "glb": SCOTT_GLB, "tint": GREER_TINT, "x": -1.6},
+		{"name": "Park", "glb": "res://models/characters/park.glb", "tint": Color.WHITE, "x": 0.0},
+		{"name": "Lt Scott", "glb": SCOTT_GLB, "tint": Color.WHITE, "x": 1.6},
+	]
+	for i in roster.size():
+		var entry: Dictionary = roster[i]
+		var c: Node3D = CompanionScript.new()
+		c.name = "GateTeam_" + String(entry["name"]).replace(" ", "")
+		c.set("stationary", true)
+		_world.add_child(c)
+		c.position = Vector3(float(entry["x"]), line_y, line_z)
+		c.rotation.y = 0.0    # model holder is internally flipped 180° → visible front faces +Z (the gate)
+		c.call("setup", String(entry["name"]), String(entry["glb"]), i, entry["tint"])
+		_gate_team.append(c)
+	# Lock the player out of the gate until the team has walked through.
+	_gate_player_locked = true
+	_refresh_lime_gate_state()
+	# Scott already joined the team at the gate — hide his briefing-spot NPC
+	# (built by _build_npcs near the dais) so we don't have two Scotts on screen.
+	var briefing_scott: Node = _world.get_node_or_null("LtScott")
+	if briefing_scott is Node3D:
+		(briefing_scott as Node3D).visible = false
+		if "enabled" in briefing_scott:
+			briefing_scott.set("enabled", false)
+	# Drop a trigger volume a few metres south of the team. Walking up behind
+	# them fires the choreographed walkthrough exactly once.
+	var trigger: Area3D = Area3D.new()
+	trigger.name = "TeamWalkthroughTrigger"
+	trigger.position = Vector3(0.0, line_y, line_z - 2.4)
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = Vector3(6.0, 2.4, 1.5)
+	cs.shape = box
+	trigger.add_child(cs)
+	# The player capsule sits on layer 1; only react to it (not crew bodies).
+	trigger.collision_mask = 1
+	trigger.body_entered.connect(_on_team_walkthrough_trigger)
+	_world.add_child(trigger)
+	GameState.add_log("Lt Scott: We'll head through first — keep tight, Eli.")
+
+
+func _on_team_walkthrough_trigger(body: Node) -> void:
+	if _team_walkthrough_running:
+		return
+	if not (body is Node3D) or not body.is_in_group("player"):
+		return
+	_team_walkthrough_running = true
+	_run_team_walkthrough()
+
+
+func _run_team_walkthrough() -> void:
+	var gate_z: float = room_size.y * 0.5 - 3.8
+	# Walk each companion forward to the event horizon, staggered so they file
+	# through one at a time. rush_to() flips the companion into its cinematic
+	# sprint mode and ARRIVE handles the visible=false.
+	for i in _gate_team.size():
+		var c: Node3D = _gate_team[i]
+		if not is_instance_valid(c):
+			continue
+		var target: Vector3 = Vector3(c.global_position.x, c.global_position.y, gate_z + 0.6)
+		c.call("rush_to", target)
+		await get_tree().create_timer(0.45).timeout
+		# Wait until this one's through, then flash + hide before launching the next.
+		while is_instance_valid(c) and c.get("_rushing") == true:
+			await get_tree().process_frame
+		if is_instance_valid(c):
+			c.visible = false
+	# Whole team through — open the gate for the player and free the trigger.
+	_gate_player_locked = false
+	_refresh_lime_gate_state()
+	var trigger: Node = _world.get_node_or_null("TeamWalkthroughTrigger")
+	if trigger != null:
+		trigger.queue_free()
+	GameState.add_log("Away team's through. Your turn.")
+
+
+# Play an in-person WoW dialog in the gate room. Skipped in instant_mode (tests
+# drive state directly); short beat so the HUD settles before it opens.
+func _play_gate_dialog(tree: Array) -> void:
+	var sr: Node = get_node_or_null("/root/SceneRouter")
+	if sr != null and sr.get("instant_mode"):
+		return
+	await get_tree().create_timer(0.8).timeout
+	if not is_inside_tree():
+		return
+	var player: Node = get_tree().get_first_node_in_group("player")
+	GameState.dialog_started.emit(player, tree)
+
 
 # ----- quest waypoint --------------------------------------------------------
 
@@ -213,6 +400,13 @@ func _on_quest_objective_changed(_text: String) -> void:
 # console holders), the cross-room target uses the ExitDoor instance defined
 # in gate_room.tscn (target_room_id = "stargate_corridor_east_connector").
 func _refresh_quest_waypoint() -> void:
+	# Scout beat: the objective is "open the Kino Remote", which has no spatial
+	# target — the HUD shows a [Tab] guide instead. Suppress the diamond + the
+	# HUD edge-arrow (which follows the quest_waypoint group) entirely.
+	if GameState.quest_step == GameState.QUEST_SCOUT_KINO:
+		_destroy_quest_waypoint()
+		return
+
 	var target: Dictionary = GameState.quest_target()
 	var target_room: String = String(target.get("room", ""))
 	var anchor_name: String = String(target.get("anchor", ""))
@@ -288,10 +482,10 @@ func _build_floor() -> void:
 	var box: BoxMesh = BoxMesh.new()
 	box.size = Vector3(room_size.x, 0.2, room_size.y)
 	mi.mesh = box
-	var mat: StandardMaterial3D = StandardMaterial3D.new()
-	mat.albedo_color = Color(0.30, 0.29, 0.32, 1.0)
-	mat.metallic = 0.32
-	mat.roughness = 0.62
+	# Shared metal-grate floor via RoomBuilder.make_floor_mat — same texture,
+	# tile size, brightness, and PNG-buffer fallback as every procedural room.
+	# Palette kept near the original (0.30, 0.29, 0.32) tint.
+	var mat: StandardMaterial3D = RoomBuilder.make_floor_mat(Color(0.30, 0.29, 0.32, 1.0), room_size.x, room_size.y)
 	mi.material_override = mat
 	mi.position = Vector3(0.0, -0.1, 0.0)
 	_world.add_child(mi)
@@ -334,10 +528,15 @@ func _build_walls_and_ceiling() -> void:
 	var half_z: float = room_size.y * 0.5
 	var wall_thickness: float = 0.5
 
-	var wall_mat: StandardMaterial3D = StandardMaterial3D.new()
-	wall_mat.albedo_color = Color(0.36, 0.34, 0.38, 1.0)
-	wall_mat.metallic = 0.30
-	wall_mat.roughness = 0.65
+	# Shared Ancient-tech wall-panel texture via RoomBuilder.make_wall_mat —
+	# same loader/cache/tile-size as every procedural room. Two material
+	# clones because BoxMesh uv1_scale is per-face uniform: ±X walls show
+	# room_size.y × ceiling_height; ±Z walls show room_size.x × ceiling_height.
+	# Palette tint kept close to the original (0.36, 0.34, 0.38) so the gate
+	# room's slightly warmer wall reading survives the texture overlay.
+	var wall_palette: Color = Color(0.36, 0.34, 0.38, 1.0)
+	var wall_mat_x: StandardMaterial3D = RoomBuilder.make_wall_mat(wall_palette, room_size.y, ceiling_height)
+	var wall_mat_z: StandardMaterial3D = RoomBuilder.make_wall_mat(wall_palette, room_size.x, ceiling_height)
 
 	var dark_mat: StandardMaterial3D = StandardMaterial3D.new()
 	dark_mat.albedo_color = Color(0.22, 0.22, 0.26, 1.0)
@@ -353,19 +552,19 @@ func _build_walls_and_ceiling() -> void:
 	# Walls are solid — doors are decorative panels recessed INTO the wall, and the
 	# scene transition is driven entirely by their E-interact. No archway cutouts.
 	# +X wall (right, Crew Quarters side).
-	_add_wall_segment(walls, wall_mat,
+	_add_wall_segment(walls, wall_mat_x,
 		Vector3(half_x + wall_thickness * 0.5, ceiling_height * 0.5, 0.0),
 		Vector3(wall_thickness, ceiling_height, room_size.y))
 	# -X wall (left, Mess Hall side).
-	_add_wall_segment(walls, wall_mat,
+	_add_wall_segment(walls, wall_mat_x,
 		Vector3(-half_x - wall_thickness * 0.5, ceiling_height * 0.5, 0.0),
 		Vector3(wall_thickness, ceiling_height, room_size.y))
 	# +Z wall (back, behind the gate).
-	_add_wall_segment(walls, wall_mat,
+	_add_wall_segment(walls, wall_mat_z,
 		Vector3(0.0, ceiling_height * 0.5, half_z + wall_thickness * 0.5),
 		Vector3(room_size.x, ceiling_height, wall_thickness))
 	# -Z wall (front, the EXIT wall) — also solid; ExitDoor sits recessed in it.
-	_add_wall_segment(walls, wall_mat,
+	_add_wall_segment(walls, wall_mat_z,
 		Vector3(0.0, ceiling_height * 0.5, -half_z - wall_thickness * 0.5),
 		Vector3(room_size.x, ceiling_height, wall_thickness))
 
@@ -846,7 +1045,7 @@ func _build_npcs() -> void:
 	scott.set("repeat_dialogue_tree", [
 		{
 			"speaker": "Lt Scott",
-			"text": "Hurry up Eli, find Rush!",
+			"text": _scott_repeat_line(),
 			"choices": [
 				{"text": "On it.", "next": "exit"},
 			],
@@ -908,10 +1107,69 @@ func _build_npcs() -> void:
 	_world.add_child(scott)
 
 	# Medic tableau: Colonel Young laid out unconscious with Lt James kneeling
-	# beside him trying to stabilise him. Clustered well away from the
-	# gate at the -X / -Z corner so the player walks past on their way to the
-	# south corridor exit and can't miss it.
-	_build_medic_tableau()
+	# beside him. Only present BEFORE the air crisis — once it starts, James has
+	# moved Young to the Infirmary (off the south corridor) to recover, so the
+	# gate-room floor is clear.
+	if not GameState.air_crisis_started:
+		_build_medic_tableau()
+
+	# Phase E: Brody (at the gate console) plus Rush + Park, who "followed" Eli
+	# in to look at the dialed gate. Present from arrival through the lime run.
+	_build_gate_phase_e_crew()
+
+
+# Lt Scott's repeat line is quest-aware: a nudge toward Rush early on, but once
+# the Kino scout confirms the lime world he's supportive about the away mission
+# (he leads it). Default preserves the early "find Rush" nudge.
+func _scott_repeat_line() -> String:
+	match GameState.quest_step:
+		GameState.QUEST_MINE_LIME:
+			return "Breathable air and lime on the far side — good work, Eli. I guess we'd better go mine some."
+		GameState.QUEST_RETURN_DESTINY:
+			return "Grab what lime you can and get back to the gate."
+		GameState.QUEST_REPAIR_SCRUBBER:
+			return "Get that lime to the scrubber — we're counting on you."
+		_:
+			return "Hurry up Eli, find Rush!"
+
+
+# Spawn Brody + Rush + Park clustered by the gate-control console during the
+# Phase E gate window (arrival → Kino scout). Unique node names so NPCState
+# doesn't cross-restore them to the control-room / infirmary versions.
+func _build_gate_phase_e_crew() -> void:
+	# Present from the gate report through the lime run: Brody/Rush/Park stay to
+	# brief the away party once the Kino scout confirms the planet (MINE_LIME).
+	var q: String = GameState.quest_step
+	var in_window: bool = (q == GameState.QUEST_GO_TO_GATE
+		or q == GameState.QUEST_FETCH_KINO
+		or q == GameState.QUEST_SCOUT_KINO
+		or q == GameState.QUEST_DIAL_LIME_PLANET
+		or q == GameState.QUEST_MINE_LIME)
+	if not in_window:
+		return
+	var z_console: float = GATE_CONSOLE_Z
+	# Brody at the gate-control console (x -3.5), facing the player's arrival.
+	_build_tableau_npc(
+		"GateBrody", "Dr Brody",
+		Vector3(-5.2, 0.0, z_console - 1.0), 0.0,
+		"res://models/characters/scott.glb",
+		[{"speaker": "Dr Brody", "text": "Still no telemetry from the other side. We're flying blind here.", "choices": [{"text": "Working on it.", "next": "exit"}]}],
+		"", "stand", true,
+	)
+	_build_tableau_npc(
+		"GateRush", "Dr Rush",
+		Vector3(-1.4, 0.0, z_console - 1.6), 0.0,
+		"res://models/characters/rush.glb",
+		[{"speaker": "Dr Rush", "text": "Whenever you're ready, Mr Wallace. The gate won't stay open forever.", "choices": [{"text": "Right.", "next": "exit"}]}],
+		"", "stand", true,
+	)
+	_build_tableau_npc(
+		"GatePark", "Dr Park",
+		Vector3(0.8, 0.0, z_console - 1.6), 0.0,
+		"res://models/characters/park.glb",
+		[{"speaker": "Dr Park", "text": "A camera drone through a wormhole. Honestly? Worth a shot.", "choices": [{"text": "Let's find out.", "next": "exit"}]}],
+		"", "stand", true,
+	)
 
 
 # Medic vignette near the -X wall, behind the staircases:
@@ -943,7 +1201,7 @@ func _build_medic_tableau() -> void:
 		"Lt James",
 		tableau_center + Vector3(0.85, 0.0, 0.4),
 		PI * 0.5,
-		"res://models/characters/lt_james.glb",
+		"res://models/characters/james.glb",
 		_james_tableau_dialog(),
 		"",
 		"kneel",
@@ -1108,8 +1366,7 @@ func _build_consoles() -> void:
 	# silhouette, same tweak surface as the control-room consoles. Per-console
 	# screen color is the optional differentiator if we ever want Gate Control
 	# vs FTL Countdown to read differently; for now both use the default blue.
-	var half_z: float = room_size.y * 0.5
-	var z_console: float = half_z - 10.5
+	var z_console: float = GATE_CONSOLE_Z
 	for spec in [
 		{"name": "GateControlConsole", "x": -3.5, "kind": "gate_control"},
 		{"name": "FTLConsole",         "x":  3.5, "kind": "ftl_countdown"},

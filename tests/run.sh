@@ -6,8 +6,13 @@
 #   3. quest        — quest-tracker BFS + GameState.quest_target + Kino route
 #   4. playthrough  — real cross-scene transitions via SceneRouter +
 #                     Interactable.interact() pipelines, end-to-end
+#   5. autopilot    — Kino-drone auto-search patrol (1/2/3 drone coordination)
 #
-# Usage: tests/run.sh [scene|flow|quest|playthrough|all]   (default: all)
+# Usage: tests/run.sh [lint|scene|flow|quest|playthrough|resume|autopilot|all]   (default: all)
+#
+# Pre-commit hook: .githooks/pre-commit invokes the lint subset via
+# tests/lint/check_save_registration.sh --staged. Install once with:
+#   git config core.hooksPath .githooks
 
 set -u
 cd "$(dirname "$0")/.."
@@ -28,10 +33,16 @@ RAN_SCENE=0
 RAN_FLOW=0
 RAN_QUEST=0
 RAN_PLAY=0
+RAN_LINT=0
+RAN_RESUME=0
+RAN_AUTOPILOT=0
 RC_SCENE=0
 RC_FLOW=0
 RC_QUEST=0
 RC_PLAY=0
+RC_LINT=0
+RC_RESUME=0
+RC_AUTOPILOT=0
 
 # Run a SceneTree-extending script (synchronous, no autoloads).
 #
@@ -67,6 +78,16 @@ run_scene_test() {
 	return $?
 }
 
+if [[ "$MODE" == "lint" || "$MODE" == "all" ]]; then
+	echo
+	echo "==============================="
+	echo " save-registration lint"
+	echo "==============================="
+	tests/lint/check_save_registration.sh
+	RC_LINT=$?
+	RAN_LINT=1
+fi
+
 if [[ "$MODE" == "scene" || "$MODE" == "all" ]]; then
 	run_script_test "scene_boot" "res://tests/smoke/scene_boot.gd"
 	RC_SCENE=$?
@@ -89,6 +110,18 @@ if [[ "$MODE" == "playthrough" || "$MODE" == "all" ]]; then
 	run_scene_test "e1_playthrough" "res://tests/playthrough/playthrough.tscn"
 	RC_PLAY=$?
 	RAN_PLAY=1
+fi
+
+if [[ "$MODE" == "resume" || "$MODE" == "all" ]]; then
+	run_scene_test "resume_probe" "res://tests/resume/probe.tscn"
+	RC_RESUME=$?
+	RAN_RESUME=1
+fi
+
+if [[ "$MODE" == "autopilot" || "$MODE" == "all" ]]; then
+	run_script_test "kino_autopilot" "res://tests/smoke/kino_autopilot.gd"
+	RC_AUTOPILOT=$?
+	RAN_AUTOPILOT=1
 fi
 
 # Kino map visual captures — produces 4 PNGs under screenshots/result/ that
@@ -122,12 +155,15 @@ echo
 echo "==============================="
 echo " final"
 echo "==============================="
+[[ $RAN_LINT  -eq 1 ]] && echo "save_registration:   $([[ $RC_LINT  -eq 0 ]] && echo PASS || echo "FAIL ($RC_LINT)")"  || echo "save_registration:   SKIPPED"
 [[ $RAN_SCENE -eq 1 ]] && echo "scene_boot:          $([[ $RC_SCENE -eq 0 ]] && echo PASS || echo "FAIL ($RC_SCENE)")" || echo "scene_boot:          SKIPPED"
 [[ $RAN_FLOW  -eq 1 ]] && echo "e1_flow:             $([[ $RC_FLOW  -eq 0 ]] && echo PASS || echo "FAIL ($RC_FLOW)")"  || echo "e1_flow:             SKIPPED"
 [[ $RAN_QUEST -eq 1 ]] && echo "quest_waypoint:      $([[ $RC_QUEST -eq 0 ]] && echo PASS || echo "FAIL ($RC_QUEST)")" || echo "quest_waypoint:      SKIPPED"
 [[ $RAN_PLAY  -eq 1 ]] && echo "e1_playthrough:      $([[ $RC_PLAY  -eq 0 ]] && echo PASS || echo "FAIL ($RC_PLAY)")"  || echo "e1_playthrough:      SKIPPED"
+[[ $RAN_RESUME -eq 1 ]] && echo "resume_probe:        $([[ $RC_RESUME -eq 0 ]] && echo PASS || echo "FAIL ($RC_RESUME)")" || echo "resume_probe:        SKIPPED"
+[[ $RAN_AUTOPILOT -eq 1 ]] && echo "kino_autopilot:      $([[ $RC_AUTOPILOT -eq 0 ]] && echo PASS || echo "FAIL ($RC_AUTOPILOT)")" || echo "kino_autopilot:      SKIPPED"
 
-if [[ ( $RAN_SCENE -eq 1 && $RC_SCENE -ne 0 ) || ( $RAN_FLOW -eq 1 && $RC_FLOW -ne 0 ) || ( $RAN_QUEST -eq 1 && $RC_QUEST -ne 0 ) || ( $RAN_PLAY -eq 1 && $RC_PLAY -ne 0 ) ]]; then
+if [[ ( $RAN_LINT -eq 1 && $RC_LINT -ne 0 ) || ( $RAN_SCENE -eq 1 && $RC_SCENE -ne 0 ) || ( $RAN_FLOW -eq 1 && $RC_FLOW -ne 0 ) || ( $RAN_QUEST -eq 1 && $RC_QUEST -ne 0 ) || ( $RAN_PLAY -eq 1 && $RC_PLAY -ne 0 ) || ( $RAN_RESUME -eq 1 && $RC_RESUME -ne 0 ) || ( $RAN_AUTOPILOT -eq 1 && $RC_AUTOPILOT -ne 0 ) ]]; then
 	exit 1
 fi
 exit 0

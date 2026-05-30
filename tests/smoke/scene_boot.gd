@@ -77,9 +77,9 @@ const ROOM_INTERACTABLE_REQUIRES: Dictionary = {
 	"quarters_room_1": ["Bed"],
 	"eli_quarters": ["KinoPickup"],
 	"engineering_bay": ["PowerConsole"],
-	"east_corridor": ["HullBreach", "HullSealSwitch"],
+	"breached_section_south": ["ShuttleDoorPanel", "ShuttleCrate1", "ShuttleCrate2", "ShuttleCrate3"],
 	"control_interface_room": ["DrRush"],
-	"hydroponics": ["CO2Scrubber"],
+	"south_corridor": ["CO2Scrubber"],
 }
 
 var _failures: Array[String] = []
@@ -118,6 +118,9 @@ func _run_checks() -> void:
 		_check_scene(path, requires)
 	await _check_procedural_rooms()
 	_check_connection_reachability()
+	await _check_kino_dispenser()
+	await _check_gate_room_phase_e_crew()
+	await _check_post_scout_gate()
 	_report()
 
 
@@ -218,7 +221,7 @@ func _check_scott_repeat_dialogue(inst: Node) -> void:
 	if scott == null:
 		_fail("res://scenes/gate_room.tscn", "Lt Scott node missing")
 		return
-	var was_met: bool = bool(_game_state.get("met_scott"))
+	var was_met: bool = _game_state.get("met_scott") == true
 	_game_state.set("met_scott", true)
 	var tree: Array = scott.call("_active_dialogue_tree")
 	_game_state.set("met_scott", was_met)
@@ -255,6 +258,10 @@ func _check_procedural_room(room_id: String) -> void:
 	if packed == null:
 		_fail(ROOM_SCENE, "load() returned null")
 		return
+	# Clean slate per room so leftover state from a prior room's mission
+	# wiring (e.g. hydroponics flips air_crisis_started) doesn't change what
+	# this room builds — control_interface_room omits Rush during the crisis.
+	_game_state.call("reset")
 	_game_state.set("next_room_id", room_id)
 	var inst := packed.instantiate()
 	if inst == null:
@@ -309,7 +316,7 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 		"quarters_room_1":
 			var bed: Node = inst.get_node("Bed")
 			bed.call("interact", null)
-			if bool(_game_state.get("quarters_found")):
+			if _game_state.get("quarters_found") == true:
 				print("  OK (Bed.interact → quarters_found=true)")
 				_passes += 1
 			else:
@@ -322,10 +329,10 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 			# the flag. Headless short-circuits the waits but the await still
 			# yields one frame; poll briefly so we see the flip after resume.
 			var waited: int = 0
-			while not bool(_game_state.get("kino_acquired")) and waited < 30:
+			while _game_state.get("kino_acquired") != true and waited < 30:
 				await process_frame
 				waited += 1
-			if bool(_game_state.get("kino_acquired")):
+			if _game_state.get("kino_acquired") == true:
 				print("  OK (KinoPickup.interact → kino_acquired=true)")
 				_passes += 1
 			else:
@@ -334,23 +341,31 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 		"engineering_bay":
 			var console: Node = inst.get_node("PowerConsole")
 			console.call("interact", null)
-			if bool(_game_state.get("elevator_repaired")):
+			if _game_state.get("elevator_repaired") == true:
 				print("  OK (PowerConsole.interact → elevator_repaired=true)")
 				_passes += 1
 			else:
 				_fail("%s [engineering_bay]" % ROOM_SCENE,
 					"PowerConsole.interact() did not set GameState.elevator_repaired")
-		"east_corridor":
-			var switch: Node = inst.get_node("HullSealSwitch")
-			switch.call("interact", null)
+		"breached_section_south":
+			# Loot the small-fuse crate, then repair the door panel → breach sealed.
+			inst.get_node("ShuttleCrate2").call("interact", null)
+			if _game_state.get("small_fuse_found") != true:
+				_fail("%s [breached_section_south]" % ROOM_SCENE,
+					"ShuttleCrate2.interact() did not grant the Small Fuse")
+			inst.get_node("ShuttleDoorPanel").call("interact", null)
 			var sealed: Array = _game_state.get("breaches_sealed")
 			if sealed.size() > 0:
-				print("  OK (HullSealSwitch.interact → breaches_sealed=", sealed, ")")
+				print("  OK (crate→small fuse, panel→breaches_sealed=", sealed, ")")
 				_passes += 1
 			else:
-				_fail("%s [east_corridor]" % ROOM_SCENE,
-					"HullSealSwitch.interact() did not record a sealed breach")
-		"hydroponics":
+				_fail("%s [breached_section_south]" % ROOM_SCENE,
+					"ShuttleDoorPanel.interact() did not record a sealed breach after the fuse")
+		"south_corridor":
+			# The reveal scene is Dr Rush's WoW dialog (player-driven), so drive
+			# the GameState completion directly here — the panel only redirects
+			# to Rush before diagnosis. This asserts the folded scene outcome:
+			# diagnosed + FTL drop + gate auto-dialed.
 			_game_state.set("met_scott", true)
 			_game_state.set("met_rush", true)
 			_game_state.set("eli_quarters_visited", true)
@@ -359,14 +374,16 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 			_game_state.call("start_air_crisis")
 			_game_state.call("diagnose_life_support")
 			_game_state.call("seal_breach", "breach_a")
-			var scrubber: Node = inst.get_node("CO2Scrubber")
-			scrubber.call("interact", null)
-			if bool(_game_state.get("scrubber_diagnosed")):
-				print("  OK (CO2Scrubber.interact → scrubber_diagnosed=true)")
+			_game_state.call("complete_scrubber_scene")
+			var diag_ok: bool = _game_state.get("scrubber_diagnosed") == true
+			var ftl_ok: bool = _game_state.get("ftl_drop_triggered") == true
+			var dial_ok: bool = _game_state.get("lime_planet_dialed") == true
+			if diag_ok and ftl_ok and dial_ok:
+				print("  OK (complete_scrubber_scene → diagnosed + FTL drop + gate dialed)")
 				_passes += 1
 			else:
-				_fail("%s [hydroponics]" % ROOM_SCENE,
-					"CO2Scrubber.interact() did not diagnose the scrubber")
+				_fail("%s [south_corridor]" % ROOM_SCENE,
+					"complete_scrubber_scene flags not set (diag=%s ftl=%s dial=%s)" % [diag_ok, ftl_ok, dial_ok])
 
 
 # BFS the connection graph (data/room_connections.json) from gate_room and
@@ -376,12 +393,15 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 func _check_connection_reachability() -> void:
 	print("\n=== connection graph reachability ===")
 	const MUST_REACH: Array[String] = [
-		"east_corridor",                # hull breach lives here
+		"east_corridor",                # corridor watch (Sgt Greer)
+		"breached_section_south",       # jammed door + seal switch (air-crisis objective)
+		"sealed_section_north",         # locked trap section (blocked-door beat)
 		"control_interface_room",       # Dr Rush
 		"eli_quarters",                 # kino pickup (Eli's room)
 		"engineering_bay",              # power console — gates upper deck
 		"quarters_room_1",              # Crew Quarters Alpha (upper deck)
-		"hydroponics",                  # CO2 scrubber
+		"south_corridor",               # CO2 scrubber (Phase D)
+		"hydroponics",                  # upper-deck room, elevator-gated
 	]
 	var connections: Dictionary = _load_connections()
 	if connections.is_empty():
@@ -412,6 +432,122 @@ func _check_connection_reachability() -> void:
 			_passes += 1
 		else:
 			_fail("connections", "%s unreachable from gate_room (broken adjacency)" % target)
+
+
+# Phase E: once Eli has reported to the gate (Brody's "no MALP" beat), the
+# quarters grows a Kino dispenser. Boot eli_quarters with reported_to_gate set
+# and assert the dispenser spawns + grants an orb on interact.
+func _check_kino_dispenser() -> void:
+	print("\n=== Phase E: Kino dispenser (eli_quarters) ===")
+	_game_state.call("reset")
+	_game_state.set("reported_to_gate", true)
+	_game_state.set("next_room_id", "eli_quarters")
+	var packed := load(ROOM_SCENE) as PackedScene
+	if packed == null:
+		_fail(ROOM_SCENE, "load() returned null for dispenser check")
+		return
+	var inst := packed.instantiate()
+	root.add_child(inst)
+	await process_frame
+	var disp: Node = inst.get_node_or_null("KinoDispenser")
+	if disp == null:
+		_fail("%s [eli_quarters]" % ROOM_SCENE, "KinoDispenser did not spawn with reported_to_gate=true")
+	else:
+		var before: int = int(_game_state.get("kino_orbs"))
+		disp.call("interact", null)
+		var after: int = int(_game_state.get("kino_orbs"))
+		if after == before + 1:
+			print("  OK (KinoDispenser.interact → kino_orbs %d→%d)" % [before, after])
+			_passes += 1
+		else:
+			_fail("%s [eli_quarters]" % ROOM_SCENE,
+				"KinoDispenser.interact() did not grant an orb (%d→%d)" % [before, after])
+	root.remove_child(inst)
+	await process_frame
+	inst.free()
+	_game_state.call("reset")
+
+
+# Phase E: Brody + Rush + Park cluster at the gate console during the scout
+# window. Boot gate_room with quest_step in that window and assert all three
+# uniquely-named tableau NPCs spawn. instant_mode guards the arrival cinematic.
+func _check_gate_room_phase_e_crew() -> void:
+	print("\n=== Phase E: gate-room scout crew (Brody/Rush/Park) ===")
+	var router: Node = root.get_node_or_null("SceneRouter")
+	var prev_instant: bool = router != null and router.get("instant_mode") == true
+	if router != null:
+		router.set("instant_mode", true)
+	_game_state.call("reset")
+	# FETCH_KINO sits inside the scout window but trips neither arrival cinematic
+	# (those gate on GO_TO_GATE / SCOUT_KINO), so the crew spawns cleanly.
+	_game_state.set("quest_step", "fetch_kino")  # GameState.QUEST_FETCH_KINO
+	var packed := load("res://scenes/gate_room.tscn") as PackedScene
+	if packed == null:
+		_fail("res://scenes/gate_room.tscn", "load() returned null for Phase E crew check")
+		if router != null:
+			router.set("instant_mode", prev_instant)
+		return
+	var inst := packed.instantiate()
+	root.add_child(inst)
+	await process_frame
+	var missing: Array[String] = []
+	for n in ["World/GateBrody", "World/GateRush", "World/GatePark"]:
+		if inst.get_node_or_null(n) == null:
+			missing.append(n)
+	if missing.size() > 0:
+		_fail("res://scenes/gate_room.tscn", "Phase E crew missing: " + ", ".join(missing))
+	else:
+		print("  OK (GateBrody/GateRush/GatePark spawned for scout window)")
+		_passes += 1
+	root.remove_child(inst)
+	await process_frame
+	inst.free()
+	_game_state.call("reset")
+	if router != null:
+		router.set("instant_mode", prev_instant)
+
+
+# Phase E return: at MINE_LIME (after the Kino scout) Lt Scott is supportive
+# rather than nagging "find Rush", and the gate crew stays present so Rush can
+# brief the away party. instant_mode guards the briefing cinematic.
+func _check_post_scout_gate() -> void:
+	print("\n=== Phase E: post-scout gate (supportive Scott + crew) ===")
+	var router: Node = root.get_node_or_null("SceneRouter")
+	var prev_instant: bool = router != null and router.get("instant_mode") == true
+	if router != null:
+		router.set("instant_mode", true)
+	_game_state.call("reset")
+	_game_state.set("quest_step", "mine_lime")
+	_game_state.set("kino_scout_done", true)
+	_game_state.set("away_party_briefed", true)  # suppress the one-shot dialog
+	var packed := load("res://scenes/gate_room.tscn") as PackedScene
+	var inst := packed.instantiate()
+	root.add_child(inst)
+	await process_frame
+	var scott := inst.get_node_or_null("World/LtScott")
+	var rush := inst.get_node_or_null("World/GateRush")
+	var ok: bool = true
+	if scott == null:
+		_fail("res://scenes/gate_room.tscn", "LtScott missing at MINE_LIME")
+		ok = false
+	else:
+		var tree: Array = scott.get("repeat_dialogue_tree")
+		var line: String = String((tree[0] as Dictionary).get("text", "")) if tree.size() > 0 else ""
+		if line.find("find Rush") != -1 or line == "":
+			_fail("res://scenes/gate_room.tscn", "Lt Scott still nags 'find Rush' at MINE_LIME: '%s'" % line)
+			ok = false
+	if rush == null:
+		_fail("res://scenes/gate_room.tscn", "Gate crew (GateRush) absent at MINE_LIME — no one to brief the away party")
+		ok = false
+	if ok:
+		print("  OK (Scott supportive + gate crew present for the away-party briefing)")
+		_passes += 1
+	root.remove_child(inst)
+	await process_frame
+	inst.free()
+	_game_state.call("reset")
+	if router != null:
+		router.set("instant_mode", prev_instant)
 
 
 func _load_connections() -> Dictionary:

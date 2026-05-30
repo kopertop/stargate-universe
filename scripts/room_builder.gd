@@ -16,6 +16,12 @@ extends Object
 #     RoomBuilder.build(world, data)
 
 
+# preload (not runtime load) so the control-room consoles get a valid script
+# even on a fresh checkout where class_name registration lags in headless
+# `-s` runs (same convention as room.gd / gate_room.gd).
+const ControlConsoleScript: Script = preload("res://scripts/control_console.gd")
+
+
 # ============================================================================
 # CONSOLE STYLE — single source of truth for ALL consoles in the game.
 # Used by attach_console_mesh() below; called from control room (4 stations),
@@ -67,6 +73,40 @@ const CONSOLE_TEXT_DEPTH: float = 0.0
 const CONSOLE_TEXT_LOCAL_ROTATION_DEG: Vector3 = Vector3(-90.0, 0.0, 0.0)
 
 
+# ============================================================================
+# WALL PANEL TEXTURE — used on every procedural room's interior walls so the
+# generic shell reads as Ancient-tech metal panelling instead of a flat color.
+# Tile sizes preserve the source PNG's 3:2 aspect (1536×1024) so individual
+# panel sub-shapes don't squash horizontally on long corridors. _make_wall_mat
+# clones a material per-wall and sets uv1_scale from the wall's face size, so
+# a 5 m vestibule and a 100 m corridor both show panels at the same physical
+# scale.
+# ============================================================================
+const WALL_TEXTURE_PATH: String = "res://textures/wall-panel.png"
+const WALL_TILE_U_M: float = 4.0
+const WALL_TILE_V_M: float = 2.667
+static var _wall_texture_cache: Texture2D = null
+
+
+# ============================================================================
+# FLOOR GRATE TEXTURE — used on the floor of every "generic" procedural room
+# (corridor, control room, kino room, quarters). Special-floor templates opt
+# out via FLOOR_TEMPLATE_SKIP below: hydroponics keeps its earthy palette, and
+# the elevator keeps a clean base under its emissive transport pad.
+# Source PNG is square (1254×1254); tile at 3 m per repeat so each ~1 m grate
+# sub-panel reads at realistic industrial scale.
+# ============================================================================
+const FLOOR_TEXTURE_PATH: String = "res://textures/floor-grate.png"
+const FLOOR_TILE_M: float = 3.0
+const FLOOR_TEMPLATE_SKIP: Array[String] = ["hydroponics-template", "elevator-template"]
+# HDR albedo multiplier applied to every floor (textured AND flat-colour) so
+# the dark grate metal reads brighter under the rooms' Omni lighting. Single
+# knob — bump it to lift all floors at once. >1 is intentional: it pushes the
+# albedo above the texture's own (near-black) values.
+const FLOOR_BRIGHTNESS: float = 2.4
+static var _floor_texture_cache: Texture2D = null
+
+
 # Default ceiling height per template (metres). Picked to make small rooms
 # feel intimate and large rooms feel monumental without per-room tuning.
 const CEILING_BY_TEMPLATE: Dictionary = {
@@ -91,14 +131,14 @@ static func build(world: Node3D, room_data: Dictionary) -> void:
 	# Apply a per-template visual palette and any template-specific accents
 	# AFTER the base shell is built so accents render on top.
 	var palette: Dictionary = _palette_for(template_id)
-	_build_shell(world, width_m, depth_m, ceiling_m, palette)
+	_build_shell(world, template_id, width_m, depth_m, ceiling_m, palette)
 	_add_template_accents(world, template_id, width_m, depth_m, ceiling_m, palette)
 	_add_fill_light(world, width_m, depth_m, ceiling_m, palette)
 
 
 # ----- shell (floor + walls + ceiling, identical structure across templates) --
 
-static func _build_shell(world: Node3D, width: float, depth: float, height: float, palette: Dictionary) -> void:
+static func _build_shell(world: Node3D, template_id: String, width: float, depth: float, height: float, palette: Dictionary) -> void:
 	var half_x: float = width * 0.5
 	var half_z: float = depth * 0.5
 	var wall_thickness: float = 0.4
@@ -106,8 +146,22 @@ static func _build_shell(world: Node3D, width: float, depth: float, height: floa
 	# Slightly more metallic + crisper roughness than the first pass — empty
 	# walls were reading flat next to the gate-room artisan walls. These values
 	# put the procedural rooms in the same finish range as gate_room.gd.
-	var floor_mat: StandardMaterial3D = _make_mat(palette["floor"], 0.35, 0.55)
-	var wall_mat: StandardMaterial3D = _make_mat(palette["wall"], 0.30, 0.58)
+	# Floor: generic rooms get the metal-grate texture (make_floor_mat); special
+	# templates listed in FLOOR_TEMPLATE_SKIP keep their flat-colour palette
+	# floor (hydroponics earthy-green, elevator under-pad clean).
+	var floor_mat: StandardMaterial3D
+	if FLOOR_TEMPLATE_SKIP.has(template_id):
+		# Flat-colour floor (hydroponics/elevator) — still brightened by the
+		# shared FLOOR_BRIGHTNESS knob so "all rooms" stay consistently lit.
+		floor_mat = _make_mat(_scale_rgb(palette["floor"], FLOOR_BRIGHTNESS), 0.25, 0.55)
+	else:
+		floor_mat = make_floor_mat(palette["floor"], width, depth)
+	# Wall material is cloned per-axis so panel tiling matches each wall's
+	# face dimensions (see _make_wall_mat). ±X walls show depth × height; ±Z
+	# walls show width × height — a single shared scale would stretch panels
+	# on whichever axis didn't match.
+	var wall_mat_x: StandardMaterial3D = make_wall_mat(palette["wall"], depth, height)
+	var wall_mat_z: StandardMaterial3D = make_wall_mat(palette["wall"], width, height)
 	var ceil_mat: StandardMaterial3D = _make_mat(palette["ceiling"], 0.25, 0.65)
 
 	# Floor — single box + collider.
@@ -125,17 +179,17 @@ static func _build_shell(world: Node3D, width: float, depth: float, height: floa
 	walls.collision_mask = 0
 	world.add_child(walls)
 	# +X / -X
-	_add_box(walls, wall_mat,
+	_add_box(walls, wall_mat_x,
 		Vector3(half_x + wall_thickness * 0.5, height * 0.5, 0.0),
 		Vector3(wall_thickness, height, depth))
-	_add_box(walls, wall_mat,
+	_add_box(walls, wall_mat_x,
 		Vector3(-half_x - wall_thickness * 0.5, height * 0.5, 0.0),
 		Vector3(wall_thickness, height, depth))
 	# +Z / -Z
-	_add_box(walls, wall_mat,
+	_add_box(walls, wall_mat_z,
 		Vector3(0.0, height * 0.5, half_z + wall_thickness * 0.5),
 		Vector3(width, height, wall_thickness))
-	_add_box(walls, wall_mat,
+	_add_box(walls, wall_mat_z,
 		Vector3(0.0, height * 0.5, -half_z - wall_thickness * 0.5),
 		Vector3(width, height, wall_thickness))
 
@@ -173,14 +227,16 @@ static func _add_template_accents(world: Node3D, template_id: String, width: flo
 
 
 # Corridor: layered industrial detail — emissive runners at the top + base of
-# both long walls, periodic bulkhead ribs with chest-height sconces between
-# them, and a dark conduit down the centreline of the ceiling. Reads as an
-# Ancient ship corridor at both 5 m vestibule and 100 m hall scales.
+# both long walls, chest-height sconces along the side walls, and a dark
+# conduit down the centreline of the ceiling. Reads as an Ancient ship
+# corridor at both 5 m vestibule and 100 m hall scales.
+#
+# Previously had bulkhead "ribs" — dark vertical boxes between sconces — that
+# protruded ~0.22 m from each wall. Removed once the wall-panel texture went
+# in: the ribs fought the panel pattern instead of complementing it.
 static func _accent_corridor(world: Node3D, width: float, depth: float, height: float, palette: Dictionary) -> void:
 	var strip_mat: StandardMaterial3D = _emissive_mat(palette["accent"], 2.4)
 	var sconce_mat: StandardMaterial3D = _emissive_mat(palette["accent"], 4.5)
-	var rib_color: Color = (palette["wall"] as Color).darkened(0.4)
-	var rib_mat: StandardMaterial3D = _make_mat(rib_color, 0.45, 0.55)
 	var conduit_mat: StandardMaterial3D = _make_mat(Color(0.09, 0.09, 0.11), 0.7, 0.45)
 
 	var axis_z: bool = depth > width
@@ -195,28 +251,22 @@ static func _accent_corridor(world: Node3D, width: float, depth: float, height: 
 		_corridor_place(world, strip_mat, axis_z, perp, height - 0.45, 0.0, 0.10, 0.10, strip_len)
 		_corridor_place(world, strip_mat, axis_z, perp, 0.20, 0.0, 0.10, 0.10, strip_len)
 
-	# Ribs every ~6 m, with a wall sconce between each rib pair. Skip in tiny
-	# rooms (<2 m short axis) where ribs would crowd the path.
-	var rib_count: int = int(floor(strip_len / 6.0))
-	if rib_count >= 1 and short_len > 2.0:
-		var rib_depth: float = 0.22
-		var rib_w: float = 0.45
-		var rib_h: float = height - 0.4
-		var spacing: float = strip_len / float(rib_count + 1)
-		for i in range(1, rib_count + 1):
-			var t: float = -strip_len * 0.5 + spacing * float(i)
-			for side_r in [1.0, -1.0]:
-				_corridor_place(world, rib_mat, axis_z, side_r * (half_short - rib_depth * 0.5),
-					rib_h * 0.5, t, rib_w, rib_h, rib_depth)
-		for j in range(rib_count + 1):
+	# Sconces evenly spaced down both long walls — sconce_count derived from
+	# the corridor's long-axis length so 5 m vestibules and 100 m halls both
+	# get one sconce roughly every ~6 m. Skip in narrow rooms (<2 m short
+	# axis) where wall sconces would crowd the path.
+	var sconce_count: int = int(floor(strip_len / 6.0))
+	if sconce_count >= 1 and short_len > 2.0:
+		var spacing: float = strip_len / float(sconce_count + 1)
+		for j in range(sconce_count + 1):
 			var ts: float = -strip_len * 0.5 + spacing * (float(j) + 0.5)
 			for side_s in [1.0, -1.0]:
 				var perp_s: float = side_s * (half_short - 0.025)
 				_corridor_place(world, sconce_mat, axis_z, perp_s,
 					1.65, ts, 0.05, 0.32, 0.18)
 				# Sconces only GLOW without a real light; the wall stayed flat.
-				# A small OmniLight3D per sconce pool of warm bounce makes the
-				# rib geometry pop and gives the corridor genuine depth.
+				# A small OmniLight3D per sconce pool of warm bounce gives the
+				# corridor genuine depth and picks up the wall-panel texture.
 				var lamp: OmniLight3D = OmniLight3D.new()
 				lamp.light_color = palette["accent"]
 				lamp.light_energy = 1.6
@@ -247,13 +297,13 @@ static func _accent_corridor(world: Node3D, width: float, depth: float, height: 
 	# --- Wall service panels -------------------------------------------------
 	# Small dark recessed rectangles set into the wall between sconces — a
 	# silent storytelling beat: "this corridor has working systems behind it."
-	# Each panel gets a tiny accent indicator dot. Only emit when the rib
-	# spacing is wide enough to fit them between ribs without crowding.
-	if rib_count >= 1 and short_len > 2.0:
+	# Each panel gets a tiny accent indicator dot. Only emit when the corridor
+	# is wide enough that the panels won't crowd the player path.
+	if sconce_count >= 1 and short_len > 2.0:
 		var panel_mat: StandardMaterial3D = _make_mat((palette["wall"] as Color).darkened(0.55), 0.5, 0.55)
 		var indicator_mat: StandardMaterial3D = _emissive_mat(palette["accent"], 3.0)
-		var spacing_p: float = strip_len / float(rib_count + 1)
-		for j in range(rib_count + 1):
+		var spacing_p: float = strip_len / float(sconce_count + 1)
+		for j in range(sconce_count + 1):
 			var ts_p: float = -strip_len * 0.5 + spacing_p * (float(j) + 0.5)
 			# Panel sits ~0.85 m off the floor — hip height. Slim recess look.
 			for side_p in [1.0, -1.0]:
@@ -287,26 +337,11 @@ static func _accent_control_room(world: Node3D, width: float, depth: float, heig
 	var band_mat: StandardMaterial3D = _emissive_mat(accent, 1.6)
 	var ring_mat: StandardMaterial3D = _emissive_mat(accent, 2.2)
 
-	# --- Grate floor overlay -------------------------------------------------
-	# A second floor slab sitting 1 cm above the base floor, textured with a
-	# procedurally-generated grate pattern. Keeps the base floor collider
-	# untouched while giving the room a hard industrial read.
-	var grate_tex: Texture2D = _make_grate_texture()
-	var grate_mat: StandardMaterial3D = StandardMaterial3D.new()
-	grate_mat.albedo_texture = grate_tex
-	grate_mat.albedo_color = Color(0.92, 0.92, 0.95)
-	grate_mat.metallic = 0.75
-	grate_mat.roughness = 0.4
-	grate_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	# 0.5 m tile size — each 32-px grate square reads as one floor panel.
-	grate_mat.uv1_scale = Vector3(width / 0.5, depth / 0.5, 1.0)
-	var grate_mi: MeshInstance3D = MeshInstance3D.new()
-	var grate_box: BoxMesh = BoxMesh.new()
-	grate_box.size = Vector3(width - 0.5, 0.04, depth - 0.5)
-	grate_mi.mesh = grate_box
-	grate_mi.material_override = grate_mat
-	grate_mi.position = Vector3(0.0, 0.022, 0.0)
-	world.add_child(grate_mi)
+	# Previously stamped a procedural 32×32 grate overlay slab here. Removed
+	# once the shared metal-grate floor texture went in (_build_shell calls
+	# make_floor_mat for all non-special templates) — the overlay was the
+	# same idea at lower fidelity and double-grated the room when both were
+	# active.
 
 	# --- Wall band -----------------------------------------------------------
 	# Continuous emissive band at chest height around all four walls — the
@@ -350,18 +385,27 @@ static func _accent_control_room(world: Node3D, width: float, depth: float, heig
 	#   west  (-X)  → forward = +X (toward origin) → rot.y = -PI/2
 	#   north (-Z)  → forward = +Z (toward origin) → rot.y = PI
 	#   south (+Z)  → forward = -Z (toward origin) → rot.y = 0
+	# All four consoles are identical Ancient control terminals — each opens
+	# the same shipwide control menu (Kino-Remote-style panel: map, status,
+	# log). Named by cardinal position so save/load anchors remain stable
+	# and quest waypoints can target a specific one without changing
+	# behavior. ControlConsole sits on collision layer 1|4 so the player
+	# capsule can't walk through and the interact ray still finds it.
+	# (Script is the module-level ControlConsoleScript preload.)
 	var consoles: Array = [
-		{"pos": east_pos,  "rot":  PI * 0.5},
-		{"pos": west_pos,  "rot": -PI * 0.5},
-		{"pos": north_pos, "rot":  PI},
-		{"pos": south_pos, "rot":  0.0},
+		{"pos": east_pos,  "rot":  PI * 0.5, "name": "ControlConsoleEast"},
+		{"pos": west_pos,  "rot": -PI * 0.5, "name": "ControlConsoleWest"},
+		{"pos": north_pos, "rot":  PI,       "name": "ControlConsoleNorth"},
+		{"pos": south_pos, "rot":  0.0,      "name": "ControlConsoleSouth"},
 	]
 	for c in consoles:
-		var holder: Node3D = Node3D.new()
-		holder.position = c["pos"]
-		holder.rotation.y = c["rot"]
-		world.add_child(holder)
-		attach_console_mesh(holder)
+		var body: StaticBody3D = StaticBody3D.new()
+		body.set_script(ControlConsoleScript)
+		body.name = c["name"]
+		body.position = c["pos"]
+		body.rotation.y = c["rot"]
+		world.add_child(body)
+		attach_console_mesh(body)
 
 	# --- Console downlights ---------------------------------------------------
 	# One soft warm pool above each console, plus a small emissive ceiling
@@ -582,28 +626,6 @@ static func _apply_material_recursive(root: Node, mat: StandardMaterial3D) -> vo
 		_apply_material_recursive(child, mat)
 
 
-# 32×32 procedural grate pattern — bright cross-lattice with dark holes in the
-# middle of each cell. Crisp pixel edges with TEXTURE_FILTER_NEAREST give a
-# hard industrial read; UV scale is set by the caller to tile per-metre.
-static func _make_grate_texture() -> Texture2D:
-	var img: Image = Image.create(32, 32, false, Image.FORMAT_RGBA8)
-	var bright: Color = Color(0.72, 0.74, 0.78, 1.0)
-	var mid: Color = Color(0.40, 0.42, 0.46, 1.0)
-	var hole: Color = Color(0.06, 0.07, 0.08, 1.0)
-	for y in 32:
-		for x in 32:
-			# Outer 2-pixel rim = bright frame; one mid-cross at the midline.
-			var on_rim: bool = (x < 2 or x > 29 or y < 2 or y > 29)
-			var on_mid: bool = (x >= 15 and x <= 16) or (y >= 15 and y <= 16)
-			if on_rim:
-				img.set_pixel(x, y, bright)
-			elif on_mid:
-				img.set_pixel(x, y, mid)
-			else:
-				img.set_pixel(x, y, hole)
-	return ImageTexture.create_from_image(img)
-
-
 # Kino room: a working drone bay. Two wall shelves of dormant kino spheres on
 # the -Z wall, a centre pedestal where the player's active kino rests, an
 # operator workbench (Kenney desk_computer + desk_chair) on the -X wall for the
@@ -809,12 +831,19 @@ static func _accent_quarters(world: Node3D, width: float, depth: float, height: 
 			var desk_pos: Vector3 = Vector3(half_x - 1.4, 0.0, 0.0)
 			_spawn_kenney_prop(world, desk_glb, desk_pos, -PI * 0.5, DESK_SCALE,
 				Color(0.45, 0.40, 0.35))
-			# Desk box: long axis follows yaw -90° → world Z. 2.4 m × 0.95 m tall ×
-			# 1.0 m deep at scale 2.5.
+			# Desk walk-blocker SLIGHTLY oversized vs the visual mesh so the
+			# player can't slip into the sides of the table.glb collider gap.
+			# Long axis follows yaw -90° → world Z. 2.6 m × 1.0 m × 1.3 m
+			# gives ~15 cm margin on each side of the visible desk top.
 			_add_walk_blocker(world, desk_pos, -PI * 0.5,
-				Vector3(1.0, 0.95, 2.4), "DeskBlocker")
+				Vector3(1.3, 1.0, 2.6), "DeskBlocker")
 		if chair_glb != null:
-			var chair_pos: Vector3 = Vector3(half_x - 3.0, 0.0, 0.0)
+			# Tuck the chair into the NW corner of the desk (push -Z so it
+			# sits against the desk's short end, and pull it slightly closer
+			# in X) so the south-side approach to the desk top is clear. The
+			# kino pickup sits at desk centre (world z=0); without this tuck
+			# the chair sits squarely on the only walk-up path.
+			var chair_pos: Vector3 = Vector3(half_x - 2.7, 0.0, -1.5)
 			_spawn_kenney_prop(world, chair_glb, chair_pos, PI * 0.25, CHAIR_SCALE,
 				Color(0.30, 0.32, 0.36))
 			# Chair: ~1.1 m square seat-block footprint, 0.95 m to seat back. Yaw
@@ -973,20 +1002,19 @@ static func _accent_hydroponics(world: Node3D, width: float, depth: float, heigh
 				Color(0.45, 0.55, 0.40))
 
 
-# Elevator: cyan-rimmed floor disc + ceiling cap, plus four corner light
-# columns running floor-to-ceiling and a wall-mounted control panel on +X.
-# Elevator / transport bay: central glowing transport pad with a Kenney
-# `machine_generator.glb` lift mechanism against the -X wall and a
-# `machine_wireless.glb` call console on the +X wall. Cyan strip-lights climb
-# the four corner pillars so the geometry reads as an active lift shaft, and
-# warm cyan Omni lights pool on the pad and ceiling cap.
+# Elevator / transport bay: central glowing transport pad with a cyan-emissive
+# disc + rim, a matching ceiling cap, a Kenney `machine_generator.glb` lift
+# mechanism against the -X wall, and a `machine_wireless.glb` call console on
+# the +X wall. Warm cyan Omni lights pool on the pad and ceiling cap.
+#
+# Previously had four floor-to-ceiling corner pillars with cyan light strips
+# climbing them. Removed once the wall-panel texture went in: the pillars and
+# their strips read as visual noise stacked on top of the panel surface.
 static func _accent_elevator(world: Node3D, width: float, depth: float, height: float, palette: Dictionary) -> void:
 	var accent: Color = palette["accent"]
 	var disc_mat: StandardMaterial3D = _emissive_mat(accent, 2.4)
 	var ring_mat: StandardMaterial3D = _emissive_mat(accent, 3.4)
 	var cap_mat: StandardMaterial3D = _emissive_mat(accent, 2.0)
-	var strip_mat: StandardMaterial3D = _emissive_mat(accent, 2.8)
-	var pillar_mat: StandardMaterial3D = _make_mat((palette["wall"] as Color).darkened(0.45), 0.55, 0.5)
 	var panel_mat: StandardMaterial3D = _make_mat((palette["wall"] as Color).darkened(0.25), 0.55, 0.4)
 	var panel_screen_mat: StandardMaterial3D = _emissive_mat(accent, 3.2)
 
@@ -1015,24 +1043,6 @@ static func _accent_elevator(world: Node3D, width: float, depth: float, height: 
 	_add_decor(world, cap_mat,
 		Vector3(0.0, height - 0.10, 0.0),
 		Vector3(width - 1.2, 0.06, depth - 1.2))
-
-	# --- Corner pillars with vertical light strips --------------------------
-	# Dark metal pillars frame the bay; a thin cyan strip up the inner face of
-	# each pillar reads as a lift-shaft "rails-lit" effect from any angle.
-	var hx: float = width * 0.5 - 0.14
-	var hz: float = depth * 0.5 - 0.14
-	for sx in [1.0, -1.0]:
-		for sz in [1.0, -1.0]:
-			_add_decor(world, pillar_mat,
-				Vector3(sx * hx, height * 0.5, sz * hz),
-				Vector3(0.18, height - 0.12, 0.18))
-			# Cyan strip on the inner faces (-X and -Z direction from the pillar).
-			_add_decor(world, strip_mat,
-				Vector3(sx * (hx - 0.10), height * 0.5, sz * hz),
-				Vector3(0.04, height - 0.5, 0.04))
-			_add_decor(world, strip_mat,
-				Vector3(sx * hx, height * 0.5, sz * (hz - 0.10)),
-				Vector3(0.04, height - 0.5, 0.04))
 
 	# --- Lift machinery against -X wall -------------------------------------
 	# `machine_generator.glb` is a chunky pipe-and-housing unit that sells the
@@ -1178,6 +1188,92 @@ static func _make_mat(albedo: Color, metallic: float, roughness: float) -> Stand
 	m.albedo_color = albedo
 	m.metallic = metallic
 	m.roughness = roughness
+	return m
+
+
+# Scale a colour's RGB by k (alpha forced to 1.0). Used for HDR albedo
+# brightening — Color * float would also scale alpha, which we don't want.
+static func _scale_rgb(c: Color, k: float) -> Color:
+	return Color(c.r * k, c.g * k, c.b * k, 1.0)
+
+
+# Robust wall-panel texture loader. Tries the editor-imported .ctex path first
+# (fast GPU upload). Falls back to runtime PNG decode for headless smoke tests
+# that may run BEFORE the editor has imported the PNG — see memory entry
+# feedback_godot_png_no_import_sidecar. Result cached on the class so we don't
+# re-decode 3 MB of PNG every time a room is built.
+static func _load_wall_texture() -> Texture2D:
+	if _wall_texture_cache != null:
+		return _wall_texture_cache
+	var tex: Texture2D = load(WALL_TEXTURE_PATH) as Texture2D
+	if tex == null:
+		var bytes: PackedByteArray = FileAccess.get_file_as_bytes(WALL_TEXTURE_PATH)
+		if bytes.size() > 0:
+			var img: Image = Image.new()
+			if img.load_png_from_buffer(bytes) == OK:
+				tex = ImageTexture.create_from_image(img)
+	_wall_texture_cache = tex
+	return tex
+
+
+# Same robust-loader pattern as _load_wall_texture, for the floor grate.
+static func _load_floor_texture() -> Texture2D:
+	if _floor_texture_cache != null:
+		return _floor_texture_cache
+	var tex: Texture2D = load(FLOOR_TEXTURE_PATH) as Texture2D
+	if tex == null:
+		var bytes: PackedByteArray = FileAccess.get_file_as_bytes(FLOOR_TEXTURE_PATH)
+		if bytes.size() > 0:
+			var img: Image = Image.new()
+			if img.load_png_from_buffer(bytes) == OK:
+				tex = ImageTexture.create_from_image(img)
+	_floor_texture_cache = tex
+	return tex
+
+
+# Floor material with the metal-grate texture tiled to ~FLOOR_TILE_M per
+# repeat. Only used for generic templates (see FLOOR_TEMPLATE_SKIP). The
+# per-template `palette["floor"]` colour still feeds in as a faint tint so
+# kino-room reads warm and control-room reads cool over the same grate.
+#
+# metallic kept low (0.20): a high-metallic floor has almost no diffuse
+# response and reads near-black in these Omni-lit rooms (no reflection probe),
+# which fights the brightening. albedo is pushed up by FLOOR_BRIGHTNESS so the
+# dark grate metal lifts while the slot-holes stay dark.
+static func make_floor_mat(palette_color: Color, width: float, depth: float) -> StandardMaterial3D:
+	var m: StandardMaterial3D = StandardMaterial3D.new()
+	m.albedo_color = _scale_rgb(palette_color.lerp(Color.WHITE, 0.85), FLOOR_BRIGHTNESS)
+	m.metallic = 0.20
+	m.roughness = 0.50
+	var tex: Texture2D = _load_floor_texture()
+	if tex != null:
+		m.albedo_texture = tex
+		m.uv1_scale = Vector3(
+			max(width / FLOOR_TILE_M, 0.1),
+			max(depth / FLOOR_TILE_M, 0.1),
+			1.0)
+	return m
+
+
+# Per-wall material clone with uv1_scale set so the panel texture tiles to
+# ~WALL_TILE_*_M regardless of wall length. palette_color is folded in as a
+# faint tint (texture stays dominant) so room theming still reads.
+#
+# PUBLIC: also called from gate_room.gd so the artisan gate-room walls share
+# the same panel texture, tile size, and PNG-buffer fallback as procedural
+# rooms. Keep the signature stable.
+static func make_wall_mat(palette_color: Color, face_w: float, face_h: float) -> StandardMaterial3D:
+	var m: StandardMaterial3D = StandardMaterial3D.new()
+	m.albedo_color = palette_color.lerp(Color.WHITE, 0.85)
+	m.metallic = 0.30
+	m.roughness = 0.58
+	var tex: Texture2D = _load_wall_texture()
+	if tex != null:
+		m.albedo_texture = tex
+		m.uv1_scale = Vector3(
+			max(face_w / WALL_TILE_U_M, 0.1),
+			max(face_h / WALL_TILE_V_M, 0.1),
+			1.0)
 	return m
 
 

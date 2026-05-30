@@ -1,53 +1,135 @@
 {
 	"gate_room": [
-		{ "dir": "-x", "to": "stargate_corridor_east_connector", "plaque": "Destiny Corridor" }
+		{
+			"dir": "-x",
+			"to": "stargate_corridor_east_connector",
+			"plaque": "Destiny Corridor"
+		}
 	],
-
 	"stargate_corridor_east_connector": [
-		{ "dir": "-x", "to": "east_corridor", "plaque": "East Corridor" }
+		{
+			"dir": "-x",
+			"to": "east_corridor",
+			"plaque": "East Corridor"
+		}
 	],
-
 	"east_corridor": [
-		{ "dir": "+x", "to": "north_corridor", "plaque": "North Corridor" },
-		{ "dir": "+x", "to": "south_corridor", "plaque": "South Corridor" }
+		{
+			"dir": "+x",
+			"to": "north_corridor",
+			"plaque": "North Corridor"
+		},
+		{
+			"dir": "+x",
+			"to": "south_corridor",
+			"plaque": "South Corridor"
+		}
 	],
-
 	"north_corridor": [
-		{ "dir": "+x", "to": "elevator_north", "plaque": "Elevator — Upper Deck" },
-		{ "dir": "+z", "to": "control_approach_north", "plaque": "Control Approach" }
+		{
+			"dir": "+x",
+			"to": "elevator_north",
+			"plaque": "Elevator \u2014 Upper Deck"
+		},
+		{
+			"dir": "+z",
+			"to": "control_approach_north",
+			"plaque": "Control Approach"
+		},
+		{
+			"dir": "-z",
+			"to": "north_spur",
+			"plaque": "North Access"
+		}
 	],
-
 	"south_corridor": [
-		{ "dir": "-z", "to": "control_approach_south", "plaque": "Control Approach" }
+		{
+			"dir": "-z",
+			"to": "control_approach_south",
+			"plaque": "Control Approach"
+		},
+		{
+			"dir": "+z",
+			"to": "south_spur",
+			"plaque": "South Access"
+		},
+		{
+			"dir": "+z",
+			"to": "infirmary",
+			"plaque": "Infirmary"
+		}
 	],
-
 	"control_approach_north": [
-		{ "dir": "+z", "to": "control_interface_room", "plaque": "Control Interface Room" }
+		{
+			"dir": "+z",
+			"to": "control_interface_room",
+			"plaque": "Control Interface Room"
+		}
 	],
-
 	"control_approach_south": [
-		{ "dir": "-z", "to": "control_interface_room", "plaque": "Control Interface Room" }
+		{
+			"dir": "-z",
+			"to": "control_interface_room",
+			"plaque": "Control Interface Room"
+		}
 	],
-
 	"control_interface_room": [
-		{ "dir": "+x", "to": "cr_corridor_2", "plaque": "Crew Wing" }
+		{
+			"dir": "+x",
+			"to": "cr_corridor_2",
+			"plaque": "Crew Wing"
+		}
 	],
-
 	"cr_corridor_2": [
-		{ "dir": "+x", "to": "eli_quarters", "plaque": "Kino Room" },
-		{ "dir": "+z", "to": "engineering_bay", "plaque": "Engineering Bay" }
+		{
+			"dir": "+x",
+			"to": "eli_quarters",
+			"plaque": "Kino Room"
+		},
+		{
+			"dir": "+z",
+			"to": "engineering_bay",
+			"plaque": "Engineering Bay"
+		}
 	],
-
 	"elevator_north": [
-		{ "dir": "elevator", "to": "elevator_room_floor_1", "plaque": "Upper Deck" }
+		{
+			"dir": "elevator",
+			"to": "elevator_room_floor_1",
+			"plaque": "Upper Deck"
+		}
 	],
-
 	"elevator_room_floor_1": [
-		{ "dir": "-x", "to": "room_1753576770763", "plaque": "Quarters Corridor" },
-		{ "dir": "+x", "to": "hydroponics", "plaque": "Hydroponics — CO2 Scrubber" }
+		{
+			"dir": "-x",
+			"to": "room_1753576770763",
+			"plaque": "Quarters Corridor"
+		},
+		{
+			"dir": "+x",
+			"to": "hydroponics",
+			"plaque": "Hydroponics \u2014 CO2 Scrubber"
+		}
 	],
-
 	"room_1753576770763": [
-		{ "dir": "+z", "to": "quarters_room_1", "plaque": "Crew Quarters Alpha" }
+		{
+			"dir": "+z",
+			"to": "quarters_room_1",
+			"plaque": "Crew Quarters Alpha"
+		}
+	],
+	"north_spur": [
+		{
+			"dir": "-z",
+			"to": "sealed_section_north",
+			"plaque": "Sealed Section"
+		}
+	],
+	"south_spur": [
+		{
+			"dir": "+z",
+			"to": "breached_section_south",
+			"plaque": "Damaged Section"
+		}
 	]
 }

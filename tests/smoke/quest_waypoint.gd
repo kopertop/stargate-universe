@@ -96,9 +96,9 @@ func _initialize() -> void:
 	_expect(String(t_rush.get("room", "")) == "control_interface_room", "QUEST_FIND_RUSH room = control_interface_room")
 	_expect(String(t_rush.get("anchor", "")) == "DrRush", "QUEST_FIND_RUSH anchor = DrRush")
 
-	# QUEST_REPAIR_SCRUBBER targets hydroponics / CO2Scrubber.
+	# QUEST_REPAIR_SCRUBBER targets south_corridor / CO2Scrubber.
 	var t_scrub: Dictionary = gs.call("quest_target", gs.QUEST_REPAIR_SCRUBBER)
-	_expect(String(t_scrub.get("room", "")) == "hydroponics", "QUEST_REPAIR_SCRUBBER room = hydroponics")
+	_expect(String(t_scrub.get("room", "")) == "south_corridor", "QUEST_REPAIR_SCRUBBER room = south_corridor")
 	_expect(String(t_scrub.get("anchor", "")) == "CO2Scrubber", "QUEST_REPAIR_SCRUBBER anchor = CO2Scrubber")
 
 	# Offworld step has empty room (waypoint hidden).

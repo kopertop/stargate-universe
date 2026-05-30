@@ -55,5 +55,40 @@
 		"portrait": "res://sprites/portraits/soldier.png",
 		"role": "military",
 		"short_name": "Soldier"
+	},
+	"Dr Brody": {
+		"portrait": "res://sprites/portraits/brody.png",
+		"role": "civilian",
+		"short_name": "Brody"
+	},
+	"Brody": {
+		"portrait": "res://sprites/portraits/brody.png",
+		"role": "civilian",
+		"short_name": "Brody"
+	},
+	"TJ": {
+		"portrait": "res://sprites/portraits/tj-johansen.png",
+		"role": "military",
+		"short_name": "TJ"
+	},
+	"TJ Johansen": {
+		"portrait": "res://sprites/portraits/tj-johansen.png",
+		"role": "military",
+		"short_name": "TJ"
+	},
+	"Dr Volker": {
+		"portrait": "res://sprites/portraits/volker.png",
+		"role": "civilian",
+		"short_name": "Volker"
+	},
+	"Camile Wray": {
+		"portrait": "res://sprites/portraits/wray.png",
+		"role": "civilian",
+		"short_name": "Wray"
+	},
+	"Varro": {
+		"portrait": "res://sprites/portraits/varro.png",
+		"role": "military",
+		"short_name": "Varro"
 	}
 }

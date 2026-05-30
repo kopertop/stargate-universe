@@ -9,7 +9,8 @@ extends SceneTree
 #   godot --headless --quit-after 80 -s res://tests/smoke/e1_flow.gd
 
 const EXPECTED_AUTOLOADS: Array[String] = [
-	"Audio", "TestCapture", "GameState", "SceneRouter", "KinoRemote", "EpisodeWrap",
+	"Audio", "TestCapture", "SaveManager", "GameClock", "GameState", "NPCState",
+	"SceneRouter", "KinoRemote", "EpisodeWrap",
 ]
 
 var _failures: Array[String] = []
@@ -105,11 +106,16 @@ func _initialize() -> void:
 
 	gs.start_air_crisis()
 	_expect(gs.air_crisis_started, "air: sleep starts crisis")
-	_expect(gs.quest_step == gs.QUEST_DIAGNOSE_LIFE_SUPPORT, "air: crisis -> diagnose life support")
+	_expect(gs.quest_step == gs.QUEST_RETURN_TO_CONTROL, "air: crisis -> return to control room")
+
+	gs.mark_control_room_returned()
+	_expect(gs.control_room_returned, "air: control room return records flag")
+	_expect(gs.quest_step == gs.QUEST_DIAGNOSE_LIFE_SUPPORT, "air: returned -> access terminal")
+	_expect(not gs.blocked_door_beat_done, "air: blocked-door beat not yet played")
 
 	gs.diagnose_life_support()
 	_expect(gs.life_support_diagnosed, "air: life support diagnostic records flag")
-	_expect(gs.quest_step == gs.QUEST_SEAL_BREACH, "air: diagnostic -> seal breach")
+	_expect(gs.quest_step == gs.QUEST_SEAL_BREACH, "air: terminal access -> seal breach")
 
 	_expect(gs.breaches_sealed.is_empty(), "mission: no breaches sealed yet")
 	gs.seal_breach("breach_a")
@@ -126,7 +132,28 @@ func _initialize() -> void:
 
 	gs.trigger_ftl_drop()
 	_expect(gs.ftl_drop_triggered, "air: FTL drop records flag")
-	_expect(gs.quest_step == gs.QUEST_DIAL_LIME_PLANET, "air: FTL -> dial lime planet")
+	_expect(gs.quest_step == gs.QUEST_GO_TO_GATE, "air: FTL -> get to gate room")
+
+	gs.report_to_gate()
+	_expect(gs.reported_to_gate, "air: reporting to gate records flag")
+	_expect(gs.quest_step == gs.QUEST_FETCH_KINO, "air: gate room -> fetch a Kino (scout first)")
+
+	# Kino-scout beat: pull an orb from the quarters dispenser. Supply is
+	# unlimited but the player caps at KINO_ORB_MAX.
+	gs.acquire_kino_orb()
+	_expect(gs.kino_orbs == 1, "air: dispenser grants a Kino orb")
+	_expect(gs.quest_step == gs.QUEST_SCOUT_KINO, "air: holding a Kino -> send it through the gate")
+	gs.acquire_kino_orb()
+	gs.acquire_kino_orb()
+	gs.acquire_kino_orb()
+	_expect(gs.kino_orbs == gs.KINO_ORB_MAX, "air: Kino orbs cap at KINO_ORB_MAX")
+
+	# Launching a Kino spends one orb; the recon flight confirms the far side.
+	_expect(gs.consume_kino_orb(), "air: launching a Kino spends an orb")
+	_expect(gs.kino_orbs == gs.KINO_ORB_MAX - 1, "air: consume_kino_orb decrements")
+	gs.complete_kino_scout()
+	_expect(gs.kino_scout_done, "air: Kino scout records flag")
+	_expect(gs.quest_step == gs.QUEST_DIAL_LIME_PLANET, "air: scout done -> dial lime planet")
 
 	gs.dial_lime_planet()
 	_expect(gs.lime_planet_dialed, "air: lime planet dialed")
@@ -161,6 +188,17 @@ func _initialize() -> void:
 	gs.check_episode_complete()
 	_expect(completed_emits.size() == 1, "mission: completion is one-shot")
 
+	# Deployed-Kino tracking: FIFO capped at KINO_DEPLOYED_MAX, oldest dropped.
+	gs.deployed_kinos.clear()
+	gs.deploy_kino("res://scenes/planet.tscn", Vector3(1, 0, 1))
+	gs.deploy_kino("res://scenes/gate_room.tscn", Vector3(2, 0, 2))
+	gs.deploy_kino("res://scenes/planet.tscn", Vector3(3, 0, 3))
+	_expect(gs.deployed_kinos.size() == 3, "kino: tracks up to KINO_DEPLOYED_MAX deployments")
+	gs.deploy_kino("res://scenes/planet.tscn", Vector3(4, 0, 4))
+	_expect(gs.deployed_kinos.size() == gs.KINO_DEPLOYED_MAX, "kino: deploying a 4th stays capped at 3")
+	_expect(float((gs.deployed_kinos[0] as Dictionary).get("x", -1.0)) == 2.0, "kino: oldest deployment dropped (FIFO pop_front)")
+	_expect(gs.deployed_kinos_in_scene("res://scenes/planet.tscn").size() == 2, "kino: deployed_kinos_in_scene filters by scene")
+
 	# Reset before the save tests so they observe a clean slate.
 	gs.episode_completed.disconnect(on_done)
 	gs.reset()
@@ -170,6 +208,12 @@ func _initialize() -> void:
 	_expect(gs.eli_quarters_visited == false, "mission: reset clears eli_quarters_visited")
 	_expect(gs.elevator_repaired == false, "mission: reset clears elevator_repaired")
 	_expect(gs.doors_traversed.is_empty(), "mission: reset clears doors_traversed")
+	_expect(gs.kino_orbs == 0, "mission: reset clears kino_orbs")
+	_expect(gs.deployed_kinos.is_empty(), "mission: reset clears deployed_kinos")
+	_expect(gs.kino_scout_done == false, "mission: reset clears kino_scout_done")
+	_expect(gs.kino_plan_approved == false, "mission: reset clears kino_plan_approved")
+	_expect(gs.away_party_briefed == false, "mission: reset clears away_party_briefed")
+	_expect(gs.kino_return_position == null, "mission: reset clears kino_return_position")
 	_expect(gs.breaches_sealed.is_empty(), "mission: reset clears breaches")
 	_expect(gs.met_scott == false, "mission: reset clears met_scott")
 	_expect(gs.met_rush == false, "mission: reset clears met_rush")
@@ -178,52 +222,155 @@ func _initialize() -> void:
 	_expect(gs.air_crisis_started == false, "mission: reset clears air crisis")
 	_expect(gs.scrubber_repaired == false, "mission: reset clears scrubber repair")
 
-	# F5 quicksave path (no scene path set → save is refused, not silent failure).
-	gs.current_scene_path = ""
-	gs.save_game("", Vector3.ZERO, 0.0)
-	# save_game with empty scene still writes — semantic check is current_scene_path
-	# gating only inside _quicksave (the F5 handler). Direct save_game writes whatever.
-	_expect(gs.has_save(), "save_game writes file regardless")
-	gs.wipe_save()
-	_expect(not gs.has_save(), "wipe_save removes file")
-
-	# Round-trip a save with meaningful payload, then reset + reload via the
-	# JSON parser path (load_and_resume schedules a scene change, so we call
-	# the parser pieces directly here for the smoke test).
+	# Serialize / deserialize round-trip via the new ISaveableSystem
+	# contract. File I/O has moved to SaveManager; this exercises only
+	# GameState's serialize/deserialize methods (no autoloads needed).
 	gs.discover_room("gate_room", "Gate Room")
 	gs.met_scott = true
 	gs.advance_air_quest()
 	gs.set_objective("Find a way off this ship")
-	gs.add_log("Quicksave round-trip line")
+	gs.add_log("Round-trip log line")
 	gs.add_resource(gs.AIR_LIME_RESOURCE, 2, "save test")
-	gs.save_game("res://scenes/gate_room.tscn", Vector3(1.5, 1.05, 10.0), 0.5)
-	_expect(gs.has_save(), "save_game writes payload")
+	gs.kino_pan_x = 12.5
+	gs.kino_pan_y = -8.0
+	gs.kino_zoom = 1.7
+	gs.kino_active_floor = 1
+	gs.kino_marker = {"floor": 0, "world_x": 100.0, "world_y": 200.0}
+	gs.kino_orbs = 2
+	gs.kino_scout_done = true
+	gs.kino_plan_approved = true
+	gs.away_party_briefed = true
+	gs.deployed_kinos = [{"scene": "res://scenes/planet.tscn", "x": 5.0, "y": 0.0, "z": -3.0}]
 
-	# Reset state and replay the read leg of load_and_resume's logic.
+	var snapshot: Dictionary = gs.serialize()
+	_expect(int(snapshot.get("kino_orbs", -1)) == 2, "serialize captures kino_orbs")
+	_expect(snapshot.get("kino_scout_done", false) == true, "serialize captures kino_scout_done")
+	_expect(snapshot.get("away_party_briefed", false) == true, "serialize captures away_party_briefed")
+	_expect(snapshot.has("quest_step"), "serialize() includes quest_step")
+	_expect(String(snapshot.get("quest_step", "")) == gs.QUEST_FIND_RUSH, "serialize captures current quest step")
+	_expect(snapshot.get("met_scott", false) == true, "serialize captures met_scott")
+	_expect(int((snapshot.get("resources", {}) as Dictionary).get(gs.AIR_LIME_RESOURCE, 0)) == 2, "serialize captures resources")
+	_expect(float(snapshot.get("kino_pan_x", 0.0)) == 12.5, "serialize captures kino_pan_x")
+	_expect(float(snapshot.get("kino_zoom", 0.0)) == 1.7, "serialize captures kino_zoom")
+	_expect(snapshot.get("kino_marker", {}) is Dictionary, "serialize captures kino_marker dict")
+
 	gs.reset()
 	_expect(gs.rooms_discovered.is_empty(), "post-reset: rooms cleared")
-	var file: FileAccess = FileAccess.open(gs.SAVE_PATH, FileAccess.READ)
-	_expect(file != null, "save file readable")
-	if file != null:
-		var raw: String = file.get_as_text()
-		file.close()
-		var parsed: Variant = JSON.parse_string(raw)
-		_expect(parsed is Dictionary, "save parses to dictionary")
-		if parsed is Dictionary:
-			var data: Dictionary = parsed
-			_expect(String(data.get("scene", "")) == "res://scenes/gate_room.tscn", "saved scene preserved")
-			var pos: Array = data.get("pos", [])
-			_expect(pos.size() == 3 and float(pos[0]) == 1.5, "saved position preserved")
-			_expect(float(data.get("yaw", 0.0)) == 0.5, "saved yaw preserved")
-			_expect(String(data.get("quest_step", "")) == gs.QUEST_FIND_RUSH, "saved quest step preserved")
-			_expect(bool(data.get("met_scott", false)), "saved Scott quest flag preserved")
-			var saved_resources: Dictionary = data.get("resources", {})
-			_expect(int(saved_resources.get(gs.AIR_LIME_RESOURCE, 0)) == 2, "saved resources preserved")
-			var log_arr: Array = data.get("log_entries", [])
-			_expect(log_arr.size() >= 1, "saved log entries preserved")
+	_expect(gs.kino_pan_x == 0.0 and gs.kino_zoom == 1.0, "reset: kino UI fields restored to defaults")
+	_expect(gs.kino_marker.is_empty(), "reset: kino marker cleared")
 
-	gs.wipe_save()
-	_expect(not gs.has_save(), "post-test wipe cleared file")
+	gs.deserialize(snapshot, 2)
+	_expect(gs.met_scott, "deserialize restores met_scott")
+	_expect(gs.kino_orbs == 2, "deserialize restores kino_orbs")
+	_expect(gs.deployed_kinos.size() == 1 and float((gs.deployed_kinos[0] as Dictionary).get("x", -1.0)) == 5.0, "deserialize restores deployed_kinos")
+	_expect(gs.kino_scout_done, "deserialize restores kino_scout_done")
+	_expect(gs.away_party_briefed, "deserialize restores away_party_briefed")
+	_expect(gs.quest_step == gs.QUEST_FIND_RUSH, "deserialize restores quest_step")
+	_expect(gs.resource_count(gs.AIR_LIME_RESOURCE) == 2, "deserialize restores resources")
+	_expect(gs.rooms_discovered.size() == 1, "deserialize restores rooms_discovered")
+	_expect(gs.log_entries.size() >= 1, "deserialize restores log_entries")
+	_expect(gs.kino_pan_x == 12.5, "deserialize restores kino_pan_x")
+	_expect(gs.kino_zoom == 1.7, "deserialize restores kino_zoom")
+	_expect(int((gs.kino_marker as Dictionary).get("floor", -1)) == 0, "deserialize restores kino_marker.floor")
+
+	# --- Phase F: discovered-lime tracking (compass fog-of-war) --------------
+	gs.discover_lime("LimeNode1")
+	gs.discover_lime("LimeNode1")
+	_expect(gs.lime_discovered.size() == 1, "discover_lime is idempotent")
+	_expect(gs.is_lime_discovered("LimeNode1"), "is_lime_discovered true after discover")
+	_expect(not gs.is_lime_discovered("LimeNode9"), "undiscovered lime reads false")
+	gs.discover_lime("")
+	_expect(gs.lime_discovered.size() == 1, "discover_lime ignores empty key")
+	var lime_snapshot: Dictionary = gs.serialize()
+	_expect((lime_snapshot.get("lime_discovered", []) as Array).has("LimeNode1"),
+		"serialize captures lime_discovered")
+	gs.reset()
+	_expect(gs.lime_discovered.is_empty(), "reset clears lime_discovered")
+	gs.deserialize(lime_snapshot, 1)
+	_expect(gs.is_lime_discovered("LimeNode1"), "deserialize restores lime_discovered")
+
+	# --- Phase G: ongoing scrubber resource loop ------------------------------
+	# Force the loop's preconditions (skip the full repair flow — tested above).
+	gs.scrubber_diagnosed = true
+	gs.scrubber_repaired = true
+	gs.scrubber_level = 100.0
+	gs.resources[gs.AIR_LIME_RESOURCE] = 0
+	# Tick one minute of simulated decay. Manually call the tick (so the
+	# autoload SceneRouter check is bypassed) — we already trust _process is the
+	# wrapper.
+	var pre_level: float = gs.scrubber_level
+	gs.call("_tick_scrubber", 60.0)
+	_expect(gs.scrubber_level < pre_level, "scrubber_level decays under repair")
+	_expect(gs.scrubber_level > 0.0, "decay is gradual, not instant")
+
+	# Top-up without lime fails cleanly.
+	_expect(not gs.top_up_scrubber(), "top_up_scrubber fails without lime")
+	# Drop the level well below full so the +33% top-up isn't capped at 100.
+	gs.scrubber_level = 20.0
+	gs.add_resource(gs.AIR_LIME_RESOURCE, 1, "test")
+	var pre_top: float = gs.scrubber_level
+	_expect(gs.top_up_scrubber(), "top_up_scrubber returns true with lime")
+	_expect(gs.scrubber_level > pre_top + 30.0, "top-up adds ~33% per lime")
+	_expect(gs.resource_count(gs.AIR_LIME_RESOURCE) == 0, "top-up spends the lime")
+
+	# Drain past the warn threshold so the warn latch fires exactly once.
+	gs.scrubber_level = 40.0
+	gs.set("_scrubber_warned", false)
+	gs.call("_tick_scrubber", 60.0 * 30.0)   # well past the 33% crossing
+	_expect(gs.scrubber_level <= gs.SCRUBBER_WARN_PERCENT, "decay crosses warn threshold")
+	_expect(gs.get("_scrubber_warned") == true, "warn latch fires on threshold")
+
+	# At zero the critical latch fires + oxygen starts bleeding.
+	gs.scrubber_level = 0.0
+	gs.set("_scrubber_critical", false)
+	gs.oxygen = gs.MAX_OXYGEN
+	gs.call("_tick_scrubber", 60.0)
+	_expect(gs.get("_scrubber_critical") == true, "critical latch fires when scrubber drops to 0")
+	_expect(gs.oxygen < gs.MAX_OXYGEN, "empty scrubber bleeds oxygen (slow E1-forgiving rate)")
+
+	# --- Phase F: away-team companion (follow + mine + rush) -----------------
+	# Duck-typed load so we don't depend on the `Companion` class_name being
+	# registered in this same headless run (see godot class_name gotcha).
+	var comp_script: Script = load("res://scripts/companion.gd") as Script
+	_expect(comp_script != null, "load Companion script")
+	if comp_script != null:
+		var comp: Node = comp_script.new()
+		root.add_child(comp)
+		# Pass a non-existent model path so the body-build skips the GLB load; we
+		# only care about group membership + the cutscene API here.
+		comp.call("setup", "Test", "res://nonexistent.glb", 0)
+		_expect(comp.is_in_group("away_team"), "companion joins away_team (cutscene muster)")
+		_expect(comp.is_in_group("companion"), "companion joins companion group (compass)")
+		_expect(comp.has_method("rush_to"), "companion exposes rush_to for the cutscene")
+		comp.call("rush_to", Vector3(5.0, 0.0, 5.0))
+		_expect(comp.get("_rushing") == true, "rush_to arms the cutscene sprint")
+		root.remove_child(comp)
+		comp.free()
+
+	# --- Lime objective live-counter text (top-left objective on the planet) ---
+	# planet.gd swaps the static "Step through the Stargate…" line for this
+	# counter while the player is mining; the strings are asserted here so a
+	# future refactor can't silently break the HUD copy + a save-game would
+	# round-trip the same characters.
+	_expect(gs.lime_objective_text(0, 3) == "Collect at least 3 lime deposits — 0/3",
+		"lime_objective_text: zero progress")
+	_expect(gs.lime_objective_text(2, 3) == "Collect at least 3 lime deposits — 2/3",
+		"lime_objective_text: partial progress")
+	_expect(gs.lime_objective_text(3, 3) == "Lime collected — 3/3  ✓  head back to the gate",
+		"lime_objective_text: completion flips copy")
+	_expect(gs.lime_objective_text(5, 3) == "Lime collected — 5/3  ✓  head back to the gate",
+		"lime_objective_text: over-cap still reads completion")
+
+	# --- Resource-node fog-of-war: DISCOVER_RANGE was 30m, bumped to 50m so the
+	# player can spot a deposit without having to walk right on top of it.
+	# Asserting the constant directly catches accidental regressions in either
+	# direction (too generous → no exploration; too tight → user can't find lime).
+	var rn_script: Script = load("res://scripts/resource_node.gd") as Script
+	_expect(rn_script != null, "load resource_node script")
+	if rn_script != null:
+		var consts: Dictionary = rn_script.get_script_constant_map()
+		_expect(float(consts.get("DISCOVER_RANGE", 0.0)) == 50.0,
+			"resource_node DISCOVER_RANGE is 50m")
 
 	root.remove_child(gs)
 	gs.free()

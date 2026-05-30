@@ -12,6 +12,10 @@ extends Control
 @onready var _btn_exit: Button = $LeftColumn/MenuList/ExitButton
 
 @onready var _settings_overlay: Control = $SettingsOverlay
+
+# Built lazily in _ready since it isn't in the .tscn — a code-owned
+# ConfirmationDialog lets us update copy without touching the scene.
+var _new_game_confirm: ConfirmationDialog
 @onready var _music_slider: HSlider = $SettingsOverlay/Panel/V/MusicRow/MusicHBox/MusicSlider
 @onready var _music_value: Label = $SettingsOverlay/Panel/V/MusicRow/MusicHBox/MusicValue
 @onready var _sfx_slider: HSlider = $SettingsOverlay/Panel/V/SfxRow/SfxHBox/SfxSlider
@@ -21,12 +25,36 @@ extends Control
 
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	# Mark that we're no longer in a gameplay scene. The pause menu and
+	# autosave both gate on current_scene_path being empty to mean "title /
+	# not in-world". "Save and Quit" returns here WITHOUT going through
+	# reset(), so if we don't clear it the stale gameplay path lets Esc pop
+	# the pause menu over the title (and would let a stray autosave fire).
+	GameState.current_scene_path = ""
 
 	_btn_continue.pressed.connect(_on_continue_pressed)
 	_btn_new_game.pressed.connect(_on_new_game_pressed)
 	_btn_settings.pressed.connect(_on_settings_pressed)
 	_btn_exit.pressed.connect(_on_exit_pressed)
 	_back_btn.pressed.connect(_on_back_pressed)
+
+	# Menu-hover SFX: fire a short blip when keyboard / controller / mouse
+	# focus lands on any of these. Throttled inside Audio.play_ui_hover.
+	for b in [_btn_continue, _btn_new_game, _btn_settings, _btn_characters,
+			_btn_exit, _back_btn, _difficulty_option]:
+		Audio.attach_ui_hover(b)
+
+	# Destructive-action guard: New Game wipes the save file. Without this
+	# prompt a misclick during a long playthrough silently destroys hours
+	# of progress, so we gate it behind an explicit confirm whenever a
+	# save exists. No-save case skips the dialog entirely (nothing to lose).
+	_new_game_confirm = ConfirmationDialog.new()
+	_new_game_confirm.title = "New Game"
+	_new_game_confirm.dialog_text = "Delete the current game?\n\nIf you do this you will lose all previous save data."
+	_new_game_confirm.get_ok_button().text = "Delete & Start Over"
+	_new_game_confirm.get_cancel_button().text = "Cancel"
+	_new_game_confirm.confirmed.connect(_start_new_game)
+	add_child(_new_game_confirm)
 
 	# Settings overlay UI wired to the Settings autoload.
 	_populate_difficulty_options()
@@ -78,13 +106,27 @@ func _on_difficulty_selected(index: int) -> void:
 	Settings.set_difficulty(index)
 
 func _on_continue_pressed() -> void:
-	if not GameState.load_and_resume():
+	if not SaveManager.load_and_resume():
 		# Defensive fallback: if the save vanished between the disabled check
 		# and click (unlikely but cheap), fall through to a fresh start.
 		_on_new_game_pressed()
 
 func _on_new_game_pressed() -> void:
-	GameState.reset()
+	# When a save exists, route through the confirmation dialog first.
+	# Cancel leaves the menu untouched; confirm calls _start_new_game.
+	if SaveManager.has_save():
+		_new_game_confirm.popup_centered()
+		return
+	_start_new_game()
+
+
+func _start_new_game() -> void:
+	# Wipe the on-disk save eagerly so the user's "start over" intent
+	# holds even if they quit at the title before any autosave lands.
+	SaveManager.wipe()
+	# Iterate every registered system and call reset() — keeps GameClock,
+	# NPCState, etc. in sync without title.gd having to enumerate them.
+	SaveManager.start_new_game()
 	SceneRouter.change_to("res://scenes/gate_room.tscn", "FromGate")
 
 func _on_settings_pressed() -> void:

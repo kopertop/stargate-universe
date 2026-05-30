@@ -2092,16 +2092,22 @@ func _remote_mat(col: Color, glow: bool) -> StandardMaterial3D:
 func _refresh_inventory() -> void:
 	var page: Node = _pages[PAGE_INVENTORY]
 	var box: VBoxContainer = page.get_node_or_null("InventoryBox") as VBoxContainer
-	if box != null:
-		for c in box.get_children():
-			c.queue_free()
-		if GameState.kino_acquired:
-			_label(box, "  • Kino Remote", 14, Color.WHITE)
-		if GameState.breaches_sealed.size() > 0:
-			_label(box, "  • Emergency Seal — used (%d)" % GameState.breaches_sealed.size(), 14, Color.WHITE)
-		for resource_type in GameState.resources.keys():
-			var count: int = GameState.resource_count(String(resource_type))
-			if count > 0:
-				_label(box, "  • %s × %d" % [String(resource_type).capitalize(), count], 14, Color.WHITE)
-		if box.get_child_count() == 0:
-			_label(box, "  (empty)", 14, Color(0.7, 0.7, 0.7, 0.85))
+	if box == null:
+		return
+	for c in box.get_children():
+		c.queue_free()
+	# Inventory is "what the player is currently carrying", not a historical
+	# record of consumed items. Sealed-breach IDs (GameState.breaches_sealed)
+	# live in the quest log as world-state for the seal_breach predicate;
+	# rendering them here as "Emergency Seal — used (N)" confused players
+	# into thinking they still had a seal in their pack. Same reason fuse
+	# flags aren't shown — once the small fuse is slotted into the door
+	# panel, it's spent. Only show things the player can still act on.
+	if GameState.kino_acquired:
+		_label(box, "  • Kino Remote", 14, Color.WHITE)
+	for resource_type in GameState.resources.keys():
+		var count: int = GameState.resource_count(String(resource_type))
+		if count > 0:
+			_label(box, "  • %s × %d" % [String(resource_type).capitalize(), count], 14, Color.WHITE)
+	if box.get_child_count() == 0:
+		_label(box, "  (empty)", 14, Color(0.7, 0.7, 0.7, 0.85))

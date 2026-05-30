@@ -32,6 +32,17 @@ const EDGE_ARROW_ACCENT: Color = Color(0.55, 0.85, 1.0, 0.95)
 const EDGE_ARROW_MARGIN: float = 64.0
 var _edge_arrow: Polygon2D = null
 
+# WoW-style action bar (bottom-right). One slot per available tool: a dark
+# translucent square with the tool's catalog icon centred and its keybind
+# overlaid top-left. Built in code, anchored bottom-right, grows leftward so
+# more tools can be added later. Driven by _refresh_action_bar.
+const ACTION_SLOT_SIZE: Vector2 = Vector2(58, 58)
+const ACTION_BAR_MARGIN: float = 20.0
+const ACTION_BORDER: Color = Color(0.70, 0.80, 0.95, 0.65)
+const ACTION_BORDER_ATTENTION: Color = Color(1.0, 0.78, 0.30, 0.95)
+var _action_bar: HBoxContainer = null
+var _action_pulse: Tween = null
+
 func _ready() -> void:
 	# Wrap the objective within its ~676px box (offset 24→700 in the scene)
 	# instead of overflowing across the full top row into the top-right log
@@ -52,6 +63,8 @@ func _ready() -> void:
 	_on_kino_changed(GameState.kino_acquired)
 	_interact_label.text = ""
 	_dialog_panel.visible = false
+	_build_action_bar()
+	_refresh_action_bar()
 	_build_edge_arrow()
 	# Defer player lookup so the scene tree is settled.
 	call_deferred("_bind_player")
@@ -156,25 +169,104 @@ func _on_oxygen_changed(v: float) -> void:
 	_oxygen_bar.value = v
 
 func _on_kino_changed(_acquired: bool) -> void:
-	_refresh_kino_hint()
+	_refresh_action_bar()
 
 
 func _on_quest_step_changed(_step: String) -> void:
-	_refresh_kino_hint()
+	_refresh_action_bar()
 
 
-# Kino Remote reminder (bottom-right). During the scout beat it becomes an
-# explicit guide — "Open the Kino Remote" — since that step's whole objective
-# is to open the remote and launch a Kino (no diamond is shown for it).
-func _refresh_kino_hint() -> void:
-	if not GameState.kino_acquired:
-		_kino_hint.visible = false
+# Bottom-right action bar anchored to the corner, growing leftward as tools
+# are added. Empty until built.
+func _build_action_bar() -> void:
+	_action_bar = HBoxContainer.new()
+	_action_bar.name = "ActionBar"
+	_action_bar.anchor_left = 1.0
+	_action_bar.anchor_top = 1.0
+	_action_bar.anchor_right = 1.0
+	_action_bar.anchor_bottom = 1.0
+	_action_bar.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_action_bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_action_bar.offset_right = -ACTION_BAR_MARGIN
+	_action_bar.offset_bottom = -ACTION_BAR_MARGIN
+	_action_bar.add_theme_constant_override("separation", 8)
+	add_child(_action_bar)
+
+
+# One slot per currently-available tool. Today just the Kino Remote (gated on
+# acquisition); the list is the single extension point for future tools. The
+# icon is pulled from the item catalog so HUD + inventory share one source.
+# During the scout beat the slot gets an attention border + pulse and the
+# repurposed KinoHint label shows a caption above the bar.
+func _refresh_action_bar() -> void:
+	if _action_bar == null:
 		return
-	_kino_hint.visible = true
-	if GameState.quest_step == GameState.QUEST_SCOUT_KINO:
-		_kino_hint.text = "Open the Kino Remote  →  [Tab]"
-	else:
-		_kino_hint.text = "[Tab]  Kino Remote"
+	for c in _action_bar.get_children():
+		c.queue_free()
+	if _action_pulse != null and _action_pulse.is_running():
+		_action_pulse.kill()
+	_action_pulse = null
+	_kino_hint.visible = false
+
+	var tools: Array = []
+	if GameState.kino_acquired:
+		tools.append({"id": "kino_remote", "key": "Tab"})
+
+	var scouting: bool = GameState.quest_step == GameState.QUEST_SCOUT_KINO
+	for tool in tools:
+		var attention: bool = scouting and tool["id"] == "kino_remote"
+		var slot: Panel = _make_action_slot(String(tool["id"]), String(tool["key"]), attention)
+		_action_bar.add_child(slot)
+		if attention:
+			_action_pulse = create_tween().set_loops()
+			_action_pulse.tween_property(slot, "modulate:a", 0.55, 0.6)
+			_action_pulse.tween_property(slot, "modulate:a", 1.0, 0.6)
+
+	# Scout-beat caption above the bar (reuses the old KinoHint label).
+	if scouting and GameState.kino_acquired:
+		_kino_hint.text = "Open the Kino Remote"
+		_kino_hint.offset_top = -52.0 - ACTION_SLOT_SIZE.y - ACTION_BAR_MARGIN
+		_kino_hint.offset_bottom = -24.0 - ACTION_SLOT_SIZE.y - ACTION_BAR_MARGIN
+		_kino_hint.visible = true
+
+
+func _make_action_slot(item_id: String, key_label: String, attention: bool) -> Panel:
+	var slot: Panel = Panel.new()
+	slot.custom_minimum_size = ACTION_SLOT_SIZE
+	var sb: StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = Color(0.0, 0.0, 0.0, 0.55)
+	sb.border_color = ACTION_BORDER_ATTENTION if attention else ACTION_BORDER
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(6)
+	slot.add_theme_stylebox_override("panel", sb)
+
+	var icon_path: String = String(Inventory.definition(item_id).get("icon", ""))
+	if icon_path != "" and ResourceLoader.exists(icon_path):
+		var tex: TextureRect = TextureRect.new()
+		tex.texture = load(icon_path)
+		tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tex.anchor_right = 1.0
+		tex.anchor_bottom = 1.0
+		tex.offset_left = 5
+		tex.offset_top = 5
+		tex.offset_right = -5
+		tex.offset_bottom = -5
+		tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(tex)
+
+	# Keybind overlay, WoW-style top-left corner with an outline so it reads
+	# over the icon.
+	var key: Label = Label.new()
+	key.text = key_label
+	key.add_theme_font_size_override("font_size", 13)
+	key.add_theme_color_override("font_color", Color.WHITE)
+	key.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	key.add_theme_constant_override("outline_size", 4)
+	key.position = Vector2(4, 1)
+	key.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	slot.add_child(key)
+	return slot
 
 func _on_dialogue_shown(character_name: String, line: String) -> void:
 	_dialog_name.text = character_name

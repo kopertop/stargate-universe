@@ -30,7 +30,7 @@
     "id": "lime",
     "name": "Lime",
     "category": "resource",
-    "icon": "",
+    "icon": "res://sprites/ui/items/lime.png",
     "description": "Calcium compound mined off-world. Feeds the CO2 scrubber cartridge bed — the ship's air depends on it.",
     "stackable": true,
     "show_in_inventory": true

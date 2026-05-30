@@ -22,6 +22,18 @@ const ACCEL_DAMP: float = 5.0         # velocity lerp factor (higher = snappier)
 const MOUSE_SENS: float = 0.0025      # radians per pixel of mouse motion
 const LIME_CONFIRM_RANGE: float = 7.0 # metres to a lime node before "confirmed"
 const GATE_CROSS_RADIUS: float = 2.6  # metres from the ship gate that warps us through
+
+# Auto-search patrol — runs after _exit_kino on the planet so the drone keeps
+# revealing new lime instead of going inert. Multiple drones cooperate via the
+# "patrolling_kino" group: each publishes its current _autopilot_target and
+# the others avoid choosing destinations within AUTO_AVOID_RADIUS, so the team
+# naturally fans out instead of doubling up on the same area.
+const AUTO_SPEED: float = 5.5         # cruise speed in patrol mode
+const AUTO_ARRIVE: float = 8.0        # distance to target before picking the next
+const AUTO_DETECT_RANGE: float = 24.0 # discover any non-discovered lime within this radius
+const AUTO_CRUISE_Y: float = 14.0     # patrol altitude above world origin (planet origin is ~0)
+const AUTO_AVOID_RADIUS: float = 50.0 # min separation from another drone's chosen target
+const AUTO_RANDOM_TRIALS: int = 12    # how many candidate fallback points to score per pick
 # The orb body renders on this visual layer; the pilot's own camera culls it
 # (so it doesn't fill the first-person view), but every OTHER camera (Eli's
 # third-person view) sees the Kino flying / hovering where it was left.
@@ -40,6 +52,11 @@ var _camera: Camera3D = null
 var _caption: Label = null
 var _hint: Label = null
 var _atmo_box: VBoxContainer = null
+
+# Auto-search state (set after the player closes the remote on the planet).
+var _autopilot: bool = false
+var _autopilot_target: Vector3 = Vector3.ZERO
+var _autopilot_discover_t: float = 0.0   # accumulator for the periodic discovery sweep
 
 func _ready() -> void:
 	motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
@@ -264,6 +281,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		_exit_kino()
 
 func _physics_process(delta: float) -> void:
+	if _autopilot:
+		# Player has left the drone; AI keeps flying. Camera/HUD are gone
+		# (freed by _make_inert) but the body still exists in the scene tree.
+		_drive_autopilot(delta)
+		return
 	if _ending or _camera == null:
 		return
 	# Heading-relative planar movement (yaw only), vertical from Space/Ctrl.
@@ -364,10 +386,17 @@ func _exit_kino() -> void:
 	if GameState.current_scene_path == "res://scenes/planet.tscn" and not GameState.kino_scout_done:
 		GameState.complete_kino_scout()
 	var body_scene: String = GameState.kino_return_scene
-	if body_scene == "" or body_scene == GameState.current_scene_path:
+	var same_scene: bool = body_scene == "" or body_scene == GameState.current_scene_path
+	if same_scene:
 		_close_in_place()
 	else:
 		_close_to_scene(body_scene)
+	# Planet drones that stay in this scene flip into auto-search patrol so they
+	# keep revealing new lime while the player is back in their body. The
+	# in-place exit path freed the camera + HUD via _make_inert, but
+	# start_autopilot re-enables _physics_process so the body keeps flying.
+	if same_scene and not launch_in_ship and GameState.current_scene_path == "res://scenes/planet.tscn":
+		start_autopilot()
 	# Body restored — clear the return/target batons so the NEXT launch can't
 	# inherit a stale destination. (_close_to_scene already copied what it needs
 	# into pending_spawn_position before this runs.)
@@ -417,6 +446,146 @@ func _close_to_scene(scene_path: String) -> void:
 	if scene_path == "res://scenes/room.tscn":
 		GameState.next_room_id = GameState.kino_return_room_id
 	SceneRouter.change_to(scene_path, "")
+
+# Flip the drone into auto-search patrol. The player has left it; we keep
+# _physics_process alive so the body keeps cruising, pick targets that
+# maximize discovery, and reveal any non-discovered lime that wanders into
+# AUTO_DETECT_RANGE. Multi-drone coordination uses the "patrolling_kino"
+# group: every drone in autopilot publishes its current _autopilot_target as
+# a script var, and _autopilot_pick_target rejects candidates within
+# AUTO_AVOID_RADIUS of any other drone's target — so the team fans out.
+func start_autopilot() -> void:
+	if launch_in_ship or _autopilot:
+		return
+	_autopilot = true
+	add_to_group("patrolling_kino")
+	set_physics_process(true)
+	_autopilot_pick_target()
+	GameState.add_log("Kino now auto-searching for lime deposits.")
+
+
+# Pick the highest-value next target. Priority 1: nearest non-discovered,
+# non-depleted lime deposit that no other drone has already claimed. Priority
+# 2 (fallback when no undiscovered lime remains, or all candidates are too
+# close to other drones' targets): a random point biased AWAY from every
+# patrolling drone's current target, so we explore unclaimed territory
+# instead of doubling up.
+func _autopilot_pick_target() -> void:
+	var candidates: Array = []
+	for n in get_tree().get_nodes_in_group("lime_node"):
+		if not (n is Node3D):
+			continue
+		if n.has_method("is_discovered") and n.call("is_discovered") == true:
+			continue
+		if n.get("depleted") == true:
+			continue
+		candidates.append(n)
+	# Closest undiscovered lime first.
+	candidates.sort_custom(_compare_distance)
+	for c in candidates:
+		var p: Vector3 = (c as Node3D).global_position
+		if not _is_target_too_close(p):
+			_autopilot_target = Vector3(p.x, AUTO_CRUISE_Y, p.z)
+			return
+	# No claimable lime — wander to an unclaimed quadrant instead.
+	_autopilot_target = _autopilot_random_far_point()
+
+
+# Sort helper: nearest-to-current-position first.
+func _compare_distance(a: Object, b: Object) -> bool:
+	var ap: Vector3 = (a as Node3D).global_position
+	var bp: Vector3 = (b as Node3D).global_position
+	return global_position.distance_squared_to(ap) < global_position.distance_squared_to(bp)
+
+
+# True if any OTHER patrolling drone is already targeting somewhere within
+# AUTO_AVOID_RADIUS of `p` — keeps drones from converging on the same lime.
+func _is_target_too_close(p: Vector3) -> bool:
+	for d in get_tree().get_nodes_in_group("patrolling_kino"):
+		if d == self or not (d is Node3D):
+			continue
+		var their: Variant = d.get("_autopilot_target")
+		if their is Vector3:
+			var t: Vector3 = their
+			if Vector2(p.x - t.x, p.z - t.z).length() < AUTO_AVOID_RADIUS:
+				return true
+	return false
+
+
+# Score-based wandering target: try AUTO_RANDOM_TRIALS random points in the
+# planet's playable area, pick the one whose sum-distance from every other
+# patrolling drone's target is highest. With a single drone this is just a
+# random walk; with N drones it naturally clusters away from teammates.
+func _autopilot_random_far_point() -> Vector3:
+	var planet_extent: float = 200.0    # rough — matches the planet's middle band
+	var best_p: Vector3 = global_position
+	var best_score: float = -INF
+	for _i in AUTO_RANDOM_TRIALS:
+		var p: Vector3 = Vector3(
+			randf_range(-planet_extent, planet_extent),
+			AUTO_CRUISE_Y,
+			randf_range(-planet_extent, planet_extent))
+		var score: float = 0.0
+		for d in get_tree().get_nodes_in_group("patrolling_kino"):
+			if d == self or not (d is Node3D):
+				continue
+			var their: Variant = d.get("_autopilot_target")
+			if their is Vector3:
+				var t: Vector3 = their
+				score += Vector2(p.x - t.x, p.z - t.z).length()
+		# Also reward being far from the current position so we don't pick a
+		# point we're already on top of when no other drones exist.
+		score += Vector2(p.x - global_position.x, p.z - global_position.z).length() * 0.5
+		if score > best_score:
+			best_score = score
+			best_p = p
+	return best_p
+
+
+func _drive_autopilot(delta: float) -> void:
+	var to_t: Vector3 = _autopilot_target - global_position
+	to_t.y = 0.0
+	var planar_dist: float = to_t.length()
+	if planar_dist <= AUTO_ARRIVE:
+		_autopilot_pick_target()
+		return
+	var planar_dir: Vector3 = to_t.normalized() * AUTO_SPEED
+	var vert_diff: float = _autopilot_target.y - global_position.y
+	var vert: float = clampf(vert_diff * 1.5, -VERT_SPEED, VERT_SPEED)
+	velocity = velocity.lerp(
+		Vector3(planar_dir.x, vert, planar_dir.z),
+		clampf(ACCEL_DAMP * delta, 0.0, 1.0))
+	# Face direction of travel so the drone visibly tracks where it's going.
+	# Forward is -Z in Godot, so the yaw that makes the body face `planar_dir`
+	# is atan2(-planar_dir.x, -planar_dir.z).
+	var face_yaw: float = atan2(-planar_dir.x, -planar_dir.z)
+	rotation.y = lerp_angle(rotation.y, face_yaw, delta * 4.0)
+	move_and_slide()
+	# Discovery sweep — non-discovered lime within AUTO_DETECT_RANGE flips to
+	# discovered (resource_node._mark_discovered records it in GameState).
+	# Throttled to 5 Hz; the loop is small but uniform per-frame work isn't
+	# free with multiple drones patrolling.
+	_autopilot_discover_t += delta
+	if _autopilot_discover_t >= 0.2:
+		_autopilot_discover_t = 0.0
+		_autopilot_discover_nearby()
+
+
+func _autopilot_discover_nearby() -> void:
+	for n in get_tree().get_nodes_in_group("lime_node"):
+		if not (n is Node3D):
+			continue
+		if n.has_method("is_discovered") and n.call("is_discovered") == true:
+			continue
+		if n.get("depleted") == true:
+			continue
+		var node3d: Node3D = n
+		var d: float = Vector2(
+			node3d.global_position.x - global_position.x,
+			node3d.global_position.z - global_position.z).length()
+		if d <= AUTO_DETECT_RANGE and n.has_method("_mark_discovered"):
+			n.call("_mark_discovered")
+
 
 # Stop driving the orb and shed the pilot-only camera/overlay, leaving a quiet
 # hovering Kino behind (visible to Eli's view via ORB_VIEW_LAYER).

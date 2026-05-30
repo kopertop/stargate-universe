@@ -8,7 +8,7 @@ extends Node
 # Autoload. Owns the Kino Remote overlay UI — a five-page menu styled to
 # match the in-fiction handheld prop: a vertical strip of 5 blue buttons on
 # the left, an oval-styled "screen" panel on the right that shows the
-# active page's content. Available globally once GameState.kino_acquired
+# active page's content. Available globally once Inventory.has("kino_remote")
 # is true. Constructs its UI tree programmatically (no scene dependency)
 # so it can attach to every scene's root without per-scene wiring.
 
@@ -582,11 +582,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("kino_remote"):
 		# Tab always CLOSES an open surface — including a console-opened map the
 		# player can't reopen yet (no handheld Kino). Only OPENING via Tab is
-		# gated on kino_acquired, so a diegetic console map isn't a soft-lock.
+		# gated on Inventory.has("kino_remote"), so a diegetic console map isn't a soft-lock.
 		if _open:
 			_close()
 			get_viewport().set_input_as_handled()
-		elif GameState.kino_acquired:
+		elif Inventory.has("kino_remote"):
 			# Tab = handheld Kino: fog-of-war, only discovered rooms.
 			_console_mode = false
 			_open_remote()
@@ -596,13 +596,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 # Public open API for external callers (control_console.gd). The Tab-key
-# path keeps the kino_acquired gate; this entrypoint lets diegetic in-world
+# path keeps the Inventory.has("kino_remote") gate; this entrypoint lets diegetic in-world
 # consoles open
 # the same surface even before the player has picked up the handheld remote,
 # since the menu represents the console's interface in that case rather than
 # the player's pocket prop.
 func open_remote(force: bool = false, console_mode: bool = false) -> void:
-	if not force and not GameState.kino_acquired:
+	if not force and not Inventory.has("kino_remote"):
 		return
 	_console_mode = console_mode
 	_open_remote()
@@ -643,7 +643,7 @@ func _apply_surface() -> void:
 # (which you can re-take control of at any time, from any scene).
 func _page_available(page: int) -> bool:
 	if page == PAGE_KINO_CONTROL:
-		return GameState.kino_orbs > 0 or not GameState.deployed_kinos.is_empty()
+		return Inventory.count("kino_orb") > 0 or not GameState.deployed_kinos.is_empty()
 	return true
 
 # Public close — mirrors open_remote() so external callers (control_console.gd,
@@ -1959,12 +1959,12 @@ func _refresh_kino_control() -> void:
 	if desc != null:
 		desc.text = "Launch a Kino to scout, or take control of any Kino you've left out in the field — wherever it is."
 	if count != null:
-		count.text = "  Kinos in hand:  %d / %d" % [GameState.kino_orbs, GameState.KINO_ORB_MAX]
+		count.text = "  Kinos in hand:  %d / %d" % [Inventory.count("kino_orb"), GameState.KINO_ORB_MAX]
 	if list == null:
 		return
 	for c in list.get_children():
 		c.queue_free()
-	if GameState.kino_orbs > 0:
+	if Inventory.count("kino_orb") > 0:
 		var launch: Button = _kino_action_button("LAUNCH NEW KINO", true)
 		launch.pressed.connect(_on_launch_kino)
 		list.add_child(launch)
@@ -1984,7 +1984,7 @@ func _refresh_kino_control() -> void:
 # stands (Eli stays put, holding the remote). In the gate room the player flies
 # it through the active Stargate to reach the planet.
 func _on_launch_kino() -> void:
-	if GameState.kino_orbs <= 0:
+	if Inventory.count("kino_orb") <= 0:
 		return
 	if not GameState.consume_kino_orb():
 		return

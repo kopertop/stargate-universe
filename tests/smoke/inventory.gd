@@ -64,12 +64,17 @@ func _initialize() -> void:
 	_expect(ids_after_fuses.has("small_fuse") and ids_after_fuses.has("large_fuse"),
 		"BOTH fuses appear in entries() (the looted-fuse regression)")
 
-	# Consuming the small fuse (sealing breach_a via the door panel) removes it
-	# from the pack; the large fuse is NOT consumed and stays.
-	gs.call("seal_breach", "breach_a")
-	_expect(int(inv.call("count", "small_fuse")) == 0, "small_fuse consumed once breach_a is sealed")
-	_expect(bool(inv.call("has", "large_fuse")), "large_fuse is NOT consumed by sealing")
+	# Fuses are stackable counted items now: looting a second small fuse stacks
+	# to 2, and consuming ONE (what the door panel does) leaves 1.
+	gs.call("find_small_fuse")
+	_expect(int(inv.call("count", "small_fuse")) == 2, "second small fuse stacks to 2")
+	inv.call("remove_item", "small_fuse", 1, "fitted into the door panel")
+	_expect(int(inv.call("count", "small_fuse")) == 1, "consuming one small fuse leaves 1 (2 - 1 = 1)")
+	# Consume the last one → drops out of the pack entirely.
+	inv.call("remove_item", "small_fuse", 1, "door panel")
+	_expect(int(inv.call("count", "small_fuse")) == 0, "consuming the last small fuse empties it")
 	_expect(not _entry_ids(inv).has("small_fuse"), "spent small_fuse drops out of entries()")
+	_expect(bool(inv.call("has", "large_fuse")), "large_fuse is NOT consumed alongside the small fuse")
 
 	gs.call("find_rations")
 	_expect(int(inv.call("count", "rations")) == 1, "rations count 1 after find_rations")
@@ -97,15 +102,33 @@ func _initialize() -> void:
 		_expect(String((e["def"] as Dictionary).get("name", "")) != "",
 			"entry '%s' has a display name" % String(e["id"]))
 
-	# --- 7. derived / migration-free ---------------------------------------
-	# Simulate a loaded save: wipe, then set ONLY the GameState fields (no
-	# Inventory block exists or is restored). The projection must reflect it.
-	gs.reset()
-	_expect(inv.call("entries").is_empty(), "reset clears the projection")
-	gs.set("small_fuse_found", true)
-	gs.set("large_fuse_found", true)
-	_expect(bool(inv.call("has", "small_fuse")) and bool(inv.call("has", "large_fuse")),
-		"loaded GameState flags surface with no Inventory deserialize (migration-free)")
+	# --- 7. reset + save round-trip ----------------------------------------
+	gs.call("reset")
+	_expect(inv.call("entries").is_empty(), "GameState.reset() clears the inventory store")
+	inv.call("add_item", "lime", 2, "test")
+	inv.call("add_item", "small_fuse", 1, "test")
+	var snap: Dictionary = inv.call("serialize")
+	inv.call("reset")
+	_expect(int(inv.call("count", "lime")) == 0, "reset empties the store")
+	inv.call("deserialize", snap, 2)
+	_expect(int(inv.call("count", "lime")) == 2 and int(inv.call("count", "small_fuse")) == 1,
+		"serialize → reset → deserialize round-trips the pool")
+
+	# --- 8. legacy-save migration ------------------------------------------
+	# An old save stored items on the GameState block (kino_acquired / *_fuse_found
+	# / kino_orbs / a resources dict). GameState.deserialize seeds the pool from
+	# them; here we drive that path directly with a legacy-shaped block.
+	gs.call("reset")
+	gs.call("deserialize", {
+		"kino_acquired": true,
+		"small_fuse_found": true,
+		"kino_orbs": 2,
+		"resources": {"lime": 3},
+	}, 1)
+	_expect(bool(inv.call("has", "kino_remote")), "legacy migration: kino_acquired → kino_remote")
+	_expect(int(inv.call("count", "small_fuse")) == 1, "legacy migration: small_fuse_found → small_fuse")
+	_expect(int(inv.call("count", "kino_orb")) == 2, "legacy migration: kino_orbs → kino_orb count")
+	_expect(int(inv.call("count", "lime")) == 3, "legacy migration: resources dict → lime count")
 
 	_report()
 

@@ -24,10 +24,6 @@ signal scrubber_level_changed(level: float)
 # marker and the in-world quest-waypoint diamond's re-targeting.
 signal current_room_changed(room_id: String)
 signal kino_changed(acquired: bool)
-# Fires when a non-resource carried item is gained/lost (fuses today). Lets the
-# Inventory projection refresh live; resource items use resource_changed and the
-# Kino Remote uses kino_changed.
-signal item_changed(id: String, present: bool)
 signal episode_completed()
 signal log_added(line: String)
 # Fired by npc.gd each time a dialogue line is shown. The HUD listens and
@@ -153,7 +149,10 @@ var health: float = MAX_HEALTH
 var oxygen: float = MAX_OXYGEN
 var current_episode: String = EPISODE_AIR
 var quest_step: String = QUEST_TALK_SCOTT
-var kino_acquired: bool = false  # @collection-ok: pre-#41 item fork — migrates into the Inventory registry
+# Kino remote, kino orbs, fuses, lime + rations are NO LONGER stored here —
+# they live in the Inventory autoload as counts. `kino_acquired` is now
+# `Inventory.has("kino_remote")`; `kino_orbs` is `Inventory.count("kino_orb")`;
+# the fuses are `Inventory.count("small_fuse"/"large_fuse")`.
 var quarters_found: bool = false  # @collection-ok: one-shot story gate (first sleep), not an enumerated collection
 # True once the player first steps into Eli's Quarters (eli_quarters). Drives
 # the FIND_REST → SLEEP transition: Rush dismisses Eli with "go get some rest",
@@ -206,11 +205,9 @@ var blocked_door_beat_done: bool = false
 # slot is blown — only THEN does the objective send them to the crates for a
 # fuse (don't hand the player the answer before they've looked at the door).
 var door_panel_examined: bool = false
-# Fuses looted from the Shuttle Dock crates. The jammed door panel needs a
-# SMALL fuse; a large fuse also turns up (wrong size for the door — kept for
-# flavor / future use). One crate holds the small fuse the player needs.
-var small_fuse_found: bool = false  # @collection-ok: pre-#41 item fork — migrates into the Inventory registry
-var large_fuse_found: bool = false  # @collection-ok: pre-#41 item fork — migrates into the Inventory registry
+# Fuses looted from the Shuttle Dock crates are Inventory items now
+# (counted, stackable): Inventory.count("small_fuse") / "large_fuse". The
+# jammed door panel needs a small fuse and consumes one when seated.
 var scrubber_diagnosed: bool = false
 var scrubber_repaired: bool = false
 # CO2 scrubber lime charge, 0–100%. Drives the 3-bar panel gauge (each bar =
@@ -227,9 +224,8 @@ var lime_planet_dialed: bool = false
 # True once the player reaches the Gate Room after Dr Brody's "the gate
 # dialed itself" call (the GO_TO_GATE beat that ends the CO2 scrubber scene).
 var reported_to_gate: bool = false
-# Kino orbs the player is carrying. The quarters dispenser is unlimited but the
-# player can hold at most KINO_ORB_MAX; launching one (Kino Control) spends it.
-var kino_orbs: int = 0
+# Kino orbs the player is carrying live in Inventory as count("kino_orb")
+# (dispenser is unlimited; held count caps at KINO_ORB_MAX; launching spends 1).
 # Kinos left DEPLOYED out in the world (not in inventory). FIFO, newest last,
 # capped at KINO_DEPLOYED_MAX — deploying another past the cap drops the oldest
 # tracked location. Each entry: {"scene": String, "x"/"y"/"z": float}. World-
@@ -249,7 +245,6 @@ var returned_from_lime_planet: bool = false
 # gate room spawns the away team that came back WITH the player and lands them
 # past the platform. Consumed (cleared) by gate_room on arrival.
 var pending_planet_return: bool = false
-var resources: Dictionary = {AIR_LIME_RESOURCE: 0}
 # E1 story milestones — set by NPC interacts (npc.gd via met_flag).
 # met_scott: Lt Scott briefs the player on arrival; gates objective priority
 # to "Find a Map" once true.
@@ -291,6 +286,12 @@ func _autoload_node(autoload_name: String) -> Node:
 	if tree == null or tree.root == null:
 		return null
 	return tree.root.get_node_or_null(autoload_name)
+
+
+# The canonical item store. Autoload-tolerant so -s SceneTree tests that wire a
+# sibling Inventory under their root still resolve it.
+func _inv() -> Node:
+	return _autoload_node("Inventory")
 
 
 func _ready() -> void:
@@ -360,7 +361,6 @@ func reset() -> void:
 	oxygen = MAX_OXYGEN
 	current_episode = EPISODE_AIR
 	quest_step = QUEST_TALK_SCOTT
-	kino_acquired = false
 	quarters_found = false
 	eli_quarters_visited = false
 	elevator_repaired = false
@@ -378,8 +378,6 @@ func reset() -> void:
 	control_room_returned = false
 	blocked_door_beat_done = false
 	door_panel_examined = false
-	small_fuse_found = false
-	large_fuse_found = false
 	life_support_diagnosed = false
 	scrubber_diagnosed = false
 	scrubber_repaired = false
@@ -389,15 +387,16 @@ func reset() -> void:
 	ftl_drop_triggered = false
 	lime_planet_dialed = false
 	reported_to_gate = false
-	kino_orbs = 0
 	deployed_kinos.clear()
 	kino_scout_done = false
 	kino_plan_approved = false
 	away_party_briefed = false
 	returned_from_lime_planet = false
 	pending_planet_return = false
-	resources.clear()
-	resources[AIR_LIME_RESOURCE] = 0
+	# Items live in the Inventory store now — wipe it too (autoload-tolerant).
+	var inv: Node = _inv()
+	if inv != null and inv.has_method("reset"):
+		inv.call("reset")
 	met_scott = false
 	met_rush = false
 	ftl_drop_game_time = -1.0
@@ -425,7 +424,7 @@ func reset() -> void:
 	kino_pilot_target_pos = null
 	health_changed.emit(health)
 	oxygen_changed.emit(oxygen)
-	kino_changed.emit(kino_acquired)
+	kino_changed.emit(false)   # Inventory was just reset → no kino remote held
 	# Wipe QuestLog progress so the e1_air quest restarts at step 1 with no
 	# completed_steps carried over. autoload-tolerant: tests without QuestLog
 	# in the tree skip this and rely on quest_step's `= QUEST_TALK_SCOTT`
@@ -511,9 +510,11 @@ func set_hull_percent(value: float) -> void:
 	hull_changed.emit(value)
 
 func acquire_kino() -> void:
-	if kino_acquired:
+	var inv: Node = _inv()
+	if inv != null and inv.call("has", "kino_remote"):
 		return
-	kino_acquired = true
+	if inv != null:
+		inv.call("add_item", "kino_remote", 1)
 	# Used to be buried mid-ladder in _next_air_quest_step() — surfaced here
 	# alongside its trigger so the side-effect is co-located with the world-
 	# state change. start_air_crisis() also sets it, so either path (picking
@@ -664,14 +665,20 @@ func add_log(line: String) -> void:
 	log_entries.append(line)
 	log_added.emit(line)
 
+# Resource shims over the Inventory pool. These keep the game-logic side
+# effects (log line, resource_changed signal, quest advance) here while the
+# counts themselves live in Inventory — there is no `resources` dict any more.
 func resource_count(type: String) -> int:
-	return int(resources.get(type, 0))
+	var inv: Node = _inv()
+	return 0 if inv == null else int(inv.call("count", type))
 
 func add_resource(type: String, amount: int, source: String = "") -> bool:
 	if amount <= 0:
 		return false
-	var next_amount: int = resource_count(type) + amount
-	resources[type] = next_amount
+	var inv: Node = _inv()
+	if inv == null:
+		return false
+	var next_amount: int = int(inv.call("add_item", type, amount, source))
 	var source_suffix: String = "" if source == "" else " from " + source
 	add_log("Collected %d %s%s. Total: %d." % [amount, type, source_suffix, next_amount])
 	resource_changed.emit(type, next_amount)
@@ -688,7 +695,9 @@ func spend_resource(type: String, amount: int, reason: String = "") -> bool:
 	if current < amount:
 		add_log("Need %d %s for %s. Current: %d." % [amount, type, reason, current])
 		return false
-	resources[type] = current - amount
+	var inv: Node = _inv()
+	if inv != null:
+		inv.call("remove_item", type, amount, reason)
 	var reason_suffix: String = "" if reason == "" else " for " + reason
 	add_log("Spent %d %s%s. Remaining: %d." % [amount, type, reason_suffix, resource_count(type)])
 	resource_changed.emit(type, resource_count(type))
@@ -696,7 +705,9 @@ func spend_resource(type: String, amount: int, reason: String = "") -> bool:
 	return true
 
 func can_start_air_crisis() -> bool:
-	return met_rush and eli_quarters_visited and kino_acquired and not air_crisis_started
+	var inv: Node = _inv()
+	var has_kino: bool = inv != null and inv.call("has", "kino_remote")
+	return met_rush and eli_quarters_visited and has_kino and not air_crisis_started
 
 func start_air_crisis() -> void:
 	if air_crisis_started or episode_complete:
@@ -755,20 +766,18 @@ func examine_door_panel() -> void:
 # door panel needs (flips the objective + waypoint to the panel); the large
 # fuse is the wrong size for the door.
 func find_small_fuse() -> void:
-	if small_fuse_found:
-		return
-	small_fuse_found = true
+	var inv: Node = _inv()
+	if inv != null:
+		inv.call("add_item", "small_fuse", 1, "a dock crate")
 	add_log("Found a Small Fuse — this should fit the door panel.")
-	item_changed.emit("small_fuse", true)
 	advance_air_quest()
 
 
 func find_large_fuse() -> void:
-	if large_fuse_found:
-		return
-	large_fuse_found = true
+	var inv: Node = _inv()
+	if inv != null:
+		inv.call("add_item", "large_fuse", 1, "a dock crate")
 	add_log("Found a Large Fuse. Too big for the door panel — pocket it anyway.")
-	item_changed.emit("large_fuse", true)
 
 
 # Generic crate loot for the non-fuse crate: a ration pack the player pockets.
@@ -829,20 +838,25 @@ func report_to_gate() -> void:
 # Pull a Kino orb from the quarters dispenser. Unlimited supply, but the player
 # can carry at most KINO_ORB_MAX at once.
 func acquire_kino_orb() -> void:
-	if kino_orbs >= KINO_ORB_MAX:
+	var inv: Node = _inv()
+	if inv == null:
+		return
+	var held: int = int(inv.call("count", "kino_orb"))
+	if held >= KINO_ORB_MAX:
 		add_log("Can't carry more than %d Kinos at once." % KINO_ORB_MAX)
 		return
-	kino_orbs += 1
-	add_log("Took a Kino from the dispenser. Carrying %d/%d." % [kino_orbs, KINO_ORB_MAX])
+	held = int(inv.call("add_item", "kino_orb", 1, "the dispenser"))
+	add_log("Took a Kino from the dispenser. Carrying %d/%d." % [held, KINO_ORB_MAX])
 	advance_air_quest()
 
 
 # Spend a carried Kino orb (launching one through the gate). Returns false if
 # none are in hand.
 func consume_kino_orb() -> bool:
-	if kino_orbs <= 0:
+	var inv: Node = _inv()
+	if inv == null or int(inv.call("count", "kino_orb")) <= 0:
 		return false
-	kino_orbs -= 1
+	inv.call("remove_item", "kino_orb", 1, "launched")
 	return true
 
 
@@ -1018,7 +1032,8 @@ func serialize() -> Dictionary:
 		"oxygen": oxygen,
 		"current_episode": current_episode,
 		"quest_step": quest_step,
-		"kino_acquired": kino_acquired,
+		# Items (kino remote, kino orbs, fuses, lime, rations) are persisted by
+		# the Inventory system's own block, not here.
 		"quarters_found": quarters_found,
 		"eli_quarters_visited": eli_quarters_visited,
 		"elevator_repaired": elevator_repaired,
@@ -1040,8 +1055,6 @@ func serialize() -> Dictionary:
 		"control_room_returned": control_room_returned,
 		"blocked_door_beat_done": blocked_door_beat_done,
 		"door_panel_examined": door_panel_examined,
-		"small_fuse_found": small_fuse_found,
-		"large_fuse_found": large_fuse_found,
 		"life_support_diagnosed": life_support_diagnosed,
 		"scrubber_diagnosed": scrubber_diagnosed,
 		"scrubber_repaired": scrubber_repaired,
@@ -1050,13 +1063,11 @@ func serialize() -> Dictionary:
 		"ftl_drop_game_time": ftl_drop_game_time,
 		"lime_planet_dialed": lime_planet_dialed,
 		"reported_to_gate": reported_to_gate,
-		"kino_orbs": kino_orbs,
 		"deployed_kinos": deployed_kinos.duplicate(true),
 		"kino_scout_done": kino_scout_done,
 		"kino_plan_approved": kino_plan_approved,
 		"away_party_briefed": away_party_briefed,
 		"returned_from_lime_planet": returned_from_lime_planet,
-		"resources": resources.duplicate(true),
 		"kino_pan_x": kino_pan_x,
 		"kino_pan_y": kino_pan_y,
 		"kino_zoom": kino_zoom,
@@ -1070,7 +1081,6 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	oxygen = float(data.get("oxygen", MAX_OXYGEN))
 	current_episode = String(data.get("current_episode", EPISODE_AIR))
 	quest_step = String(data.get("quest_step", QUEST_TALK_SCOTT))
-	kino_acquired = data.get("kino_acquired", false) == true
 	quarters_found = data.get("quarters_found", false) == true
 	eli_quarters_visited = data.get("eli_quarters_visited", false) == true
 	elevator_repaired = data.get("elevator_repaired", false) == true
@@ -1084,8 +1094,6 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	control_room_returned = data.get("control_room_returned", false) == true
 	blocked_door_beat_done = data.get("blocked_door_beat_done", false) == true
 	door_panel_examined = data.get("door_panel_examined", false) == true
-	small_fuse_found = data.get("small_fuse_found", false) == true
-	large_fuse_found = data.get("large_fuse_found", false) == true
 	life_support_diagnosed = data.get("life_support_diagnosed", false) == true
 	scrubber_diagnosed = data.get("scrubber_diagnosed", false) == true
 	scrubber_repaired = data.get("scrubber_repaired", false) == true
@@ -1094,7 +1102,6 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	ftl_drop_game_time = float(data.get("ftl_drop_game_time", -1.0))
 	lime_planet_dialed = data.get("lime_planet_dialed", false) == true
 	reported_to_gate = data.get("reported_to_gate", false) == true
-	kino_orbs = int(data.get("kino_orbs", 0))
 	deployed_kinos.clear()
 	var loaded_kinos: Variant = data.get("deployed_kinos", [])
 	if loaded_kinos is Array:
@@ -1110,13 +1117,27 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	kino_plan_approved = data.get("kino_plan_approved", false) == true
 	away_party_briefed = data.get("away_party_briefed", false) == true
 	returned_from_lime_planet = data.get("returned_from_lime_planet", false) == true
-	resources.clear()
-	var loaded_resources: Variant = data.get("resources", {})
-	if loaded_resources is Dictionary:
-		for key in (loaded_resources as Dictionary).keys():
-			resources[String(key)] = int((loaded_resources as Dictionary)[key])
-	if not resources.has(AIR_LIME_RESOURCE):
-		resources[AIR_LIME_RESOURCE] = 0
+	# --- legacy item migration ---------------------------------------------
+	# Pre-store saves kept items here (kino_acquired / *_fuse_found / kino_orbs
+	# / a `resources` dict). Seed the Inventory pool from them. Runs BEFORE the
+	# Inventory system's own deserialize (registration order = game_state then
+	# inventory), and Inventory.deserialize leaves the seed intact when the save
+	# has no "inventory" block (old saves). New saves carry no legacy keys here,
+	# so this is a no-op for them.
+	var inv: Node = _inv()
+	if inv != null:
+		if data.has("kino_acquired") and data.get("kino_acquired") == true:
+			inv.call("set_count", "kino_remote", 1)
+		if data.has("small_fuse_found") and data.get("small_fuse_found") == true:
+			inv.call("set_count", "small_fuse", 1)
+		if data.has("large_fuse_found") and data.get("large_fuse_found") == true:
+			inv.call("set_count", "large_fuse", 1)
+		if data.has("kino_orbs"):
+			inv.call("set_count", "kino_orb", int(data.get("kino_orbs", 0)))
+		var loaded_resources: Variant = data.get("resources", {})
+		if loaded_resources is Dictionary:
+			for key in (loaded_resources as Dictionary).keys():
+				inv.call("set_count", String(key), int((loaded_resources as Dictionary)[key]))
 	rooms_discovered.clear()
 	for r in data.get("rooms_discovered", []):
 		rooms_discovered.append(String(r))
@@ -1143,4 +1164,4 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	health_changed.emit(health)
 	oxygen_changed.emit(oxygen)
 	objective_changed.emit(current_objective)
-	kino_changed.emit(kino_acquired)
+	kino_changed.emit(inv != null and inv.call("has", "kino_remote"))

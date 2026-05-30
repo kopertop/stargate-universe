@@ -163,7 +163,7 @@ func _pick_lime(player: Node3D) -> Node3D:
 # the player always mines the final unit so the mission's core loop isn't fully
 # automated.
 func _should_help() -> bool:
-	var have: int = int(GameState.resources.get(GameState.AIR_LIME_RESOURCE, 0))
+	var have: int = GameState.resource_count(GameState.AIR_LIME_RESOURCE)
 	return have < GameState.AIR_LIME_REQUIRED - 1
 
 func _harvest(node: Node3D) -> void:

@@ -228,7 +228,7 @@ func _close() -> void:
 
 func _refresh_buttons() -> void:
 	# Kino button only meaningful once the player has picked it up.
-	_btn_kino.visible = GameState.kino_acquired
+	_btn_kino.visible = Inventory.has("kino_remote")
 	# Restart label flips into a two-click confirm pattern. _restart_armed
 	# resets every time the menu opens (in _open_menu).
 	_btn_restart.text = RESTART_CONFIRM_PROMPT if _restart_armed else "Restart Episode"
@@ -257,7 +257,7 @@ func _on_save_pressed() -> void:
 
 
 func _on_kino_pressed() -> void:
-	if not GameState.kino_acquired:
+	if not Inventory.has("kino_remote"):
 		return
 	# Close the pause menu first so the Kino's "Esc closes me" handler
 	# isn't shadowed by ours. Unpause happens inside _close; KinoRemote

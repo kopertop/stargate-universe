@@ -1,45 +1,36 @@
 extends Node
 
-# @no-save: derived projection — every item count is read live from its
-# canonical GameState field (kino_acquired / *_fuse_found / resources dict /
-# kino_orbs). Nothing here is independent state, so there is nothing to
-# serialize and old saves migrate for free (the counts come from whatever
-# GameState already restored).
+# Canonical inventory store — the SINGLE source of truth for every item the
+# player carries, held as `id -> count`. There are no item booleans anywhere
+# else: kino remote, kino orbs, fuses, lime, rations all live here as counts.
+# Item metadata (name, icon, category, stack rules) is data (data/items.json).
 #
-# Data-driven inventory model + the single enumerable surface the Kino Remote
-# inventory page renders from. Item metadata (name, icon, description, stack
-# rules, category) lives in data/items.json; this autoload loads that catalog
-# and resolves each item's CURRENT count from GameState.
-#
-# Why a projection rather than its own store (issue #41): kino_acquired, the
-# fuse bools, and the `resources` dict are read + written + asserted across the
-# codebase and the test suites. Re-homing all of that into one store is the
-# full #41 migration; this layer fixes the user-visible bug (looted items not
-# showing) and delivers the real catalog + slot-grid UI WITHOUT churning tested
-# gameplay state. Consumers (the UI) iterate entries() generically and never
-# name an item — so a new catalog row + one `count()` arm is all a new item
-# needs, and nothing can silently fail to render (the bug this replaces).
+# Registered with SaveManager as "inventory" so the pool persists. GameState
+# exposes thin resource shims (resource_count/has_resource/add_resource/
+# spend_resource) and the acquire/consume helpers that route through here;
+# old saves (which stored kino_acquired / *_fuse_found / kino_orbs / a
+# `resources` dict on GameState) are migrated into this pool by
+# GameState.deserialize before this system's own block loads.
 
 signal changed
+signal item_changed(id: String, count: int)
 
 const ITEMS_PATH: String = "res://data/items.json"
 
-# Ordered catalog: Array of definition dictionaries, in display order.
+# Ordered catalog (display order) + id->definition lookup.
 var _catalog: Array = []
-# id -> definition, for O(1) lookup.
 var _by_id: Dictionary = {}
+# Canonical state: item id -> count (count > 0; zeroed entries are erased).
+var _items: Dictionary = {}
 var _loaded: bool = false
-var _connected: bool = false
+var _registered: bool = false
 
 
 func _ready() -> void:
 	_ensure_loaded()
-	_connect_state()
+	_register()
 
 
-# Idempotent lazy init so headless `-s` SceneTree tests (where _ready is
-# deferred until a frame ticks) still get a populated catalog the moment they
-# call any public method. Mirrors QuestLog._ensure_initialized.
 func _ensure_loaded() -> void:
 	if _loaded:
 		return
@@ -65,26 +56,13 @@ func _ensure_loaded() -> void:
 		_by_id[id] = def
 
 
-# Re-emit a single `changed` whenever any backing GameState source moves, so
-# an open inventory page can refresh live. Autoload-tolerant: smoke tests wire
-# their own GameState sibling under the test root with no signals guaranteed.
-func _connect_state() -> void:
-	if _connected:
+func _register() -> void:
+	if _registered:
 		return
-	var gs: Node = _autoload_node("GameState")
-	if gs == null:
-		return
-	_connected = true
-	if gs.has_signal("kino_changed") and not gs.is_connected("kino_changed", _on_state_changed):
-		gs.connect("kino_changed", _on_state_changed)
-	if gs.has_signal("resource_changed") and not gs.is_connected("resource_changed", _on_state_changed):
-		gs.connect("resource_changed", _on_state_changed)
-	if gs.has_signal("item_changed") and not gs.is_connected("item_changed", _on_state_changed):
-		gs.connect("item_changed", _on_state_changed)
-
-
-func _on_state_changed(_a: Variant = null, _b: Variant = null) -> void:
-	changed.emit()
+	var sm: Node = _autoload_node("SaveManager")
+	if sm != null and sm.has_method("register_system"):
+		sm.call("register_system", "inventory", self)
+		_registered = true
 
 
 func _autoload_node(autoload_name: String) -> Node:
@@ -94,38 +72,66 @@ func _autoload_node(autoload_name: String) -> Node:
 	return tree.root.get_node_or_null(autoload_name)
 
 
-# --- Public API --------------------------------------------------------------
+# --- mutation ----------------------------------------------------------------
 
-# Current count the player is carrying of `id`, read from its canonical
-# GameState source. Unknown ids → 0.
+# Add `amount` of `id`. Non-stackable items (per the catalog) cap at 1.
+# Returns the new count.
+func add_item(id: String, amount: int = 1, _source: String = "") -> int:
+	_ensure_loaded()
+	if amount <= 0:
+		return count(id)
+	var def: Dictionary = _by_id.get(id, {})
+	var stackable: bool = def.get("stackable", true) == true
+	var cur: int = int(_items.get(id, 0))
+	var next: int = (1 if not stackable else cur + amount)
+	if next == cur:
+		return cur
+	_items[id] = next
+	_emit(id, next)
+	return next
+
+
+# Remove `amount` of `id`, clamped at 0. Returns the new count. This is the
+# consume path (e.g. fitting a fuse into the door, launching a Kino).
+func remove_item(id: String, amount: int = 1, _reason: String = "") -> int:
+	_ensure_loaded()
+	var cur: int = int(_items.get(id, 0))
+	if amount <= 0 or cur == 0:
+		return cur
+	var next: int = maxi(0, cur - amount)
+	if next == 0:
+		_items.erase(id)
+	else:
+		_items[id] = next
+	_emit(id, next)
+	return next
+
+
+# Force `id` to an exact count (used for the kino_orbs `= N` assignment path
+# and save migration). Negative clamps to 0.
+func set_count(id: String, n: int) -> void:
+	_ensure_loaded()
+	var v: int = maxi(0, n)
+	var cur: int = int(_items.get(id, 0))
+	if v == cur:
+		return
+	if v == 0:
+		_items.erase(id)
+	else:
+		_items[id] = v
+	_emit(id, v)
+
+
+func _emit(id: String, n: int) -> void:
+	item_changed.emit(id, n)
+	changed.emit()
+
+
+# --- queries -----------------------------------------------------------------
+
 func count(id: String) -> int:
 	_ensure_loaded()
-	var gs: Node = _autoload_node("GameState")
-	if gs == null:
-		return 0
-	match id:
-		"kino_remote":
-			return 1 if gs.get("kino_acquired") == true else 0
-		"kino_orb":
-			return int(gs.get("kino_orbs"))
-		"small_fuse":
-			# Spent the moment it's fitted into the jammed door panel — i.e. once
-			# breach_a is sealed (shuttle_door_panel.gd consumes it there). Held
-			# only between looting it and sealing the breach.
-			if gs.get("small_fuse_found") != true:
-				return 0
-			var sealed: Variant = gs.get("breaches_sealed")
-			if sealed is Array and (sealed as Array).has("breach_a"):
-				return 0
-			return 1
-		"large_fuse":
-			return 1 if gs.get("large_fuse_found") == true else 0
-		_:
-			# Stackable resources (lime, rations, future types) live in the
-			# GameState resources pool.
-			if gs.has_method("resource_count"):
-				return int(gs.call("resource_count", id))
-			return 0
+	return int(_items.get(id, 0))
 
 
 func has(id: String, amount: int = 1) -> bool:
@@ -137,10 +143,9 @@ func definition(id: String) -> Dictionary:
 	return _by_id.get(id, {})
 
 
-# The single enumerable surface the UI renders. Returns catalog-ordered
-# [{ id, def, count }] for every item with count > 0 and show_in_inventory.
-# Consumers iterate this and NEVER name a specific item — a new item appears
-# automatically once it has a catalog row and a count() source.
+# The single enumerable surface the UI renders: catalog-ordered
+# [{ id, def, count }] for every held item with show_in_inventory. Consumers
+# iterate this and never name a specific item.
 func entries() -> Array:
 	_ensure_loaded()
 	var out: Array = []
@@ -154,10 +159,38 @@ func entries() -> Array:
 	return out
 
 
-# Catalog accessor for tests / tooling.
 func catalog_ids() -> Array:
 	_ensure_loaded()
 	var ids: Array = []
 	for def in _catalog:
 		ids.append(String(def.get("id", "")))
 	return ids
+
+
+# --- save / load -------------------------------------------------------------
+
+func serialize() -> Dictionary:
+	return {"items": _items.duplicate()}
+
+
+func deserialize(data: Dictionary, _version: int) -> void:
+	_ensure_loaded()
+	# Only own the state when our block is present. Old saves have no
+	# "inventory" block — GameState.deserialize has already seeded _items from
+	# the legacy fields by the time we run, so leave that seed intact.
+	if not data.has("items"):
+		return
+	_items.clear()
+	var items: Variant = data.get("items", {})
+	if items is Dictionary:
+		for k in (items as Dictionary).keys():
+			var c: int = int((items as Dictionary)[k])
+			if c > 0:
+				_items[String(k)] = c
+	changed.emit()
+
+
+func reset() -> void:
+	_ensure_loaded()
+	_items.clear()
+	changed.emit()

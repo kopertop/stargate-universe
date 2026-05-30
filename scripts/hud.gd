@@ -60,7 +60,7 @@ func _ready() -> void:
 	_on_objective_changed(GameState.current_objective)
 	_on_health_changed(GameState.health)
 	_on_oxygen_changed(GameState.oxygen)
-	_on_kino_changed(GameState.kino_acquired)
+	_on_kino_changed(Inventory.has("kino_remote"))
 	_interact_label.text = ""
 	_dialog_panel.visible = false
 	_build_action_bar()
@@ -209,7 +209,7 @@ func _refresh_action_bar() -> void:
 	_kino_hint.visible = false
 
 	var tools: Array = []
-	if GameState.kino_acquired:
+	if Inventory.has("kino_remote"):
 		tools.append({"id": "kino_remote", "key": "Tab"})
 
 	var scouting: bool = GameState.quest_step == GameState.QUEST_SCOUT_KINO
@@ -223,7 +223,7 @@ func _refresh_action_bar() -> void:
 			_action_pulse.tween_property(slot, "modulate:a", 1.0, 0.6)
 
 	# Scout-beat caption above the bar (reuses the old KinoHint label).
-	if scouting and GameState.kino_acquired:
+	if scouting and Inventory.has("kino_remote"):
 		_kino_hint.text = "Open the Kino Remote"
 		_kino_hint.offset_top = -52.0 - ACTION_SLOT_SIZE.y - ACTION_BAR_MARGIN
 		_kino_hint.offset_bottom = -24.0 - ACTION_SLOT_SIZE.y - ACTION_BAR_MARGIN

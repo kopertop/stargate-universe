@@ -50,9 +50,11 @@ func _initialize() -> void:
 
 	var gs: Node = root.get_node_or_null("GameState")
 	var ql: Node = root.get_node_or_null("QuestLog")
+	var inv: Node = root.get_node_or_null("Inventory")
 	_expect(gs != null, "GameState autoload attached")
 	_expect(ql != null, "QuestLog autoload attached")
-	if gs == null or ql == null:
+	_expect(inv != null, "Inventory autoload attached")
+	if gs == null or ql == null or inv == null:
 		_report()
 		return
 
@@ -170,14 +172,14 @@ func _walk_predicate_sequence(gs: Node, ql: Node) -> void:
 		{"next": "find_rush",            "set": func() -> void: gs.met_scott = true},
 		{"next": "find_rest",            "set": func() -> void: gs.met_rush = true},
 		{"next": "find_kino",            "set": func() -> void: gs.eli_quarters_visited = true},
-		{"next": "sleep",                "set": func() -> void: gs.kino_acquired = true},
+		{"next": "sleep",                "set": func() -> void: inv.call("set_count", "kino_remote", 1)},
 		{"next": "return_to_control",   "set": func() -> void: gs.air_crisis_started = true},
 		{"next": "diagnose_life_support","set": func() -> void: gs.control_room_returned = true},
 		{"next": "seal_breach",          "set": func() -> void: gs.life_support_diagnosed = true},
 		{"next": "find_scrubber",        "set": func() -> void: gs.breaches_sealed.append("shuttle_dock")},
 		{"next": "wait_ftl",             "set": func() -> void: gs.scrubber_diagnosed = true},
 		{"next": "go_to_gate",           "set": func() -> void: gs.ftl_drop_triggered = true},
-		{"next": "scout_kino",          "set": func() -> void: gs.reported_to_gate = true; gs.kino_orbs = 1},
+		{"next": "scout_kino",          "set": func() -> void: gs.reported_to_gate = true; inv.call("set_count", "kino_orb", 1)},
 		{"next": "dial_lime_planet",     "set": func() -> void: gs.kino_scout_done = true},
 		{"next": "mine_lime",            "set": func() -> void: gs.lime_planet_dialed = true},
 		{"next": "return_destiny",       "set": func() -> void: gs.add_resource(gs.AIR_LIME_RESOURCE, gs.AIR_LIME_REQUIRED, "test")},

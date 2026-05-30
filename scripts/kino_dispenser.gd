@@ -72,7 +72,7 @@ func _on_interact(_by: Node) -> void:
 	_refresh_prompt()
 
 func _refresh_prompt() -> void:
-	if GameState.kino_orbs >= GameState.KINO_ORB_MAX:
-		prompt = "Kinos full (%d/%d)" % [GameState.kino_orbs, GameState.KINO_ORB_MAX]
+	if Inventory.count("kino_orb") >= GameState.KINO_ORB_MAX:
+		prompt = "Kinos full (%d/%d)" % [Inventory.count("kino_orb"), GameState.KINO_ORB_MAX]
 	else:
-		prompt = "Take a Kino (%d/%d)" % [GameState.kino_orbs, GameState.KINO_ORB_MAX]
+		prompt = "Take a Kino (%d/%d)" % [Inventory.count("kino_orb"), GameState.KINO_ORB_MAX]

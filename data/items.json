@@ -41,7 +41,7 @@
     "category": "story_item",
     "icon": "res://sprites/ui/items/small_fuse.png",
     "description": "A small replacement fuse looted from a Shuttle Dock crate. The jammed door panel's blown fuse looks about this size.",
-    "stackable": false,
+    "stackable": true,
     "show_in_inventory": true
   },
   {
@@ -50,7 +50,7 @@
     "category": "story_item",
     "icon": "res://sprites/ui/items/large_fuse.png",
     "description": "A heavy-duty fuse looted from a Shuttle Dock crate. Too big for the jammed door panel — pocketed for later.",
-    "stackable": false,
+    "stackable": true,
     "show_in_inventory": true
   }
 ]

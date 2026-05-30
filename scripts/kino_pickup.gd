@@ -51,12 +51,12 @@ const KINO_DIALOG_TREE: Array = [
 func _ready() -> void:
 	super()
 	prompt = _prompt_for_state()
-	if GameState.kino_acquired:
+	if Inventory.has("kino_remote"):
 		_hide_prop()
 		enabled = false
 
 func _on_interact(_by: Node) -> void:
-	if _naming or GameState.kino_acquired:
+	if _naming or Inventory.has("kino_remote"):
 		return
 	_naming = true
 	enabled = false
@@ -84,6 +84,6 @@ func _hide_prop() -> void:
 		(n as Node3D).visible = false
 
 func _prompt_for_state() -> String:
-	if GameState.kino_acquired:
+	if Inventory.has("kino_remote"):
 		return "Pick up the Kino Remote"
 	return "Examine the strange device"

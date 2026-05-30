@@ -1,0 +1,136 @@
+[
+	{
+		"id": "e1_air",
+		"title": "Episode 1: Air",
+		"auto_start": true,
+		"tracked": true,
+		"steps": [
+			{
+				"id": "talk_scott",
+				"label": "Talk to Scott",
+				"objective": "Talk to Lt Scott in the Gate Room.",
+				"target": { "room": "gate_room", "anchor": "LtScott" },
+				"complete_when": "met_scott"
+			},
+			{
+				"id": "find_rush",
+				"label": "Find Rush",
+				"objective": "Find Dr Rush in the Control Interface Room.",
+				"target": { "room": "control_interface_room", "anchor": "DrRush" },
+				"complete_when": "met_rush"
+			},
+			{
+				"id": "find_rest",
+				"label": "Find a place to rest",
+				"objective": "Find a place to rest. Try your quarters.",
+				"target": { "room": "eli_quarters", "anchor": "" },
+				"complete_when": "eli_quarters_visited"
+			},
+			{
+				"id": "find_kino",
+				"label": "Inspect the strange device",
+				"objective": "There's a strange device on your desk. Take a look.",
+				"target": { "room": "eli_quarters", "anchor": "KinoPickup" },
+				"complete_when": "kino_acquired"
+			},
+			{
+				"id": "sleep",
+				"label": "Sleep",
+				"objective": "Get some rest. Lay down on the bed in your quarters.",
+				"target": { "room": "eli_quarters", "anchor": "Bed" },
+				"complete_when": "air_crisis_started"
+			},
+			{
+				"id": "return_to_control",
+				"label": "Return to the Control Room",
+				"objective": "Scott's orders: get to the Control Interface Room and find Rush.",
+				"target": { "room": "control_interface_room", "anchor": "" },
+				"complete_when": "control_room_returned"
+			},
+			{
+				"id": "diagnose_life_support",
+				"label": "Access a control terminal",
+				"objective": "Access a control terminal in the Control Interface Room.",
+				"target": { "room": "control_interface_room", "anchor": "ControlConsoleNearest" },
+				"complete_when": "life_support_diagnosed"
+			},
+			{
+				"id": "seal_breach",
+				"label": "Seal the jammed door",
+				"objective_fn": "seal_breach_objective",
+				"target": { "room": "breached_section_south", "anchor": "ShuttleObjective" },
+				"complete_when": "any_breach_sealed"
+			},
+			{
+				"id": "find_scrubber",
+				"label": "Find CO2 scrubber",
+				"objective": "Talk to Dr Rush at the open life-support panel in the south corridor.",
+				"target": { "room": "south_corridor", "anchor": "ScrubberRush" },
+				"complete_when": "scrubber_diagnosed"
+			},
+			{
+				"id": "wait_ftl",
+				"label": "Trigger FTL drop",
+				"objective": "Return to the Gate Room and trigger the FTL drop.",
+				"target": { "room": "gate_room", "anchor": "FTLConsole" },
+				"complete_when": "ftl_drop_triggered"
+			},
+			{
+				"id": "go_to_gate",
+				"label": "Get to the Gate Room",
+				"objective": "Dr Brody says the gate dialed itself. Get to the Gate Room.",
+				"target": { "room": "gate_room", "anchor": "" },
+				"complete_when": "reported_to_gate"
+			},
+			{
+				"id": "fetch_kino",
+				"label": "Fetch a Kino",
+				"objective": "We can't risk going in blind. Grab a Kino from the dispenser in your quarters.",
+				"target": { "room": "eli_quarters", "anchor": "KinoDispenser" },
+				"complete_when": "has_kino_orb_or_scouted"
+			},
+			{
+				"id": "scout_kino",
+				"label": "Send a Kino through the gate",
+				"objective": "Back at the gate: open the Kino Remote (Tab) and launch a Kino through to scout the planet.",
+				"target": { "room": "gate_room", "anchor": "" },
+				"complete_when": "kino_scout_done"
+			},
+			{
+				"id": "dial_lime_planet",
+				"label": "Dial lime planet",
+				"objective": "Use Gate Control in the Gate Room to dial the lime planet.",
+				"target": { "room": "gate_room", "anchor": "GateControlConsole" },
+				"complete_when": "lime_planet_dialed"
+			},
+			{
+				"id": "mine_lime",
+				"label": "Mine lime",
+				"objective": "Step through the Stargate and mine lime on the planet.",
+				"target": { "room": "", "anchor": "" },
+				"complete_when": "has_required_lime"
+			},
+			{
+				"id": "return_destiny",
+				"label": "Return to Destiny",
+				"objective": "Return through the planet gate to Destiny.",
+				"target": { "room": "", "anchor": "" },
+				"complete_when": "returned_from_lime_planet"
+			},
+			{
+				"id": "repair_scrubber",
+				"label": "Repair CO2 scrubber",
+				"objective": "Bring lime to the CO2 scrubber in the south corridor.",
+				"target": { "room": "south_corridor", "anchor": "CO2Scrubber" },
+				"complete_when": "scrubber_repaired_or_episode_complete"
+			},
+			{
+				"id": "complete",
+				"label": "Episode complete",
+				"objective": "Episode 1: Air — Complete",
+				"target": { "room": "", "anchor": "" },
+				"terminal": true
+			}
+		]
+	}
+]

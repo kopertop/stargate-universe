@@ -9,8 +9,8 @@ extends SceneTree
 #   godot --headless --quit-after 80 -s res://tests/smoke/e1_flow.gd
 
 const EXPECTED_AUTOLOADS: Array[String] = [
-	"Audio", "TestCapture", "SaveManager", "GameClock", "GameState", "NPCState",
-	"SceneRouter", "KinoRemote", "EpisodeWrap",
+	"Audio", "TestCapture", "SaveManager", "GameClock", "GameState", "QuestLog",
+	"NPCState", "SceneRouter", "KinoRemote", "EpisodeWrap",
 ]
 
 var _failures: Array[String] = []
@@ -22,16 +22,20 @@ func _initialize() -> void:
 
 	_verify_autoload_registry()
 
-	var gs_script: Script = load("res://scripts/game_state.gd") as Script
-	_expect(gs_script != null, "load GameState script")
-	if gs_script == null:
+	# Post-#36: tests use the LIVE autoloads (GameState + QuestLog) rather
+	# than spinning up duplicates. In `-s` SceneTree mode autoloads ARE
+	# attached to root, so a same-named test-instantiated node would clash
+	# and Godot would auto-rename it to "@Node@2" — leaving QuestLog's
+	# predicate evaluator reading from the autoload's untouched GameState
+	# while the test mutated a different orphan instance. Cleaner to just
+	# reset() the autoload between phases.
+	_expect(load("res://scripts/game_state.gd") != null, "load GameState script")
+	_expect(load("res://scripts/quest_log.gd") != null, "load QuestLog script")
+	var gs: Node = root.get_node_or_null("GameState")
+	_expect(gs != null, "GameState autoload is attached")
+	if gs == null:
 		_report()
 		return
-
-	var gs: Node = Node.new()
-	gs.set_script(gs_script)
-	gs.name = "GameState"
-	root.add_child(gs)
 
 	gs.reset()
 	_expect(gs.health == gs.MAX_HEALTH, "reset: health == MAX_HEALTH")
@@ -372,8 +376,10 @@ func _initialize() -> void:
 		_expect(float(consts.get("DISCOVER_RANGE", 0.0)) == 50.0,
 			"resource_node DISCOVER_RANGE is 50m")
 
-	root.remove_child(gs)
-	gs.free()
+	# Don't free the autoload — Godot tears it down with the SceneTree.
+	# Reset its state so any test that re-uses this process later sees a
+	# clean GameState (irrelevant for the runner, kind to debuggers).
+	gs.reset()
 
 	_report()
 

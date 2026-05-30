@@ -59,12 +59,15 @@ const MAX_HEALTH: float = 100.0
 const MAX_OXYGEN: float = 100.0
 
 const EPISODE_AIR: String = "air"
+# Step IDs aliased as consts so existing readers (`GameState.QUEST_X`, test
+# assertions, scene scripts) keep compiling unchanged. The data lives in
+# data/quests.json; these constants exist only as a stable handle to the
+# same strings. The QuestLog autoload is the source of truth for ordering,
+# objectives, targets, and labels.
 const QUEST_TALK_SCOTT: String = "talk_scott"
 const QUEST_FIND_RUSH: String = "find_rush"
 const QUEST_FIND_REST: String = "find_rest"
 const QUEST_FIND_KINO: String = "find_kino"
-const QUEST_RESTORE_POWER: String = "restore_power"
-const QUEST_FIND_QUARTERS: String = "find_quarters"
 const QUEST_SLEEP: String = "sleep"
 const QUEST_RETURN_TO_CONTROL: String = "return_to_control"
 const QUEST_DIAGNOSE_LIFE_SUPPORT: String = "diagnose_life_support"
@@ -79,6 +82,7 @@ const QUEST_MINE_LIME: String = "mine_lime"
 const QUEST_RETURN_DESTINY: String = "return_destiny"
 const QUEST_REPAIR_SCRUBBER: String = "repair_scrubber"
 const QUEST_COMPLETE: String = "complete"
+const E1_QUEST_ID: String = "e1_air"
 const AIR_LIME_RESOURCE: String = "lime"
 const AIR_LIME_REQUIRED: int = 3
 # Phase G ongoing scrubber loop.
@@ -99,56 +103,11 @@ const KINO_ORB_MAX: int = 3
 # Deploying another past this drops the oldest tracked location (FIFO).
 const KINO_DEPLOYED_MAX: int = 3
 
-const QUEST_LABELS: Dictionary = {
-	QUEST_TALK_SCOTT: "Talk to Scott",
-	QUEST_FIND_RUSH: "Find Rush",
-	QUEST_FIND_REST: "Find a place to rest",
-	QUEST_FIND_KINO: "Inspect the strange device",
-	QUEST_RESTORE_POWER: "Restore main power",
-	QUEST_FIND_QUARTERS: "Find quarters",
-	QUEST_SLEEP: "Sleep",
-	QUEST_RETURN_TO_CONTROL: "Return to the Control Room",
-	QUEST_DIAGNOSE_LIFE_SUPPORT: "Access a control terminal",
-	QUEST_SEAL_BREACH: "Seal the jammed door",
-	QUEST_FIND_SCRUBBER: "Find CO2 scrubber",
-	QUEST_WAIT_FTL: "Trigger FTL drop",
-	QUEST_GO_TO_GATE: "Get to the Gate Room",
-	QUEST_FETCH_KINO: "Fetch a Kino",
-	QUEST_SCOUT_KINO: "Send a Kino through the gate",
-	QUEST_DIAL_LIME_PLANET: "Dial lime planet",
-	QUEST_MINE_LIME: "Mine lime",
-	QUEST_RETURN_DESTINY: "Return to Destiny",
-	QUEST_REPAIR_SCRUBBER: "Repair CO2 scrubber",
-	QUEST_COMPLETE: "Episode complete",
-}
-
-# Where each quest step's diamond should anchor. The room field names a row in
-# data/ship_layout.json; the anchor field names a Node already spawned by
-# room.gd / gate_room.gd (matched by Node.name). When `anchor` is empty the
-# waypoint pins to the room itself (door of entry); when both fields are empty
-# the waypoint is hidden (off-ship or completion states).
-const QUEST_TARGETS: Dictionary = {
-	QUEST_TALK_SCOTT: {"room": "gate_room", "anchor": "LtScott"},
-	QUEST_FIND_RUSH: {"room": "control_interface_room", "anchor": "DrRush"},
-	QUEST_FIND_REST: {"room": "eli_quarters", "anchor": ""},
-	QUEST_FIND_KINO: {"room": "eli_quarters", "anchor": "KinoPickup"},
-	QUEST_RESTORE_POWER: {"room": "engineering_bay", "anchor": "PowerConsole"},
-	QUEST_FIND_QUARTERS: {"room": "quarters_room_1", "anchor": ""},
-	QUEST_SLEEP: {"room": "eli_quarters", "anchor": "Bed"},
-	QUEST_RETURN_TO_CONTROL: {"room": "control_interface_room", "anchor": ""},
-	QUEST_DIAGNOSE_LIFE_SUPPORT: {"room": "control_interface_room", "anchor": "ControlConsoleNearest"},
-	QUEST_SEAL_BREACH: {"room": "breached_section_south", "anchor": "ShuttleObjective"},
-	QUEST_FIND_SCRUBBER: {"room": "south_corridor", "anchor": "ScrubberRush"},
-	QUEST_WAIT_FTL: {"room": "gate_room", "anchor": "FTLConsole"},
-	QUEST_GO_TO_GATE: {"room": "gate_room", "anchor": ""},
-	QUEST_FETCH_KINO: {"room": "eli_quarters", "anchor": "KinoDispenser"},
-	QUEST_SCOUT_KINO: {"room": "gate_room", "anchor": ""},
-	QUEST_DIAL_LIME_PLANET: {"room": "gate_room", "anchor": "GateControlConsole"},
-	QUEST_MINE_LIME: {"room": "", "anchor": ""},  # offworld — hide waypoint
-	QUEST_RETURN_DESTINY: {"room": "", "anchor": ""},  # offworld — hide waypoint
-	QUEST_REPAIR_SCRUBBER: {"room": "south_corridor", "anchor": "CO2Scrubber"},
-	QUEST_COMPLETE: {"room": "", "anchor": ""},
-}
+# QUEST_LABELS and QUEST_TARGETS used to live here as Dictionary lookups.
+# Both moved into data/quests.json and are now served by QuestLog. Code that
+# used `QUEST_LABELS[step]` or `QUEST_TARGETS[step]` should call
+# `QuestLog.label(step)` / `QuestLog.target(step)` (or the GameState shims
+# `quest_step_label(step)` / `quest_target(step)`) instead.
 
 # Set by scene scripts (currently only gate_room.gd) when the player is
 # in a scene that should be considered "in-world" for save purposes. Title
@@ -311,16 +270,16 @@ var kino_marker: Dictionary = {}
 
 
 # Resolve an autoload by name, tolerating the headless -s SceneTree test
-# context where GameState is instantiated as a bare node. An ABSOLUTE path
-# like get_node_or_null("/root/X") errors ("Can't use get_node() with
-# absolute paths from outside the active scene tree") when this node was
-# add_child'd to the tree root without a current scene — so we navigate
-# from get_tree().root with a RELATIVE name instead, guarded by
-# is_inside_tree().
+# context where GameState is instantiated as a bare node. Uses
+# Engine.get_main_loop() rather than self.get_tree() because in -s mode
+# `is_inside_tree()` returns false right after add_child until the next
+# process_frame tick — see feedback_godot_scenetree_script_gotchas — and
+# the previous get_tree() path would refuse the lookup during that
+# window. Engine.get_main_loop() is unconditional and the root + child
+# nodes ARE addressable by name as soon as add_child returns, even when
+# the just-added child's is_inside_tree() hasn't flipped yet.
 func _autoload_node(autoload_name: String) -> Node:
-	if not is_inside_tree():
-		return null
-	var tree: SceneTree = get_tree()
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	if tree == null or tree.root == null:
 		return null
 	return tree.root.get_node_or_null(autoload_name)
@@ -332,6 +291,28 @@ func _ready() -> void:
 	var sm: Node = _autoload_node("SaveManager")
 	if sm != null and sm.has_method("register_system"):
 		sm.call("register_system", "game_state", self)
+	# Re-emit QuestLog's signals through GameState's legacy names so the HUD,
+	# Kino map, gate-room arrival branches, and every other reader of
+	# `quest_step_changed(step)` / `objective_changed(text)` keep working
+	# without churning their connection sites. We also cache the active step
+	# id in `quest_step` and the active objective in `current_objective` so
+	# direct property reads (the fast path everyone takes today) stay
+	# correct. Autoload order in project.godot puts QuestLog after GameState,
+	# so the signal connection is live by the time QuestLog._ready fires its
+	# first quest_step_changed during auto_start.
+	var ql: Node = _autoload_node("QuestLog")
+	if ql != null and ql.has_signal("quest_step_changed"):
+		if not ql.is_connected("quest_step_changed", _on_quest_log_step_changed):
+			ql.connect("quest_step_changed", _on_quest_log_step_changed)
+
+
+# Bridge: QuestLog tells us a quest advanced; route through the same pull
+# helper that advance_air_quest uses so the back-compat mirrors + legacy
+# signals stay consistent regardless of which path triggered the change.
+func _on_quest_log_step_changed(quest_id: String, _step_id: String) -> void:
+	if quest_id != E1_QUEST_ID:
+		return
+	_pull_quest_step_from_log(_autoload_node("QuestLog"))
 
 
 # Phase G: tick the scrubber's lime charge down over time and bleed oxygen
@@ -436,6 +417,13 @@ func reset() -> void:
 	health_changed.emit(health)
 	oxygen_changed.emit(oxygen)
 	kino_changed.emit(kino_acquired)
+	# Wipe QuestLog progress so the e1_air quest restarts at step 1 with no
+	# completed_steps carried over. autoload-tolerant: tests without QuestLog
+	# in the tree skip this and rely on quest_step's `= QUEST_TALK_SCOTT`
+	# default.
+	var ql: Node = _autoload_node("QuestLog")
+	if ql != null and ql.has_method("reset"):
+		ql.call("reset")
 	advance_air_quest()
 
 func damage(amount: float) -> void:
@@ -517,6 +505,12 @@ func acquire_kino() -> void:
 	if kino_acquired:
 		return
 	kino_acquired = true
+	# Used to be buried mid-ladder in _next_air_quest_step() — surfaced here
+	# alongside its trigger so the side-effect is co-located with the world-
+	# state change. start_air_crisis() also sets it, so either path (picking
+	# the Kino up first, or skipping straight into the crisis) seals the
+	# prologue.
+	prologue_complete = true
 	kino_changed.emit(true)
 	add_log("Acquired the Kino Remote.")
 	advance_air_quest()
@@ -561,118 +555,77 @@ func seal_breach(breach_id: String) -> void:
 func _recompute_objective() -> void:
 	advance_air_quest()
 
+# Re-derive the active step from current world-state. This is now a thin
+# shim over QuestLog.advance("e1_air") — every call site that used to be
+# `advance_air_quest()` keeps the same signature, but the predicate ladder
+# lives in QuestLog/data instead of inline `if` chains.
+#
+# Pull-based sync (not signal-only): after telling QuestLog to advance, we
+# also read back the new active step + objective and refresh GameState's
+# back-compat mirrors. Going through pull (rather than only the
+# quest_step_changed signal) keeps tests working even when QuestLog is
+# added to the tree after GameState — the signal connection in _ready
+# would race the test setup order otherwise.
+#
+# Autoload-tolerant: tests can spin up GameState without QuestLog in the
+# tree, in which case advance is a no-op and the cached `quest_step`
+# stays at whatever the test seeded.
 func advance_air_quest() -> void:
-	_set_quest_step(_next_air_quest_step())
+	var ql: Node = _autoload_node("QuestLog")
+	if ql == null:
+		return
+	if ql.has_method("advance"):
+		ql.call("advance", E1_QUEST_ID)
+	_pull_quest_step_from_log(ql)
 
-func _next_air_quest_step() -> String:
-	if episode_complete or scrubber_repaired:
-		return QUEST_COMPLETE
-	if not met_scott:
-		return QUEST_TALK_SCOTT
-	if not met_rush:
-		return QUEST_FIND_RUSH
-	if not eli_quarters_visited:
-		return QUEST_FIND_REST
-	if not kino_acquired:
-		return QUEST_FIND_KINO
-	prologue_complete = true
-	if not air_crisis_started:
-		return QUEST_SLEEP
-	if not control_room_returned:
-		return QUEST_RETURN_TO_CONTROL
-	if not life_support_diagnosed:
-		return QUEST_DIAGNOSE_LIFE_SUPPORT
-	if breaches_sealed.is_empty():
-		return QUEST_SEAL_BREACH
-	if not scrubber_diagnosed:
-		return QUEST_FIND_SCRUBBER
-	if not ftl_drop_triggered:
-		return QUEST_WAIT_FTL
-	if not reported_to_gate:
-		return QUEST_GO_TO_GATE
-	if kino_orbs <= 0 and not kino_scout_done:
-		return QUEST_FETCH_KINO
-	if not kino_scout_done:
-		return QUEST_SCOUT_KINO
-	if not lime_planet_dialed:
-		return QUEST_DIAL_LIME_PLANET
-	if not has_resource(AIR_LIME_RESOURCE, AIR_LIME_REQUIRED):
-		return QUEST_MINE_LIME
-	if not returned_from_lime_planet:
-		return QUEST_RETURN_DESTINY
-	if not scrubber_repaired:
-		return QUEST_REPAIR_SCRUBBER
-	return QUEST_COMPLETE
 
-func _set_quest_step(step: String) -> void:
-	var changed: bool = step != quest_step
-	quest_step = step
-	set_objective(_objective_for_step(step))
-	if changed:
-		quest_step_changed.emit(step)
+# Sync GameState's mirror fields (quest_step + current_objective) from
+# QuestLog's view of the e1_air quest and re-emit the legacy signals when
+# anything changed. Idempotent — readable signals only fire on transitions.
+func _pull_quest_step_from_log(ql: Node) -> void:
+	if ql == null:
+		return
+	var new_step: String = ""
+	if ql.has_method("active_step_id"):
+		new_step = String(ql.call("active_step_id", E1_QUEST_ID))
+	if new_step == "":
+		return
+	var new_text: String = ""
+	if ql.has_method("objective"):
+		new_text = String(ql.call("objective", E1_QUEST_ID))
+	var step_changed: bool = new_step != quest_step
+	var text_changed: bool = new_text != "" and new_text != current_objective
+	quest_step = new_step
+	if new_text != "":
+		current_objective = new_text
+	if text_changed:
+		objective_changed.emit(current_objective)
+	if step_changed:
+		quest_step_changed.emit(new_step)
 
-func _objective_for_step(step: String) -> String:
-	match step:
-		QUEST_TALK_SCOTT:
-			return "Talk to Lt Scott in the Gate Room."
-		QUEST_FIND_RUSH:
-			return "Find Dr Rush in the Control Interface Room."
-		QUEST_FIND_REST:
-			return "Find a place to rest. Try your quarters."
-		QUEST_FIND_KINO:
-			return "There's a strange device on your desk. Take a look."
-		QUEST_RESTORE_POWER:
-			return "Restore main power at the Engineering Bay (south of cr corridor)."
-		QUEST_FIND_QUARTERS:
-			return "Take the elevator to the upper deck: find Crew Quarters Alpha."
-		QUEST_SLEEP:
-			return "Get some rest. Lay down on the bed in your quarters."
-		QUEST_RETURN_TO_CONTROL:
-			return "Scott's orders: get to the Control Interface Room and find Rush."
-		QUEST_DIAGNOSE_LIFE_SUPPORT:
-			return "Access a control terminal in the Control Interface Room."
-		QUEST_SEAL_BREACH:
-			if not door_panel_examined:
-				return "A jammed shuttle door is venting atmosphere in the Shuttle Dock (far south). Get to the door panel and try it."
-			if not small_fuse_found:
-				return "The door panel's fuse is blown. Search the Shuttle Dock crates for a Small Fuse."
-			return "Fit the Small Fuse into the door panel to force the jammed door shut."
-		QUEST_FIND_SCRUBBER:
-			return "Talk to Dr Rush at the open life-support panel in the south corridor."
-		QUEST_WAIT_FTL:
-			return "Return to the Gate Room and trigger the FTL drop."
-		QUEST_GO_TO_GATE:
-			return "Dr Brody says the gate dialed itself. Get to the Gate Room."
-		QUEST_FETCH_KINO:
-			return "We can't risk going in blind. Grab a Kino from the dispenser in your quarters."
-		QUEST_SCOUT_KINO:
-			return "Back at the gate: open the Kino Remote (Tab) and launch a Kino through to scout the planet."
-		QUEST_DIAL_LIME_PLANET:
-			return "Use Gate Control in the Gate Room to dial the lime planet."
-		QUEST_MINE_LIME:
-			return "Step through the Stargate and mine lime on the planet."
-		QUEST_RETURN_DESTINY:
-			return "Return through the planet gate to Destiny."
-		QUEST_REPAIR_SCRUBBER:
-			return "Bring lime to the CO2 scrubber in the south corridor."
-		QUEST_COMPLETE:
-			return "Episode 1: Air — Complete"
-		_:
-			return "Explore the Destiny."
 
+# HUD-facing short label for a step id (or the active step when key=="").
 func quest_step_label(step: String = "") -> String:
 	var key: String = quest_step if step == "" else step
-	return String(QUEST_LABELS.get(key, key))
+	var ql: Node = _autoload_node("QuestLog")
+	if ql != null and ql.has_method("label"):
+		return String(ql.call("label", key))
+	return key
 
 
 # Anchor data for the in-world quest diamond and the Kino Remote target
 # marker. Returns {} when the active step has no on-ship target (offworld
 # planet steps + completion).
 func quest_target(step: String = "") -> Dictionary:
-	var key: String = quest_step if step == "" else step
-	var entry: Variant = QUEST_TARGETS.get(key, null)
-	if entry is Dictionary:
-		return entry
+	var ql: Node = _autoload_node("QuestLog")
+	if ql == null:
+		return {}
+	if step == "":
+		if ql.has_method("target"):
+			return ql.call("target", E1_QUEST_ID)
+		return {}
+	if ql.has_method("target_for_step"):
+		return ql.call("target_for_step", step)
 	return {}
 
 
@@ -1011,14 +964,25 @@ func check_episode_complete() -> void:
 func complete_episode_air() -> void:
 	if episode_complete:
 		return
-	var changed: bool = quest_step != QUEST_COMPLETE
-	quest_step = QUEST_COMPLETE
 	episode_complete = true
-	set_objective(_objective_for_step(QUEST_COMPLETE))
 	add_log("Episode 1 complete: Destiny can breathe again.")
 	episode_completed.emit()
-	if changed:
-		quest_step_changed.emit(QUEST_COMPLETE)
+	# Drive the active-step transition through QuestLog so the legacy
+	# quest_step_changed + objective_changed signals fire via the normal
+	# bridge (_on_quest_log_step_changed). The terminal "complete" step's
+	# objective text comes from data/quests.json.
+	advance_air_quest()
+	# Autoload-tolerant fallback: tests without QuestLog still want to
+	# observe quest_step == QUEST_COMPLETE + the legacy signals fire so
+	# the e1_flow assertions keep passing under the manual GameState
+	# construction pattern.
+	if _autoload_node("QuestLog") == null:
+		var changed: bool = quest_step != QUEST_COMPLETE
+		quest_step = QUEST_COMPLETE
+		current_objective = "Episode 1: Air — Complete"
+		objective_changed.emit(current_objective)
+		if changed:
+			quest_step_changed.emit(QUEST_COMPLETE)
 
 # --- save / wipe -------------------------------------------------------------
 #

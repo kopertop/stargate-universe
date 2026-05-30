@@ -62,8 +62,13 @@ func _exit_tree() -> void:
 	# (or wherever we return to) sees the right top-left line on arrival.
 	if GameState.resource_changed.is_connected(_on_resource_changed):
 		GameState.resource_changed.disconnect(_on_resource_changed)
+	# Re-emit the canonical objective text via QuestLog so the gate room
+	# sees the standard step copy on arrival. QuestLog.objective() returns
+	# the data-driven text for the active step (post-#36 quest rewrite).
 	if GameState.quest_step == GameState.QUEST_MINE_LIME:
-		GameState.set_objective(GameState._objective_for_step(GameState.quest_step))
+		var ql: Node = get_node_or_null("/root/QuestLog")
+		if ql != null and ql.has_method("objective"):
+			GameState.set_objective(String(ql.call("objective", GameState.E1_QUEST_ID)))
 
 
 func _on_resource_changed(type: String, _count: int) -> void:

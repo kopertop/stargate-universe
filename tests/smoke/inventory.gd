@@ -64,6 +64,13 @@ func _initialize() -> void:
 	_expect(ids_after_fuses.has("small_fuse") and ids_after_fuses.has("large_fuse"),
 		"BOTH fuses appear in entries() (the looted-fuse regression)")
 
+	# Consuming the small fuse (sealing breach_a via the door panel) removes it
+	# from the pack; the large fuse is NOT consumed and stays.
+	gs.call("seal_breach", "breach_a")
+	_expect(int(inv.call("count", "small_fuse")) == 0, "small_fuse consumed once breach_a is sealed")
+	_expect(bool(inv.call("has", "large_fuse")), "large_fuse is NOT consumed by sealing")
+	_expect(not _entry_ids(inv).has("small_fuse"), "spent small_fuse drops out of entries()")
+
 	gs.call("find_rations")
 	_expect(int(inv.call("count", "rations")) == 1, "rations count 1 after find_rations")
 	_expect(_entry_ids(inv).has("rations"), "rations appears in entries()")

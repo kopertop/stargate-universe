@@ -28,4 +28,7 @@ func _on_interact(_by: Node) -> void:
 		return
 	GameState.add_log("Small Fuse seated. The jammed door grinds shut — the venting stops.")
 	GameState.seal_breach(BREACH_ID)
+	# The fuse is spent fitting it into the panel — tell the inventory so it
+	# drops from the pack (Inventory.count derives this from breach_a sealed).
+	GameState.item_changed.emit("small_fuse", false)
 	door_sealed.emit()

@@ -109,7 +109,15 @@ func count(id: String) -> int:
 		"kino_orb":
 			return int(gs.get("kino_orbs"))
 		"small_fuse":
-			return 1 if gs.get("small_fuse_found") == true else 0
+			# Spent the moment it's fitted into the jammed door panel — i.e. once
+			# breach_a is sealed (shuttle_door_panel.gd consumes it there). Held
+			# only between looting it and sealing the breach.
+			if gs.get("small_fuse_found") != true:
+				return 0
+			var sealed: Variant = gs.get("breaches_sealed")
+			if sealed is Array and (sealed as Array).has("breach_a"):
+				return 0
+			return 1
 		"large_fuse":
 			return 1 if gs.get("large_fuse_found") == true else 0
 		_:

@@ -38,6 +38,10 @@ var _warn_60_fired: bool = false
 var _warn_30_fired: bool = false
 var _warn_10_fired: bool = false
 var _final_pulse_t: float = 0.0    # elapsed-time accumulator for the persistent post-10s pulse
+# During the final 10 s, fire one klaxon per second. The threshold klaxon at
+# 10 s counts as the first; subsequent klaxons fire as _remaining crosses
+# each lower integer second.
+var _last_klaxon_second: int = 999
 var _ended: bool = false
 var _label: Label = null
 var _pulse_tween: Tween = null
@@ -89,9 +93,18 @@ func _process(delta: float) -> void:
 		_fire_threshold_alarm(RED_COL)
 	if not _warn_10_fired and _remaining <= WARN_10:
 		_warn_10_fired = true
+		_last_klaxon_second = 10   # threshold klaxon counts as the first per-second hit
 		GameState.add_log("Ten seconds! Everyone back to the gate NOW!")
 		_fire_threshold_alarm(DEEP_RED_COL)
 	if _warn_10_fired:
+		# Per-second klaxon during the final 10 s: fire whenever the integer
+		# second crosses below the last-fired one. With the threshold counted as
+		# 10, we get klaxons at 10 / 9 / 8 / 7 / 6 / 5 / 4 / 3 / 2 / 1 — ten
+		# total — escalating the urgency into the cutscene.
+		var current_second: int = int(ceil(_remaining))
+		if current_second < _last_klaxon_second and current_second >= 1:
+			Audio.play(KLAXON_SOUND)
+			_last_klaxon_second = current_second
 		# Persistent pulse for the final 10 s — drives the label's scale via a
 		# sin() so it breathes between 1.0× and 1.2× until the cutscene fires.
 		_final_pulse_t += delta

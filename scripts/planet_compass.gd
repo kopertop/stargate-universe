@@ -16,7 +16,13 @@ extends Control
 const STRIP_W: float = 360.0
 const STRIP_H: float = 28.0
 const TOP_PAD: float = 14.0
-const HALF_FOV: float = PI / 2.0       # ±90° fills the strip; beyond clamps to edges
+const HALF_FOV: float = PI             # ±180° fills the strip — full panoramic.
+# A panoramic compass (±180°) means EVERY world direction maps to a strip
+# position and nothing ever clamps to the edges, so pips move smoothly even
+# as the player makes large rotations. The trade-off is that things directly
+# behind the player land at the strip edges instead of off-strip arrows —
+# but for a top-down planet surface where exploration directions matter in
+# every quadrant, the readability gain beats the "ahead vs behind" cue.
 
 const BG: Color = Color(0.04, 0.07, 0.12, 0.78)
 const FRAME: Color = Color(0.55, 0.85, 1.0, 0.55)
@@ -116,8 +122,16 @@ func _draw_markers(ppos: Vector3) -> void:
 		if c is Node3D:
 			_draw_pip((c as Node3D).global_position, COMP_COL, "", ppos)
 	for n in get_tree().get_nodes_in_group("lime_node"):
-		if n is Node3D and n.has_method("is_discovered") and n.call("is_discovered") == true:
-			_draw_pip((n as Node3D).global_position, LIME_COL, "", ppos)
+		if not (n is Node3D):
+			continue
+		if not n.has_method("is_discovered") or n.call("is_discovered") != true:
+			continue
+		# Mined deposits stay in the tree (their resource_node script keeps the
+		# node alive but hides it) — drop them from the compass too so the
+		# strip reflects only actionable destinations.
+		if n.get("depleted") == true:
+			continue
+		_draw_pip((n as Node3D).global_position, LIME_COL, "", ppos)
 	if _scene_path != "":
 		for k in GameState.deployed_kinos_in_scene(_scene_path):
 			if k is Dictionary:

@@ -70,15 +70,14 @@ func _initialize() -> void:
 	_expect(p_bad.size() == 0, "unknown destination returns empty path")
 
 	# --- GameState quest target table --------------------------------------
-	var gs_script: Script = load("res://scripts/game_state.gd") as Script
-	_expect(gs_script != null, "load GameState script")
-	if gs_script == null:
+	# Use the live autoloads — see e1_flow.gd for the rationale. Trying to
+	# add a same-named test-only node clashes with the autoload in -s mode.
+	_expect(load("res://scripts/game_state.gd") != null, "load GameState script")
+	var gs: Node = root.get_node_or_null("GameState")
+	_expect(gs != null, "GameState autoload is attached")
+	if gs == null:
 		_report()
 		return
-	var gs: Node = Node.new()
-	gs.set_script(gs_script)
-	gs.name = "GameState"
-	root.add_child(gs)
 
 	# QUEST_FIND_REST targets eli_quarters (room-level — no specific anchor).
 	var t_rest: Dictionary = gs.call("quest_target", gs.QUEST_FIND_REST)

@@ -45,6 +45,7 @@ RC_FLOW=0
 RC_QUEST=0
 RC_PLAY=0
 RC_LINT=0
+RC_FORKS=0
 RC_RESUME=0
 RC_AUTOPILOT=0
 RC_QUESTLOG=0
@@ -90,6 +91,15 @@ if [[ "$MODE" == "lint" || "$MODE" == "all" ]]; then
 	echo "==============================="
 	tests/lint/check_save_registration.sh
 	RC_LINT=$?
+	echo
+	echo "==============================="
+	echo " collection-fork lint"
+	echo "==============================="
+	tests/lint/check_collection_forks.sh
+	RC_FORKS=$?
+	# Fold the fork check into the lint result so the summary + exit gate
+	# already cover it (both are save/registration-style policy lints).
+	[[ $RC_FORKS -ne 0 ]] && RC_LINT=1
 	RAN_LINT=1
 fi
 
@@ -167,6 +177,7 @@ echo "==============================="
 echo " final"
 echo "==============================="
 [[ $RAN_LINT  -eq 1 ]] && echo "save_registration:   $([[ $RC_LINT  -eq 0 ]] && echo PASS || echo "FAIL ($RC_LINT)")"  || echo "save_registration:   SKIPPED"
+[[ $RAN_LINT  -eq 1 ]] && echo "collection_forks:    $([[ $RC_FORKS -eq 0 ]] && echo PASS || echo "FAIL ($RC_FORKS)")" || echo "collection_forks:    SKIPPED"
 [[ $RAN_SCENE -eq 1 ]] && echo "scene_boot:          $([[ $RC_SCENE -eq 0 ]] && echo PASS || echo "FAIL ($RC_SCENE)")" || echo "scene_boot:          SKIPPED"
 [[ $RAN_FLOW  -eq 1 ]] && echo "e1_flow:             $([[ $RC_FLOW  -eq 0 ]] && echo PASS || echo "FAIL ($RC_FLOW)")"  || echo "e1_flow:             SKIPPED"
 [[ $RAN_QUEST -eq 1 ]] && echo "quest_waypoint:      $([[ $RC_QUEST -eq 0 ]] && echo PASS || echo "FAIL ($RC_QUEST)")" || echo "quest_waypoint:      SKIPPED"

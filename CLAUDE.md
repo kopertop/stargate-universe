@@ -117,12 +117,21 @@ Per-clone install (one-time, no dependencies):
 git config core.hooksPath .githooks
 ```
 
-The hook runs `tests/lint/check_save_registration.sh --staged`, which enforces the
-**save-registration policy**: every autoload in `project.godot` must either
-(a) call `SaveManager.register_system("<id>", self)` somewhere in its script, or
-(b) carry a `# @no-save: <reason>` marker declaring it stateless. Without this
-guard, a new system that holds gameplay state can ship without being captured by
-the auto-save pipeline — state would silently disappear across save/load.
+The hook runs two policy lints (both `--staged`):
+
+1. `tests/lint/check_save_registration.sh` — the **save-registration policy**:
+   every autoload in `project.godot` must either (a) call
+   `SaveManager.register_system("<id>", self)` somewhere in its script, or
+   (b) carry a `# @no-save: <reason>` marker declaring it stateless. Without this
+   guard, a new system that holds gameplay state can ship without being captured
+   by the auto-save pipeline — state would silently disappear across save/load.
+2. `tests/lint/check_collection_forks.sh` — the **collection-fork policy**: no
+   top-level bool field in `scripts/*.gd` may use acquisition vocabulary
+   (`*_found`, `*_acquired`, `has_*`, `got_*`, …). A set of like things (items,
+   discovered rooms, unlocks) must live in ONE registry behind ONE add/enumerate
+   API, not scattered per-instance bools that every consumer must special-case
+   (the cause of the looted-fuse inventory bug #41 and the quest fork #36). Opt
+   out genuinely-distinct state with `# @collection-ok: <reason>`.
 
 ## Collaboration Protocol
 

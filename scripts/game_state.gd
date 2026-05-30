@@ -149,8 +149,8 @@ var health: float = MAX_HEALTH
 var oxygen: float = MAX_OXYGEN
 var current_episode: String = EPISODE_AIR
 var quest_step: String = QUEST_TALK_SCOTT
-var kino_acquired: bool = false
-var quarters_found: bool = false
+var kino_acquired: bool = false  # @collection-ok: pre-#41 item fork — migrates into the Inventory registry
+var quarters_found: bool = false  # @collection-ok: one-shot story gate (first sleep), not an enumerated collection
 # True once the player first steps into Eli's Quarters (eli_quarters). Drives
 # the FIND_REST → SLEEP transition: Rush dismisses Eli with "go get some rest",
 # the waypoint points at his quarters, and arriving there advances the quest.
@@ -205,8 +205,8 @@ var door_panel_examined: bool = false
 # Fuses looted from the Shuttle Dock crates. The jammed door panel needs a
 # SMALL fuse; a large fuse also turns up (wrong size for the door — kept for
 # flavor / future use). One crate holds the small fuse the player needs.
-var small_fuse_found: bool = false
-var large_fuse_found: bool = false
+var small_fuse_found: bool = false  # @collection-ok: pre-#41 item fork — migrates into the Inventory registry
+var large_fuse_found: bool = false  # @collection-ok: pre-#41 item fork — migrates into the Inventory registry
 var scrubber_diagnosed: bool = false
 var scrubber_repaired: bool = false
 # CO2 scrubber lime charge, 0–100%. Drives the 3-bar panel gauge (each bar =

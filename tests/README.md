@@ -21,6 +21,17 @@ Override the Godot binary with `GODOT_BIN=/path/to/godot tests/run.sh`.
 
 Exit code 0 = all PASS. Non-zero = at least one FAIL.
 
+## Policy lints (`tests/lint/`, run in the `lint` subset + pre-commit)
+
+Fast, editor-free `bash`/`awk` checks that guard architectural invariants:
+
+| Lint | Enforces |
+|---|---|
+| `check_save_registration.sh` | Every `project.godot` autoload either calls `SaveManager.register_system(...)` or carries a `# @no-save:` marker, so no stateful system ships unpersisted. |
+| `check_collection_forks.sh` | No top-level bool field in `scripts/*.gd` uses acquisition vocabulary (`*_found`, `*_acquired`, `has_*`, …). A set of like things (items, discovered rooms, unlocks) must live in ONE registry behind ONE add/enumerate API — not scattered per-instance bools that consumers must special-case (the looted-fuse bug #41; quest fork #36). Opt out genuinely-distinct state with `# @collection-ok: <reason>`. See the `homogeneous-collection-single-model` skill. |
+
+Both run on `--staged` in `.githooks/pre-commit` (install once: `git config core.hooksPath .githooks`).
+
 ## Why not GDUnit4?
 
 For a small vertical-slice game the value of a full unit-test framework is low.

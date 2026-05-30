@@ -347,6 +347,31 @@ func _initialize() -> void:
 		root.remove_child(comp)
 		comp.free()
 
+	# --- Lime objective live-counter text (top-left objective on the planet) ---
+	# planet.gd swaps the static "Step through the Stargate…" line for this
+	# counter while the player is mining; the strings are asserted here so a
+	# future refactor can't silently break the HUD copy + a save-game would
+	# round-trip the same characters.
+	_expect(gs.lime_objective_text(0, 3) == "Collect at least 3 lime deposits — 0/3",
+		"lime_objective_text: zero progress")
+	_expect(gs.lime_objective_text(2, 3) == "Collect at least 3 lime deposits — 2/3",
+		"lime_objective_text: partial progress")
+	_expect(gs.lime_objective_text(3, 3) == "Lime collected — 3/3  ✓  head back to the gate",
+		"lime_objective_text: completion flips copy")
+	_expect(gs.lime_objective_text(5, 3) == "Lime collected — 5/3  ✓  head back to the gate",
+		"lime_objective_text: over-cap still reads completion")
+
+	# --- Resource-node fog-of-war: DISCOVER_RANGE was 30m, bumped to 50m so the
+	# player can spot a deposit without having to walk right on top of it.
+	# Asserting the constant directly catches accidental regressions in either
+	# direction (too generous → no exploration; too tight → user can't find lime).
+	var rn_script: Script = load("res://scripts/resource_node.gd") as Script
+	_expect(rn_script != null, "load resource_node script")
+	if rn_script != null:
+		var consts: Dictionary = rn_script.get_script_constant_map()
+		_expect(float(consts.get("DISCOVER_RANGE", 0.0)) == 50.0,
+			"resource_node DISCOVER_RANGE is 50m")
+
 	root.remove_child(gs)
 	gs.free()
 

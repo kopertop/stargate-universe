@@ -38,12 +38,47 @@ func _ready() -> void:
 		var timer: Node = PlanetTimerScript.new()
 		timer.name = "DepartureTimer"
 		add_child(timer)
+		# Replace the top-left objective with a live "X/N lime" counter while
+		# the player is on the planet. This is the same string the now-removed
+		# planet_timer sub-label used to render, but lifted into the existing
+		# objective slot so it doesn't overlap the compass strip. Refreshed on
+		# every resource_changed; restored to the canonical quest-step text in
+		# _exit_tree so the gate room reads its normal objective again.
+		_refresh_lime_objective()
+		if not GameState.resource_changed.is_connected(_on_resource_changed):
+			GameState.resource_changed.connect(_on_resource_changed)
 		# The away team (Greer, Park, Scott) lands with Eli to help mine. Live
 		# play only — headless playthrough must not have companions auto-mining
 		# lime and skewing resource assertions.
 		if not SceneRouter.instant_mode:
 			_spawn_away_team(_player.global_position)
 			_spawn_compass()
+
+
+func _exit_tree() -> void:
+	# GameState autoload outlives the planet scene — disconnect explicitly so
+	# the signal can't hold a callable into a freed object after the planet
+	# tears down. Restoring the canonical objective text means the gate room
+	# (or wherever we return to) sees the right top-left line on arrival.
+	if GameState.resource_changed.is_connected(_on_resource_changed):
+		GameState.resource_changed.disconnect(_on_resource_changed)
+	if GameState.quest_step == GameState.QUEST_MINE_LIME:
+		GameState.set_objective(GameState._objective_for_step(GameState.quest_step))
+
+
+func _on_resource_changed(type: String, _count: int) -> void:
+	# Skip when MINE_LIME has already auto-advanced to QUEST_RETURN_DESTINY:
+	# `add_resource` emits resource_changed BEFORE advance_air_quest fires,
+	# but it also fires for any over-cap pickups afterwards. Without this
+	# guard a 4th lime would clobber the "Return through the gate" line with
+	# our counter again.
+	if type == GameState.AIR_LIME_RESOURCE and GameState.quest_step == GameState.QUEST_MINE_LIME:
+		_refresh_lime_objective()
+
+
+func _refresh_lime_objective() -> void:
+	var have: int = GameState.resource_count(GameState.AIR_LIME_RESOURCE)
+	GameState.set_objective(GameState.lime_objective_text(have, GameState.AIR_LIME_REQUIRED))
 
 # Build the planet compass HUD (F3) under its own CanvasLayer so the Cinematic
 # overlay's HUD-hide pass auto-sweeps it during the departure cutscene.

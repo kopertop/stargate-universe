@@ -686,6 +686,18 @@ func set_objective(text: String) -> void:
 	current_objective = text
 	objective_changed.emit(text)
 
+
+# Live counter shown by the top-left objective label while the player is on
+# the lime planet. Until the threshold is met it reads "Collect at least N
+# lime deposits — X/N"; once X >= N it flips to a "head back to the gate"
+# completion line. Pulled into GameState (not planet_timer.gd) so the same
+# string can be regenerated on save/load and asserted from headless tests
+# without spinning up the planet scene.
+static func lime_objective_text(have: int, need: int) -> String:
+	if have >= need:
+		return "Lime collected — %d/%d  ✓  head back to the gate" % [have, need]
+	return "Collect at least %d lime deposits — %d/%d" % [need, have, need]
+
 func add_log(line: String) -> void:
 	log_entries.append(line)
 	log_added.emit(line)

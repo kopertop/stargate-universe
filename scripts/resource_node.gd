@@ -9,7 +9,7 @@ extends Interactable
 # compass (F3). Discovery survives save/load because the planet seed is fixed,
 # so a node name always maps to the same world position.
 
-const DISCOVER_RANGE: float = 30.0
+const DISCOVER_RANGE: float = 50.0
 const SCAN_INTERVAL: float = 0.25
 
 @export var resource_type: String = "lime"

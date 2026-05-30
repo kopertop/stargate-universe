@@ -113,24 +113,6 @@ scan_file() {
 	'
 }
 
-# Item ids from the data catalog (if it exists). A bool field whose name
-# CONTAINS one of these ids is a registry fork even if its verb is unusual
-# (e.g. `small_fuse_slotted`). Dormant until data/items.json lands (#41),
-# then activates automatically.
-catalog_ids() {
-	read_file "data/items.json" 2>/dev/null \
-		| grep -oE '"id"[ \t]*:[ \t]*"[a-z0-9_]+"' \
-		| grep -oE '"[a-z0-9_]+"$' \
-		| tr -d '"'
-}
-
-# Portable array build (macOS ships bash 3.2 — no mapfile/readarray).
-IDS=()
-while IFS= read -r _id; do
-	[[ -z "$_id" ]] && continue
-	IDS+=("$_id")
-done < <(catalog_ids)
-
 violations=()
 
 while IFS= read -r path; do
@@ -138,32 +120,19 @@ while IFS= read -r path; do
 	contents="$(read_file "$path")"
 	[[ -z "$contents" ]] && continue
 
-	# Rule 1 — acquisition vocabulary.
+	# Acquisition-vocabulary scan (the one high-precision rule). A
+	# substring/registry rule was tried (flag fields containing a
+	# data/items.json id) but short ids like "lime" matched unrelated
+	# proper-noun fields (lime_planet_dialed, returned_from_lime_planet) —
+	# net false positives, and Rule 1 already catches every real case
+	# (small_fuse_found ends in _found). So vocabulary anchoring it is.
 	while IFS=$'\t' read -r lineno name; do
 		[[ -z "$name" ]] && continue
 		violations+=("$path:$lineno  $name  (acquisition-flag — route through a collection API)")
 	done < <(scan_file "$path")
-
-	# Rule 2 — references a catalog-managed item id (registry-aware).
-	if (( ${#IDS[@]} > 0 )); then
-		while IFS= read -r ln; do
-			lineno="${ln%%:*}"
-			text="${ln#*:}"
-			# skip lines already opted out
-			[[ "$text" == *"@collection-ok"* ]] && continue
-			name="$(awk '{print $2}' <<<"$text")"
-			name="${name%%[:=]*}"
-			for id in "${IDS[@]}"; do
-				if [[ "$name" == *"$id"* && "$name" != "$id" ]]; then
-					violations+=("$path:$lineno  $name  (references catalog item '$id' — use the Inventory registry)")
-					break
-				fi
-			done
-		done < <(grep -nE '^var [a-zA-Z_].*(:[ ]*bool|=[ ]*(true|false))' <<<"$contents")
-	fi
 done < <(target_files)
 
-# De-duplicate (rule 1 + rule 2 can both flag the same field).
+# De-duplicate.
 if (( ${#violations[@]} > 0 )); then
 	deduped=()
 	while IFS= read -r _v; do

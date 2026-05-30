@@ -24,6 +24,10 @@ signal scrubber_level_changed(level: float)
 # marker and the in-world quest-waypoint diamond's re-targeting.
 signal current_room_changed(room_id: String)
 signal kino_changed(acquired: bool)
+# Fires when a non-resource carried item is gained/lost (fuses today). Lets the
+# Inventory projection refresh live; resource items use resource_changed and the
+# Kino Remote uses kino_changed.
+signal item_changed(id: String, present: bool)
 signal episode_completed()
 signal log_added(line: String)
 # Fired by npc.gd each time a dialogue line is shown. The HUD listens and
@@ -750,6 +754,7 @@ func find_small_fuse() -> void:
 		return
 	small_fuse_found = true
 	add_log("Found a Small Fuse — this should fit the door panel.")
+	item_changed.emit("small_fuse", true)
 	advance_air_quest()
 
 
@@ -758,6 +763,7 @@ func find_large_fuse() -> void:
 		return
 	large_fuse_found = true
 	add_log("Found a Large Fuse. Too big for the door panel — pocket it anyway.")
+	item_changed.emit("large_fuse", true)
 
 
 # Generic crate loot for the non-fuse crate: a ration pack the player pockets.

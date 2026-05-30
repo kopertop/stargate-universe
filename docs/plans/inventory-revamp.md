@@ -1,11 +1,33 @@
 # Inventory System Revamp — Implementation Plan
 
-> **Status:** Proposed
+> **Status:** Partially implemented (2026-05-30)
 > **Author:** User + Claude
 > **Created:** 2026-05-30
 > **Branch:** `feature/inventory-revamp-plan`
 > **Relates to:** `design/gdd/resource-inventory.md` (design intent),
-> `design/gdd/kino-remote.md` (host UI), issue #36 (data-driven pattern this follows)
+> `design/gdd/kino-remote.md` (host UI), issue #41 (this work), #36 (data-driven pattern this follows)
+
+> ## Implementation status
+>
+> **Shipped:** `data/items.json` catalog, an `Inventory` autoload, and the
+> **slot-grid UI** on the Kino Remote (icon glyphs, stack-count badges, hover
+> tooltips, click-to-inspect detail panel). The looted-fuse bug is fixed —
+> every carried item now renders from one enumerable surface
+> (`Inventory.entries()`). Covered by `tests/smoke/inventory.gd` (34 assertions).
+>
+> **Deviation from the plan below — `Inventory` is a stateless *projection*, not
+> a separate store.** Each item's count is read live from its canonical
+> GameState source (`kino_acquired` / `*_fuse_found` / `resources` dict /
+> `kino_orbs`). This fixes the user-visible bug and delivers the real catalog +
+> UI **without** churning the deeply-used + heavily-tested GameState fields, and
+> needs **no serialization or save migration** (counts come from whatever
+> GameState already restores). The renderer is fully generic — a new item is a
+> catalog row + one `count()` arm.
+>
+> **Still deferred (the §4.2 "unified store" + §5 full migration):** collapsing
+> the fuse bools / `resources` dict / `kino_acquired` into `Inventory` as the
+> single source of truth, and real icon art (the catalog `icon` field is wired;
+> currently falls back to a procedural letter glyph).
 
 This is an **engineering plan**, not a new GDD. The design intent already lives in
 `design/gdd/resource-inventory.md` ("two item categories: stackable resources +

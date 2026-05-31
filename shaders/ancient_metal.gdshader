@@ -77,8 +77,6 @@ vec3 triplanar_normal(sampler2D tex, vec3 pos, vec3 wn, vec3 w, float scale, flo
 	ny.xy *= strength;
 	nz.xy *= strength;
 	// Whiteout blend: push the detail's xy into the geometric normal's plane.
-	vec3 wsign = sign(wn);
-	vec3 axis_x = vec3(wn.x, nx.z * wsign.x + wn.x, nx.y);
 	vec3 nrm_x = vec3(nx.xy + wn.zy, abs(nx.z) * wn.x);
 	vec3 nrm_y = vec3(ny.xy + wn.xz, abs(ny.z) * wn.y);
 	vec3 nrm_z = vec3(nz.xy + wn.xy, abs(nz.z) * wn.z);

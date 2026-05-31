@@ -29,6 +29,10 @@ case "$PRESET" in
 	kino-planet) ARGS="scene=res://scenes/planet.tscn out=user://${PRESET}.png kino_pilot=1 flow=1 spawn= wait=50" ;;
 	planet)      ARGS="scene=res://scenes/planet.tscn out=user://${PRESET}.png kino_pilot=0 wait=50" ;;
 	gate-room)   ARGS="scene=res://scenes/gate_room.tscn out=user://${PRESET}.png kino_pilot=0 wait=50" ;;
+	# Ship-side Kino recon (epic #45): the compass on a ship room (body), and a
+	# Kino piloting a ship room with the auto-explore hint + atmosphere readout.
+	ship-compass) ARGS="scene=res://scenes/room.tscn room=engineering_bay out=user://${PRESET}.png kino_pilot=0 wait=70" ;;
+	ship-kino)    ARGS="scene=res://scenes/room.tscn room=engineering_bay out=user://${PRESET}.png kino_pilot=1 wait=70" ;;
 	*) echo "Unknown preset: $PRESET"; exit 2 ;;
 esac
 

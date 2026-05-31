@@ -18,6 +18,11 @@ Headless `SceneTree`-extending tests. Several files, one concern each.
   the full 16-flag golden sequence, complete_step event channel,
   serialize/deserialize round-trip, old-format save migration.
 - `kino_autopilot.gd` — Multi-drone coordination + avoid-radius + sweep.
+- `ancient_metal_shader.gd` — Ancient-metal + event-horizon shaders parse,
+  the `.tres` ShaderMaterial variants bind the shader + detail textures +
+  uniforms, and `objects/stargate.gd` applies the ShaderMaterials to the
+  ring/band/chevron/horizon meshes (issue #30). Headless can't compile GLSL —
+  real-renderer validation is the capture in `tests/shots/capture.sh gate-room`.
 
 ## Conventions
 

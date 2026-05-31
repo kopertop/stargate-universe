@@ -8,8 +8,11 @@ extends Control
 #   mode == "planet" (lime surface):
 #     - the return gate (group "planet_gate", mode "to_ship")
 #     - DISCOVERED lime deposits (group "lime_node" where is_discovered())
-#     - every deployed Kino in the current planet scene (GameState.deployed_kinos)
+#     - DISCOVERED points-of-interest (group "poi"), per-category colour + glyph
+#     - every live/deployed Kino in the current planet scene
 #     - every away-team companion (group "companion")
+#   Each category is gated by a GameState.compass_show_* flag (Kino Remote →
+#   COMPASS settings page), read live each frame so toggles apply instantly.
 #
 #   mode == "ship" (gate room + interior rooms):
 #     - the active objective waypoint (group "quest_waypoint") — correct
@@ -50,6 +53,14 @@ const GATE_COL: Color = Color(1.0, 0.85, 0.35, 1.0)     # warm amber — exit
 const LIME_COL: Color = Color(0.93, 0.96, 1.0, 1.0)     # chalky white — deposit
 const KINO_COL: Color = Color(0.45, 0.95, 1.0, 1.0)     # cyan tech — drone
 const COMP_COL: Color = Color(0.62, 0.85, 1.0, 1.0)     # soft blue — friendly
+# Discovered point-of-interest pips, one colour + 1-char glyph per category.
+const POI_STYLE: Dictionary = {
+	"ruin":   {"col": Color(0.80, 0.60, 1.0, 1.0), "glyph": "R"},   # violet
+	"ore":    {"col": Color(1.0, 0.55, 0.20, 1.0), "glyph": "O"},   # orange
+	"water":  {"col": Color(0.30, 0.88, 0.92, 1.0), "glyph": "W"},  # teal
+	"debris": {"col": Color(0.75, 0.78, 0.82, 1.0), "glyph": "D"},  # grey
+}
+const POI_DEFAULT_COL: Color = Color(0.85, 0.90, 1.0, 1.0)         # unknown category fallback
 
 var _player: Node3D = null
 var _scene_path: String = ""
@@ -81,8 +92,8 @@ func _connect_signals() -> void:
 		if not GameState.door_traversed.is_connected(_on_door_traversed):
 			GameState.door_traversed.connect(_on_door_traversed)
 	else:
-		if not GameState.lime_discovered_changed.is_connected(queue_redraw):
-			GameState.lime_discovered_changed.connect(queue_redraw)
+		if not GameState.pois_discovered_changed.is_connected(queue_redraw):
+			GameState.pois_discovered_changed.connect(queue_redraw)
 
 # Signal callables (current_room_changed etc. pass an argument, so queue_redraw
 # can't bind directly). All just trigger a redraw.
@@ -101,8 +112,8 @@ func _on_door_traversed(_key: String) -> void:
 func _exit_tree() -> void:
 	if GameState.deployed_kinos_changed.is_connected(queue_redraw):
 		GameState.deployed_kinos_changed.disconnect(queue_redraw)
-	if GameState.lime_discovered_changed.is_connected(queue_redraw):
-		GameState.lime_discovered_changed.disconnect(queue_redraw)
+	if GameState.pois_discovered_changed.is_connected(queue_redraw):
+		GameState.pois_discovered_changed.disconnect(queue_redraw)
 	if GameState.current_room_changed.is_connected(_on_room_changed):
 		GameState.current_room_changed.disconnect(_on_room_changed)
 	if GameState.objective_changed.is_connected(_on_objective_changed):
@@ -242,7 +253,27 @@ func _draw_planet_markers(ppos: Vector3) -> void:
 			if n.get("depleted") == true:
 				continue
 			_draw_pip((n as Node3D).global_position, LIME_COL, "", ppos)
+	_draw_pois(ppos)
 	_draw_kinos(ppos)
+
+
+# Discovered points-of-interest (ruins, ore, water, debris …) the Kino's
+# auto-search turned up. Per-category colour + glyph; one toggle gates them all.
+# Lime is drawn by its own loop above (its mining/depletion rules differ), so the
+# "poi" group here excludes lime.
+func _draw_pois(ppos: Vector3) -> void:
+	if not GameState.compass_show_pois:
+		return
+	for n in get_tree().get_nodes_in_group("poi"):
+		if not (n is Node3D):
+			continue
+		if not n.has_method("is_discovered") or n.call("is_discovered") != true:
+			continue
+		var cat: String = String(n.get("poi_category"))
+		var style: Dictionary = POI_STYLE.get(cat, {})
+		var col: Color = style.get("col", POI_DEFAULT_COL)
+		var glyph: String = style.get("glyph", "?")
+		_draw_pip((n as Node3D).global_position, col, glyph, ppos)
 
 
 # Ship markers: the active objective waypoint (cross-room bearing comes free from

@@ -24,6 +24,7 @@ extends SceneTree
 var KinoDroneScript: Script = null
 var ResourceNodeScript: Script = null
 var PlanetCompassScript: Script = null
+var PoiNodeScript: Script = null
 
 var _failures: Array[String] = []
 var _passes: int = 0
@@ -38,8 +39,9 @@ func _run() -> void:
 	KinoDroneScript = load("res://scripts/kino_drone.gd")
 	ResourceNodeScript = load("res://scripts/resource_node.gd")
 	PlanetCompassScript = load("res://scripts/planet_compass.gd")
-	if KinoDroneScript == null or ResourceNodeScript == null or PlanetCompassScript == null:
-		print("SHOT_ERROR could not load KinoDrone/ResourceNode/PlanetCompass scripts")
+	PoiNodeScript = load("res://scripts/poi_node.gd")
+	if KinoDroneScript == null or ResourceNodeScript == null or PlanetCompassScript == null or PoiNodeScript == null:
+		print("SHOT_ERROR could not load KinoDrone/ResourceNode/PlanetCompass/PoiNode scripts")
 		quit(1)
 		return
 
@@ -56,10 +58,10 @@ func _run() -> void:
 	await process_frame
 
 	await _test_drone_joins_group()
-	await _test_detect_marks_lime(gs)
+	await _test_autosearch_marks_discoverables(gs)
 	await _test_kino_positions_live_then_fallback(gs)
 	_test_filter_flags_round_trip(gs)
-	_test_batched_toast(gs)
+	_test_find_toast(gs)
 
 	_report()
 
@@ -84,9 +86,20 @@ func _make_lime(node_name: String, pos: Vector3) -> Node:
 	return n
 
 
+func _make_poi(node_name: String, category: String, label: String, pos: Vector3) -> Node:
+	var n: Node3D = PoiNodeScript.new()
+	n.name = node_name
+	n.set("poi_category", category)
+	n.set("poi_label", label)
+	root.add_child(n)
+	n.global_position = pos
+	return n
+
+
 func _cleanup() -> void:
 	for n in root.get_children():
-		if n.name.begins_with("TestKino_") or n.name.begins_with("TestLime") or n.name.begins_with("TestCompass"):
+		if n.name.begins_with("TestKino_") or n.name.begins_with("TestLime") \
+				or n.name.begins_with("TestPoi") or n.name.begins_with("TestCompass"):
 			root.remove_child(n)
 			n.queue_free()
 
@@ -103,25 +116,32 @@ func _test_drone_joins_group() -> void:
 	await _cleanup()
 
 
-func _test_detect_marks_lime(gs: Node) -> void:
-	print("\n--- _detect_nearby_lime discovers in-range deposits (manual sweep) ---")
+func _test_autosearch_marks_discoverables(gs: Node) -> void:
+	print("\n--- _detect_nearby_discoverables finds ANY in-range POI (lime + ruin), not just lime ---")
 	await _cleanup()
 	gs.call("reset")
 	var dr: Node = _spawn_drone("detect")
 	(dr as Node3D).global_position = Vector3.ZERO
-	# Within AUTO_DETECT_RANGE (24 m) and well outside it.
-	var near: Node = _make_lime("TestLimeNear", Vector3(8.0, 0.0, 0.0))
-	var far: Node = _make_lime("TestLimeFar", Vector3(80.0, 0.0, 0.0))
+	# Within AUTO_DETECT_RANGE (24 m): a lime deposit AND a (non-lime) ruin POI.
+	# Well outside range: another lime that must stay hidden.
+	var near_lime: Node = _make_lime("TestLimeNear", Vector3(8.0, 0.0, 0.0))
+	var near_poi: Node = _make_poi("TestPoiRuin", "ruin", "Ancient Ruin", Vector3(0.0, 0.0, 10.0))
+	var far_lime: Node = _make_lime("TestLimeFar", Vector3(80.0, 0.0, 0.0))
 	await process_frame
 
-	dr.call("_detect_nearby_lime")
-	_expect(gs.call("is_lime_discovered", "TestLimeNear"),
-		"deposit within range is discovered by the manual sweep")
-	_expect(not gs.call("is_lime_discovered", "TestLimeFar"),
-		"deposit outside range is NOT discovered")
-	# is_discovered() on the node itself flipped for the near one only.
-	_expect(near.call("is_discovered") == true, "near node reports is_discovered()==true")
-	_expect(far.call("is_discovered") == false, "far node still is_discovered()==false")
+	dr.call("_detect_nearby_discoverables")
+	_expect(gs.call("is_poi_discovered", "TestLimeNear"),
+		"in-range lime is found by the auto-search sweep")
+	_expect(gs.call("is_poi_discovered", "TestPoiRuin"),
+		"in-range NON-LIME POI (ruin) is also found — sweep scans the whole \"discoverable\" group")
+	_expect(not gs.call("is_poi_discovered", "TestLimeFar"),
+		"out-of-range deposit is NOT found")
+	_expect(near_poi.call("is_discovered") == true, "ruin node reports is_discovered()==true")
+	_expect(far_lime.call("is_discovered") == false, "far lime still is_discovered()==false")
+	# The recorded POI keeps its category + label (drives the compass glyph/colour).
+	var rec: Dictionary = (gs.get("discovered_pois") as Dictionary).get("TestPoiRuin", {})
+	_expect(String(rec.get("category")) == "ruin", "found ruin recorded with category \"ruin\"")
+	_expect(String(rec.get("label")) == "Ancient Ruin", "found ruin recorded with its label")
 	await _cleanup()
 	gs.call("reset")
 
@@ -171,42 +191,43 @@ func _test_filter_flags_round_trip(gs: Node) -> void:
 	_expect(gs.get("compass_show_lime") == true and gs.get("compass_show_gate") == true,
 		"filters default to ON after reset")
 	gs.set("compass_show_lime", false)
+	gs.set("compass_show_pois", false)
 	gs.set("compass_show_companions", false)
 	var snap: Dictionary = gs.call("serialize")
 	_expect(snap.get("compass_show_lime") == false, "serialize captures compass_show_lime=false")
+	_expect(snap.get("compass_show_pois") == false, "serialize captures compass_show_pois=false")
 	_expect(snap.get("compass_show_kinos") == true, "serialize captures the untouched compass_show_kinos=true")
 	gs.call("reset")
-	_expect(gs.get("compass_show_lime") == true, "reset restored the default before reload")
+	_expect(gs.get("compass_show_pois") == true, "reset restored the default before reload")
 	gs.call("deserialize", snap, 1)
 	_expect(gs.get("compass_show_lime") == false, "deserialize restores compass_show_lime=false")
+	_expect(gs.get("compass_show_pois") == false, "deserialize restores compass_show_pois=false")
 	_expect(gs.get("compass_show_companions") == false, "deserialize restores compass_show_companions=false")
 	_expect(gs.get("compass_show_kinos") == true, "deserialize restores compass_show_kinos=true")
 	gs.call("reset")
 
 
-func _test_batched_toast(gs: Node) -> void:
-	print("\n--- batched discovery toast collapses a burst into one log line ---")
+func _test_find_toast(gs: Node) -> void:
+	print("\n--- per-find toast names each thing, drained one at a time ---")
 	gs.call("reset")
-	# _announce_lime_discovery early-returns in instant_mode, so drive the flush
-	# directly with a staged pending count (the batching logic under test).
+	# _announce_poi early-returns in instant_mode, so drive the drain directly with
+	# a staged queue (the per-find naming + one-at-a-time logic under test).
 	var before: int = (gs.get("log_entries") as Array).size()
-	gs.set("_lime_toast_pending", 3)
-	gs.call("_flush_lime_toast")
+	var q: Array[String] = ["Ancient Ruin", "Ore Vein"]
+	gs.set("_poi_toast_queue", q)
+	gs.call("_emit_next_poi_toast")
 	var entries: Array = gs.get("log_entries")
-	_expect(entries.size() == before + 1, "a 3-deposit burst flushes exactly ONE log line")
-	_expect(String(entries[entries.size() - 1]).find("3 lime deposits") != -1,
-		"batched line reports the plural count: '%s'" % String(entries[entries.size() - 1]))
-	# Singular form.
-	gs.set("_lime_toast_pending", 1)
-	gs.call("_flush_lime_toast")
+	_expect(entries.size() == before + 1, "first emit logs exactly one line (one find at a time)")
+	_expect(String(entries[entries.size() - 1]) == "Kino found: Ancient Ruin",
+		"toast names the FIRST find: '%s'" % String(entries[entries.size() - 1]))
+	gs.call("_emit_next_poi_toast")
 	entries = gs.get("log_entries")
-	_expect(String(entries[entries.size() - 1]).find("a lime deposit") != -1,
-		"single discovery uses the singular line: '%s'" % String(entries[entries.size() - 1]))
-	# Zero pending → no line.
+	_expect(String(entries[entries.size() - 1]) == "Kino found: Ore Vein",
+		"next emit names the SECOND find: '%s'" % String(entries[entries.size() - 1]))
+	# Queue now empty → another emit adds nothing.
 	var n0: int = (gs.get("log_entries") as Array).size()
-	gs.set("_lime_toast_pending", 0)
-	gs.call("_flush_lime_toast")
-	_expect((gs.get("log_entries") as Array).size() == n0, "empty flush adds nothing")
+	gs.call("_emit_next_poi_toast")
+	_expect((gs.get("log_entries") as Array).size() == n0, "draining an empty queue adds nothing")
 	gs.call("reset")
 
 

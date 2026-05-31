@@ -12,7 +12,9 @@ signal objective_changed(text: String)
 # fire for custom NPC objectives that don't move the quest forward.
 signal quest_step_changed(step: String)
 signal room_discovered(room_id: String)
-signal lime_discovered_changed()
+# Fires whenever a discoverable point-of-interest (lime deposit, ruin, ore vein,
+# water source, debris, …) is found — drives a live compass refresh.
+signal pois_discovered_changed()
 # Fires whenever an inventoried resource count changes (mining, top-up,
 # scrubber repair, etc.). Drives the planet-side lime objective counter
 # and any future resource HUD.
@@ -180,11 +182,13 @@ var rooms_discovered: Array[String] = []
 # through. Both directions resolve to the same key via door_key(). Drives the
 # Kino map's bright-vs-dim pip styling and survives save/load.
 var doors_traversed: Array[String] = []
-# Stable keys (the deterministic node name, e.g. "LimeNode3") of lime deposits
-# the team has spotted — on foot or via a passing Kino. Only discovered deposits
-# show on the planet compass (F3). The planet seed is fixed, so a given key
-# always maps to the same world position, and discovery survives save/load.
-var lime_discovered: Array[String] = []
+# The ONE discovery registry (no per-type forks — see the collection-fork lint).
+# Keyed by the discoverable's stable node name (e.g. "LimeNode3", "Poi_ruin_1")
+# → { "category": String, "label": String }. A node is "discovered" once it's in
+# here; only discovered POIs show on the planet compass. The planet seed is fixed,
+# so a given key always maps to the same world position, and discovery survives
+# save/load. Lime is just the "lime" category.
+var discovered_pois: Dictionary = {}
 var breaches_sealed: Array[String] = []
 # Placeholder status readouts for the Kino map HUD chrome. The underlying
 # systems (power grid, hull integrity) haven't been built yet — these stay at
@@ -290,13 +294,14 @@ var compass_show_lime: bool = true
 var compass_show_kinos: bool = true
 var compass_show_companions: bool = true
 var compass_show_gate: bool = true
+var compass_show_pois: bool = true
 
-# Batched lime-discovery toast. A patrolling/piloted Kino can detect several
-# deposits in one sweep; collect them over a short window and emit ONE log line
-# instead of spamming. State is transient (not serialized).
-const _LIME_TOAST_WINDOW: float = 1.0
-var _lime_toast_pending: int = 0
-var _lime_toast_timer: SceneTreeTimer = null
+# Per-find discovery toast queue. When the Kino's auto-search finds things it
+# announces each by NAME ("Kino found: Ancient Ruin"), but drains at ~1/sec so a
+# simultaneous cluster doesn't stack on one frame. Transient (not serialized).
+const _POI_TOAST_INTERVAL: float = 1.0
+var _poi_toast_queue: Array[String] = []
+var _poi_toast_timer: SceneTreeTimer = null
 
 
 # Resolve an autoload by name, tolerating the headless -s SceneTree test
@@ -393,7 +398,7 @@ func reset() -> void:
 	elevator_repaired = false
 	rooms_discovered.clear()
 	doors_traversed.clear()
-	lime_discovered.clear()
+	discovered_pois.clear()
 	breaches_sealed.clear()
 	power_percent = STATUS_OFFLINE
 	hull_percent = STATUS_OFFLINE
@@ -436,8 +441,9 @@ func reset() -> void:
 	compass_show_kinos = true
 	compass_show_companions = true
 	compass_show_gate = true
-	_lime_toast_pending = 0
-	_lime_toast_timer = null
+	compass_show_pois = true
+	_poi_toast_queue.clear()
+	_poi_toast_timer = null
 	# Clear scene-staging batons BEFORE advance_air_quest() emits
 	# objective_changed. Otherwise the autosave hook sees a stale
 	# current_scene_path (the room we were in when Restart was pressed) plus
@@ -496,45 +502,56 @@ func discover_room(room_id: String, display_name: String = "") -> void:
 	if display_name != "":
 		add_log("Discovered: " + display_name)
 
-# Mark a lime deposit as spotted (by the player or a passing Kino). Idempotent;
-# emits lime_discovered_changed so an open compass refreshes live.
-func discover_lime(key: String) -> void:
-	if key == "" or lime_discovered.has(key):
+# Mark a discoverable point-of-interest as found. Idempotent; emits
+# pois_discovered_changed so an open compass refreshes live. `announce` is set
+# ONLY by the Kino's auto-search sweep, so a per-find toast names what the Kino
+# turned up — mining/foot discovery still records the POI (so it shows on the
+# compass) but stays quiet.
+func discover_poi(key: String, category: String, label: String, announce: bool = false) -> void:
+	if key == "" or discovered_pois.has(key):
 		return
-	lime_discovered.append(key)
-	lime_discovered_changed.emit()
-	_announce_lime_discovery()
+	discovered_pois[key] = {"category": category, "label": label}
+	pois_discovered_changed.emit()
+	if announce:
+		_announce_poi(label)
 
-# Route the discovery through the HUD log feed (the project's toast), throttled
-# so a multi-deposit sweep collapses into one batched line. Skipped in
-# instant_mode/headless: there's no log feed there and it would add a stray timer
-# to every playthrough test.
-func _announce_lime_discovery() -> void:
+func is_poi_discovered(key: String) -> bool:
+	return discovered_pois.has(key)
+
+# Backwards-compatible lime helpers — lime is just the "lime" category in the one
+# discovery registry (no parallel store; see the collection-fork lint).
+func discover_lime(key: String) -> void:
+	discover_poi(key, AIR_LIME_RESOURCE, "Lime deposit")
+
+func is_lime_discovered(key: String) -> bool:
+	return is_poi_discovered(key)
+
+# Per-find toast routed through the HUD log feed (the project's toast). Queues
+# the find and drains one line per _POI_TOAST_INTERVAL so a simultaneous cluster
+# doesn't stack on one frame, but each find keeps its own name. Skipped in
+# instant_mode/headless (no log feed, and it'd add a stray timer to every test).
+func _announce_poi(label: String) -> void:
 	var router: Node = _autoload_node("SceneRouter")
 	if router != null and router.get("instant_mode") == true:
 		return
+	if Engine.get_main_loop() == null:
+		return
+	_poi_toast_queue.append(label)
+	if _poi_toast_timer == null:
+		_emit_next_poi_toast()                  # show the first find immediately
+
+func _emit_next_poi_toast() -> void:
+	if _poi_toast_queue.is_empty():
+		_poi_toast_timer = null
+		return
+	var label: String = _poi_toast_queue.pop_front()
+	add_log("Kino found: " + label)
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	if tree == null:
+		_poi_toast_timer = null
 		return
-	_lime_toast_pending += 1
-	if _lime_toast_timer != null:
-		return                                  # window already counting; it'll flush the batch
-	_lime_toast_timer = tree.create_timer(_LIME_TOAST_WINDOW)
-	_lime_toast_timer.timeout.connect(_flush_lime_toast)
-
-func _flush_lime_toast() -> void:
-	var n: int = _lime_toast_pending
-	_lime_toast_pending = 0
-	_lime_toast_timer = null
-	if n <= 0:
-		return
-	if n == 1:
-		add_log("Kino detected a lime deposit.")
-	else:
-		add_log("Kino detected %d lime deposits." % n)
-
-func is_lime_discovered(key: String) -> bool:
-	return lime_discovered.has(key)
+	_poi_toast_timer = tree.create_timer(_POI_TOAST_INTERVAL)
+	_poi_toast_timer.timeout.connect(_emit_next_poi_toast)
 
 
 # Stable, direction-agnostic key for a door connecting two rooms. Sorted so
@@ -1150,7 +1167,7 @@ func serialize() -> Dictionary:
 		# round-trip test before it became a save-corruption bug).
 		"rooms_discovered": rooms_discovered.duplicate(),
 		"doors_traversed": doors_traversed.duplicate(),
-		"lime_discovered": lime_discovered.duplicate(),
+		"discovered_pois": discovered_pois.duplicate(true),
 		"breaches_sealed": breaches_sealed.duplicate(),
 		"current_room_id": current_room_id,
 		"objective": current_objective,
@@ -1185,6 +1202,7 @@ func serialize() -> Dictionary:
 		"compass_show_kinos": compass_show_kinos,
 		"compass_show_companions": compass_show_companions,
 		"compass_show_gate": compass_show_gate,
+		"compass_show_pois": compass_show_pois,
 	}
 
 
@@ -1256,9 +1274,20 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	doors_traversed.clear()
 	for d in data.get("doors_traversed", []):
 		doors_traversed.append(String(d))
-	lime_discovered.clear()
-	for lk in data.get("lime_discovered", []):
-		lime_discovered.append(String(lk))
+	discovered_pois.clear()
+	var saved_pois: Variant = data.get("discovered_pois", null)
+	if saved_pois is Dictionary:
+		for k in (saved_pois as Dictionary).keys():
+			var rec: Variant = (saved_pois as Dictionary)[k]
+			if rec is Dictionary:
+				discovered_pois[String(k)] = {
+					"category": String((rec as Dictionary).get("category", AIR_LIME_RESOURCE)),
+					"label": String((rec as Dictionary).get("label", "Point of interest")),
+				}
+	else:
+		# Back-compat: pre-POI saves stored a flat "lime_discovered" name array.
+		for lk in data.get("lime_discovered", []):
+			discovered_pois[String(lk)] = {"category": AIR_LIME_RESOURCE, "label": "Lime deposit"}
 	breaches_sealed.clear()
 	for b in data.get("breaches_sealed", []):
 		breaches_sealed.append(String(b))
@@ -1275,6 +1304,7 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	compass_show_kinos = data.get("compass_show_kinos", true) == true
 	compass_show_companions = data.get("compass_show_companions", true) == true
 	compass_show_gate = data.get("compass_show_gate", true) == true
+	compass_show_pois = data.get("compass_show_pois", true) == true
 	advance_air_quest()
 	# Republish so the HUD, Kino, and quest waypoint pick up loaded values.
 	health_changed.emit(health)

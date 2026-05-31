@@ -551,6 +551,7 @@ func _build_settings_page(parent: Control) -> void:
 	_label(page, "  Choose what the direction compass displays.", 13, Color(0.82, 0.92, 1.0, 0.9))
 	page.add_child(HSeparator.new())
 	_settings_check(page, "Lime deposits", "compass_show_lime")
+	_settings_check(page, "Points of interest", "compass_show_pois")
 	_settings_check(page, "Kino drones", "compass_show_kinos")
 	_settings_check(page, "Companions / away-team", "compass_show_companions")
 	_settings_check(page, "Gate & objective", "compass_show_gate")

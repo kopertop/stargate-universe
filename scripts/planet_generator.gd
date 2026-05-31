@@ -11,6 +11,17 @@ extends Object
 const STARGATE_SCENE: PackedScene = preload("res://objects/stargate.tscn")
 const RESOURCE_NODE_SCRIPT: Script = preload("res://scripts/resource_node.gd")
 const PLANET_GATE_SCRIPT: Script = preload("res://scripts/planet_gate.gd")
+const POI_NODE_SCRIPT: Script = preload("res://scripts/poi_node.gd")
+
+# Non-lime points-of-interest the Kino's auto-search can turn up. category →
+# [default count, toast/compass label]. Overridable per planet via a "poi_counts"
+# dict in planets.json (e.g. {"ore": 5}).
+const POI_KINDS: Dictionary = {
+	"ruin":   [2, "Ancient Ruin"],
+	"ore":    [3, "Ore Vein"],
+	"water":  [2, "Water Source"],
+	"debris": [2, "Crashed Debris"],
+}
 
 static func build(world: Node3D, planet_data: Dictionary) -> void:
 	if world == null:
@@ -21,6 +32,7 @@ static func build(world: Node3D, planet_data: Dictionary) -> void:
 	_build_terrain(world, tp)
 	_build_return_gate(world, tp)
 	_build_lime_nodes(world, planet_data, rng, tp)
+	_build_pois(world, planet_data, rng, tp)
 	_build_rocks(world, rng, tp)
 	_build_landmarks(world, rng, tp)
 
@@ -219,6 +231,33 @@ static func _spawn_lime_deposit(world: Node3D, idx: int, angle: float, dist: flo
 	_add_box(node, Vector3(0.30, 0.44, -0.22), Vector3(0.46, 0.40, 0.52), lime_mat)
 	_add_box(node, Vector3(0.10, 0.64, 0.22), Vector3(0.34, 0.32, 0.36), lime_mat)
 	world.add_child(node)
+
+# Scatter the non-lime POIs (ruins, ore, water, debris) around the bowl, between
+# the landing zone and the rim, so the auto-search Kino has varied things to find.
+# Deterministic: driven by the same seeded RNG, so a node name always maps to the
+# same spot (discovery survives save/load).
+static func _build_pois(world: Node3D, planet_data: Dictionary, rng: RandomNumberGenerator, tp: Dictionary) -> void:
+	var counts: Dictionary = planet_data.get("poi_counts", {})
+	var min_r: float = float(tp["landing_radius"]) + 28.0
+	var max_r: float = float(tp["extent"]) * 0.45
+	for cat in POI_KINDS.keys():
+		var spec: Array = POI_KINDS[cat]
+		var n: int = int(counts.get(cat, spec[0]))
+		var label: String = String(spec[1])
+		for i in n:
+			var angle: float = rng.randf_range(0.0, TAU)
+			var dist: float = rng.randf_range(min_r, max_r)
+			var x: float = cos(angle) * dist
+			var z: float = sin(angle) * dist
+			var poi: Node3D = POI_NODE_SCRIPT.new()
+			# Set name + exports BEFORE add_child so _ready restores discovery and
+			# builds the right category visual.
+			poi.name = "Poi_%s_%d" % [cat, i + 1]
+			poi.set("poi_category", cat)
+			poi.set("poi_label", label)
+			poi.position = Vector3(x, _height(x, z, tp), z)
+			world.add_child(poi)
+
 
 static func _build_rocks(world: Node3D, rng: RandomNumberGenerator, tp: Dictionary) -> void:
 	var rock_mat: StandardMaterial3D = StandardMaterial3D.new()

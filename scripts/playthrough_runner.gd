@@ -259,9 +259,11 @@ func _drive() -> void:
 # (3) wipe() must clear the primary + every backup so the test cleans
 #     up after itself.
 func _verify_save_round_trip() -> void:
-	_expect(FileAccess.file_exists(SaveManager.save_path),
+	var store: SaveStore = SaveStore.new(SaveManager._store.saves_root)
+	var primary: String = store.primary_path("autosave")
+	_expect(FileAccess.file_exists(primary),
 		"autosave: primary save.json exists after playthrough")
-	var f: FileAccess = FileAccess.open(SaveManager.save_path, FileAccess.READ)
+	var f: FileAccess = FileAccess.open(primary, FileAccess.READ)
 	if f == null:
 		_fail("autosave: could not open save.json for read")
 		return
@@ -289,10 +291,10 @@ func _verify_save_round_trip() -> void:
 		if gc is Dictionary:
 			_expect(float((gc as Dictionary).get("elapsed_seconds", 0.0)) > 0.0,
 				"autosave: GameClock.elapsed_seconds > 0 after play")
-	SaveManager.wipe()
-	_expect(not FileAccess.file_exists(SaveManager.save_path),
+	SaveManager.wipe("autosave")
+	_expect(not FileAccess.file_exists(primary),
 		"autosave: wipe() removes primary save")
-	for bak in SaveManager.backup_paths:
+	for bak in store.backup_paths("autosave"):
 		_expect(not FileAccess.file_exists(bak), "autosave: wipe() removes " + bak)
 
 

@@ -8,6 +8,8 @@ Headless Godot tests that validate the Episode 1 vertical slice.
 |---|---|
 | `smoke/scene_boot.gd` | Each of the 5 gameplay scenes loads, instantiates, and resolves its critical node paths (Player, Camera, Doors, Interactables). |
 | `smoke/e1_flow.gd` | GameState autoload mutators (damage/heal/oxygen/discover_room/acquire_kino/mark_quarters_found/seal_breach) work, and the `episode_completed` signal fires only when all three E1 prerequisites are met. |
+| `save/save_store_test.gd` | Isolated unit tests for `SaveStore` (slot→path mapping, atomic write + 3-deep backup rotation, corrupt-primary fallback, meta sidecar, `list_slots`/`most_recent_slot`/`wipe_slot`, legacy single-save migration, dot-path edits) against a throwaway temp root. Includes the loss regression: a headless session writing a sandbox root must leave player slots byte-for-byte untouched. |
+| `save/slot_resume.tscn` | Slot-aware resume integration: write a deep save to `manual_2`, edit a field via `SaveStore`, then `load_and_resume("manual_2")` and assert the resumed scene/room/quest-step/player-pos match — proving the edit→Continue loop and that resume targets the requested slot (not just the most-recent). |
 
 ## How to run
 
@@ -15,9 +17,38 @@ Headless Godot tests that validate the Episode 1 vertical slice.
 tests/run.sh            # all
 tests/run.sh scene      # scene-boot only
 tests/run.sh flow       # e1-flow only
+tests/run.sh save       # save-slot unit + slot-resume only
 ```
 
 Override the Godot binary with `GODOT_BIN=/path/to/godot tests/run.sh`.
+
+## Save slots + debug CLI
+
+The save system stores one directory per slot under `user://saves/`
+(`autosave`, `quicksave`, `manual_1..N`), each with `save.json`, three
+rotating backups, and a lightweight `meta.json` sidecar read on its own for
+menu listing. `SaveManager` auto-selects its root: real (windowed) play uses
+`user://saves/`; **headless** runs (or an explicit `--save-root=<path>` user
+arg / `SGU_SAVE_ROOT` env var) redirect to a sandbox so no screenshot/test/tool
+run can ever clobber the player's slots.
+
+`tests/tools/save.sh` wraps a headless inspector + editor (both instantiate
+`SaveStore` directly, no autoloads). Operates on the live player root by
+default; set `SGU_SAVE_ROOT` to target a sandbox:
+
+```bash
+tests/tools/save.sh list                                   # table of slots + metadata
+tests/tools/save.sh dump manual_1                          # pretty-print full save.json
+tests/tools/save.sh validate all                           # parse + version + key check
+tests/tools/save.sh set autosave scene_path=res://scenes/control_room.tscn
+tests/tools/save.sh set autosave systems.game_state.quest_step=find_scrubber
+tests/tools/save.sh set autosave player.pos=1.5,0.3,-4.0   # "x,y,z" → array
+tests/tools/save.sh clone manual_1 manual_2                # copy a slot
+tests/tools/save.sh scenario manual_1 mid-air-crisis       # apply a named preset
+```
+
+Workflow: stage a slot, launch the game, hit **Continue** → land in that exact
+scene/room/quest step.
 
 Exit code 0 = all PASS. Non-zero = at least one FAIL.
 

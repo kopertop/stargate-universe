@@ -38,6 +38,8 @@ Cinematic="*res://scripts/cinematic.gd"
 PauseMenu="*res://scripts/pause_menu.gd"
 EpisodeWrap="*res://scripts/episode_wrap.gd"
 Settings="*res://scripts/settings.gd"
+Gamepad="*res://scripts/gamepad.gd"
+GamepadConfigDialog="*res://scripts/gamepad_config_dialog.gd"
 ShipLayout="*res://scripts/ship_layout.gd"
 KinoMapCapture="*res://scripts/kino_map_capture.gd"
 

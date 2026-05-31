@@ -39,6 +39,15 @@ extends Interactable
 var _line_index: int = 0
 var _auto_greet_done: bool = false
 var _auto_greet_t: float = 0.0
+# walk_to: a one-shot scripted stroll to an absolute world target (used by the
+# returned away-team fan-out). Independent of auto_greet — when armed, _process
+# steps toward _walk_target and disarms on arrival. Driven planar; never tips
+# the model. Stagger via _walk_delay so a trio fans out instead of marching.
+var _walking_to: bool = false
+var _walk_target: Vector3 = Vector3.ZERO
+var _walk_speed: float = 2.5
+var _walk_delay: float = 0.0
+var _walk_t: float = 0.0
 # Facing-restore: when a conversation starts we turn to face the player and
 # remember the prior rotation, then ease back to it when the dialog closes so
 # the NPC resumes facing their console / panel / patrol heading.
@@ -64,8 +73,25 @@ func _ready() -> void:
 	if ns != null and ns.has_method("restore_or_register"):
 		ns.call("restore_or_register", self)
 
+# Arm a scripted walk to an absolute world point. `delay` staggers the start so
+# a group fans out smoothly rather than moving in lockstep. Flips on _process.
+# Safe to call before or after _ready (only touches state + set_process).
+func walk_to(target: Vector3, speed: float = 2.5, delay: float = 0.0) -> void:
+	_walk_target = target
+	_walk_speed = maxf(0.1, speed)
+	_walk_delay = maxf(0.0, delay)
+	_walk_t = 0.0
+	_walking_to = true
+	set_process(true)
+
+
 func _process(delta: float) -> void:
+	if _walking_to:
+		_step_walk(delta)
 	if not auto_greet or _auto_greet_done:
+		# If we were only processing for the (now-finished) walk, stop.
+		if not _walking_to:
+			set_process(false)
 		return
 	_auto_greet_t += delta
 	if _auto_greet_t < auto_greet_delay:
@@ -87,6 +113,57 @@ func _process(delta: float) -> void:
 	global_position += to_player.normalized() * step
 	# Face the way we're walking so the model doesn't moonwalk.
 	look_at(Vector3(player.global_position.x, global_position.y, player.global_position.z), Vector3.UP)
+
+# One frame of a scripted walk toward _walk_target. Planar step at _walk_speed,
+# smooth yaw toward travel, arrive within 0.3 m. Mirrors Companion._step_toward
+# but moves the body via global_position (NPCs are StaticBody3D, no physics
+# integration) — same trick auto_greet already uses.
+func _step_walk(delta: float) -> void:
+	_walk_t += delta
+	if _walk_t < _walk_delay:
+		_set_npc_clip("idle")
+		return
+	var to_t: Vector3 = _walk_target - global_position
+	to_t.y = 0.0
+	var dist: float = to_t.length()
+	if dist <= 0.3:
+		_walking_to = false
+		_set_npc_clip("idle")
+		return
+	var dir: Vector3 = to_t.normalized()
+	var step: float = min(_walk_speed * delta, dist)
+	global_position += dir * step
+	# Face travel direction (Kenney mini-char convention handled by look_at).
+	var look: Vector3 = global_position + dir
+	look.y = global_position.y
+	if global_position.distance_to(look) > 0.01:
+		look_at(look, Vector3.UP)
+	_set_npc_clip("walk")
+
+
+# Switch the GLB AnimationPlayer to a clip whose name contains `clip` (walk /
+# idle). No-ops if the model or a matching clip is absent.
+func _set_npc_clip(clip: String) -> void:
+	var ap: AnimationPlayer = _find_anim_player(self)
+	if ap == null:
+		return
+	for nm in ap.get_animation_list():
+		if String(nm).to_lower().contains(clip):
+			if ap.current_animation != String(nm):
+				ap.play(String(nm))
+			return
+
+
+func _find_anim_player(root: Node) -> AnimationPlayer:
+	var stack: Array = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is AnimationPlayer:
+			return n as AnimationPlayer
+		for c in n.get_children():
+			stack.append(c)
+	return null
+
 
 func _on_interact(by: Node) -> void:
 	# Choice-tree dialog takes precedence. The DialogScreen pauses the game,

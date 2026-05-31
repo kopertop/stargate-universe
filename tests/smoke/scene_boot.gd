@@ -128,6 +128,7 @@ func _run_checks() -> void:
 	await _check_kino_recon_faces_away()
 	await _check_gate_room_restore_heading()
 	await _check_returned_away_team()
+	await _check_planet_return_phase_rebuild()
 	await _check_hud_compass()
 	_report()
 
@@ -549,6 +550,53 @@ func _check_post_scout_gate() -> void:
 		ok = false
 	if ok:
 		print("  OK (Scott supportive + gate crew present for the away-party briefing)")
+		_passes += 1
+	root.remove_child(inst)
+	await process_frame
+	inst.free()
+	_game_state.call("reset")
+	if router != null:
+		router.set("instant_mode", prev_instant)
+
+
+# Save-on-planet-after-3rd-lime regression: collecting the required lime auto-
+# advances mine_lime → return_destiny (complete_when: has_required_lime) WHILE
+# still on the planet. A save taken then must STILL rebuild the departure timer +
+# away team on load — planet.gd keying only on MINE_LIME dropped both (the "gate
+# clock + crew gone after load" bug). Also asserts the saved window RESUMES (the
+# idempotent start_gate_window doesn't reset it).
+func _check_planet_return_phase_rebuild() -> void:
+	print("\n=== load on planet at RETURN_DESTINY rebuilds the timer + away team ===")
+	var router: Node = root.get_node_or_null("SceneRouter")
+	var prev_instant: bool = router != null and router.get("instant_mode") == true
+	if router != null:
+		router.set("instant_mode", false)   # timer view + away team only build live
+	_game_state.call("reset")
+	_game_state.set("quest_step", "return_destiny")
+	_game_state.set("returned_from_lime_planet", false)
+	_game_state.set("gate_window_active", true)
+	_game_state.set("gate_window_remaining", 150.0)
+	var packed := load("res://scenes/planet.tscn") as PackedScene
+	var inst := packed.instantiate()
+	root.add_child(inst)
+	await process_frame
+	var ok: bool = true
+	if inst.get_node_or_null("DepartureTimer") == null:
+		_fail("res://scenes/planet.tscn", "DepartureTimer missing on load at RETURN_DESTINY — gate clock gone")
+		ok = false
+	for n in ["Companion_Greer", "Companion_Park", "Companion_LtScott"]:
+		if inst.get_node_or_null(n) == null:
+			_fail("res://scenes/planet.tscn", "away-team crew missing on load at RETURN_DESTINY: " + n)
+			ok = false
+	if _game_state.get("gate_window_active") != true:
+		_fail("res://scenes/planet.tscn", "gate window not active after load")
+		ok = false
+	if float(_game_state.get("gate_window_remaining")) < 140.0:
+		_fail("res://scenes/planet.tscn", "gate window RESET instead of resumed (%.1f)"
+			% float(_game_state.get("gate_window_remaining")))
+		ok = false
+	if ok:
+		print("  OK (DepartureTimer + Greer/Park/Scott rebuilt; window resumed ~150s)")
 		_passes += 1
 	root.remove_child(inst)
 	await process_frame

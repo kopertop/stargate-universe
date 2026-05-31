@@ -30,24 +30,33 @@ func _ready() -> void:
 		GameState.pending_spawn_position = null
 	if _view.has_method("snap_to_target"):
 		_view.snap_to_target()
-	if GameState.quest_step == GameState.QUEST_MINE_LIME:
-		GameState.add_log("Planet scan confirmed lime deposits near the active gate.")
-		# Start the gate-window countdown for the on-foot mining run (the Kino
-		# scout already returned above). Inert in instant_mode (headless tests).
+	# The on-foot mining run spans MINE_LIME (collect) → RETURN_DESTINY (carry it
+	# back), ending only when the team actually crosses back through the gate
+	# (returned_from_lime_planet + scene → gate room). Collecting the required
+	# lime auto-advances MINE_LIME → RETURN_DESTINY WHILE STILL ON THE PLANET
+	# (mine_lime's complete_when is has_required_lime), so a save taken then must
+	# STILL rebuild the departure timer + away team on load. Keying only on
+	# MINE_LIME dropped both — the "gate clock + crew gone after load" bug.
+	var on_planet_run: bool = (GameState.quest_step == GameState.QUEST_MINE_LIME \
+			or GameState.quest_step == GameState.QUEST_RETURN_DESTINY) \
+			and not GameState.returned_from_lime_planet
+	if on_planet_run:
+		# Departure-countdown view. start_gate_window (in its _ready) is idempotent:
+		# a fresh MINE_LIME entry starts the clock; a save-resume (incl. at
+		# RETURN_DESTINY) resumes the saved remaining time. Inert in instant_mode.
 		var timer: Node = PlanetTimerScript.new()
 		timer.name = "DepartureTimer"
 		add_child(timer)
-		# Replace the top-left objective with a live "X/N lime" counter while
-		# the player is on the planet. This is the same string the now-removed
-		# planet_timer sub-label used to render, but lifted into the existing
-		# objective slot so it doesn't overlap the compass strip. Refreshed on
-		# every resource_changed; restored to the canonical quest-step text in
-		# _exit_tree so the gate room reads its normal objective again.
-		_refresh_lime_objective()
-		if not GameState.resource_changed.is_connected(_on_resource_changed):
-			GameState.resource_changed.connect(_on_resource_changed)
-		# The away team (Greer, Park, Scott) lands with Eli to help mine. Live
-		# play only — headless playthrough must not have companions auto-mining
+		# Lime "X/N" counter objective + live refresh are MINE_LIME-only; at
+		# RETURN_DESTINY the quest objective is already "carry it back through the
+		# gate", so we don't clobber it.
+		if GameState.quest_step == GameState.QUEST_MINE_LIME:
+			GameState.add_log("Planet scan confirmed lime deposits near the active gate.")
+			_refresh_lime_objective()
+			if not GameState.resource_changed.is_connected(_on_resource_changed):
+				GameState.resource_changed.connect(_on_resource_changed)
+		# The away team (Greer, Park, Scott) is on the surface with Eli for the
+		# whole run. Live play only — headless must not have companions auto-mining
 		# lime and skewing resource assertions.
 		if not SceneRouter.instant_mode:
 			_spawn_away_team(_player.global_position)

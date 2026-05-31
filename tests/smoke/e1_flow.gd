@@ -339,6 +339,11 @@ func _initialize() -> void:
 	_expect(gs.gate_window_active == false, "window deactivates at 0:00")
 	_expect(fired[0] == 1, "gate_window_expired emitted once on expiry")
 	gs.gate_window_expired.disconnect(on_expired)
+	# Returning home stops the clock so it can't tick invisibly in the ship.
+	gs.start_gate_window(180.0)
+	_expect(gs.gate_window_active, "window running before return")
+	gs.return_from_lime_planet()
+	_expect(gs.gate_window_active == false, "return_from_lime_planet closes the gate window")
 	gs.reset()
 
 	# --- Phase G: ongoing scrubber resource loop ------------------------------

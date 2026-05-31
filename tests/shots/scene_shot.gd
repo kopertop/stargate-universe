@@ -30,10 +30,18 @@ func _run() -> void:
 	if save_mgr != null:
 		save_mgr.call("configure_test_paths", "shot_scene")
 
-	if kino_pilot:
-		var gs: Node = root.get_node_or_null("GameState")
-		if gs != null:
-			gs.set("kino_pilot_mode", true)
+	var gs: Node = root.get_node_or_null("GameState")
+	# Pick the procedural room (room.tscn serves many rooms via next_room_id).
+	var room_id: String = String(args.get("room", ""))
+	if room_id != "" and gs != null:
+		gs.set("next_room_id", room_id)
+	# Optional quest step so scene _ready branches (e.g. timer/away-team, atmosphere
+	# state) match the beat being captured.
+	var step: String = String(args.get("step", ""))
+	if step != "" and gs != null:
+		gs.set("quest_step", step)
+	if kino_pilot and gs != null:
+		gs.set("kino_pilot_mode", true)
 
 	# flow=1 routes through SceneRouter.change_to with a spawn point, exactly
 	# like the real ship→planet gate crossing — so it catches bugs that a direct
@@ -57,6 +65,14 @@ func _run() -> void:
 			return
 		var inst: Node = packed.instantiate()
 		root.add_child(inst)
+		# The per-scene HUD picks its compass mode from current_scene.scene_file_path,
+		# but its _ready ran during add_child (before current_scene was set), so set
+		# it now and re-invoke the (idempotent) spawner — matches scene_boot.gd.
+		current_scene = inst
+		await process_frame
+		var hud: Node = inst.get_node_or_null("HUDLayer/HUD")
+		if hud != null and hud.has_method("_spawn_compass"):
+			hud.call("_spawn_compass")
 		for i in wait_frames:
 			await process_frame
 

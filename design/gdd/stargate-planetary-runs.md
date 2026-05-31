@@ -64,6 +64,23 @@ and clues to Destiny's mission — but only if you budget your time well.
 
 ### Core Rules
 
+> **🔑 KEY RULE — an active gate is a TWO-WAY portal.** For as long as the gate is
+> open (event horizon up), travel is **free in both directions, any number of
+> times**. The player — and any Kino drone they're piloting — may step/fly from
+> Destiny to the planet, back to Destiny, and out again, at *any* moment the gate
+> is active. The gate is not a one-shot turnstile. A crossing never consumes the
+> connection; only the gate *closing* (window expiry, story beat, or scrubber
+> repaired) ends travel. Both Stargates (ship-side and planet-side) expose this
+> symmetric crossing: ship-side dials `to_planet`, planet-side returns `to_ship`,
+> and whichever side you're on, an open gate in front of you is crossable.
+>
+> _Implementation note:_ a Kino must **leave the gate's crossing radius once
+> before it can cross** (an "arm" latch) — otherwise a Kino that *spawns* on a
+> gate (recon drone by the planet's return gate, or one that just arrived in the
+> gate room) would instantly bounce straight back. See `kino_drone.gd`
+> `_try_gate_crossing` / `_gate_armed`. Gate-open state is the planet-agnostic
+> `GameState.is_gate_open()`.
+
 1. **FTL drop cycle**: Destiny periodically drops out of FTL near star systems.
    The drop creates a **gate window** — a period during which the Stargate can
    connect to nearby planets. The gate window duration varies by story (10-20
@@ -110,7 +127,9 @@ and clues to Destiny's mission — but only if you budget your time well.
    - Current scene (gate room) is suspended, not unloaded
    - Planet scene loads via ggez Scene Management
    - Player spawns at the planet-side gate with the same controller/camera
-   - The planet-side Stargate is active (event horizon visible) — it's the way home
+   - The planet-side Stargate is active (event horizon visible) — it's the way
+     home, and per the KEY RULE above it stays crossable in both directions for
+     the whole window, not just for a single return trip
    - Gate room scene stays in memory for fast return
 
 6. **Planet gameplay**: On the planet surface, gameplay uses existing systems:

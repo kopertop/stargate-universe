@@ -21,6 +21,7 @@ const GREER_SCRIPT: Script = preload("res://scripts/greer.gd")
 const PLANET_GATE_SCRIPT: Script = preload("res://scripts/planet_gate.gd")
 const QuestWaypointScript: Script = preload("res://scripts/quest_waypoint.gd")
 const CompanionScript: Script = preload("res://scripts/companion.gd")
+const KinoDroneScript: Script = preload("res://scripts/kino_drone.gd")
 # Preload bypasses class_name registration timing — same reason as room.gd.
 const ShipAlertScript: Script = preload("res://scripts/ship_alert.gd")
 const QUEST_WAYPOINT_ANCHOR_HEIGHT: float = 2.4
@@ -116,6 +117,13 @@ func _ready() -> void:
 	var first_visit: bool = not GameState.rooms_discovered.has("gate_room")
 	GameState.discover_room("gate_room", "Gate Room")
 	GameState.set_current_room("gate_room")
+
+	# Piloted-Kino arrival: a Kino flew back through the planet's to_ship gate
+	# (open Stargates are two-way). Hand the scene to a fresh recon drone instead
+	# of the player rig and bail before the player-facing dialog/spawn branches.
+	if GameState.kino_pilot_mode:
+		_start_kino_arrival()
+		return
 
 	# Phase D → E bridge: Brody's "the gate dialed itself" call (end of the CO2
 	# scrubber scene) routes the player back here. Arriving satisfies the
@@ -245,6 +253,42 @@ func _build_ship_gate_portal() -> void:
 	_world.add_child(_gate_portal)
 	_gate_portal.monitoring = false
 
+
+# Piloted-Kino arrival into the gate room (a Kino flew home through the planet's
+# to_ship gate). Mirrors room.gd::_start_kino_arrival / planet.gd::_start_kino_recon:
+# tear down the static player rig, hide the on-foot HUD, and spawn a fresh recon
+# drone at the arrival marker so the DRONE (never the body) lands there. The Kino
+# can then fly back through the (still-open) gate — two-way travel.
+func _start_kino_arrival() -> void:
+	var spawn_key: String = GameState.kino_pilot_arrival_spawn
+	GameState.kino_pilot_arrival_spawn = ""
+	# Default: hover near the gate at eye height. The planet's to_ship gate stores
+	# target_spawn "FromPlanet", but that marker is only built in the player-arrival
+	# branch (which this kino path returns before), so we fall through to this
+	# default — fine, since it already sits just in front of the gate.
+	var spawn_pos: Vector3 = Vector3(0.0, 1.4, room_size.y * 0.5 - 5.5)
+	var spawn_yaw: float = 0.0
+	if spawn_key != "":
+		var marker: Node = get_node_or_null(spawn_key)
+		if marker is Node3D:
+			spawn_pos = (marker as Node3D).global_position + Vector3.UP * 1.4
+			spawn_yaw = (marker as Node3D).rotation.y
+	if is_instance_valid(_player):
+		_player.queue_free()
+	if is_instance_valid(_view):
+		_view.queue_free()
+	var hud_layer: Node = get_node_or_null("HUDLayer")
+	if hud_layer is CanvasLayer:
+		(hud_layer as CanvasLayer).visible = false
+	var drone: CharacterBody3D = KinoDroneScript.new()
+	drone.name = "KinoDrone"
+	drone.set("launch_in_ship", false)
+	drone.rotation.y = spawn_yaw
+	add_child(drone)
+	drone.global_position = spawn_pos
+	if GameState.kino_autopilot and not SceneRouter.instant_mode:
+		drone.call_deferred("start_ship_autopilot")
+
 func _refresh_gate_state() -> void:
 	if _arrival_running:
 		return
@@ -334,13 +378,17 @@ func _assemble_away_team_at_gate() -> void:
 	# Lock the player out of the gate until the team has walked through.
 	_gate_player_locked = true
 	_refresh_gate_state()
-	# Scott already joined the team at the gate — hide his briefing-spot NPC
-	# (built by _build_npcs near the dais) so we don't have two Scotts on screen.
-	var briefing_scott: Node = _world.get_node_or_null("LtScott")
-	if briefing_scott is Node3D:
-		(briefing_scott as Node3D).visible = false
-		if "enabled" in briefing_scott:
-			briefing_scott.set("enabled", false)
+	# Every character who joined the away team has a standing gate-room NPC
+	# (Scott at the briefing spot, Park at the gate console) — hide them so the
+	# same person isn't on screen twice. Rush/Brody are NOT on the team, so they
+	# stay. (Greer has no standing NPC.) Keyed by the known node names from
+	# _build_npcs / _build_gate_phase_e_crew.
+	for npc_node_name in ["LtScott", "GatePark"]:
+		var dup: Node = _world.get_node_or_null(npc_node_name)
+		if dup is Node3D:
+			(dup as Node3D).visible = false
+			if "enabled" in dup:
+				dup.set("enabled", false)
 	# Drop a trigger volume a few metres south of the team. Walking up behind
 	# them fires the choreographed walkthrough exactly once.
 	var trigger: Area3D = Area3D.new()

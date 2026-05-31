@@ -55,6 +55,11 @@ var atmosphere: Dictionary = {}
 var _yaw: float = 0.0
 var _pitch: float = 0.0
 var _ending: bool = false             # recall or gate-cross in progress
+# Gate-crossing latch: a drone must leave the gate's radius ONCE before it can
+# cross, so a drone that spawns on/near a gate (recon drone by the planet's
+# return gate, or a Kino that just arrived in the gate room) doesn't instantly
+# bounce straight back through it.
+var _gate_armed: bool = false
 var _lime_confirmed: bool = false
 var _camera: Camera3D = null
 var _caption: Label = null
@@ -327,18 +332,17 @@ func _physics_process(delta: float) -> void:
 
 
 # Per-frame context action, split out of _physics_process so it's headless-
-# testable. Behavior keys on CONTEXT, not spawn origin: any piloted Kino in a
-# scene that has a ship→planet gate (the gate room) flies through it when open —
-# including a re-piloted DEPLOYED Kino (launch_in_ship == false), the
-# save→continue case that used to silently fail because crossing was gated on
-# launch_in_ship. On the planet there's no to_planet gate (only the to_ship
-# return gate), so it does lime recon instead.
+# testable. An OPEN Stargate is a TWO-WAY portal (key rule — see
+# design/gdd/stargate-planetary-runs.md): a piloted Kino flies through whichever
+# gate the current scene has — the ship's to_planet gate (gate room → planet) OR
+# the planet's to_ship gate (planet → gate room) — in EITHER direction while the
+# gate is open. Lime-proximity recon also runs (it no-ops off the planet), so
+# the drone both scouts lime AND can fly home through the same active gate.
 func _drive_context_action() -> void:
-	var ship_gate: Node3D = _find_ship_gate()
-	if ship_gate != null:
-		_try_gate_crossing(ship_gate)
-	else:
-		_check_lime_proximity()
+	var gate: Node3D = _find_crossable_gate()
+	if gate != null:
+		_try_gate_crossing(gate)
+	_check_lime_proximity()
 
 # Warp to the destination when the drone reaches the open Stargate. Uses the
 # gate's position directly so we bypass the player-only quest gating in
@@ -347,23 +351,35 @@ func _drive_context_action() -> void:
 func _try_gate_crossing(gate: Node3D) -> void:
 	if not GameState.is_gate_open():
 		return
-	if global_position.distance_to(gate.global_position) <= GATE_CROSS_RADIUS:
+	var dist: float = global_position.distance_to(gate.global_position)
+	# Arm only after leaving the gate's radius once (anti spawn-on-gate bounce).
+	if not _gate_armed:
+		if dist > GATE_CROSS_RADIUS + 0.75:
+			_gate_armed = true
+		return
+	if dist <= GATE_CROSS_RADIUS:
 		_ending = true
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		# Destination comes from the gate node itself (planet-agnostic — swapping
-		# the dialed world later changes the gate's target_scene, not this code).
+		# Destination comes from the gate node itself (planet-agnostic, and works
+		# both ways — ship's to_planet gate → planet, planet's to_ship gate →
+		# gate room).
 		var dest: String = String(gate.get("target_scene"))
 		if dest == "":
 			dest = "res://scenes/planet.tscn"
-		# kino_pilot_mode stays set so the destination's _ready spawns a recon
-		# drone on arrival. Pass NO spawn point: the recon spawn owns placement,
-		# and a spawn key would make SceneRouter._place_player_at_spawn grab the
-		# drone (it's in group "player") and clobber it to the ground marker.
+		# Hand the destination its arrival spawn so it can place the drone (the
+		# gate room reads kino_pilot_arrival_spawn; planet recon owns its own
+		# placement and ignores it). kino_pilot_mode stays set so the destination's
+		# _ready spawns a recon drone. Pass NO spawn point to SceneRouter: a spawn
+		# key would make _place_player_at_spawn grab the drone and clobber it.
+		GameState.kino_pilot_arrival_spawn = String(gate.get("target_spawn"))
 		SceneRouter.change_to(dest, "")
 
-func _find_ship_gate() -> Node3D:
+# The single Stargate portal in the current scene (the gate room's to_planet
+# gate, or the planet's to_ship gate). An open gate is two-way, so we don't
+# filter by mode — whichever gate this scene has is the one to fly through.
+func _find_crossable_gate() -> Node3D:
 	for n in get_tree().get_nodes_in_group("planet_gate"):
-		if n is Node3D and String(n.get("mode")) == "to_planet":
+		if n is Node3D:
 			return n
 	return null
 

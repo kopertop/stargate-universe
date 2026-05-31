@@ -1095,6 +1095,9 @@ func return_from_lime_planet() -> void:
 	if returned_from_lime_planet:
 		return
 	returned_from_lime_planet = true
+	# The departure window is over once the team is back aboard — stop the clock
+	# so it can't keep ticking invisibly (and fire a phantom expiry) in the ship.
+	gate_window_active = false
 	add_log("Returned to Destiny with lime from the planet.")
 	advance_air_quest()
 

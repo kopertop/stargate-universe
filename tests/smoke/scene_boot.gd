@@ -89,11 +89,13 @@ var _passes: int = 0
 # Cache them once via /root/<name>.
 var _ship_layout: Node
 var _game_state: Node
+var _inventory: Node
 
 
 func _initialize() -> void:
 	_ship_layout = root.get_node_or_null("ShipLayout")
 	_game_state = root.get_node_or_null("GameState")
+	_inventory = root.get_node_or_null("Inventory")
 	if _ship_layout == null:
 		_fail("autoload", "ShipLayout not found at /root/ShipLayout (check project.godot)")
 	if _game_state == null:
@@ -329,15 +331,15 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 			# the flag. Headless short-circuits the waits but the await still
 			# yields one frame; poll briefly so we see the flip after resume.
 			var waited: int = 0
-			while _game_state.get("kino_acquired") != true and waited < 30:
+			while not bool(_inventory.call("has", "kino_remote")) and waited < 30:
 				await process_frame
 				waited += 1
-			if _game_state.get("kino_acquired") == true:
-				print("  OK (KinoPickup.interact → kino_acquired=true)")
+			if bool(_inventory.call("has", "kino_remote")):
+				print("  OK (KinoPickup.interact → kino remote in inventory)")
 				_passes += 1
 			else:
 				_fail("%s [eli_quarters]" % ROOM_SCENE,
-					"KinoPickup.interact() did not set GameState.kino_acquired")
+					"KinoPickup.interact() did not add the kino remote to Inventory")
 		"engineering_bay":
 			var console: Node = inst.get_node("PowerConsole")
 			console.call("interact", null)
@@ -350,7 +352,7 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 		"breached_section_south":
 			# Loot the small-fuse crate, then repair the door panel → breach sealed.
 			inst.get_node("ShuttleCrate2").call("interact", null)
-			if _game_state.get("small_fuse_found") != true:
+			if not bool(_inventory.call("has", "small_fuse")):
 				_fail("%s [breached_section_south]" % ROOM_SCENE,
 					"ShuttleCrate2.interact() did not grant the Small Fuse")
 			inst.get_node("ShuttleDoorPanel").call("interact", null)
@@ -369,7 +371,7 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 			_game_state.set("met_scott", true)
 			_game_state.set("met_rush", true)
 			_game_state.set("eli_quarters_visited", true)
-			_game_state.set("kino_acquired", true)
+			_inventory.call("set_count", "kino_remote", 1)
 			_game_state.call("advance_air_quest")
 			_game_state.call("start_air_crisis")
 			_game_state.call("diagnose_life_support")
@@ -453,11 +455,11 @@ func _check_kino_dispenser() -> void:
 	if disp == null:
 		_fail("%s [eli_quarters]" % ROOM_SCENE, "KinoDispenser did not spawn with reported_to_gate=true")
 	else:
-		var before: int = int(_game_state.get("kino_orbs"))
+		var before: int = int(_inventory.call("count", "kino_orb"))
 		disp.call("interact", null)
-		var after: int = int(_game_state.get("kino_orbs"))
+		var after: int = int(_inventory.call("count", "kino_orb"))
 		if after == before + 1:
-			print("  OK (KinoDispenser.interact → kino_orbs %d→%d)" % [before, after])
+			print("  OK (KinoDispenser.interact → kino_orb %d→%d)" % [before, after])
 			_passes += 1
 		else:
 			_fail("%s [eli_quarters]" % ROOM_SCENE,

@@ -34,6 +34,13 @@ const RED_COL: Color = Color(1.0, 0.35, 0.28, 1.0)
 const DEEP_RED_COL: Color = Color(1.0, 0.20, 0.18, 1.0)
 
 var _remaining: float = DURATION
+# Away-team auto-gather: the crew hauls in lime on their own so a run is never a
+# total loss even if the player mines nothing. First chunk at 2:00 remaining,
+# second at 1:00 — guaranteeing ≥2 lime by the time the window closes.
+const LIME_GATHER_1: float = 120.0
+const LIME_GATHER_2: float = 60.0
+var _lime_gather_1_fired: bool = false
+var _lime_gather_2_fired: bool = false
 var _warn_60_fired: bool = false
 var _warn_30_fired: bool = false
 var _warn_10_fired: bool = false
@@ -65,7 +72,7 @@ func _build_hud() -> void:
 	_label.anchor_right = 0.5
 	_label.offset_left = -130.0
 	_label.offset_right = 130.0
-	_label.offset_top = 14.0
+	_label.offset_top = 72.0   # below the top compass banner
 	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_label.add_theme_font_size_override("font_size", 22)
 	_label.add_theme_color_override("font_color", NORMAL_COL)
@@ -87,6 +94,12 @@ func _process(delta: float) -> void:
 		return
 	_remaining = maxf(0.0, _remaining - delta)
 	_update_label()
+	if not _lime_gather_1_fired and _remaining <= LIME_GATHER_1:
+		_lime_gather_1_fired = true
+		_away_team_gathers_lime()
+	if not _lime_gather_2_fired and _remaining <= LIME_GATHER_2:
+		_lime_gather_2_fired = true
+		_away_team_gathers_lime()
 	if not _warn_60_fired and _remaining <= WARN_60:
 		_warn_60_fired = true
 		GameState.add_log("One minute to FTL jump. Start wrapping up.")
@@ -174,6 +187,13 @@ func _update_label() -> void:
 	elif _warn_60_fired:
 		_label.add_theme_color_override("font_color", AMBER_COL)
 
+# The away team hauls in a chunk of lime on its own. Routed through the normal
+# resource pool so it counts toward the requirement, updates the X/N objective
+# counter, and shows in the inventory — exactly like player-mined lime.
+func _away_team_gathers_lime() -> void:
+	GameState.add_resource(GameState.AIR_LIME_RESOURCE, 1, "the away team")
+
+
 # Time's up: letterbox cutscene of the team scrambling back through the gate,
 # then recall to the ship. Forgiving — the team keeps whatever lime they have.
 func _begin_departure() -> void:
@@ -258,7 +278,10 @@ func _recall_to_ship() -> void:
 	# team returns empty-handed and can re-dial. Never strands anyone.
 	if GameState.has_resource(GameState.AIR_LIME_RESOURCE, GameState.AIR_LIME_REQUIRED):
 		GameState.return_from_lime_planet()
-	SceneRouter.change_to("res://scenes/gate_room.tscn", "FromGate")
+	# The whole away team scrambled back through — bring them into the gate room
+	# with the player and land everyone past the platform (FromPlanet spawn).
+	GameState.pending_planet_return = true
+	SceneRouter.change_to("res://scenes/gate_room.tscn", "FromPlanet")
 
 func _find_return_gate() -> Node3D:
 	for n in get_tree().get_nodes_in_group("planet_gate"):

@@ -1244,7 +1244,7 @@ func _refresh_quest_waypoint() -> void:
 	# every UN-looted crate. Each clears as its crate is emptied; all clear once
 	# the Small Fuse turns up (handing back to the single panel marker below).
 	if (target_room == room_id and anchor_name == "ShuttleObjective"
-			and GameState.door_panel_examined and not GameState.small_fuse_found):
+			and GameState.door_panel_examined and not Inventory.has("small_fuse")):
 		_destroy_quest_waypoint()
 		_refresh_crate_waypoints()
 		return

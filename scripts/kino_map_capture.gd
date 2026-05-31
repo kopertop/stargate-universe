@@ -55,9 +55,9 @@ func _run() -> void:
 		get_tree().quit(1)
 		return
 	call(_scenarios[_scenario_name])
-	# KinoRemote autoload owns the UI tree. Force-open even if kino_acquired
-	# is false (the capture is allowed to peek).
-	GameState.kino_acquired = true
+	# KinoRemote autoload owns the UI tree. Force-open even if the kino_remote
+	# item is absent from Inventory (the capture is allowed to peek).
+	Inventory.set_count("kino_remote", 1)
 	if KinoRemote.has_method("_init_ui"):
 		KinoRemote.call("_init_ui")
 	if KinoRemote.has_method("_open_remote"):

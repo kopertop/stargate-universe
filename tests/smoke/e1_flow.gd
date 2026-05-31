@@ -32,8 +32,12 @@ func _initialize() -> void:
 	_expect(load("res://scripts/game_state.gd") != null, "load GameState script")
 	_expect(load("res://scripts/quest_log.gd") != null, "load QuestLog script")
 	var gs: Node = root.get_node_or_null("GameState")
+	# Items live in the Inventory autoload now (kino remote, orbs, fuses, lime,
+	# rations are counts there — no GameState item booleans/dict any more).
+	var inv: Node = root.get_node_or_null("Inventory")
 	_expect(gs != null, "GameState autoload is attached")
-	if gs == null:
+	_expect(inv != null, "Inventory autoload is attached")
+	if gs == null or inv == null:
 		_report()
 		return
 
@@ -82,9 +86,9 @@ func _initialize() -> void:
 	_expect(gs.eli_quarters_visited, "air: mark_eli_quarters_found flips the flag")
 	_expect(gs.quest_step == gs.QUEST_FIND_KINO, "air: in quarters -> inspect strange device")
 
-	_expect(not gs.kino_acquired, "mission: kino starts unacquired")
+	_expect(not bool(inv.call("has", "kino_remote")), "mission: kino starts unacquired")
 	gs.acquire_kino()
-	_expect(gs.kino_acquired, "mission: acquire_kino sets flag")
+	_expect(bool(inv.call("has", "kino_remote")), "mission: acquire_kino sets flag")
 	_expect(gs.prologue_complete, "air: Rush + quarters + device marks prologue complete")
 	_expect(gs.quest_step == gs.QUEST_SLEEP, "air: device inspected -> sleep")
 	gs.check_episode_complete()
@@ -145,16 +149,16 @@ func _initialize() -> void:
 	# Kino-scout beat: pull an orb from the quarters dispenser. Supply is
 	# unlimited but the player caps at KINO_ORB_MAX.
 	gs.acquire_kino_orb()
-	_expect(gs.kino_orbs == 1, "air: dispenser grants a Kino orb")
+	_expect(int(inv.call("count", "kino_orb")) == 1, "air: dispenser grants a Kino orb")
 	_expect(gs.quest_step == gs.QUEST_SCOUT_KINO, "air: holding a Kino -> send it through the gate")
 	gs.acquire_kino_orb()
 	gs.acquire_kino_orb()
 	gs.acquire_kino_orb()
-	_expect(gs.kino_orbs == gs.KINO_ORB_MAX, "air: Kino orbs cap at KINO_ORB_MAX")
+	_expect(int(inv.call("count", "kino_orb")) == gs.KINO_ORB_MAX, "air: Kino orbs cap at KINO_ORB_MAX")
 
 	# Launching a Kino spends one orb; the recon flight confirms the far side.
 	_expect(gs.consume_kino_orb(), "air: launching a Kino spends an orb")
-	_expect(gs.kino_orbs == gs.KINO_ORB_MAX - 1, "air: consume_kino_orb decrements")
+	_expect(int(inv.call("count", "kino_orb")) == gs.KINO_ORB_MAX - 1, "air: consume_kino_orb decrements")
 	gs.complete_kino_scout()
 	_expect(gs.kino_scout_done, "air: Kino scout records flag")
 	_expect(gs.quest_step == gs.QUEST_DIAL_LIME_PLANET, "air: scout done -> dial lime planet")
@@ -207,12 +211,12 @@ func _initialize() -> void:
 	gs.episode_completed.disconnect(on_done)
 	gs.reset()
 	_expect(gs.episode_complete == false, "mission: reset clears completion")
-	_expect(gs.kino_acquired == false, "mission: reset clears kino")
+	_expect(not bool(inv.call("has", "kino_remote")), "mission: reset clears kino")
 	_expect(gs.quarters_found == false, "mission: reset clears quarters")
 	_expect(gs.eli_quarters_visited == false, "mission: reset clears eli_quarters_visited")
 	_expect(gs.elevator_repaired == false, "mission: reset clears elevator_repaired")
 	_expect(gs.doors_traversed.is_empty(), "mission: reset clears doors_traversed")
-	_expect(gs.kino_orbs == 0, "mission: reset clears kino_orbs")
+	_expect(int(inv.call("count", "kino_orb")) == 0, "mission: reset clears kino_orbs")
 	_expect(gs.deployed_kinos.is_empty(), "mission: reset clears deployed_kinos")
 	_expect(gs.kino_scout_done == false, "mission: reset clears kino_scout_done")
 	_expect(gs.kino_plan_approved == false, "mission: reset clears kino_plan_approved")
@@ -240,37 +244,44 @@ func _initialize() -> void:
 	gs.kino_zoom = 1.7
 	gs.kino_active_floor = 1
 	gs.kino_marker = {"floor": 0, "world_x": 100.0, "world_y": 200.0}
-	gs.kino_orbs = 2
+	inv.call("set_count", "kino_orb", 2)
 	gs.kino_scout_done = true
 	gs.kino_plan_approved = true
 	gs.away_party_briefed = true
 	gs.deployed_kinos = [{"scene": "res://scenes/planet.tscn", "x": 5.0, "y": 0.0, "z": -3.0}]
 
 	var snapshot: Dictionary = gs.serialize()
-	_expect(int(snapshot.get("kino_orbs", -1)) == 2, "serialize captures kino_orbs")
+	# Items are no longer in the GameState block — they round-trip through the
+	# Inventory system's own serialize/deserialize.
+	var inv_snap: Dictionary = inv.call("serialize")
+	var inv_items: Dictionary = inv_snap.get("items", {})
+	_expect(int(inv_items.get("kino_orb", -1)) == 2, "inventory serialize captures kino_orb count")
+	_expect(int(inv_items.get(gs.AIR_LIME_RESOURCE, 0)) == 2, "inventory serialize captures lime count")
 	_expect(snapshot.get("kino_scout_done", false) == true, "serialize captures kino_scout_done")
 	_expect(snapshot.get("away_party_briefed", false) == true, "serialize captures away_party_briefed")
 	_expect(snapshot.has("quest_step"), "serialize() includes quest_step")
 	_expect(String(snapshot.get("quest_step", "")) == gs.QUEST_FIND_RUSH, "serialize captures current quest step")
 	_expect(snapshot.get("met_scott", false) == true, "serialize captures met_scott")
-	_expect(int((snapshot.get("resources", {}) as Dictionary).get(gs.AIR_LIME_RESOURCE, 0)) == 2, "serialize captures resources")
+	_expect(not snapshot.has("kino_orbs") and not snapshot.has("resources"), "serialize no longer holds item state")
 	_expect(float(snapshot.get("kino_pan_x", 0.0)) == 12.5, "serialize captures kino_pan_x")
 	_expect(float(snapshot.get("kino_zoom", 0.0)) == 1.7, "serialize captures kino_zoom")
 	_expect(snapshot.get("kino_marker", {}) is Dictionary, "serialize captures kino_marker dict")
 
 	gs.reset()
 	_expect(gs.rooms_discovered.is_empty(), "post-reset: rooms cleared")
+	_expect(int(inv.call("count", "kino_orb")) == 0, "reset: inventory cleared via GameState.reset")
 	_expect(gs.kino_pan_x == 0.0 and gs.kino_zoom == 1.0, "reset: kino UI fields restored to defaults")
 	_expect(gs.kino_marker.is_empty(), "reset: kino marker cleared")
 
 	gs.deserialize(snapshot, 2)
+	inv.call("deserialize", inv_snap, 2)
 	_expect(gs.met_scott, "deserialize restores met_scott")
-	_expect(gs.kino_orbs == 2, "deserialize restores kino_orbs")
+	_expect(int(inv.call("count", "kino_orb")) == 2, "inventory deserialize restores kino_orb count")
 	_expect(gs.deployed_kinos.size() == 1 and float((gs.deployed_kinos[0] as Dictionary).get("x", -1.0)) == 5.0, "deserialize restores deployed_kinos")
 	_expect(gs.kino_scout_done, "deserialize restores kino_scout_done")
 	_expect(gs.away_party_briefed, "deserialize restores away_party_briefed")
 	_expect(gs.quest_step == gs.QUEST_FIND_RUSH, "deserialize restores quest_step")
-	_expect(gs.resource_count(gs.AIR_LIME_RESOURCE) == 2, "deserialize restores resources")
+	_expect(gs.resource_count(gs.AIR_LIME_RESOURCE) == 2, "deserialize restores resources (via inventory)")
 	_expect(gs.rooms_discovered.size() == 1, "deserialize restores rooms_discovered")
 	_expect(gs.log_entries.size() >= 1, "deserialize restores log_entries")
 	_expect(gs.kino_pan_x == 12.5, "deserialize restores kino_pan_x")
@@ -298,7 +309,7 @@ func _initialize() -> void:
 	gs.scrubber_diagnosed = true
 	gs.scrubber_repaired = true
 	gs.scrubber_level = 100.0
-	gs.resources[gs.AIR_LIME_RESOURCE] = 0
+	inv.call("set_count", gs.AIR_LIME_RESOURCE, 0)
 	# Tick one minute of simulated decay. Manually call the tick (so the
 	# autoload SceneRouter check is bypassed) — we already trust _process is the
 	# wrapper.

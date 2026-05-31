@@ -125,7 +125,7 @@ func _drive() -> void:
 	_expect(GameState.quest_step == GameState.QUEST_FIND_KINO, "quest: in quarters -> inspect strange device")
 	await _interact_node(_find_node_named("KinoPickup"), "Kino pickup")
 	var kino_wait_frames: int = 900 if _demo_mode else 90
-	await _wait_until(func() -> bool: return GameState.kino_acquired, "Kino acquisition", kino_wait_frames)
+	await _wait_until(func() -> bool: return Inventory.has("kino_remote"), "Kino acquisition", kino_wait_frames)
 	_expect(GameState.quest_step == GameState.QUEST_SLEEP, "quest: device inspected -> sleep")
 	await _interact_node(_find_node_named("Bed"), "sleep")
 	_expect(GameState.air_crisis_started, "quest: sleep starts Air crisis")
@@ -166,7 +166,7 @@ func _drive() -> void:
 	_expect(GameState.door_panel_examined, "quest: examining panel reveals the fuse need")
 	_expect(not GameState.breaches_sealed.has("breach_a"), "quest: door not sealed without a fuse")
 	await _interact_node(_find_node_named("ShuttleCrate2"), "search fuse crate")
-	_expect(GameState.small_fuse_found, "quest: small fuse looted from crate")
+	_expect(Inventory.has("small_fuse"), "quest: small fuse looted from crate")
 	await _interact_node(_find_node_named("ShuttleDoorPanel"), "fit small fuse")
 	_expect(GameState.breaches_sealed.has("breach_a"), "quest: jammed door sealed")
 	_expect(GameState.quest_step == GameState.QUEST_FIND_SCRUBBER, "quest: breach -> find scrubber")
@@ -205,7 +205,7 @@ func _drive() -> void:
 	# (FETCH_KINO -> SCOUT_KINO) and confirm the recon (SCOUT_KINO -> mine lime).
 	# The real dispenser Interactable + drone possession are covered by scene_boot.
 	GameState.acquire_kino_orb()
-	_expect(GameState.kino_orbs == 1, "quest: Kino dispenser grants an orb")
+	_expect(Inventory.count("kino_orb") == 1, "quest: Kino dispenser grants an orb")
 	_expect(GameState.quest_step == GameState.QUEST_SCOUT_KINO, "quest: holding a Kino -> scout the planet")
 	GameState.complete_kino_scout()
 	_expect(GameState.kino_scout_done, "quest: Kino recon confirmed")

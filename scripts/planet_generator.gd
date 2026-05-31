@@ -141,7 +141,8 @@ static func _build_return_gate(world: Node3D, tp: Dictionary) -> void:
 	portal.position = Vector3(0.0, ground_y + 2.0, -9.0)
 	portal.set("mode", "to_ship")
 	portal.set("target_scene", "res://scenes/gate_room.tscn")
-	portal.set("target_spawn", "FromGate")
+	# Land past the platform (not on the dais) and bring the away team back too.
+	portal.set("target_spawn", "FromPlanet")
 	var cs: CollisionShape3D = CollisionShape3D.new()
 	var shape: BoxShape3D = BoxShape3D.new()
 	shape.size = Vector3(4.4, 3.0, 1.2)

@@ -337,7 +337,7 @@ func _evaluate_predicate(key: String) -> bool:
 		"eli_quarters_visited":
 			return gs.eli_quarters_visited
 		"kino_acquired":
-			return gs.kino_acquired
+			return Inventory.has("kino_remote")
 		"air_crisis_started":
 			return gs.air_crisis_started
 		"control_room_returned":
@@ -357,7 +357,7 @@ func _evaluate_predicate(key: String) -> bool:
 			# (kino_orbs > 0) OR has already done the scout (kino_scout_done).
 			# The second branch keeps the step from re-activating after the
 			# Kino is launched into the gate (orbs goes back to 0 mid-scout).
-			return gs.kino_orbs > 0 or gs.kino_scout_done
+			return Inventory.count("kino_orb") > 0 or gs.kino_scout_done
 		"kino_scout_done":
 			return gs.kino_scout_done
 		"lime_planet_dialed":
@@ -387,7 +387,7 @@ func _evaluate_objective_fn(key: String) -> String:
 		"seal_breach_objective":
 			if not gs.door_panel_examined:
 				return "A jammed shuttle door is venting atmosphere in the Shuttle Dock (far south). Get to the door panel and try it."
-			if not gs.small_fuse_found:
+			if not Inventory.has("small_fuse"):
 				return "The door panel's fuse is blown. Search the Shuttle Dock crates for a Small Fuse."
 			return "Fit the Small Fuse into the door panel to force the jammed door shut."
 		_:

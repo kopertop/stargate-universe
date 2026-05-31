@@ -15,4 +15,9 @@ cd "$repo_root"
 
 # Save-registration policy: every new autoload that holds gameplay state
 # must register with SaveManager so it rides along in auto-save.
-exec tests/lint/check_save_registration.sh --staged
+tests/lint/check_save_registration.sh --staged
+
+# Collection-fork policy: a set of like things (items, discovered rooms,
+# unlocked abilities) must live in ONE registry behind ONE add/enumerate
+# API — not as scattered per-instance `*_found` / `has_*` bool fields.
+exec tests/lint/check_collection_forks.sh --staged

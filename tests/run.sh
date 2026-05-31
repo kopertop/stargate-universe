@@ -10,7 +10,7 @@
 #   6. questlog     — data-driven QuestLog autoload (predicate + event advance,
 #                     save round-trip, old-format migration)
 #
-# Usage: tests/run.sh [lint|scene|flow|quest|playthrough|resume|autopilot|questlog|all]
+# Usage: tests/run.sh [lint|scene|flow|quest|playthrough|resume|autopilot|questlog|inventory|all]
 #                                                                          (default: all)
 #
 # Pre-commit hook: .githooks/pre-commit invokes the lint subset via
@@ -40,11 +40,14 @@ RAN_LINT=0
 RAN_RESUME=0
 RAN_AUTOPILOT=0
 RAN_QUESTLOG=0
+RAN_INV=0
 RC_SCENE=0
 RC_FLOW=0
 RC_QUEST=0
 RC_PLAY=0
 RC_LINT=0
+RC_FORKS=0
+RC_INV=0
 RC_RESUME=0
 RC_AUTOPILOT=0
 RC_QUESTLOG=0
@@ -90,6 +93,12 @@ if [[ "$MODE" == "lint" || "$MODE" == "all" ]]; then
 	echo "==============================="
 	tests/lint/check_save_registration.sh
 	RC_LINT=$?
+	echo
+	echo "==============================="
+	echo " collection-fork lint"
+	echo "==============================="
+	tests/lint/check_collection_forks.sh
+	RC_FORKS=$?
 	RAN_LINT=1
 fi
 
@@ -135,6 +144,12 @@ if [[ "$MODE" == "questlog" || "$MODE" == "all" ]]; then
 	RAN_QUESTLOG=1
 fi
 
+if [[ "$MODE" == "inventory" || "$MODE" == "all" ]]; then
+	run_script_test "inventory" "res://tests/smoke/inventory.gd"
+	RC_INV=$?
+	RAN_INV=1
+fi
+
 # Kino map visual captures — produces 4 PNGs under screenshots/result/ that
 # can be eyeballed against the concept image (design/concept-art/sgu-map.png).
 # Not part of `all` because it requires a headed Godot; opt-in via `visual`.
@@ -167,6 +182,7 @@ echo "==============================="
 echo " final"
 echo "==============================="
 [[ $RAN_LINT  -eq 1 ]] && echo "save_registration:   $([[ $RC_LINT  -eq 0 ]] && echo PASS || echo "FAIL ($RC_LINT)")"  || echo "save_registration:   SKIPPED"
+[[ $RAN_LINT  -eq 1 ]] && echo "collection_forks:    $([[ $RC_FORKS -eq 0 ]] && echo PASS || echo "FAIL ($RC_FORKS)")" || echo "collection_forks:    SKIPPED"
 [[ $RAN_SCENE -eq 1 ]] && echo "scene_boot:          $([[ $RC_SCENE -eq 0 ]] && echo PASS || echo "FAIL ($RC_SCENE)")" || echo "scene_boot:          SKIPPED"
 [[ $RAN_FLOW  -eq 1 ]] && echo "e1_flow:             $([[ $RC_FLOW  -eq 0 ]] && echo PASS || echo "FAIL ($RC_FLOW)")"  || echo "e1_flow:             SKIPPED"
 [[ $RAN_QUEST -eq 1 ]] && echo "quest_waypoint:      $([[ $RC_QUEST -eq 0 ]] && echo PASS || echo "FAIL ($RC_QUEST)")" || echo "quest_waypoint:      SKIPPED"
@@ -174,8 +190,9 @@ echo "==============================="
 [[ $RAN_RESUME -eq 1 ]] && echo "resume_probe:        $([[ $RC_RESUME -eq 0 ]] && echo PASS || echo "FAIL ($RC_RESUME)")" || echo "resume_probe:        SKIPPED"
 [[ $RAN_AUTOPILOT -eq 1 ]] && echo "kino_autopilot:      $([[ $RC_AUTOPILOT -eq 0 ]] && echo PASS || echo "FAIL ($RC_AUTOPILOT)")" || echo "kino_autopilot:      SKIPPED"
 [[ $RAN_QUESTLOG -eq 1 ]] && echo "quest_log:           $([[ $RC_QUESTLOG -eq 0 ]] && echo PASS || echo "FAIL ($RC_QUESTLOG)")" || echo "quest_log:           SKIPPED"
+[[ $RAN_INV -eq 1 ]] && echo "inventory:           $([[ $RC_INV -eq 0 ]] && echo PASS || echo "FAIL ($RC_INV)")" || echo "inventory:           SKIPPED"
 
-if [[ ( $RAN_LINT -eq 1 && $RC_LINT -ne 0 ) || ( $RAN_SCENE -eq 1 && $RC_SCENE -ne 0 ) || ( $RAN_FLOW -eq 1 && $RC_FLOW -ne 0 ) || ( $RAN_QUEST -eq 1 && $RC_QUEST -ne 0 ) || ( $RAN_PLAY -eq 1 && $RC_PLAY -ne 0 ) || ( $RAN_RESUME -eq 1 && $RC_RESUME -ne 0 ) || ( $RAN_AUTOPILOT -eq 1 && $RC_AUTOPILOT -ne 0 ) || ( $RAN_QUESTLOG -eq 1 && $RC_QUESTLOG -ne 0 ) ]]; then
+if [[ ( $RAN_LINT -eq 1 && $RC_LINT -ne 0 ) || ( $RAN_LINT -eq 1 && $RC_FORKS -ne 0 ) || ( $RAN_SCENE -eq 1 && $RC_SCENE -ne 0 ) || ( $RAN_FLOW -eq 1 && $RC_FLOW -ne 0 ) || ( $RAN_QUEST -eq 1 && $RC_QUEST -ne 0 ) || ( $RAN_PLAY -eq 1 && $RC_PLAY -ne 0 ) || ( $RAN_RESUME -eq 1 && $RC_RESUME -ne 0 ) || ( $RAN_AUTOPILOT -eq 1 && $RC_AUTOPILOT -ne 0 ) || ( $RAN_QUESTLOG -eq 1 && $RC_QUESTLOG -ne 0 ) || ( $RAN_INV -eq 1 && $RC_INV -ne 0 ) ]]; then
 	exit 1
 fi
 exit 0

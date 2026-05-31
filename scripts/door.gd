@@ -65,7 +65,7 @@ func _ready() -> void:
 func _refresh_prompt() -> void:
 	if locked:
 		prompt = lock_message
-	elif requires_kino and not GameState.kino_acquired:
+	elif requires_kino and not Inventory.has("kino_remote"):
 		prompt = requires_kino_message
 	elif _is_transition_door():
 		prompt = transition_prompt
@@ -77,7 +77,7 @@ func _refresh_prompt() -> void:
 func _on_interact(by: Node) -> void:
 	if locked:
 		return
-	if requires_kino and not GameState.kino_acquired:
+	if requires_kino and not Inventory.has("kino_remote"):
 		return
 	if _is_transition_door():
 		_transition(by)

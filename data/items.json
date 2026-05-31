@@ -1,0 +1,56 @@
+[
+  {
+    "id": "kino_remote",
+    "name": "Kino Remote",
+    "category": "tool",
+    "icon": "res://sprites/ui/items/kino_remote.png",
+    "description": "Handheld Ancient controller for the Kino reconnaissance orbs. Opens the ship map, ship systems, and the Kino fleet view.",
+    "stackable": false,
+    "show_in_inventory": true
+  },
+  {
+    "id": "kino_orb",
+    "name": "Kino",
+    "category": "tool",
+    "icon": "res://sprites/ui/items/kino_orb.png",
+    "description": "A floating Ancient camera drone. Launch it from the Kino Remote to scout ahead — through the Stargate or down a corridor.",
+    "stackable": true,
+    "show_in_inventory": true
+  },
+  {
+    "id": "rations",
+    "name": "Rations",
+    "category": "resource",
+    "icon": "res://sprites/ui/items/rations.png",
+    "description": "Vacuum-sealed crew meals salvaged from a supply crate. Keeps the crew fed.",
+    "stackable": true,
+    "show_in_inventory": true
+  },
+  {
+    "id": "lime",
+    "name": "Lime",
+    "category": "resource",
+    "icon": "res://sprites/ui/items/lime.png",
+    "description": "Calcium compound mined off-world. Feeds the CO2 scrubber cartridge bed — the ship's air depends on it.",
+    "stackable": true,
+    "show_in_inventory": true
+  },
+  {
+    "id": "small_fuse",
+    "name": "Small Fuse",
+    "category": "story_item",
+    "icon": "res://sprites/ui/items/small_fuse.png",
+    "description": "A small replacement fuse looted from a Shuttle Dock crate. The jammed door panel's blown fuse looks about this size.",
+    "stackable": true,
+    "show_in_inventory": true
+  },
+  {
+    "id": "large_fuse",
+    "name": "Large Fuse",
+    "category": "story_item",
+    "icon": "res://sprites/ui/items/large_fuse.png",
+    "description": "A heavy-duty fuse looted from a Shuttle Dock crate. Too big for the jammed door panel — pocketed for later.",
+    "stackable": true,
+    "show_in_inventory": true
+  }
+]

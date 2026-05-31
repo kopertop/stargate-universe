@@ -8,7 +8,7 @@ extends Node
 # Autoload. Owns the Kino Remote overlay UI — a five-page menu styled to
 # match the in-fiction handheld prop: a vertical strip of 5 blue buttons on
 # the left, an oval-styled "screen" panel on the right that shows the
-# active page's content. Available globally once GameState.kino_acquired
+# active page's content. Available globally once Inventory.has("kino_remote")
 # is true. Constructs its UI tree programmatically (no scene dependency)
 # so it can attach to every scene's root without per-scene wiring.
 
@@ -31,6 +31,15 @@ const PAGE_LABELS: PackedStringArray = ["MAP", "STATUS", "QUEST", "LOG", "INV", 
 const HANDHELD_PAGES: Array[int] = [PAGE_MAP, PAGE_STATUS, PAGE_QUEST, PAGE_LOG, PAGE_INVENTORY, PAGE_KINO_CONTROL]
 const CONSOLE_PAGES: Array[int] = [PAGE_MAP, PAGE_SHIP_SYSTEMS]
 const HANDHELD_TITLE: String = "KINO REMOTE — ANCIENT INTERFACE"
+
+# Inventory slot grid (PAGE_INVENTORY).
+const INVENTORY_COLUMNS: int = 5
+const INVENTORY_SLOT_SIZE: Vector2 = Vector2(92, 92)
+const INVENTORY_CATEGORY_COLORS: Dictionary = {
+	"tool": Color(0.30, 0.55, 0.85),
+	"resource": Color(0.30, 0.62, 0.42),
+	"story_item": Color(0.80, 0.62, 0.28),
+}
 const CONSOLE_TITLE: String = "DESTINY CONTROL TERMINAL"
 
 # Map projection padding: leaves a small margin around each deck's bounding box
@@ -157,6 +166,15 @@ func _ready() -> void:
 	# loop while the remote is open — without this, the readout staled the
 	# moment the panel was opened mid-decay.
 	GameState.scrubber_level_changed.connect(_on_scrubber_level_changed)
+	# Live-refresh the inventory page when any carried item changes while the
+	# remote is open (picked up a fuse, spent lime, …).
+	if Inventory.has_signal("changed"):
+		Inventory.changed.connect(_on_inventory_changed)
+
+
+func _on_inventory_changed() -> void:
+	if _open:
+		_refresh_inventory()
 
 
 func _on_room_discovered(_room_id: String) -> void:
@@ -437,13 +455,35 @@ func _build_inventory_page(parent: Control) -> void:
 	page.name = "Inventory"
 	page.anchor_right = 1.0
 	page.anchor_bottom = 1.0
-	page.add_theme_constant_override("separation", 8)
+	page.add_theme_constant_override("separation", 10)
 	parent.add_child(page)
 	_pages.append(page)
 	_label(page, "ITEMS", 16, Color(0.55, 0.85, 1.0, 1.0))
-	var inv: VBoxContainer = VBoxContainer.new()
-	inv.name = "InventoryBox"
-	page.add_child(inv)
+
+	# Slot grid (left) + selected-item detail panel (right). Both rebuilt by
+	# _refresh_inventory from Inventory.entries() — the page never names a
+	# specific item, so any catalog item appears automatically.
+	var body: HBoxContainer = HBoxContainer.new()
+	body.name = "InventoryBody"
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", 20)
+	page.add_child(body)
+
+	var grid: GridContainer = GridContainer.new()
+	grid.name = "SlotGrid"
+	grid.columns = INVENTORY_COLUMNS
+	grid.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	grid.add_theme_constant_override("h_separation", 12)
+	grid.add_theme_constant_override("v_separation", 12)
+	body.add_child(grid)
+
+	var detail: VBoxContainer = VBoxContainer.new()
+	detail.name = "DetailPanel"
+	detail.custom_minimum_size = Vector2(340, 0)
+	detail.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	detail.add_theme_constant_override("separation", 6)
+	body.add_child(detail)
 
 # Console-only page: ship-level systems (power / O2 / hull) and a life-support
 # diagnostics block. Distinct from the personal STATUS page (Eli's vitals) — a
@@ -542,11 +582,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("kino_remote"):
 		# Tab always CLOSES an open surface — including a console-opened map the
 		# player can't reopen yet (no handheld Kino). Only OPENING via Tab is
-		# gated on kino_acquired, so a diegetic console map isn't a soft-lock.
+		# gated on Inventory.has("kino_remote"), so a diegetic console map isn't a soft-lock.
 		if _open:
 			_close()
 			get_viewport().set_input_as_handled()
-		elif GameState.kino_acquired:
+		elif Inventory.has("kino_remote"):
 			# Tab = handheld Kino: fog-of-war, only discovered rooms.
 			_console_mode = false
 			_open_remote()
@@ -556,13 +596,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 # Public open API for external callers (control_console.gd). The Tab-key
-# path keeps the kino_acquired gate; this entrypoint lets diegetic in-world
+# path keeps the Inventory.has("kino_remote") gate; this entrypoint lets diegetic in-world
 # consoles open
 # the same surface even before the player has picked up the handheld remote,
 # since the menu represents the console's interface in that case rather than
 # the player's pocket prop.
 func open_remote(force: bool = false, console_mode: bool = false) -> void:
-	if not force and not GameState.kino_acquired:
+	if not force and not Inventory.has("kino_remote"):
 		return
 	_console_mode = console_mode
 	_open_remote()
@@ -603,7 +643,7 @@ func _apply_surface() -> void:
 # (which you can re-take control of at any time, from any scene).
 func _page_available(page: int) -> bool:
 	if page == PAGE_KINO_CONTROL:
-		return GameState.kino_orbs > 0 or not GameState.deployed_kinos.is_empty()
+		return Inventory.count("kino_orb") > 0 or not GameState.deployed_kinos.is_empty()
 	return true
 
 # Public close — mirrors open_remote() so external callers (control_console.gd,
@@ -1919,12 +1959,12 @@ func _refresh_kino_control() -> void:
 	if desc != null:
 		desc.text = "Launch a Kino to scout, or take control of any Kino you've left out in the field — wherever it is."
 	if count != null:
-		count.text = "  Kinos in hand:  %d / %d" % [GameState.kino_orbs, GameState.KINO_ORB_MAX]
+		count.text = "  Kinos in hand:  %d / %d" % [Inventory.count("kino_orb"), GameState.KINO_ORB_MAX]
 	if list == null:
 		return
 	for c in list.get_children():
 		c.queue_free()
-	if GameState.kino_orbs > 0:
+	if Inventory.count("kino_orb") > 0:
 		var launch: Button = _kino_action_button("LAUNCH NEW KINO", true)
 		launch.pressed.connect(_on_launch_kino)
 		list.add_child(launch)
@@ -1944,7 +1984,7 @@ func _refresh_kino_control() -> void:
 # stands (Eli stays put, holding the remote). In the gate room the player flies
 # it through the active Stargate to reach the planet.
 func _on_launch_kino() -> void:
-	if GameState.kino_orbs <= 0:
+	if Inventory.count("kino_orb") <= 0:
 		return
 	if not GameState.consume_kino_orb():
 		return
@@ -2091,23 +2131,128 @@ func _remote_mat(col: Color, glow: bool) -> StandardMaterial3D:
 
 func _refresh_inventory() -> void:
 	var page: Node = _pages[PAGE_INVENTORY]
-	var box: VBoxContainer = page.get_node_or_null("InventoryBox") as VBoxContainer
-	if box == null:
+	var grid: GridContainer = page.get_node_or_null("InventoryBody/SlotGrid") as GridContainer
+	if grid == null:
 		return
-	for c in box.get_children():
+	for c in grid.get_children():
 		c.queue_free()
-	# Inventory is "what the player is currently carrying", not a historical
-	# record of consumed items. Sealed-breach IDs (GameState.breaches_sealed)
-	# live in the quest log as world-state for the seal_breach predicate;
-	# rendering them here as "Emergency Seal — used (N)" confused players
-	# into thinking they still had a seal in their pack. Same reason fuse
-	# flags aren't shown — once the small fuse is slotted into the door
-	# panel, it's spent. Only show things the player can still act on.
-	if GameState.kino_acquired:
-		_label(box, "  • Kino Remote", 14, Color.WHITE)
-	for resource_type in GameState.resources.keys():
-		var count: int = GameState.resource_count(String(resource_type))
-		if count > 0:
-			_label(box, "  • %s × %d" % [String(resource_type).capitalize(), count], 14, Color.WHITE)
-	if box.get_child_count() == 0:
-		_label(box, "  (empty)", 14, Color(0.7, 0.7, 0.7, 0.85))
+	# Single generic pass over the unified inventory model. Every carried
+	# item — Kino Remote, rations, lime, AND the looted fuses — comes back
+	# from one enumerable surface, so nothing can silently fail to render
+	# (the looted-fuse bug, #41). Item metadata is data (data/items.json).
+	var entries: Array = Inventory.entries()
+	for entry in entries:
+		grid.add_child(_make_inventory_slot(entry))
+	if entries.is_empty():
+		_label(grid, "(empty)", 14, Color(0.7, 0.7, 0.7, 0.85))
+		_show_item_hint("Your pack is empty.")
+	else:
+		# Auto-select the first item so the detail panel isn't blank.
+		_show_item_detail(entries[0]["def"], int(entries[0]["count"]))
+
+
+# Build one inventory slot: category-tinted tile, icon (texture if the catalog
+# provides one, else a procedural glyph), a stack-count badge, a hover tooltip,
+# and click-to-inspect wiring. Used only by _refresh_inventory.
+func _make_inventory_slot(entry: Dictionary) -> Control:
+	var def: Dictionary = entry["def"]
+	var id: String = String(entry["id"])
+	var cnt: int = int(entry["count"])
+	var item_name: String = String(def.get("name", id.capitalize()))
+	var category: String = String(def.get("category", "resource"))
+	var base: Color = INVENTORY_CATEGORY_COLORS.get(category, Color(0.42, 0.44, 0.5))
+
+	var slot: Panel = Panel.new()
+	slot.custom_minimum_size = INVENTORY_SLOT_SIZE
+	slot.tooltip_text = "%s\n%s" % [item_name, String(def.get("description", ""))]
+	var sb: StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = Color(base.r, base.g, base.b, 0.22)
+	sb.border_color = Color(base.r, base.g, base.b, 0.9)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(8)
+	slot.add_theme_stylebox_override("panel", sb)
+
+	var icon_path: String = String(def.get("icon", ""))
+	if icon_path != "" and ResourceLoader.exists(icon_path):
+		var tex: TextureRect = TextureRect.new()
+		tex.texture = load(icon_path)
+		tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tex.anchor_right = 1.0
+		tex.anchor_bottom = 1.0
+		tex.offset_left = 8
+		tex.offset_top = 8
+		tex.offset_right = -8
+		tex.offset_bottom = -8
+		tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(tex)
+	else:
+		var glyph: Label = Label.new()
+		glyph.text = _item_glyph(item_name)
+		glyph.add_theme_font_size_override("font_size", 32)
+		glyph.add_theme_color_override("font_color", Color(0.93, 0.96, 1.0))
+		glyph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		glyph.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		glyph.anchor_right = 1.0
+		glyph.anchor_bottom = 1.0
+		glyph.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(glyph)
+
+	if cnt > 1:
+		var badge: Label = Label.new()
+		badge.text = "×%d" % cnt
+		badge.add_theme_font_size_override("font_size", 15)
+		badge.add_theme_color_override("font_color", Color.WHITE)
+		badge.anchor_left = 1.0
+		badge.anchor_top = 1.0
+		badge.anchor_right = 1.0
+		badge.anchor_bottom = 1.0
+		badge.offset_left = -36
+		badge.offset_top = -26
+		badge.offset_right = -6
+		badge.offset_bottom = -4
+		badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		badge.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(badge)
+
+	slot.gui_input.connect(func(ev: InputEvent) -> void:
+		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+			_show_item_detail(def, cnt))
+	return slot
+
+
+# First 1–2 letters of the item name, for the procedural icon when no texture
+# is supplied. Real art drops in later via the catalog `icon` field.
+func _item_glyph(item_name: String) -> String:
+	var first_word: String = item_name.strip_edges().split(" ")[0]
+	return first_word.substr(0, 2).capitalize() if first_word.length() >= 2 else first_word.to_upper()
+
+
+func _show_item_detail(def: Dictionary, cnt: int) -> void:
+	var page: Node = _pages[PAGE_INVENTORY]
+	var detail: VBoxContainer = page.get_node_or_null("InventoryBody/DetailPanel") as VBoxContainer
+	if detail == null:
+		return
+	for c in detail.get_children():
+		c.queue_free()
+	var title: String = String(def.get("name", ""))
+	if cnt > 1:
+		title += "  ×%d" % cnt
+	_label(detail, title, 18, Color(0.85, 0.93, 1.0))
+	var cat: String = String(def.get("category", "")).replace("_", " ").capitalize()
+	_label(detail, cat, 12, Color(0.55, 0.75, 0.95))
+	detail.add_child(HSeparator.new())
+	var desc: Label = _label(detail, String(def.get("description", "")), 13, Color(0.82, 0.86, 0.92))
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc.custom_minimum_size = Vector2(320, 0)
+
+
+func _show_item_hint(text: String) -> void:
+	var page: Node = _pages[PAGE_INVENTORY]
+	var detail: VBoxContainer = page.get_node_or_null("InventoryBody/DetailPanel") as VBoxContainer
+	if detail == null:
+		return
+	for c in detail.get_children():
+		c.queue_free()
+	_label(detail, text, 13, Color(0.7, 0.7, 0.7, 0.85))

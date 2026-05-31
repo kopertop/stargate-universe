@@ -49,8 +49,6 @@ func _ensure_collider() -> void:
 
 
 func _on_interact(_by: Node) -> void:
-	# Diegetic boot sound — Ancient terminal waking up.
-	Audio.play("res://sounds/terminal_boot.ogg")
 	GameState.add_log("Console: Ancient interface comes online.")
 
 	# First post-crisis access runs the diagnostic (advances the quest to the

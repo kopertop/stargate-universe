@@ -233,6 +233,11 @@ func _refresh_action_bar() -> void:
 func _make_action_slot(item_id: String, key_label: String, attention: bool) -> Panel:
 	var slot: Panel = Panel.new()
 	slot.custom_minimum_size = ACTION_SLOT_SIZE
+	# Clickable, same as pressing the keybind. The icon/label children are
+	# MOUSE_FILTER_IGNORE, so the Panel itself receives the click.
+	slot.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	slot.tooltip_text = "Open the Kino Remote  [%s]" % key_label
+	slot.gui_input.connect(_on_action_slot_input.bind(item_id))
 	var sb: StyleBoxFlat = StyleBoxFlat.new()
 	sb.bg_color = Color(0.0, 0.0, 0.0, 0.55)
 	sb.border_color = ACTION_BORDER_ATTENTION if attention else ACTION_BORDER
@@ -267,6 +272,23 @@ func _make_action_slot(item_id: String, key_label: String, attention: bool) -> P
 	key.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	slot.add_child(key)
 	return slot
+
+
+# Left-clicking an action-bar slot fires the tool's action — the same thing its
+# keybind does. Today the only tool is the Kino Remote, whose action mirrors the
+# Tab key (KinoRemote.open_remote, gated on owning the remote). Add a match arm
+# here when more tools are added.
+func _on_action_slot_input(event: InputEvent, item_id: String) -> void:
+	if not (event is InputEventMouseButton):
+		return
+	var mb: InputEventMouseButton = event
+	if not (mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT):
+		return
+	match item_id:
+		"kino_remote":
+			if has_node("/root/KinoRemote"):
+				get_node("/root/KinoRemote").call("open_remote")
+	accept_event()
 
 func _on_dialogue_shown(character_name: String, line: String) -> void:
 	_dialog_name.text = character_name

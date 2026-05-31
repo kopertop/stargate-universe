@@ -288,21 +288,29 @@ func _initialize() -> void:
 	_expect(gs.kino_zoom == 1.7, "deserialize restores kino_zoom")
 	_expect(int((gs.kino_marker as Dictionary).get("floor", -1)) == 0, "deserialize restores kino_marker.floor")
 
-	# --- Phase F: discovered-lime tracking (compass fog-of-war) --------------
+	# --- Phase F: discovered-POI tracking (compass fog-of-war) ---------------
+	# Lime is the "lime" category in the one discovered_pois registry; the
+	# discover_lime/is_lime_discovered helpers are thin wrappers over it.
 	gs.discover_lime("LimeNode1")
 	gs.discover_lime("LimeNode1")
-	_expect(gs.lime_discovered.size() == 1, "discover_lime is idempotent")
+	_expect(gs.discovered_pois.size() == 1, "discover_lime is idempotent")
 	_expect(gs.is_lime_discovered("LimeNode1"), "is_lime_discovered true after discover")
 	_expect(not gs.is_lime_discovered("LimeNode9"), "undiscovered lime reads false")
 	gs.discover_lime("")
-	_expect(gs.lime_discovered.size() == 1, "discover_lime ignores empty key")
+	_expect(gs.discovered_pois.size() == 1, "discover_lime ignores empty key")
+	# A non-lime POI lands in the same registry with its own category.
+	gs.discover_poi("Poi_ruin_1", "ruin", "Ancient Ruin")
+	_expect(gs.is_poi_discovered("Poi_ruin_1"), "discover_poi records a non-lime POI")
+	_expect(String((gs.discovered_pois["Poi_ruin_1"] as Dictionary).get("category")) == "ruin",
+		"POI record keeps its category")
 	var lime_snapshot: Dictionary = gs.serialize()
-	_expect((lime_snapshot.get("lime_discovered", []) as Array).has("LimeNode1"),
-		"serialize captures lime_discovered")
+	_expect((lime_snapshot.get("discovered_pois", {}) as Dictionary).has("LimeNode1"),
+		"serialize captures discovered_pois")
 	gs.reset()
-	_expect(gs.lime_discovered.is_empty(), "reset clears lime_discovered")
+	_expect(gs.discovered_pois.is_empty(), "reset clears discovered_pois")
 	gs.deserialize(lime_snapshot, 1)
-	_expect(gs.is_lime_discovered("LimeNode1"), "deserialize restores lime_discovered")
+	_expect(gs.is_lime_discovered("LimeNode1"), "deserialize restores lime discovery")
+	_expect(gs.is_poi_discovered("Poi_ruin_1"), "deserialize restores non-lime POI discovery")
 
 	# --- Phase G: ongoing scrubber resource loop ------------------------------
 	# Force the loop's preconditions (skip the full repair flow — tested above).

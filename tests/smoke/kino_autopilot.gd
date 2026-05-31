@@ -32,7 +32,7 @@ class FakeLime extends Node3D:
 	func is_discovered() -> bool:
 		return _discovered
 
-	func _mark_discovered() -> void:
+	func _mark_discovered(_announce: bool = false) -> void:
 		_discovered = true
 
 
@@ -84,6 +84,8 @@ func _spawn_lime(pos: Vector3, name_suffix: String) -> Node3D:
 	lime.name = "TestLime_" + name_suffix
 	lime.position = pos
 	lime.add_to_group("lime_node")
+	# Auto-search now scans the shared "discoverable" group (lime + POIs alike).
+	lime.add_to_group("discoverable")
 	root.add_child(lime)
 	return lime
 
@@ -225,7 +227,7 @@ func _test_discovery_sweep() -> void:
 	drone.call("start_autopilot")
 	_expect(near.is_discovered() == false, "near lime starts undiscovered")
 	_expect(far.is_discovered() == false, "far lime starts undiscovered")
-	drone.call("_autopilot_discover_nearby")
+	drone.call("_detect_nearby_discoverables")
 	_expect(near.is_discovered() == true, "near lime flips to discovered after sweep")
 	_expect(far.is_discovered() == false, "far lime is OUT of range and stays undiscovered")
 

@@ -26,7 +26,6 @@ const VERT_SPEED: float = 6.0         # m/s, ascend/descend
 const SPRINT_MULT: float = 3.0        # Shift boost
 const ACCEL_DAMP: float = 5.0         # velocity lerp factor (higher = snappier)
 const MOUSE_SENS: float = 0.0025      # radians per pixel of mouse motion
-const LIME_CONFIRM_RANGE: float = 7.0 # metres to a lime node before "confirmed"
 const GATE_CROSS_RADIUS: float = 2.6  # metres from the ship gate that warps us through
 const INTERACT_REACH: float = 4.0     # metres the drone can "open" a door from
 const INTERACT_MIN_AIM: float = 0.4   # min camera-forward·to-door alignment (a soft cone)
@@ -60,9 +59,7 @@ var _ending: bool = false             # recall or gate-cross in progress
 # return gate, or a Kino that just arrived in the gate room) doesn't instantly
 # bounce straight back through it.
 var _gate_armed: bool = false
-var _lime_confirmed: bool = false
 var _camera: Camera3D = null
-var _caption: Label = null
 var _hint: Label = null
 var _atmo_box: VBoxContainer = null
 
@@ -210,22 +207,6 @@ func _build_overlay() -> void:
 	_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(_hint)
 
-	_caption = Label.new()
-	_caption.anchor_left = 0.0
-	_caption.anchor_right = 1.0
-	_caption.anchor_top = 0.5
-	_caption.offset_left = 60.0
-	_caption.offset_right = -60.0
-	_caption.offset_top = -40.0
-	_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_caption.add_theme_font_size_override("font_size", 24)
-	_caption.add_theme_color_override("font_color", Color(0.72, 1.0, 0.45, 1.0))
-	_caption.add_theme_color_override("font_outline_color", Color(0.0, 0.10, 0.0, 0.9))
-	_caption.add_theme_constant_override("outline_size", 7)
-	_caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_caption.visible = false
-	layer.add_child(_caption)
-
 # Top-right atmosphere panel. In ship mode (no telemetry yet) it shows a
 # placeholder; once on the planet, planet.gd hands us the readings.
 func _build_atmo_readout(layer: CanvasLayer) -> void:
@@ -332,13 +313,9 @@ func _physics_process(delta: float) -> void:
 	var target_vel: Vector3 = Vector3(planar.x, clampf(move_vert, -1.0, 1.0) * VERT_SPEED * boost, planar.z)
 	velocity = velocity.lerp(target_vel, clampf(ACCEL_DAMP * delta, 0.0, 1.0))
 	move_and_slide()
-	# Discover lime while manually piloting too (autopilot runs its own sweep in
-	# _drive_autopilot). Throttled to 5 Hz, shared accumulator — the two branches
-	# are mutually exclusive so there's no double-count.
-	_discover_t += delta
-	if _discover_t >= 0.2:
-		_discover_t = 0.0
-		_detect_nearby_lime()
+	# NOTE: discovery is AUTO-SEARCH only (it lives in _drive_autopilot). Manual
+	# piloting deliberately does NOT auto-discover — the player is the finder, so
+	# there's no "Kino found" toast while you're hands-on.
 	_drive_context_action()
 
 
@@ -353,7 +330,6 @@ func _drive_context_action() -> void:
 	var gate: Node3D = _find_crossable_gate()
 	if gate != null:
 		_try_gate_crossing(gate)
-	_check_lime_proximity()
 
 # Warp to the destination when the drone reaches the open Stargate. Uses the
 # gate's position directly so we bypass the player-only quest gating in
@@ -394,31 +370,6 @@ func _find_crossable_gate() -> Node3D:
 			return n
 	return null
 
-# Confirm the scout once the drone gets close to any lime deposit. Cosmetic —
-# the actual quest advance happens on recall — but it gives the player the
-# "I found it" beat the design calls for before they pull the Kino back.
-func _check_lime_proximity() -> void:
-	if _lime_confirmed:
-		return
-	for node in get_tree().get_nodes_in_group("interactable"):
-		var rn: Node3D = node as Node3D
-		if rn == null:
-			continue
-		var script: Script = rn.get_script()
-		if script == null or not script.resource_path.ends_with("resource_node.gd"):
-			continue
-		if rn.global_position.distance_to(global_position) <= LIME_CONFIRM_RANGE:
-			# Close-range "confirmed" flourish (sound + centre caption). The log
-			# toast is emitted by GameState.discover_lime via the detect sweep, so
-			# we don't add_log here too — that would double up the feed.
-			_lime_confirmed = true
-			Audio.play("res://sounds/menu_open.ogg")
-			if _caption != null:
-				_caption.text = "LIME DEPOSITS CONFIRMED"
-				_caption.visible = true
-			_refresh_hint()
-			return
-
 func _refresh_hint() -> void:
 	if _hint == null:
 		return
@@ -432,10 +383,8 @@ func _refresh_hint() -> void:
 		return
 	if launch_in_ship:
 		_hint.text = controls + "\nFly through the active Stargate to scout the far side"
-	elif _lime_confirmed:
-		_hint.text = controls + "\nLime confirmed — the Kino stays here when you close the remote"
 	else:
-		_hint.text = controls + "\nScout for lime (it may be hidden behind the ridges)"
+		_hint.text = controls + "\nClose the remote [E] to leave the Kino on auto-search"
 
 # Trimmed copy of player.gd::_find_interact_target — finds the best transition
 # Door the drone is aimed at, within INTERACT_REACH. Camera-forward is flattened
@@ -644,7 +593,7 @@ func start_autopilot() -> void:
 # instead of doubling up.
 func _autopilot_pick_target() -> void:
 	var candidates: Array = []
-	for n in get_tree().get_nodes_in_group("lime_node"):
+	for n in get_tree().get_nodes_in_group("discoverable"):
 		if not (n is Node3D):
 			continue
 		if n.has_method("is_discovered") and n.call("is_discovered") == true:
@@ -652,14 +601,14 @@ func _autopilot_pick_target() -> void:
 		if n.get("depleted") == true:
 			continue
 		candidates.append(n)
-	# Closest undiscovered lime first.
+	# Closest undiscovered point-of-interest first (lime, ruins, ore, …).
 	candidates.sort_custom(_compare_distance)
 	for c in candidates:
 		var p: Vector3 = (c as Node3D).global_position
 		if not _is_target_too_close(p):
 			_autopilot_target = Vector3(p.x, AUTO_CRUISE_Y, p.z)
 			return
-	# No claimable lime — wander to an unclaimed quadrant instead.
+	# Nothing left to claim — wander to an unclaimed quadrant instead.
 	_autopilot_target = _autopilot_random_far_point()
 
 
@@ -733,23 +682,24 @@ func _drive_autopilot(delta: float) -> void:
 	var face_yaw: float = atan2(-planar_dir.x, -planar_dir.z)
 	rotation.y = lerp_angle(rotation.y, face_yaw, delta * 4.0)
 	move_and_slide()
-	# Discovery sweep — non-discovered lime within AUTO_DETECT_RANGE flips to
-	# discovered (resource_node._mark_discovered records it in GameState).
-	# Throttled to 5 Hz; the loop is small but uniform per-frame work isn't
-	# free with multiple drones patrolling.
+	# Auto-search discovery sweep — any un-discovered POI within AUTO_DETECT_RANGE
+	# flips to discovered (the node's _mark_discovered records it in GameState and,
+	# because this is auto-search, fires the named "Kino found:" toast).
+	# Throttled to 5 Hz; the loop is small but uniform per-frame work isn't free
+	# with multiple drones patrolling.
 	_discover_t += delta
 	if _discover_t >= 0.2:
 		_discover_t = 0.0
-		_detect_nearby_lime()
+		_detect_nearby_discoverables()
 
 
-# Mark every un-discovered lime deposit within AUTO_DETECT_RANGE as discovered.
-# Shared by autopilot patrol AND manual piloting (called from _physics_process)
-# so flying past a deposit reliably reveals it → compass pip + batched toast via
-# GameState.discover_lime. The drone is not in group "player", so resource_node's
-# own 50 m fog-of-war sweep never fires for it — this is the drone's eyes.
-func _detect_nearby_lime() -> void:
-	for n in get_tree().get_nodes_in_group("lime_node"):
+# Auto-search ONLY: mark every un-discovered POI within AUTO_DETECT_RANGE found.
+# Scans the shared "discoverable" group (lime deposits, ruins, ore, water, …).
+# Passes announce=true so each find toasts by name. The drone isn't in group
+# "player", so resource_node's own 50 m fog-of-war never fires for it — this
+# sweep is the Kino's eyes.
+func _detect_nearby_discoverables() -> void:
+	for n in get_tree().get_nodes_in_group("discoverable"):
 		if not (n is Node3D):
 			continue
 		if n.has_method("is_discovered") and n.call("is_discovered") == true:
@@ -761,7 +711,7 @@ func _detect_nearby_lime() -> void:
 			node3d.global_position.x - global_position.x,
 			node3d.global_position.z - global_position.z).length()
 		if d <= AUTO_DETECT_RANGE and n.has_method("_mark_discovered"):
-			n.call("_mark_discovered")
+			n.call("_mark_discovered", true)
 
 
 # ─── ship auto-explore (issue #50, Phase 4) ──────────────────────────────

@@ -24,12 +24,20 @@ func _ready() -> void:
 	super()
 	collision_layer = 1 | 4
 	_refresh_prompt()
-	# Only lime deposits track discovery; other resources don't feed the compass.
+	# A mineable deposit is a discoverable POI (category = its resource type), so
+	# the Kino's auto-search finds it and it shows on the compass. The shared
+	# "discoverable" group is what the drone's detection sweep scans.
+	add_to_group("discoverable")
 	if resource_type == GameState.AIR_LIME_RESOURCE:
-		_discovered = GameState.is_lime_discovered(name)
+		_discovered = GameState.is_poi_discovered(name)
 		set_process(not _discovered)
 	else:
 		set_process(false)
+
+
+# Label shown by the discovery toast / compass — "Lime deposit", "Iron deposit", …
+func poi_label() -> String:
+	return "%s deposit" % resource_type.capitalize()
 
 func _process(delta: float) -> void:
 	# Guard against the "no frame ticked" Godot gotcha: global_position can read
@@ -50,7 +58,7 @@ func _process(delta: float) -> void:
 func _on_interact(_by: Node) -> void:
 	if depleted:
 		return
-	_mark_discovered()   # mining a deposit obviously discovers it
+	_mark_discovered()   # mining a deposit obviously discovers it (quietly — not an auto-search find)
 	depleted = true
 	enabled = false
 	GameState.add_resource(resource_type, amount, source_label)
@@ -61,13 +69,14 @@ func _on_interact(_by: Node) -> void:
 func is_discovered() -> bool:
 	return _discovered
 
-func _mark_discovered() -> void:
+# `announce` is true only when the Kino's auto-search sweep is the finder, so the
+# toast names the deposit; mining/foot discovery records it silently.
+func _mark_discovered(announce: bool = false) -> void:
 	if _discovered:
 		return
 	_discovered = true
 	set_process(false)
-	if resource_type == GameState.AIR_LIME_RESOURCE:
-		GameState.discover_lime(name)
+	GameState.discover_poi(name, resource_type, poi_label(), announce)
 
 func _planar(a: Vector3, b: Vector3) -> float:
 	return Vector2(a.x - b.x, a.z - b.z).length()

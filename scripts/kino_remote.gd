@@ -19,16 +19,17 @@ const PAGE_LOG: int = 3
 const PAGE_INVENTORY: int = 4
 const PAGE_SHIP_SYSTEMS: int = 5
 const PAGE_KINO_CONTROL: int = 6
+const PAGE_SETTINGS: int = 7
 # Short labels rendered on the nav buttons (Ancient operator typically
 # reads these in an unknown alphabet — for now plain ASCII). Indexed by PAGE_*.
-const PAGE_LABELS: PackedStringArray = ["MAP", "STATUS", "QUEST", "LOG", "INV", "SYSTEMS", "KINO"]
+const PAGE_LABELS: PackedStringArray = ["MAP", "STATUS", "QUEST", "LOG", "INV", "SYSTEMS", "KINO", "COMPASS"]
 
 # Per-surface menus. The handheld Kino is the player's personal device (map +
 # personal stats/quest/log/inventory). A wall-mounted control terminal is the
 # SHIP's interface — it shares the map but swaps the personal pages for ship
 # systems, and never exposes inventory/personal stats. Adding a new console
 # variant later is just a new page-set constant.
-const HANDHELD_PAGES: Array[int] = [PAGE_MAP, PAGE_STATUS, PAGE_QUEST, PAGE_LOG, PAGE_INVENTORY, PAGE_KINO_CONTROL]
+const HANDHELD_PAGES: Array[int] = [PAGE_MAP, PAGE_STATUS, PAGE_QUEST, PAGE_LOG, PAGE_INVENTORY, PAGE_KINO_CONTROL, PAGE_SETTINGS]
 const CONSOLE_PAGES: Array[int] = [PAGE_MAP, PAGE_SHIP_SYSTEMS]
 const HANDHELD_TITLE: String = "KINO REMOTE — ANCIENT INTERFACE"
 
@@ -93,6 +94,9 @@ var _header_label: Label = null
 var _pages: Array[Control] = []
 var _buttons: Array[Button] = []
 var _active_page: int = PAGE_MAP
+# COMPASS settings page: GameState flag name → its CheckButton, so _refresh_settings
+# can re-sync the toggles to loaded/changed state when the remote opens.
+var _settings_checks: Dictionary = {}
 var _open: bool = false
 var _initialized: bool = false
 # Single Control that owns the entire map geometry — per-room grids,
@@ -314,6 +318,7 @@ func _init_ui() -> void:
 	_build_inventory_page(page_stack)
 	_build_ship_systems_page(page_stack)
 	_build_kino_control_page(page_stack)
+	_build_settings_page(page_stack)
 
 	var footer: Label = Label.new()
 	footer.text = "[Tab] Close  •  [Esc] Resume"
@@ -531,6 +536,48 @@ func _build_kino_control_page(parent: Control) -> void:
 	page.add_child(list)
 
 
+# COMPASS settings page: per-category toggles for the always-on HUD direction
+# compass (planet_compass.gd reads these GameState flags live each frame, so a
+# toggle takes effect the instant it changes). Persisted via GameState.
+func _build_settings_page(parent: Control) -> void:
+	var page: VBoxContainer = VBoxContainer.new()
+	page.name = "Settings"
+	page.anchor_right = 1.0
+	page.anchor_bottom = 1.0
+	page.add_theme_constant_override("separation", 10)
+	parent.add_child(page)
+	_pages.append(page)
+	_label(page, "COMPASS MARKERS", 16, Color(0.55, 0.85, 1.0, 1.0))
+	_label(page, "  Choose what the direction compass displays.", 13, Color(0.82, 0.92, 1.0, 0.9))
+	page.add_child(HSeparator.new())
+	_settings_check(page, "Lime deposits", "compass_show_lime")
+	_settings_check(page, "Kino drones", "compass_show_kinos")
+	_settings_check(page, "Companions / away-team", "compass_show_companions")
+	_settings_check(page, "Gate & objective", "compass_show_gate")
+
+
+func _settings_check(parent: Control, label: String, flag: String) -> void:
+	var cb: CheckButton = CheckButton.new()
+	cb.text = label
+	cb.button_pressed = GameState.get(flag) == true
+	cb.focus_mode = Control.FOCUS_NONE
+	cb.add_theme_color_override("font_color", Color.WHITE)
+	cb.add_theme_color_override("font_pressed_color", Color.WHITE)
+	cb.add_theme_color_override("font_hover_color", Color.WHITE)
+	cb.add_theme_font_size_override("font_size", 15)
+	cb.toggled.connect(func(on: bool) -> void: GameState.set(flag, on))
+	Audio.attach_ui_hover(cb)
+	parent.add_child(cb)
+	_settings_checks[flag] = cb
+
+
+func _refresh_settings() -> void:
+	for flag in _settings_checks:
+		var cb: CheckButton = _settings_checks[flag]
+		if is_instance_valid(cb):
+			cb.button_pressed = GameState.get(flag) == true
+
+
 func _kino_action_button(text: String, primary: bool) -> Button:
 	var b: Button = Button.new()
 	b.text = text
@@ -722,6 +769,7 @@ func _refresh() -> void:
 	_refresh_inventory()
 	_refresh_ship_systems()
 	_refresh_kino_control()
+	_refresh_settings()
 
 # Rebuild the entire map page: dark backdrop, HUD chrome (title, deck label,
 # zoom slider, status readouts), and a single MapView Control whose _draw

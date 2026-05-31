@@ -203,6 +203,13 @@ func _apply_pending_save_spawn() -> void:
 		return
 	_player.global_position = GameState.pending_spawn_position
 	_player.rotation.y = GameState.pending_spawn_yaw
+	# Align the camera rig to the restored heading. Without this the View keeps the
+	# yaw it snapped to in its own _ready (before this restore ran), and player.gd's
+	# idle-facing (_facing_yaw = view.rotation.y) would swing the body back to that
+	# default — losing the heading the player had when they left. Mirrors
+	# room.gd::_place_player / planet.gd's restore.
+	if _view != null and _view.has_method("snap_to_target"):
+		_view.snap_to_target()
 
 # ----- arrival ---------------------------------------------------------------
 

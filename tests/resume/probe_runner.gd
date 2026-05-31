@@ -44,10 +44,10 @@ func _run() -> void:
 			},
 		},
 	}
-	var f: FileAccess = FileAccess.open(SaveManager.save_path, FileAccess.WRITE)
-	f.store_string(JSON.stringify(snapshot, "\t"))
-	f.close()
-	print("[probe] wrote save to ", SaveManager.save_path)
+	var store: SaveStore = SaveStore.new(SaveManager._store.saves_root)
+	var meta: Dictionary = store.build_meta_from_snapshot("autosave", snapshot)
+	store.write_snapshot("autosave", snapshot, meta)
+	print("[probe] wrote save to ", store.primary_path("autosave"))
 	print("[probe] has_save() = ", SaveManager.has_save())
 
 	# Wipe in-memory state the way New Game would, so we know the resume —

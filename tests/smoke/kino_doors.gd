@@ -64,6 +64,7 @@ func _run() -> void:
 	await _test_route_refuses_gate_room(gs, router)
 	await _test_recall_cross_room_reloads(gs)
 	await _test_deployed_kino_crosses_open_gate(gs, router)
+	await _test_kino_returns_planet_to_ship(gs, router)
 
 	_report()
 
@@ -102,14 +103,16 @@ func _cleanup() -> void:
 	await process_frame
 
 
-# A planet_gate.gd instance configured as the ship→planet ("to_planet") gate.
-# Added to the tree so its _ready joins group "planet_gate" (what the drone's
-# _find_ship_gate scans).
-func _make_ship_gate() -> Node:
+# A planet_gate.gd instance. Added to the tree so its _ready joins group
+# "planet_gate" (what the drone's _find_crossable_gate scans). Defaults to the
+# ship's to_planet gate; pass mode/target for the planet's to_ship return gate.
+func _make_ship_gate(mode: String = "to_planet", target_scene: String = "res://scenes/planet.tscn",
+		target_spawn: String = "FromGate") -> Node:
 	var g: Area3D = Area3D.new()
 	g.set_script(PlanetGateScript)
-	g.set("mode", "to_planet")
-	g.set("target_scene", "res://scenes/planet.tscn")
+	g.set("mode", mode)
+	g.set("target_scene", target_scene)
+	g.set("target_spawn", target_spawn)
 	return g
 
 
@@ -297,7 +300,14 @@ func _test_deployed_kino_crosses_open_gate(gs: Node, router: Node) -> void:
 	(drone as Node3D).global_position = (gate as Node3D).global_position
 	await process_frame
 
-	# Act: run the per-frame context dispatch (what _physics_process calls).
+	# Latch: a drone sitting ON the gate must NOT cross until it has left the
+	# radius once — otherwise a drone that SPAWNS on a gate insta-bounces.
+	drone.call("_drive_context_action")
+	_expect(drone.get("_ending") == false,
+		"un-armed Kino on the gate does NOT cross (anti spawn-on-gate bounce latch)")
+
+	# Act: arm (drone left the radius once), then run the per-frame dispatch.
+	drone.set("_gate_armed", true)
 	drone.call("_drive_context_action")
 	_expect(drone.get("_ending") == true,
 		"DEPLOYED kino (launch_in_ship=false) crosses an OPEN ship gate — the save→continue bug")
@@ -313,10 +323,44 @@ func _test_deployed_kino_crosses_open_gate(gs: Node, router: Node) -> void:
 	await process_frame
 	var drone2: Node = _spawn_drone("closedgate")
 	(drone2 as Node3D).global_position = (gate2 as Node3D).global_position
+	drone2.set("_gate_armed", true)              # isolate the is_gate_open() guard
 	await process_frame
 	drone2.call("_drive_context_action")
 	_expect(drone2.get("_ending") == false,
 		"no crossing through a CLOSED gate (is_gate_open() guard)")
+
+	await _cleanup()
+	router.set("is_transitioning", false)
+
+
+# An open Stargate is two-way: a Kino piloting on the PLANET flies BACK through
+# the planet's to_ship gate to the gate room. The old _find_ship_gate only
+# matched to_planet gates, so the return crossing never fired.
+func _test_kino_returns_planet_to_ship(gs: Node, router: Node) -> void:
+	print("\n--- piloted Kino flies BACK planet→ship through the open to_ship gate ---")
+	await _cleanup()
+	gs.call("reset")
+	gs.set("kino_pilot_mode", true)
+	gs.set("lime_planet_dialed", true)            # gate open
+	gs.set("current_scene_path", "res://scenes/planet.tscn")
+	router.set("is_transitioning", true)
+
+	# Matches scripts/planet_generator.gd's real PlanetReturnGate config.
+	var gate: Node = _make_ship_gate("to_ship", "res://scenes/gate_room.tscn", "FromPlanet")
+	root.add_child(gate)
+	gate.name = "TestGate_toship"
+	await process_frame
+
+	var drone: Node = _spawn_drone("return")
+	(drone as Node3D).global_position = (gate as Node3D).global_position
+	drone.set("_gate_armed", true)               # already left the gate while scouting
+	await process_frame
+
+	drone.call("_drive_context_action")
+	_expect(drone.get("_ending") == true,
+		"Kino crosses BACK through the planet's to_ship gate (open gate is two-way)")
+	_expect(String(gs.get("kino_pilot_arrival_spawn")) == "FromPlanet",
+		"return crossing stashes the gate's target_spawn (FromPlanet) for the gate-room arrival")
 
 	await _cleanup()
 	router.set("is_transitioning", false)

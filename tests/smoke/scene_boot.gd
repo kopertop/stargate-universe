@@ -123,6 +123,8 @@ func _run_checks() -> void:
 	await _check_kino_dispenser()
 	await _check_gate_room_phase_e_crew()
 	await _check_post_scout_gate()
+	await _check_assembled_away_team()
+	await _check_kino_gate_arrival()
 	await _check_returned_away_team()
 	await _check_hud_compass()
 	_report()
@@ -545,6 +547,116 @@ func _check_post_scout_gate() -> void:
 		ok = false
 	if ok:
 		print("  OK (Scott supportive + gate crew present for the away-party briefing)")
+		_passes += 1
+	root.remove_child(inst)
+	await process_frame
+	inst.free()
+	_game_state.call("reset")
+	if router != null:
+		router.set("instant_mode", prev_instant)
+
+
+# Duplicate-Park regression: at MINE_LIME (after the briefing) the OUTBOUND away
+# team musters at the gate via _assemble_away_team_at_gate. Each member who also
+# has a standing scout-window NPC (Park at the console, Scott at the briefing
+# spot) must have that standing copy HIDDEN, or the same person shows up twice.
+# Rush is NOT on the team, so his standing NPC stays. Spawn is guarded by
+# instant_mode (must be OFF); skip the arrival cinematic via the save-spawn path.
+func _check_assembled_away_team() -> void:
+	print("\n=== duplicate-Park: outbound away-team muster dedups standing NPCs ===")
+	var router: Node = root.get_node_or_null("SceneRouter")
+	var prev_instant: bool = router != null and router.get("instant_mode") == true
+	if router != null:
+		router.set("instant_mode", false)
+	_game_state.call("reset")
+	_game_state.set("quest_step", "mine_lime")
+	_game_state.set("kino_scout_done", true)
+	_game_state.set("away_party_briefed", true)        # suppress the briefing one-shot → assemble
+	_game_state.set("returned_from_lime_planet", false)
+	# Take the save-spawn branch so _run_arrival's cinematic doesn't play headlessly.
+	_game_state.set("skip_arrival_cinematic", true)
+	_game_state.set("pending_spawn_position", Vector3(0.0, 0.05, 0.0))
+	var packed := load("res://scenes/gate_room.tscn") as PackedScene
+	if packed == null:
+		_fail("res://scenes/gate_room.tscn", "load() returned null for assembled-team check")
+		if router != null:
+			router.set("instant_mode", prev_instant)
+		return
+	var inst := packed.instantiate()
+	root.add_child(inst)
+	await process_frame
+	var ok: bool = true
+	# The away-team Park must be present and visible.
+	var team_park: Node = inst.get_node_or_null("World/GateTeam_Park")
+	if not (team_park is Node3D) or not (team_park as Node3D).visible:
+		_fail("res://scenes/gate_room.tscn", "away-team GateTeam_Park missing/invisible at muster")
+		ok = false
+	# The standing console Park must be HIDDEN (this is the duplicate-Park fix).
+	var standing_park: Node = inst.get_node_or_null("World/GatePark")
+	if standing_park is Node3D and (standing_park as Node3D).visible:
+		_fail("res://scenes/gate_room.tscn", "standing GatePark still visible at muster — double-Park")
+		ok = false
+	# The briefing-spot Scott must be HIDDEN (Scott also joined the team).
+	var standing_scott: Node = inst.get_node_or_null("World/LtScott")
+	if standing_scott is Node3D and (standing_scott as Node3D).visible:
+		_fail("res://scenes/gate_room.tscn", "briefing-spot LtScott still visible at muster — double-Scott")
+		ok = false
+	# Rush is NOT on the away team, so his standing NPC must remain visible.
+	var standing_rush: Node = inst.get_node_or_null("World/GateRush")
+	if standing_rush != null and not (standing_rush as Node3D).visible:
+		_fail("res://scenes/gate_room.tscn", "GateRush hidden — Rush isn't on the team and should stay")
+		ok = false
+	if ok:
+		print("  OK (away-team Park/Scott visible; standing Park+Scott hidden; Rush stays)")
+		_passes += 1
+	root.remove_child(inst)
+	await process_frame
+	inst.free()
+	_game_state.call("reset")
+	if router != null:
+		router.set("instant_mode", prev_instant)
+
+
+# Two-way gate (return half): a Kino piloted BACK through the planet's to_ship
+# gate arrives in the gate room as a fresh recon DRONE, not the player body —
+# gate_room._ready sees kino_pilot_mode and hands off to _start_kino_arrival.
+# Boot gate_room with kino_pilot_mode set (instant_mode ON so autopilot is
+# skipped) and assert a KinoDrone spawned and the on-foot Player rig was torn
+# down. Pairs with kino_doors.gd's crossing test (the outbound half).
+func _check_kino_gate_arrival() -> void:
+	print("\n=== two-way gate: piloted Kino arrives in the gate room as a drone ===")
+	var router: Node = root.get_node_or_null("SceneRouter")
+	var prev_instant: bool = router != null and router.get("instant_mode") == true
+	if router != null:
+		router.set("instant_mode", true)            # skip autopilot start
+	_game_state.call("reset")
+	_game_state.set("kino_pilot_mode", true)
+	_game_state.set("lime_planet_dialed", true)     # gate open (so it reads as a real return)
+	_game_state.set("kino_pilot_arrival_spawn", "")
+	var packed := load("res://scenes/gate_room.tscn") as PackedScene
+	if packed == null:
+		_fail("res://scenes/gate_room.tscn", "load() returned null for kino-arrival check")
+		if router != null:
+			router.set("instant_mode", prev_instant)
+		return
+	var inst := packed.instantiate()
+	root.add_child(inst)
+	await process_frame
+	await process_frame                              # let the deferred queue_free of Player/View settle
+	var ok: bool = true
+	var drone: Node = inst.get_node_or_null("KinoDrone")
+	if not (drone is Node3D):
+		_fail("res://scenes/gate_room.tscn", "kino arrival did not spawn a KinoDrone")
+		ok = false
+	elif drone.get("launch_in_ship") == true:
+		_fail("res://scenes/gate_room.tscn", "arrived KinoDrone should be deployed (launch_in_ship=false)")
+		ok = false
+	var player: Node = inst.get_node_or_null("Player")
+	if player != null and is_instance_valid(player):
+		_fail("res://scenes/gate_room.tscn", "on-foot Player rig still present after kino arrival")
+		ok = false
+	if ok:
+		print("  OK (KinoDrone spawned deployed; player rig torn down)")
 		_passes += 1
 	root.remove_child(inst)
 	await process_frame

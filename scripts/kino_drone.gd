@@ -66,6 +66,15 @@ var _autopilot: bool = false
 var _autopilot_target: Vector3 = Vector3.ZERO
 var _autopilot_discover_t: float = 0.0   # accumulator for the periodic discovery sweep
 
+# Ship auto-explore state (issue #50, Phase 4b). Distinct from the planet lime
+# patrol above: the player toggles it ON while still actively piloting in a ship
+# room. The drone flies to the nearest undiscovered adjacent door and reuses
+# _route_kino_through_door to hop, re-arming itself in the destination room via
+# GameState.kino_autopilot. Runs ONLY while this drone's room is the live scene;
+# closing the remote (recall) stops it. Never engaged in instant_mode/headless.
+var _ship_autopilot: bool = false
+var _ship_autopilot_door: Node = null         # the door currently being flown to (null = re-pick)
+
 func _ready() -> void:
 	motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
 	collision_layer = 0          # nothing needs to detect the drone
@@ -254,7 +263,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		_pitch = clampf(_pitch, deg_to_rad(-89.0), deg_to_rad(89.0))
 		rotation.y = _yaw
 		_camera.rotation.x = _pitch
+	elif event.is_action_pressed("kino_autopilot"):
+		# [F] toggles hands-off ship auto-explore (issue #50). Only meaningful
+		# inside a ship room — on the planet the lime patrol owns autopilot, and
+		# only kicks in after recall. A live toggle keeps piloting active (the
+		# camera/HUD stay) so recall ([E]) still stops it cleanly.
+		if _in_ship_room():
+			if _ship_autopilot:
+				stop_ship_autopilot()
+			else:
+				start_ship_autopilot()
 	elif event.is_action_pressed("interact"):
+		# Any manual [E] cancels hands-off explore first, so the player takes
+		# back the stick before the action resolves (recall vs. pilot-through).
+		if _ship_autopilot:
+			stop_ship_autopilot()
 		# [E] aimed at a transition door pilots the Kino through it; [E] in open
 		# space (no door in front) still recalls the player to their body.
 		var door: Node = _find_interact_target()
@@ -270,6 +293,12 @@ func _physics_process(delta: float) -> void:
 		_drive_autopilot(delta)
 		return
 	if _ending or _camera == null:
+		return
+	if _ship_autopilot:
+		# Hands-off ship explore: drive toward the next undiscovered door and
+		# hop. The player is still nominally piloting (camera/HUD live) so this
+		# runs in front of manual flight and short-circuits it while engaged.
+		_drive_ship_autopilot(delta)
 		return
 	# Heading-relative planar movement (yaw only), vertical from Space/Ctrl.
 	var basis: Basis = global_transform.basis
@@ -345,6 +374,13 @@ func _refresh_hint() -> void:
 	if _hint == null:
 		return
 	var controls: String = "[WASD] Fly   [Shift] Boost   [Space] Up   [Ctrl] Down   [Mouse] Look   [E] Close Kino Remote"
+	if _ship_autopilot:
+		_hint.text = "AUTO-EXPLORE — mapping the ship through the doors\n[F] Stop   [E] Take control / Close Kino Remote"
+		return
+	if _in_ship_room():
+		_hint.text = controls + "   [F] Auto-explore" \
+			+ "\nFly through doors to map the ship — or press [F] to auto-explore"
+		return
 	if launch_in_ship:
 		_hint.text = controls + "\nFly through the active Stargate to scout the far side"
 	elif _lime_confirmed:
@@ -443,9 +479,15 @@ func _exit_kino() -> void:
 	if _ending:
 		return
 	_ending = true
+	_ship_autopilot = false
 	velocity = Vector3.ZERO
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	GameState.kino_pilot_mode = false
+	GameState.kino_autopilot = false
+	# Stage 4a (issue #50): letting go in a ship room reveals the adjacent rooms
+	# through this room's doors on the map/compass — zero scene-change risk. The
+	# planet has no ShipLayout room graph, so this is a no-op there.
+	_reveal_adjacent_rooms()
 	# Leave the Kino where it is (FIFO, capped). Captured before any scene change.
 	GameState.deploy_kino(GameState.current_scene_path, global_position)
 	# First planet recon confirms the scout (advances the quest).
@@ -666,6 +708,131 @@ func _autopilot_discover_nearby() -> void:
 			node3d.global_position.z - global_position.z).length()
 		if d <= AUTO_DETECT_RANGE and n.has_method("_mark_discovered"):
 			n.call("_mark_discovered")
+
+
+# ─── ship auto-explore (issue #50, Phase 4) ──────────────────────────────
+
+const SHIP_AUTO_SPEED: float = 6.0     # cruise speed toward the next door
+const SHIP_AUTO_ARRIVE: float = 1.4    # within this of a door's approach point → hop
+
+# True when this drone is piloting inside a ship room (room.tscn) rather than on
+# the planet. Ship rooms have a ShipLayout topology to crawl; the planet doesn't.
+func _in_ship_room() -> bool:
+	return GameState.current_scene_path == "res://scenes/room.tscn"
+
+
+# Stage 4a: reveal every room reachable through THIS room's doors on the map /
+# compass, without hopping. Uses ShipLayout.outgoing_edges so locked/elevator
+# edges still light up as known neighbours (you can see the door from here). The
+# room the drone is in is already discovered by room.gd on entry; this fans out
+# one ring. No-op outside a ship room (the planet has no room graph).
+func _reveal_adjacent_rooms() -> void:
+	if not _in_ship_room():
+		return
+	var here: String = GameState.current_room_id
+	if here == "":
+		return
+	for edge in ShipLayout.outgoing_edges(here):
+		var to_id: String = String((edge as Dictionary).get("to", ""))
+		if to_id == "" or to_id == "gate_room":
+			continue
+		var row: Dictionary = ShipLayout.room(to_id)
+		var display: String = String(row.get("name", to_id)) if not row.is_empty() else to_id
+		GameState.discover_room(to_id, display)
+
+
+# Begin hands-off ship exploration. Guarded so headless / instant_mode never
+# triggers Kino scene churn, and so it only runs while actively piloting a ship
+# room (live scene). Reveals the current ring immediately (4a payoff even before
+# the first hop), then arms the per-frame crawl.
+func start_ship_autopilot() -> void:
+	if SceneRouter.instant_mode:
+		return
+	if launch_in_ship or _autopilot or _ending or _ship_autopilot:
+		return
+	if not _in_ship_room():
+		return
+	_ship_autopilot = true
+	_ship_autopilot_door = null
+	GameState.kino_autopilot = true
+	_reveal_adjacent_rooms()
+	GameState.add_log("Kino auto-explore engaged — mapping the ship.")
+	_refresh_hint()
+
+
+func stop_ship_autopilot() -> void:
+	if not _ship_autopilot:
+		return
+	_ship_autopilot = false
+	_ship_autopilot_door = null
+	GameState.kino_autopilot = false
+	velocity = Vector3.ZERO
+	GameState.add_log("Kino auto-explore disengaged — you have the stick.")
+	_refresh_hint()
+
+
+# Per-frame ship-explore driver. Picks the nearest pilotable door to an
+# undiscovered room, flies to its room-side approach point, and hops through it
+# (reusing _route_kino_through_door — the same [E] path). When no undiscovered
+# neighbour remains, reveal the ring and idle (mission done).
+func _drive_ship_autopilot(delta: float) -> void:
+	if _ship_autopilot_door == null or not is_instance_valid(_ship_autopilot_door):
+		_ship_autopilot_door = _pick_next_explore_door()
+		if _ship_autopilot_door == null:
+			# Nothing reachable left to discover from here — light the ring and idle.
+			_reveal_adjacent_rooms()
+			velocity = velocity.lerp(Vector3.ZERO, clampf(ACCEL_DAMP * delta, 0.0, 1.0))
+			move_and_slide()
+			return
+	var door3d: Node3D = _ship_autopilot_door as Node3D
+	# Approach the door on the room side at eye height (doors sit IN FRONT OF a
+	# solid wall — never aim past the door plane). Step back along the door's
+	# local forward (-Z) so we arrive aimed straight at it.
+	var approach: Vector3 = door3d.global_position
+	var door_fwd: Vector3 = -door3d.global_transform.basis.z
+	door_fwd.y = 0.0
+	if door_fwd.length() > 0.001:
+		approach += door_fwd.normalized() * 1.6
+	approach.y = global_position.y
+	var to_door: Vector3 = approach - global_position
+	to_door.y = 0.0
+	var planar_dist: float = to_door.length()
+	if planar_dist <= SHIP_AUTO_ARRIVE:
+		# Arrived at the doorway — pilot through it (sets _ending, hops scene).
+		_route_kino_through_door(_ship_autopilot_door)
+		return
+	var dir: Vector3 = to_door.normalized() * SHIP_AUTO_SPEED
+	velocity = velocity.lerp(Vector3(dir.x, 0.0, dir.z), clampf(ACCEL_DAMP * delta, 0.0, 1.0))
+	# Face + look toward the door so the pilot view tracks where we're heading.
+	var face_yaw: float = atan2(-dir.x, -dir.z)
+	rotation.y = lerp_angle(rotation.y, face_yaw, delta * 4.0)
+	_yaw = rotation.y
+	move_and_slide()
+
+
+# Nearest pilotable door in THIS room whose target room is not yet discovered.
+# Reuses _is_pilotable_door (unlocked transition door) + the route-time policy
+# (skip gate_room / legacy target_scene). Returns null when every reachable
+# neighbour is already on the map.
+func _pick_next_explore_door() -> Node:
+	var best: Node = null
+	var best_dist: float = INF
+	for node in get_tree().get_nodes_in_group("interactable"):
+		var n3: Node3D = node as Node3D
+		if n3 == null or not _is_pilotable_door(n3):
+			continue
+		var target_id: String = String(n3.get("target_room_id"))
+		if target_id == "" or target_id == "gate_room":
+			continue
+		if String(n3.get("target_scene")) != "":
+			continue
+		if GameState.rooms_discovered.has(target_id):
+			continue
+		var d: float = global_position.distance_to(n3.global_position)
+		if d < best_dist:
+			best_dist = d
+			best = n3
+	return best
 
 
 # Stop driving the orb and shed the pilot-only camera/overlay, leaving a quiet

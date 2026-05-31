@@ -144,6 +144,12 @@ var kino_return_room_id: String = ""
 # (e.g. facing the planet gate).
 var kino_pilot_target_scene: String = ""
 var kino_pilot_target_pos: Variant = null   # Vector3 or null
+# When a piloted Kino flies through a transition door, the destination room
+# reads this to place the DRONE (not the player body) at the matching arrival
+# marker. Holds the door's target_spawn key (e.g. "FromControlInterfaceRoom").
+# Transient: set by kino_drone.gd right before the scene change, consumed by
+# room.gd on arrival, never serialized (a piloted hop is never saved mid-way).
+var kino_pilot_arrival_spawn: String = ""
 
 var health: float = MAX_HEALTH
 var oxygen: float = MAX_OXYGEN
@@ -422,6 +428,7 @@ func reset() -> void:
 	kino_return_room_id = ""
 	kino_pilot_target_scene = ""
 	kino_pilot_target_pos = null
+	kino_pilot_arrival_spawn = ""
 	health_changed.emit(health)
 	oxygen_changed.emit(oxygen)
 	kino_changed.emit(false)   # Inventory was just reset → no kino remote held

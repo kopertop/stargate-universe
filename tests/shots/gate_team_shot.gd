@@ -19,6 +19,14 @@ func _run() -> void:
 		quit(1)
 		return
 
+	# Isolate saves off the real player file BEFORE driving any state. This
+	# harness routes through SceneRouter with live autoloads, and SaveManager
+	# autosaves on room/objective changes — without this redirect the capture
+	# overwrites the player's user://save.json (see issue #44).
+	var save_mgr: Node = root.get_node_or_null("SaveManager")
+	if save_mgr != null:
+		save_mgr.call("configure_test_paths", "shot_gate_team")
+
 	# Stand at the gate just after Scott's briefing — the assembled team beat.
 	gs.set("met_scott", true)
 	gs.set("met_rush", true)

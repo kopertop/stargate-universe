@@ -22,6 +22,14 @@ func _run() -> void:
 	var kino_pilot: bool = String(args.get("kino_pilot", "0")) == "1"
 	var wait_frames: int = int(args.get("wait", "45"))
 
+	# Isolate saves off the real player file BEFORE driving any scene. This
+	# harness boots full gameplay scenes with live autoloads, and SaveManager
+	# autosaves on room/objective changes — without this redirect every capture
+	# overwrites the player's user://save.json (see issue #44).
+	var save_mgr: Node = root.get_node_or_null("SaveManager")
+	if save_mgr != null:
+		save_mgr.call("configure_test_paths", "shot_scene")
+
 	if kino_pilot:
 		var gs: Node = root.get_node_or_null("GameState")
 		if gs != null:

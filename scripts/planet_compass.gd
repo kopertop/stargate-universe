@@ -1,17 +1,24 @@
 class_name PlanetCompass
 extends Control
 
-# Phase F / F3 planet compass HUD. A horizontal screen-space strip pinned to the
-# top of the viewport, showing direction + distance to:
-#   - the return gate (group "planet_gate", mode "to_ship")
-#   - DISCOVERED lime deposits (group "lime_node" where is_discovered() is true)
-#   - every deployed Kino in the current planet scene (GameState.deployed_kinos)
-#   - every away-team companion (group "companion")
-# Cardinal ticks (N/E/S/W) mark world direction. Anything outside ±90° of the
-# player's facing clamps to the strip edge with a small arrow indicator.
+# Direction-finding compass HUD. A horizontal screen-space strip pinned to the
+# top of the viewport. Spawned for EVERY gameplay scene by hud.gd; what it shows
+# depends on `mode`:
 #
-# Built by planet.gd at MINE_LIME (live play only) under a CanvasLayer so the
-# Cinematic letterbox auto-hides it during the departure cutscene.
+#   mode == "planet" (lime surface):
+#     - the return gate (group "planet_gate", mode "to_ship")
+#     - DISCOVERED lime deposits (group "lime_node" where is_discovered())
+#     - every deployed Kino in the current planet scene (GameState.deployed_kinos)
+#     - every away-team companion (group "companion")
+#
+#   mode == "ship" (gate room + interior rooms):
+#     - the active objective waypoint (group "quest_waypoint") — correct
+#       cross-room bearing for free
+#     - every deployed Kino in the current ship scene
+#     - the outbound gate (group "planet_gate", mode "to_planet"; gate room only)
+#
+# Cardinal ticks (N/E/S/W) mark world direction. The strip is panoramic (±180°)
+# so every direction maps onto it; nothing clamps to the edges.
 
 const STRIP_W: float = 360.0           # fallback width before the control is sized
 const STRIP_H: float = 28.0
@@ -47,6 +54,9 @@ const COMP_COL: Color = Color(0.62, 0.85, 1.0, 1.0)     # soft blue — friendly
 var _player: Node3D = null
 var _scene_path: String = ""
 var _font: Font = null
+# "planet" (lime surface) or "ship" (gate room + interior rooms). Drives which
+# marker set _draw_markers renders and which gate _find_gate hunts for.
+var mode: String = "planet"
 
 func _ready() -> void:
 	# Width comes from the control's anchors (≈70% of the screen); only the
@@ -54,25 +64,63 @@ func _ready() -> void:
 	custom_minimum_size = Vector2(0.0, TOP_PAD + STRIP_H + 16.0)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_font = ThemeDB.fallback_font
-	# Live refresh when the underlying state changes (a deposit gets spotted, a
-	# Kino is deployed/recalled). Per-frame queue_redraw is cheap but signals
-	# let us update instantly even when the player is stationary.
-	if not GameState.lime_discovered_changed.is_connected(queue_redraw):
-		GameState.lime_discovered_changed.connect(queue_redraw)
+	_connect_signals()
+
+# Live refresh when the underlying state changes. Per-frame queue_redraw is
+# cheap but signals let us update instantly even when the player is stationary.
+# The planet cares about lime discovery; the ship cares about objective +
+# room + door changes. Both modes care about deployed Kinos.
+func _connect_signals() -> void:
 	if not GameState.deployed_kinos_changed.is_connected(queue_redraw):
 		GameState.deployed_kinos_changed.connect(queue_redraw)
+	if mode == "ship":
+		if not GameState.current_room_changed.is_connected(_on_room_changed):
+			GameState.current_room_changed.connect(_on_room_changed)
+		if not GameState.objective_changed.is_connected(_on_objective_changed):
+			GameState.objective_changed.connect(_on_objective_changed)
+		if not GameState.door_traversed.is_connected(_on_door_traversed):
+			GameState.door_traversed.connect(_on_door_traversed)
+	else:
+		if not GameState.lime_discovered_changed.is_connected(queue_redraw):
+			GameState.lime_discovered_changed.connect(queue_redraw)
+
+# Signal callables (current_room_changed etc. pass an argument, so queue_redraw
+# can't bind directly). All just trigger a redraw.
+func _on_room_changed(_room_id: String) -> void:
+	queue_redraw()
+
+func _on_objective_changed(_text: String) -> void:
+	queue_redraw()
+
+func _on_door_traversed(_key: String) -> void:
+	queue_redraw()
 
 # GameState is an autoload and outlives this Control, so explicitly disconnect
 # our signal callables when the compass exits the tree — otherwise a scene
 # tear-down could leave the autoload holding stale handles into a freed object.
 func _exit_tree() -> void:
-	if GameState.lime_discovered_changed.is_connected(queue_redraw):
-		GameState.lime_discovered_changed.disconnect(queue_redraw)
 	if GameState.deployed_kinos_changed.is_connected(queue_redraw):
 		GameState.deployed_kinos_changed.disconnect(queue_redraw)
+	if GameState.lime_discovered_changed.is_connected(queue_redraw):
+		GameState.lime_discovered_changed.disconnect(queue_redraw)
+	if GameState.current_room_changed.is_connected(_on_room_changed):
+		GameState.current_room_changed.disconnect(_on_room_changed)
+	if GameState.objective_changed.is_connected(_on_objective_changed):
+		GameState.objective_changed.disconnect(_on_objective_changed)
+	if GameState.door_traversed.is_connected(_on_door_traversed):
+		GameState.door_traversed.disconnect(_on_door_traversed)
 
-# Tell the compass which planet scene's deployed Kinos to query. Without this
-# it just won't draw Kino pips.
+# Switch marker set. Call BEFORE the node enters the tree (so _ready connects
+# the right signals) or right after; re-wires the signal connections to match.
+func set_mode(m: String) -> void:
+	if m == mode:
+		return
+	mode = m
+	if is_inside_tree():
+		_connect_signals()
+
+# Tell the compass which scene's deployed Kinos to query. Without this it just
+# won't draw Kino pips.
 func set_scene_path(p: String) -> void:
 	_scene_path = p
 
@@ -165,7 +213,16 @@ func _draw_ticks() -> void:
 				HORIZONTAL_ALIGNMENT_LEFT, -1.0, fsize, col)
 
 func _draw_markers(ppos: Vector3) -> void:
-	var gate: Node3D = _find_gate()
+	if mode == "ship":
+		_draw_ship_markers(ppos)
+	else:
+		_draw_planet_markers(ppos)
+
+
+# Lime-surface markers: return gate, away-team companions, discovered (un-mined)
+# deposits, and Kinos deployed in this scene.
+func _draw_planet_markers(ppos: Vector3) -> void:
+	var gate: Node3D = _find_gate("to_ship")
 	if gate != null:
 		_draw_pip(gate.global_position, GATE_COL, "Gate", ppos)
 	for c in get_tree().get_nodes_in_group("companion"):
@@ -182,13 +239,30 @@ func _draw_markers(ppos: Vector3) -> void:
 		if n.get("depleted") == true:
 			continue
 		_draw_pip((n as Node3D).global_position, LIME_COL, "", ppos)
-	if _scene_path != "":
-		for k in GameState.deployed_kinos_in_scene(_scene_path):
-			if k is Dictionary:
-				var d: Dictionary = k
-				var p: Vector3 = Vector3(
-					float(d.get("x", 0.0)), float(d.get("y", 0.0)), float(d.get("z", 0.0)))
-				_draw_pip(p, KINO_COL, "K", ppos)
+	_draw_deployed_kinos(ppos)
+
+
+# Ship markers: the active objective waypoint (cross-room bearing comes free from
+# the in-world quest_waypoint node), deployed Kinos, and the outbound gate when
+# we're in the gate room.
+func _draw_ship_markers(ppos: Vector3) -> void:
+	var wp: Node = get_tree().get_first_node_in_group("quest_waypoint")
+	if wp is Node3D:
+		_draw_pip((wp as Node3D).global_position, GATE_COL, "Objective", ppos)
+	var gate: Node3D = _find_gate("to_planet")
+	if gate != null:
+		_draw_pip(gate.global_position, GATE_COL, "Gate", ppos)
+	_draw_deployed_kinos(ppos)
+
+
+# Shared: draw a cyan pip for every Kino deployed in the current scene. The
+# tracker returns Vector3 world positions for the matching scene.
+func _draw_deployed_kinos(ppos: Vector3) -> void:
+	if _scene_path == "":
+		return
+	for k in GameState.deployed_kinos_in_scene(_scene_path):
+		if k is Vector3:
+			_draw_pip(k, KINO_COL, "K", ppos)
 
 func _draw_pip(target: Vector3, color: Color, glyph: String, ppos: Vector3) -> void:
 	var delta: Vector3 = target - ppos
@@ -220,8 +294,8 @@ func _draw_pip(target: Vector3, color: Color, glyph: String, ppos: Vector3) -> v
 		draw_string(_font, Vector2(x - 12.0, y + 18.0), "%dm" % int(round(dist)),
 			HORIZONTAL_ALIGNMENT_LEFT, -1.0, 10, Color(color.r, color.g, color.b, 0.85))
 
-func _find_gate() -> Node3D:
+func _find_gate(wanted_mode: String) -> Node3D:
 	for n in get_tree().get_nodes_in_group("planet_gate"):
-		if n is Node3D and String(n.get("mode")) == "to_ship":
+		if n is Node3D and String(n.get("mode")) == wanted_mode:
 			return n as Node3D
 	return null

@@ -123,6 +123,7 @@ func _run_checks() -> void:
 	await _check_kino_dispenser()
 	await _check_gate_room_phase_e_crew()
 	await _check_post_scout_gate()
+	await _check_hud_compass()
 	_report()
 
 
@@ -550,6 +551,71 @@ func _check_post_scout_gate() -> void:
 	_game_state.call("reset")
 	if router != null:
 		router.set("instant_mode", prev_instant)
+
+
+# Issue #48: the HUD is the single spawner of the always-on direction compass.
+# For each gameplay scene, boot it AS THE CURRENT SCENE (so the HUD's
+# get_tree().current_scene path resolves), with instant_mode off (live-play
+# behaviour), and assert the HUD grows a `PlanetCompass` child in the expected
+# mode. Title is the negative case: it has no HUD compass.
+func _check_hud_compass() -> void:
+	print("\n=== Issue #48: HUD compass spawner ===")
+	var router: Node = root.get_node_or_null("SceneRouter")
+	var prev_instant: bool = router != null and router.get("instant_mode") == true
+	if router != null:
+		router.set("instant_mode", false)
+	var cases: Array = [
+		{"path": "res://scenes/gate_room.tscn", "mode": "ship"},
+		{"path": "res://scenes/room.tscn", "mode": "ship", "room": "eli_quarters"},
+		{"path": "res://scenes/planet.tscn", "mode": "planet"},
+	]
+	for case in cases:
+		await _check_one_hud_compass(String(case["path"]), String(case["mode"]),
+			String(case.get("room", "")))
+	if router != null:
+		router.set("instant_mode", prev_instant)
+	_game_state.call("reset")
+
+
+func _check_one_hud_compass(scene_path: String, want_mode: String, room_id: String) -> void:
+	_game_state.call("reset")
+	if room_id != "":
+		_game_state.set("next_room_id", room_id)
+	var packed := load(scene_path) as PackedScene
+	if packed == null:
+		_fail(scene_path, "load() returned null for compass check")
+		return
+	var inst := packed.instantiate()
+	# The HUD reads get_tree().current_scene.scene_file_path to pick its mode, so
+	# the scene must be the CURRENT scene, not just a child of root.
+	# The HUD's _ready runs DURING add_child and reads
+	# get_tree().current_scene.scene_file_path to pick its mode, so current_scene
+	# (a SceneTree property, not the root Viewport's) must be set BEFORE the add.
+	root.add_child(inst)
+	# current_scene is a SceneTree property (self), not the root Viewport's.
+	# Setting it after the add lets the re-invoked HUD spawner resolve the path.
+	current_scene = inst
+	await process_frame
+	var hud: Node = inst.get_node_or_null("HUDLayer/HUD")
+	if hud == null:
+		_fail(scene_path, "HUDLayer/HUD missing — cannot host compass")
+	else:
+		# The HUD's own _ready fires DURING add_child, before a headless test can
+		# set current_scene, so re-invoke its (idempotent) spawner now that
+		# current_scene resolves to this scene.
+		hud.call("_spawn_compass")
+		var compass: Node = hud.get_node_or_null("PlanetCompass")
+		if compass == null:
+			_fail(scene_path, "HUD did not spawn a PlanetCompass child")
+		elif String(compass.get("mode")) != want_mode:
+			_fail(scene_path, "compass mode is '%s', expected '%s'" % [String(compass.get("mode")), want_mode])
+		else:
+			print("  OK (%s → HUD PlanetCompass mode=%s)" % [scene_path, want_mode])
+			_passes += 1
+	current_scene = null
+	root.remove_child(inst)
+	await process_frame
+	inst.free()
 
 
 func _load_connections() -> Dictionary:

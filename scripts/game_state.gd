@@ -22,6 +22,9 @@ signal resource_changed(type: String, count: int)
 # Fires whenever scrubber_level changes (decay tick or top-up). Drives the
 # in-world bar gauge + the Kino System Status readout.
 signal scrubber_level_changed(level: float)
+# The gate-window departure countdown hit 0:00 — planet_timer.gd plays the
+# scramble-back-through-the-gate cutscene.
+signal gate_window_expired()
 # Fired when the player enters a new room. Drives the Kino Remote player
 # marker and the in-world quest-waypoint diamond's re-targeting.
 signal current_room_changed(room_id: String)
@@ -257,6 +260,14 @@ var kino_plan_approved: bool = false
 # step, after the Kino recon returns). Gates the "let's mine some lime" dialog.
 var away_party_briefed: bool = false
 var returned_from_lime_planet: bool = false
+# Gate-window departure countdown. Authoritative HERE (not in the planet scene's
+# timer node) so it keeps ticking regardless of which controller is active — body
+# OR a piloted/auto-searching Kino — and survives scene hops (a Kino crossing the
+# two-way gate no longer resets it). planet_timer.gd is just the on-screen view +
+# alarms + auto-return cinematic. Ticked in _process while active (skipped in
+# instant_mode). Persisted so a resumed save keeps the same remaining time.
+var gate_window_active: bool = false
+var gate_window_remaining: float = 0.0
 # Transient (NOT persisted): set just before a planet→gate-room return so the
 # gate room spawns the away team that came back WITH the player and lands them
 # past the platform. Consumed (cleared) by gate_room on arrival.
@@ -361,12 +372,36 @@ func _on_quest_log_step_changed(quest_id: String, _step_id: String) -> void:
 # tests (which can run for many simulated frames) don't drift scrubber_level
 # out from under their assertions.
 func _process(delta: float) -> void:
+	var router: Node = _autoload_node("SceneRouter")
+	var headless: bool = router != null and router.get("instant_mode") == true
+	# Gate window ticks here (not in the planet scene) so it keeps running while a
+	# Kino is being piloted / auto-searching and across scene hops. Skipped in
+	# instant_mode (start_gate_window is never called there anyway).
+	if gate_window_active and not headless:
+		_tick_gate_window(delta)
 	if not scrubber_repaired:
 		return
-	var router: Node = _autoload_node("SceneRouter")
-	if router != null and router.get("instant_mode") == true:
+	if headless:
 		return
 	_tick_scrubber(delta)
+
+
+# Begin the departure countdown. Idempotent: if a window is already running
+# (e.g. the planet scene reloaded while it was active), this RESUMES it rather
+# than restarting, so hopping in/out of a Kino or across the gate never resets
+# the clock. Returns true only when it actually started a fresh window.
+func start_gate_window(duration: float) -> bool:
+	if gate_window_active:
+		return false
+	gate_window_active = true
+	gate_window_remaining = duration
+	return true
+
+func _tick_gate_window(delta: float) -> void:
+	gate_window_remaining = maxf(0.0, gate_window_remaining - delta)
+	if gate_window_remaining <= 0.0:
+		gate_window_active = false
+		gate_window_expired.emit()
 
 
 func _tick_scrubber(delta: float) -> void:
@@ -425,6 +460,8 @@ func reset() -> void:
 	away_party_briefed = false
 	returned_from_lime_planet = false
 	pending_planet_return = false
+	gate_window_active = false
+	gate_window_remaining = 0.0
 	# Items live in the Inventory store now — wipe it too (autoload-tolerant).
 	var inv: Node = _inv()
 	if inv != null and inv.has_method("reset"):
@@ -1193,6 +1230,8 @@ func serialize() -> Dictionary:
 		"kino_plan_approved": kino_plan_approved,
 		"away_party_briefed": away_party_briefed,
 		"returned_from_lime_planet": returned_from_lime_planet,
+		"gate_window_active": gate_window_active,
+		"gate_window_remaining": gate_window_remaining,
 		"kino_pan_x": kino_pan_x,
 		"kino_pan_y": kino_pan_y,
 		"kino_zoom": kino_zoom,
@@ -1247,6 +1286,8 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	kino_plan_approved = data.get("kino_plan_approved", false) == true
 	away_party_briefed = data.get("away_party_briefed", false) == true
 	returned_from_lime_planet = data.get("returned_from_lime_planet", false) == true
+	gate_window_active = data.get("gate_window_active", false) == true
+	gate_window_remaining = float(data.get("gate_window_remaining", 0.0))
 	# --- legacy item migration ---------------------------------------------
 	# Pre-store saves kept items here (kino_acquired / *_fuse_found / kino_orbs
 	# / a `resources` dict). Seed the Inventory pool from them. Runs BEFORE the

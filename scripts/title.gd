@@ -20,6 +20,12 @@ var _new_game_confirm: ConfirmationDialog
 # overlay, both built in _ready so the .tscn stays untouched.
 var _btn_load: Button
 var _load_overlay: Control
+# Cached row container. Looking it up by string path is brittle: code-built
+# nodes added without an explicit name get an auto-name like
+# "@MarginContainer@119", so a literal "Panel/MarginContainer/..." path fails,
+# the populate aborts mid-call, and the overlay shows zero rows (the load-game
+# empty-list bug). Hold the reference instead.
+var _load_rows: VBoxContainer
 @onready var _music_slider: HSlider = $SettingsOverlay/Panel/V/MusicRow/MusicHBox/MusicSlider
 @onready var _music_value: Label = $SettingsOverlay/Panel/V/MusicRow/MusicHBox/MusicValue
 @onready var _sfx_slider: HSlider = $SettingsOverlay/Panel/V/SfxRow/SfxHBox/SfxSlider
@@ -191,6 +197,7 @@ func _build_load_overlay() -> void:
 	rows.name = "Rows"
 	rows.add_theme_constant_override("separation", 6)
 	vbox.add_child(rows)
+	_load_rows = rows
 
 	var close: Button = Button.new()
 	close.name = "CloseButton"
@@ -211,7 +218,9 @@ func _on_load_overlay_close() -> void:
 
 
 func _populate_load_rows() -> void:
-	var rows: Node = _load_overlay.get_node("Panel/MarginContainer/VBox/Rows")
+	var rows: Node = _load_rows
+	if rows == null:
+		return
 	for child in rows.get_children():
 		child.queue_free()
 	var slots: Array[Dictionary] = SaveManager.list_slots()

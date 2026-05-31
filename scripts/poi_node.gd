@@ -37,16 +37,18 @@ func _mark_discovered(announce: bool = false) -> void:
 # A simple, category-distinct silhouette with an emissive accent so it reads as a
 # landmark from the air. Built procedurally — no per-POI art assets needed yet.
 func _build_visual() -> void:
+	# Emission is kept LOW (a subtle accent, like lime's 0.28) — high energy + the
+	# Forward+ glow buffer blows these out into featureless light blobs up close.
 	match poi_category:
 		"ore":
-			_add_mesh(_crystal_mesh(), Color(1.0, 0.55, 0.2), 1.4, Vector3(0.0, 1.0, 0.0))
+			_add_mesh(_crystal_mesh(), Color(0.95, 0.55, 0.25), 0.30, Vector3(0.0, 0.9, 0.0))
 		"water":
-			_add_mesh(_disc_mesh(), Color(0.3, 0.85, 0.95), 0.8, Vector3.ZERO)
+			_add_mesh(_disc_mesh(), Color(0.30, 0.78, 0.88), 0.22, Vector3.ZERO)
 		"debris":
-			_add_mesh(_box_mesh(Vector3(2.2, 1.1, 1.6)), Color(0.7, 0.73, 0.78), 0.2, Vector3(0.0, 0.55, 0.0), 0.5)
+			_add_mesh(_box_mesh(Vector3(2.2, 1.1, 1.6)), Color(0.55, 0.58, 0.62), 0.0, Vector3(0.0, 0.55, 0.0), 0.5)
 		_:  # "ruin" and anything unknown — a cluster of broken pillars.
-			_add_mesh(_box_mesh(Vector3(0.7, 4.2, 0.7)), Color(0.78, 0.6, 1.0), 0.5, Vector3(-0.9, 2.1, 0.0), 0.1)
-			_add_mesh(_box_mesh(Vector3(0.7, 2.8, 0.7)), Color(0.78, 0.6, 1.0), 0.5, Vector3(0.9, 1.4, 0.4), -0.18)
+			_add_mesh(_box_mesh(Vector3(0.7, 4.2, 0.7)), Color(0.62, 0.5, 0.78), 0.12, Vector3(-0.9, 2.1, 0.0), 0.1)
+			_add_mesh(_box_mesh(Vector3(0.7, 2.8, 0.7)), Color(0.62, 0.5, 0.78), 0.12, Vector3(0.9, 1.4, 0.4), -0.18)
 
 
 func _add_mesh(mesh: Mesh, color: Color, emission_energy: float, offset: Vector3, tilt: float = 0.0) -> void:

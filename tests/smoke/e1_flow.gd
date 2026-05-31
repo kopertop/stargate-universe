@@ -312,6 +312,35 @@ func _initialize() -> void:
 	_expect(gs.is_lime_discovered("LimeNode1"), "deserialize restores lime discovery")
 	_expect(gs.is_poi_discovered("Poi_ruin_1"), "deserialize restores non-lime POI discovery")
 
+	# --- Phase F2: gate-window countdown owned by GameState -------------------
+	# Authoritative here so it keeps ticking through Kino piloting + scene hops.
+	gs.reset()
+	_expect(gs.gate_window_active == false, "no gate window after reset")
+	_expect(gs.start_gate_window(180.0) == true, "start_gate_window starts a fresh window")
+	_expect(gs.gate_window_active and is_equal_approx(gs.gate_window_remaining, 180.0),
+		"window active at full duration")
+	_expect(gs.start_gate_window(99.0) == false, "start is idempotent — won't restart a running window")
+	_expect(is_equal_approx(gs.gate_window_remaining, 180.0), "idempotent start leaves remaining untouched")
+	gs.call("_tick_gate_window", 10.0)
+	_expect(is_equal_approx(gs.gate_window_remaining, 170.0), "tick decrements remaining")
+	# Persists across save/resume (a Kino crossing the gate must not reset it).
+	var win_snap: Dictionary = gs.serialize()
+	gs.reset()
+	_expect(gs.gate_window_active == false, "reset clears the window")
+	gs.deserialize(win_snap, 1)
+	_expect(gs.gate_window_active and is_equal_approx(gs.gate_window_remaining, 170.0),
+		"deserialize restores the in-progress window (no reset on resume)")
+	# Expiry fires the signal exactly once and deactivates.
+	var fired: Array = [0]
+	var on_expired: Callable = func() -> void: fired[0] += 1
+	gs.gate_window_expired.connect(on_expired)
+	gs.gate_window_remaining = 0.5
+	gs.call("_tick_gate_window", 1.0)
+	_expect(gs.gate_window_active == false, "window deactivates at 0:00")
+	_expect(fired[0] == 1, "gate_window_expired emitted once on expiry")
+	gs.gate_window_expired.disconnect(on_expired)
+	gs.reset()
+
 	# --- Phase G: ongoing scrubber resource loop ------------------------------
 	# Force the loop's preconditions (skip the full repair flow — tested above).
 	gs.scrubber_diagnosed = true

@@ -57,9 +57,24 @@ func _ready() -> void:
 	if SceneRouter.instant_mode:
 		set_process(false)
 		return
+	# GameState owns the countdown now (so it keeps ticking through Kino piloting
+	# and scene hops). start_gate_window is idempotent — a fresh entry starts it;
+	# re-entering a planet mid-window RESUMES it. Only announce on a fresh start.
+	var started_fresh: bool = GameState.start_gate_window(DURATION)
+	_remaining = GameState.gate_window_remaining
+	# Pre-arm the one-shot alarm/auto-gather flags to the resumed time so a mid-
+	# window resume doesn't replay alarms or re-gather lime already past.
+	_warn_60_fired = _remaining <= WARN_60
+	_warn_30_fired = _remaining <= WARN_30
+	_warn_10_fired = _remaining <= WARN_10
+	_lime_gather_1_fired = _remaining <= LIME_GATHER_1
+	_lime_gather_2_fired = _remaining <= LIME_GATHER_2
 	_build_hud()
 	_update_label()
-	GameState.add_log("Gate window open — Destiny jumps to FTL in 3 minutes. Mine what lime you can.")
+	if not GameState.gate_window_expired.is_connected(_on_gate_window_expired):
+		GameState.gate_window_expired.connect(_on_gate_window_expired)
+	if started_fresh:
+		GameState.add_log("Gate window open — Destiny jumps to FTL in 3 minutes. Mine what lime you can.")
 
 func _build_hud() -> void:
 	var layer: CanvasLayer = CanvasLayer.new()
@@ -92,7 +107,9 @@ func _build_hud() -> void:
 func _process(delta: float) -> void:
 	if _ended:
 		return
-	_remaining = maxf(0.0, _remaining - delta)
+	# Read the authoritative countdown from GameState (it ticks even while a Kino
+	# is the active controller); this node only presents it + fires the alarms.
+	_remaining = GameState.gate_window_remaining
 	_update_label()
 	if not _lime_gather_1_fired and _remaining <= LIME_GATHER_1:
 		_lime_gather_1_fired = true
@@ -129,9 +146,18 @@ func _process(delta: float) -> void:
 			var s: float = 1.0 + 0.1 * (1.0 + sin(_final_pulse_t * 9.0))
 			# 1.0 + 0.1*(1+sin) → [1.0, 1.2] envelope
 			_label.scale = Vector2(s, s)
-	if _remaining <= 0.0:
-		_ended = true
-		_begin_departure()
+
+
+# GameState's countdown reached 0:00 (it owns the clock now). Play the scramble-
+# back cutscene. Guarded so the node that happens to be alive when the window
+# closes runs it exactly once.
+func _on_gate_window_expired() -> void:
+	if _ended:
+		return
+	_ended = true
+	_remaining = 0.0
+	_update_label()
+	_begin_departure()
 
 
 # Sound + 3-pulse scale burst on the countdown label. Pulses run on a Tween,

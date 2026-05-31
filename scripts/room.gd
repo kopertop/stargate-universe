@@ -348,6 +348,14 @@ func _start_kino_arrival() -> void:
 	drone.rotation.y = spawn_yaw
 	add_child(drone)
 	drone.global_position = spawn_pos
+	# Ship auto-explore (issue #50, Phase 4b): if the previous room's drone was
+	# auto-exploring when it hopped here, re-arm this fresh drone so it keeps
+	# crawling undiscovered doors. start_ship_autopilot bails under instant_mode
+	# (the drone's _ready also early-returns headless, leaving no camera), so a
+	# headless run never triggers further Kino scene churn. Deferred so the
+	# drone's own _ready (camera/HUD build) finishes first.
+	if GameState.kino_autopilot and not SceneRouter.instant_mode:
+		drone.call_deferred("start_ship_autopilot")
 
 
 func _spawn_interactables() -> void:

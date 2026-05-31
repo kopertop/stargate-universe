@@ -150,6 +150,12 @@ var kino_pilot_target_pos: Variant = null   # Vector3 or null
 # Transient: set by kino_drone.gd right before the scene change, consumed by
 # room.gd on arrival, never serialized (a piloted hop is never saved mid-way).
 var kino_pilot_arrival_spawn: String = ""
+# Ship auto-explore baton (issue #50, Phase 4b): a piloted Kino in ship
+# auto-explore mode flies through undiscovered doors on its own. When it hops
+# to the next room it sets this so the destination room.gd re-enters ship
+# autopilot on the freshly-spawned drone. Transient (set right before the hop,
+# consumed by room.gd on arrival; an auto-explore run is never saved mid-way).
+var kino_autopilot: bool = false  # @collection-ok: one transient pilot-mode flag, not an enumerated set
 
 var health: float = MAX_HEALTH
 var oxygen: float = MAX_OXYGEN
@@ -429,6 +435,7 @@ func reset() -> void:
 	kino_pilot_target_scene = ""
 	kino_pilot_target_pos = null
 	kino_pilot_arrival_spawn = ""
+	kino_autopilot = false
 	health_changed.emit(health)
 	oxygen_changed.emit(oxygen)
 	kino_changed.emit(false)   # Inventory was just reset → no kino remote held

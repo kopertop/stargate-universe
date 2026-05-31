@@ -323,28 +323,43 @@ func _physics_process(delta: float) -> void:
 	var target_vel: Vector3 = Vector3(planar.x, clampf(move_vert, -1.0, 1.0) * VERT_SPEED * boost, planar.z)
 	velocity = velocity.lerp(target_vel, clampf(ACCEL_DAMP * delta, 0.0, 1.0))
 	move_and_slide()
+	_drive_context_action()
 
-	if launch_in_ship:
-		_try_gate_crossing()
+
+# Per-frame context action, split out of _physics_process so it's headless-
+# testable. Behavior keys on CONTEXT, not spawn origin: any piloted Kino in a
+# scene that has a ship→planet gate (the gate room) flies through it when open —
+# including a re-piloted DEPLOYED Kino (launch_in_ship == false), the
+# save→continue case that used to silently fail because crossing was gated on
+# launch_in_ship. On the planet there's no to_planet gate (only the to_ship
+# return gate), so it does lime recon instead.
+func _drive_context_action() -> void:
+	var ship_gate: Node3D = _find_ship_gate()
+	if ship_gate != null:
+		_try_gate_crossing(ship_gate)
 	else:
 		_check_lime_proximity()
 
-# Ship mode: warp to the planet when the drone reaches the active Stargate.
-# Uses the ship gate's group position directly so we bypass the player-only
-# quest gating in planet_gate.gd's body_entered handler.
-func _try_gate_crossing() -> void:
-	var gate: Node3D = _find_ship_gate()
-	if gate == null:
+# Warp to the destination when the drone reaches the open Stargate. Uses the
+# gate's position directly so we bypass the player-only quest gating in
+# planet_gate.gd's body_entered handler. Only fires when the gate is OPEN
+# (a destination is dialed) — matching the active visual.
+func _try_gate_crossing(gate: Node3D) -> void:
+	if not GameState.is_gate_open():
 		return
 	if global_position.distance_to(gate.global_position) <= GATE_CROSS_RADIUS:
 		_ending = true
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		# kino_pilot_mode stays set so planet.gd spawns a recon drone on arrival.
-		# Pass NO spawn point: _start_kino_recon owns the drone's placement, and a
-		# spawn key would make SceneRouter._place_player_at_spawn grab the drone
-		# (it's in group "player") and clobber it down to the ground marker facing
-		# away from the gate.
-		SceneRouter.change_to("res://scenes/planet.tscn", "")
+		# Destination comes from the gate node itself (planet-agnostic — swapping
+		# the dialed world later changes the gate's target_scene, not this code).
+		var dest: String = String(gate.get("target_scene"))
+		if dest == "":
+			dest = "res://scenes/planet.tscn"
+		# kino_pilot_mode stays set so the destination's _ready spawns a recon
+		# drone on arrival. Pass NO spawn point: the recon spawn owns placement,
+		# and a spawn key would make SceneRouter._place_player_at_spawn grab the
+		# drone (it's in group "player") and clobber it to the ground marker.
+		SceneRouter.change_to(dest, "")
 
 func _find_ship_gate() -> Node3D:
 	for n in get_tree().get_nodes_in_group("planet_gate"):

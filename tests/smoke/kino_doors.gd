@@ -24,6 +24,7 @@ extends SceneTree
 
 var KinoDroneScript: Script = null
 var DoorScript: Script = null
+var PlanetGateScript: Script = null
 
 var _failures: Array[String] = []
 var _passes: int = 0
@@ -37,8 +38,9 @@ func _run() -> void:
 	print("=== kino door-traversal tests ===")
 	KinoDroneScript = load("res://scripts/kino_drone.gd")
 	DoorScript = load("res://scripts/door.gd")
-	if KinoDroneScript == null or DoorScript == null:
-		print("SHOT_ERROR could not load KinoDrone/Door scripts")
+	PlanetGateScript = load("res://scripts/planet_gate.gd")
+	if KinoDroneScript == null or DoorScript == null or PlanetGateScript == null:
+		print("SHOT_ERROR could not load KinoDrone/Door/PlanetGate scripts")
 		quit(1)
 		return
 
@@ -61,6 +63,7 @@ func _run() -> void:
 	await _test_route_through_door(gs, router)
 	await _test_route_refuses_gate_room(gs, router)
 	await _test_recall_cross_room_reloads(gs)
+	await _test_deployed_kino_crosses_open_gate(gs, router)
 
 	_report()
 
@@ -93,10 +96,21 @@ func _spawn_drone(name_suffix: String) -> Node:
 
 func _cleanup() -> void:
 	for n in root.get_children():
-		if n.name.begins_with("TestKino_") or n.name.begins_with("TestDoor_"):
+		if n.name.begins_with("TestKino_") or n.name.begins_with("TestDoor_") or n.name.begins_with("TestGate_"):
 			root.remove_child(n)
 			n.free()
 	await process_frame
+
+
+# A planet_gate.gd instance configured as the ship→planet ("to_planet") gate.
+# Added to the tree so its _ready joins group "planet_gate" (what the drone's
+# _find_ship_gate scans).
+func _make_ship_gate() -> Node:
+	var g: Area3D = Area3D.new()
+	g.set_script(PlanetGateScript)
+	g.set("mode", "to_planet")
+	g.set("target_scene", "res://scenes/planet.tscn")
+	return g
 
 
 # ─── test cases ──────────────────────────────────────────────────────────
@@ -256,6 +270,56 @@ func _test_recall_cross_room_reloads(gs: Node) -> void:
 		"recall restores the body to its recorded resting position")
 	_expect(gs.get("kino_pilot_mode") == false,
 		"recall clears kino_pilot_mode (back in the body)")
+
+
+# Regression for the save→continue bug: a DEPLOYED Kino, re-piloted via
+# _on_pilot_deployed (launch_in_ship == false), must still fly through an OPEN
+# ship gate. The old dispatch gated crossing on launch_in_ship, so a deployed
+# Kino silently couldn't cross even though the gate showed active.
+func _test_deployed_kino_crosses_open_gate(gs: Node, router: Node) -> void:
+	print("\n--- deployed Kino (launch_in_ship=false) crosses an OPEN ship gate ---")
+	await _cleanup()
+	gs.call("reset")
+	gs.set("kino_pilot_mode", true)
+	gs.set("current_scene_path", "res://scenes/gate_room.tscn")
+	# Open the gate: a destination is dialed (planet-agnostic is_gate_open()).
+	gs.set("lime_planet_dialed", true)
+	# Block the real scene load so we can assert the pre-change crossing flag.
+	router.set("is_transitioning", true)
+
+	var gate: Node = _make_ship_gate()
+	root.add_child(gate)
+	gate.name = "TestGate_xplanet"
+	await process_frame
+
+	# launch_in_ship = false → the re-piloted-deployed case.
+	var drone: Node = _spawn_drone("deployed")
+	(drone as Node3D).global_position = (gate as Node3D).global_position
+	await process_frame
+
+	# Act: run the per-frame context dispatch (what _physics_process calls).
+	drone.call("_drive_context_action")
+	_expect(drone.get("_ending") == true,
+		"DEPLOYED kino (launch_in_ship=false) crosses an OPEN ship gate — the save→continue bug")
+
+	# Negative: a CLOSED gate must NOT cross, even in range.
+	await _cleanup()
+	gs.set("lime_planet_dialed", false)
+	gs.set("returned_from_lime_planet", false)
+	gs.set("scrubber_repaired", false)
+	var gate2: Node = _make_ship_gate()
+	root.add_child(gate2)
+	gate2.name = "TestGate_closed"
+	await process_frame
+	var drone2: Node = _spawn_drone("closedgate")
+	(drone2 as Node3D).global_position = (gate2 as Node3D).global_position
+	await process_frame
+	drone2.call("_drive_context_action")
+	_expect(drone2.get("_ending") == false,
+		"no crossing through a CLOSED gate (is_gate_open() guard)")
+
+	await _cleanup()
+	router.set("is_transitioning", false)
 
 
 # ─── reporting (matches kino_autopilot.gd style) ──────────────────────────

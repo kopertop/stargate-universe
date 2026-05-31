@@ -72,7 +72,7 @@ func _apply_kind_defaults() -> void:
 			prompt = "Diagnose life support"
 		elif GameState.quest_step == GameState.QUEST_DIAL_LIME_PLANET:
 			prompt = "Dial lime planet"
-		elif GameState.is_lime_gate_open():
+		elif GameState.is_gate_open():
 			prompt = "Gate active: lime planet"
 
 func _build_screen_readout() -> void:
@@ -127,7 +127,7 @@ func _on_interact(_by: Node) -> void:
 			GameState.diagnose_life_support()
 		elif GameState.quest_step == GameState.QUEST_DIAL_LIME_PLANET:
 			GameState.dial_lime_planet()
-		elif GameState.is_lime_gate_open():
+		elif GameState.is_gate_open():
 			GameState.add_log("Console: Wormhole active to the lime planet. Step through the gate.")
 		else:
 			GameState.add_log("Console: Gate is in standby. Address book empty.")
@@ -160,6 +160,6 @@ func _readout_text() -> String:
 		return "LIFE SUPPORT\nDIAGNOSTIC READY"
 	if GameState.quest_step == GameState.QUEST_DIAL_LIME_PLANET:
 		return "GATE CONTROL\nLIME WORLD LOCK"
-	if GameState.is_lime_gate_open():
+	if GameState.is_gate_open():
 		return "GATE ACTIVE\nLIME WORLD"
 	return "GATE CONTROL\nSTANDBY"

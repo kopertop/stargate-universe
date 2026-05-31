@@ -977,11 +977,15 @@ func dial_lime_planet() -> void:
 	add_log("Gate Control locks a viable address: lime deposits detected near the landing zone.")
 	advance_air_quest()
 
-func is_lime_gate_open() -> bool:
+# Planet-agnostic: "is the Stargate currently dialed/open to a destination?"
+# Today the only destination is the lime planet, so this reads the lime-dial
+# flags; when multiple/selectable destinations land, the dial state generalizes
+# behind this same query and callers don't change.
+func is_gate_open() -> bool:
 	return lime_planet_dialed and not returned_from_lime_planet and not scrubber_repaired
 
 func can_travel_to_lime_planet() -> bool:
-	return is_lime_gate_open() and (quest_step == QUEST_MINE_LIME or quest_step == QUEST_RETURN_DESTINY)
+	return is_gate_open() and (quest_step == QUEST_MINE_LIME or quest_step == QUEST_RETURN_DESTINY)
 
 func return_from_lime_planet() -> void:
 	if returned_from_lime_planet:

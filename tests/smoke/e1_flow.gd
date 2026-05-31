@@ -165,7 +165,7 @@ func _initialize() -> void:
 
 	gs.dial_lime_planet()
 	_expect(gs.lime_planet_dialed, "air: lime planet dialed")
-	_expect(gs.is_lime_gate_open(), "air: Stargate opens after lime dial")
+	_expect(gs.is_gate_open(), "air: Stargate opens after lime dial")
 	_expect(gs.quest_step == gs.QUEST_MINE_LIME, "air: dial -> mine lime")
 
 	_expect(gs.resource_count(gs.AIR_LIME_RESOURCE) == 0, "resources: lime starts at zero")

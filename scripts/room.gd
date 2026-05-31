@@ -22,6 +22,7 @@ const ScrubberRushScript: Script = preload("res://scripts/scrubber_rush.gd")
 const GreerScript: Script = preload("res://scripts/greer.gd")
 const InfirmaryJamesScript: Script = preload("res://scripts/infirmary_james.gd")
 const KinoDispenserScript: Script = preload("res://scripts/kino_dispenser.gd")
+const KinoDroneScript: Script = preload("res://scripts/kino_drone.gd")
 const Co2ScrubberScript: Script = preload("res://scripts/co2_scrubber.gd")
 const PowerConsoleScript: Script = preload("res://scripts/power_console.gd")
 const QuestWaypointScript: Script = preload("res://scripts/quest_waypoint.gd")
@@ -116,6 +117,14 @@ func _ready() -> void:
 
 	# Persist for save/load — F5 reloads this scene with the same room_id.
 	GameState.current_scene_path = "res://scenes/room.tscn"
+
+	# Piloted-Kino arrival: the player flew a Kino through a transition door into
+	# this room (issue #49). discover_room/set_current_room above already lit the
+	# room up on the map for free. Hand the scene to a fresh recon drone instead
+	# of the static player rig and bail before the player-facing waypoint setup.
+	if GameState.kino_pilot_mode:
+		_start_kino_arrival()
+		return
 
 	# Quest diamond waypoint — refreshes on objective_changed so quest
 	# advances mid-room (e.g. picking up the Kino) reposition the diamond
@@ -300,6 +309,45 @@ func _place_player() -> void:
 	player.rotation.y = 0.0
 	if view.has_method("snap_to_target"):
 		view.snap_to_target()
+
+
+# Piloted-Kino arrival into this procedural room (issue #49). Mirrors
+# planet.gd::_start_kino_recon: tear down the static third-person rig (player +
+# view), hide the on-foot HUD, and spawn a fresh recon drone at the door's
+# arrival marker so the DRONE (never the body) lands at the spawn point — no
+# SceneRouter clobber because the crossing used an empty spawn key. kino_pilot_mode
+# stays set so the next hop keeps piloting.
+func _start_kino_arrival() -> void:
+	var spawn_key: String = GameState.kino_pilot_arrival_spawn
+	GameState.kino_pilot_arrival_spawn = ""
+	# Drone hovers at eye height above the floor-anchored arrival marker, facing
+	# the way the marker faces (into the room — away from the door it came through).
+	var spawn_pos: Vector3 = Vector3(0.0, 1.4, 0.0)
+	var spawn_yaw: float = 0.0
+	if spawn_key != "":
+		var marker: Node = markers.get_node_or_null(spawn_key)
+		if marker is Marker3D:
+			var m: Marker3D = marker
+			spawn_pos = m.global_position + Vector3.UP * 1.4
+			spawn_yaw = m.rotation.y
+	if is_instance_valid(player):
+		player.queue_free()
+	if is_instance_valid(view):
+		view.queue_free()
+	var hud_layer: Node = get_node_or_null("HUDLayer")
+	if hud_layer is CanvasLayer:
+		(hud_layer as CanvasLayer).visible = false
+	# Headless / instant_mode tests assert on state, not the live drone — the
+	# drone's own _ready early-returns under instant_mode, so spawning it is safe
+	# but unnecessary. Spawn it anyway so the node graph matches real play.
+	var drone: CharacterBody3D = KinoDroneScript.new()
+	drone.name = "KinoDrone"
+	# NOT in group "player": the recon drone is a camera, not the player body.
+	drone.set("launch_in_ship", false)
+	# Set yaw BEFORE add_child so the drone caches its initial heading in _ready.
+	drone.rotation.y = spawn_yaw
+	add_child(drone)
+	drone.global_position = spawn_pos
 
 
 func _spawn_interactables() -> void:

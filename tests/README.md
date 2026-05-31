@@ -8,6 +8,7 @@ Headless Godot tests that validate the Episode 1 vertical slice.
 |---|---|
 | `smoke/scene_boot.gd` | Each of the 5 gameplay scenes loads, instantiates, and resolves its critical node paths (Player, Camera, Doors, Interactables). |
 | `smoke/e1_flow.gd` | GameState autoload mutators (damage/heal/oxygen/discover_room/acquire_kino/mark_quarters_found/seal_breach) work, and the `episode_completed` signal fires only when all three E1 prerequisites are met. |
+| `smoke/kino_doors.gd` | Piloted-Kino door traversal (issue #49): `_is_pilotable_door` classification, `_find_interact_target` aim cone, `_route_kino_through_door` sets the `kino_pilot_arrival_spawn` baton + `next_room_id` + marks the door traversed + keeps `kino_pilot_mode`, gate-room refusal, and the cross-room recall scene-reload path. |
 | `save/save_store_test.gd` | Isolated unit tests for `SaveStore` (slot→path mapping, atomic write + 3-deep backup rotation, corrupt-primary fallback, meta sidecar, `list_slots`/`most_recent_slot`/`wipe_slot`, legacy single-save migration, dot-path edits) against a throwaway temp root. Includes the loss regression: a headless session writing a sandbox root must leave player slots byte-for-byte untouched. |
 | `save/slot_resume.tscn` | Slot-aware resume integration: write a deep save to `manual_2`, edit a field via `SaveStore`, then `load_and_resume("manual_2")` and assert the resumed scene/room/quest-step/player-pos match — proving the edit→Continue loop and that resume targets the requested slot (not just the most-recent). |
 

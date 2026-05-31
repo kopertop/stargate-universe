@@ -28,6 +28,8 @@ const ACCEL_DAMP: float = 5.0         # velocity lerp factor (higher = snappier)
 const MOUSE_SENS: float = 0.0025      # radians per pixel of mouse motion
 const LIME_CONFIRM_RANGE: float = 7.0 # metres to a lime node before "confirmed"
 const GATE_CROSS_RADIUS: float = 2.6  # metres from the ship gate that warps us through
+const INTERACT_REACH: float = 4.0     # metres the drone can "open" a door from
+const INTERACT_MIN_AIM: float = 0.4   # min camera-forward·to-door alignment (a soft cone)
 
 # Auto-search patrol — runs after _exit_kino on the planet so the drone keeps
 # revealing new lime instead of going inert. Multiple drones cooperate via the
@@ -253,7 +255,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		rotation.y = _yaw
 		_camera.rotation.x = _pitch
 	elif event.is_action_pressed("interact"):
-		_exit_kino()
+		# [E] aimed at a transition door pilots the Kino through it; [E] in open
+		# space (no door in front) still recalls the player to their body.
+		var door: Node = _find_interact_target()
+		if door != null:
+			_route_kino_through_door(door)
+		else:
+			_exit_kino()
 
 func _physics_process(delta: float) -> void:
 	if _autopilot:
@@ -344,6 +352,89 @@ func _refresh_hint() -> void:
 	else:
 		_hint.text = controls + "\nScout for lime (it may be hidden behind the ridges)"
 
+# Trimmed copy of player.gd::_find_interact_target — finds the best transition
+# Door the drone is aimed at, within INTERACT_REACH. Camera-forward is flattened
+# to the XZ plane (the drone can hover at any height but doors are floor-anchored).
+# Returns null when nothing pilotable is in the soft aim cone, so [E] falls
+# through to recall. Only unlocked transition doors qualify (toggle-only doors,
+# locked doors, and gate-room/target_scene doors are skipped — see _is_pilotable_door).
+func _find_interact_target() -> Node:
+	if _camera == null:
+		return null
+	var origin: Vector3 = global_position
+	var forward: Vector3 = -_camera.global_transform.basis.z
+	forward.y = 0.0
+	if forward.length() < 0.001:
+		return null
+	forward = forward.normalized()
+	var best: Node = null
+	var best_score: float = -INF
+	for node in get_tree().get_nodes_in_group("interactable"):
+		var n3: Node3D = node as Node3D
+		if n3 == null or not _is_pilotable_door(n3):
+			continue
+		var to: Vector3 = n3.global_position - origin
+		to.y = 0.0
+		var dist: float = to.length()
+		if dist > INTERACT_REACH or dist < 0.05:
+			continue
+		var aim: float = forward.dot(to / dist)
+		if aim < INTERACT_MIN_AIM:
+			continue
+		var score: float = aim - dist * 0.05
+		if score > best_score:
+			best_score = score
+			best = n3
+	return best
+
+
+# A door the Kino can drive through at find-time: a door.gd-scripted node that
+# is an unlocked transition door. Destination POLICY (refuse the hand-authored
+# gate_room + legacy target_scene doors in v1) lives in _route_kino_through_door,
+# mirroring player.gd where the door's own _on_interact owns where it goes.
+# Duck-typed by script path so a freshly-added class_name doesn't have to be
+# registered in a headless run.
+func _is_pilotable_door(n: Node) -> bool:
+	var script: Script = n.get_script()
+	if script == null or not script.resource_path.ends_with("door.gd"):
+		return false
+	if n.get("locked") == true:
+		return false
+	if not (n.has_method("_is_transition_door") and n.call("_is_transition_door")):
+		return false
+	return true
+
+
+# Drive the piloted Kino through `door` to the adjacent room. We do NOT pass a
+# spawn key to the router (empty string): a spawn key makes SceneRouter place
+# whatever is in group "player" — and even though the drone isn't in that group,
+# the body it left behind IS, so the router would walk the BODY to the marker.
+# Instead room.gd reads kino_pilot_arrival_spawn and places the DRONE itself at
+# the matching "From<src>" marker (see room.gd kino-pilot arrival branch).
+func _route_kino_through_door(door: Node) -> void:
+	if _ending:
+		return
+	var target_room_id: String = String(door.get("target_room_id"))
+	var target_scene: String = String(door.get("target_scene"))
+	# v1 refuses the artisan gate room and any legacy target_scene door — those
+	# scenes don't have the kino-pilot arrival branch. Log and no-op so [E] is
+	# a harmless miss rather than a broken transition.
+	if target_room_id == "" or target_room_id == "gate_room" or target_scene != "":
+		GameState.add_log("The Kino can't fit through there.")
+		return
+	_ending = true
+	velocity = Vector3.ZERO
+	# Hand the destination room its arrival marker + room id, and dim the door
+	# pip / light up the map exactly like an on-foot crossing.
+	GameState.kino_pilot_arrival_spawn = String(door.get("target_spawn"))
+	var src: String = String(door.get("source_room_id"))
+	GameState.mark_door_traversed(src, target_room_id)
+	GameState.next_room_id = target_room_id
+	GameState.add_log("Flying the Kino through to the next section…")
+	# Empty spawn key: room.gd owns the drone's placement (dodges the clobber).
+	SceneRouter.change_to("res://scenes/room.tscn", "")
+
+
 # [E] CLOSES THE KINO REMOTE — returns the player to their body. The player only
 # CONTROLS the Kino, never becomes it; the Kino is left LIVE where it is (FIFO-
 # tracked, retrievable later from the remote). Same scene as the body → restore
@@ -362,6 +453,15 @@ func _exit_kino() -> void:
 		GameState.complete_kino_scout()
 	var body_scene: String = GameState.kino_return_scene
 	var same_scene: bool = body_scene == "" or body_scene == GameState.current_scene_path
+	# room.tscn is one path serving many procedural rooms: if the Kino piloted
+	# through doors into a DIFFERENT room than the body is waiting in, the path
+	# matches but the room doesn't — force the scene-reload path so room.gd
+	# rebuilds the body's room and re-creates the body at its recorded spot.
+	if (same_scene
+			and body_scene == "res://scenes/room.tscn"
+			and GameState.kino_return_room_id != ""
+			and GameState.kino_return_room_id != GameState.current_room_id):
+		same_scene = false
 	if same_scene:
 		_close_in_place()
 	else:
@@ -386,6 +486,12 @@ func _exit_kino() -> void:
 # hovering inert where it was.
 func _close_in_place() -> void:
 	var player: Node3D = get_tree().get_first_node_in_group("player") as Node3D
+	# No body in this scene (e.g. it was freed during a piloted hop) — there's
+	# nothing to hand control back to in place, so reload the body's scene at its
+	# recorded resting spot instead of leaving the player stranded as the drone.
+	if player == null and GameState.kino_return_scene != "":
+		_close_to_scene(GameState.kino_return_scene)
+		return
 	if player != null:
 		if player.has_method("set_input_locked"):
 			player.call("set_input_locked", false)

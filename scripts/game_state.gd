@@ -283,6 +283,21 @@ var kino_zoom: float = 1.0
 var kino_active_floor: int = -1
 var kino_marker: Dictionary = {}
 
+# Compass marker filters — configured on the Kino Remote's COMPASS settings page,
+# read live by planet_compass.gd each _draw (so toggles apply instantly), and
+# persisted so the player's preference survives save/resume. Default: show all.
+var compass_show_lime: bool = true
+var compass_show_kinos: bool = true
+var compass_show_companions: bool = true
+var compass_show_gate: bool = true
+
+# Batched lime-discovery toast. A patrolling/piloted Kino can detect several
+# deposits in one sweep; collect them over a short window and emit ONE log line
+# instead of spamming. State is transient (not serialized).
+const _LIME_TOAST_WINDOW: float = 1.0
+var _lime_toast_pending: int = 0
+var _lime_toast_timer: SceneTreeTimer = null
+
 
 # Resolve an autoload by name, tolerating the headless -s SceneTree test
 # context where GameState is instantiated as a bare node. Uses
@@ -417,6 +432,12 @@ func reset() -> void:
 	kino_zoom = 1.0
 	kino_active_floor = -1
 	kino_marker = {}
+	compass_show_lime = true
+	compass_show_kinos = true
+	compass_show_companions = true
+	compass_show_gate = true
+	_lime_toast_pending = 0
+	_lime_toast_timer = null
 	# Clear scene-staging batons BEFORE advance_air_quest() emits
 	# objective_changed. Otherwise the autosave hook sees a stale
 	# current_scene_path (the room we were in when Restart was pressed) plus
@@ -482,6 +503,35 @@ func discover_lime(key: String) -> void:
 		return
 	lime_discovered.append(key)
 	lime_discovered_changed.emit()
+	_announce_lime_discovery()
+
+# Route the discovery through the HUD log feed (the project's toast), throttled
+# so a multi-deposit sweep collapses into one batched line. Skipped in
+# instant_mode/headless: there's no log feed there and it would add a stray timer
+# to every playthrough test.
+func _announce_lime_discovery() -> void:
+	var router: Node = _autoload_node("SceneRouter")
+	if router != null and router.get("instant_mode") == true:
+		return
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	if tree == null:
+		return
+	_lime_toast_pending += 1
+	if _lime_toast_timer != null:
+		return                                  # window already counting; it'll flush the batch
+	_lime_toast_timer = tree.create_timer(_LIME_TOAST_WINDOW)
+	_lime_toast_timer.timeout.connect(_flush_lime_toast)
+
+func _flush_lime_toast() -> void:
+	var n: int = _lime_toast_pending
+	_lime_toast_pending = 0
+	_lime_toast_timer = null
+	if n <= 0:
+		return
+	if n == 1:
+		add_log("Kino detected a lime deposit.")
+	else:
+		add_log("Kino detected %d lime deposits." % n)
 
 func is_lime_discovered(key: String) -> bool:
 	return lime_discovered.has(key)
@@ -1131,6 +1181,10 @@ func serialize() -> Dictionary:
 		"kino_zoom": kino_zoom,
 		"kino_active_floor": kino_active_floor,
 		"kino_marker": kino_marker.duplicate(true),
+		"compass_show_lime": compass_show_lime,
+		"compass_show_kinos": compass_show_kinos,
+		"compass_show_companions": compass_show_companions,
+		"compass_show_gate": compass_show_gate,
 	}
 
 
@@ -1217,6 +1271,10 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	kino_active_floor = int(data.get("kino_active_floor", -1))
 	var marker_raw: Variant = data.get("kino_marker", {})
 	kino_marker = marker_raw if marker_raw is Dictionary else {}
+	compass_show_lime = data.get("compass_show_lime", true) == true
+	compass_show_kinos = data.get("compass_show_kinos", true) == true
+	compass_show_companions = data.get("compass_show_companions", true) == true
+	compass_show_gate = data.get("compass_show_gate", true) == true
 	advance_air_quest()
 	# Republish so the HUD, Kino, and quest waypoint pick up loaded values.
 	health_changed.emit(health)

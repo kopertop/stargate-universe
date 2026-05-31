@@ -69,7 +69,7 @@ var _atmo_box: VBoxContainer = null
 # Auto-search state (set after the player closes the remote on the planet).
 var _autopilot: bool = false
 var _autopilot_target: Vector3 = Vector3.ZERO
-var _autopilot_discover_t: float = 0.0   # accumulator for the periodic discovery sweep
+var _discover_t: float = 0.0   # accumulator for the periodic lime-discovery sweep (manual + autopilot)
 
 # Ship auto-explore state (issue #50, Phase 4b). Distinct from the planet lime
 # patrol above: the player toggles it ON while still actively piloting in a ship
@@ -84,6 +84,10 @@ func _ready() -> void:
 	motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
 	collision_layer = 0          # nothing needs to detect the drone
 	collision_mask = 1           # slide off ground + walls only
+	# Joined so the HUD compass can draw a LIVE pip that tracks this drone while
+	# the player is back in their body in the same scene (planet_compass.gd scans
+	# this group). Before the instant_mode bail so it's set in headless too.
+	add_to_group("kino_drone")
 	# Headless / instant_mode never pilots — the playthrough completes the
 	# scout directly. Bail before capturing the mouse so tests stay clean.
 	if SceneRouter.instant_mode:
@@ -328,6 +332,13 @@ func _physics_process(delta: float) -> void:
 	var target_vel: Vector3 = Vector3(planar.x, clampf(move_vert, -1.0, 1.0) * VERT_SPEED * boost, planar.z)
 	velocity = velocity.lerp(target_vel, clampf(ACCEL_DAMP * delta, 0.0, 1.0))
 	move_and_slide()
+	# Discover lime while manually piloting too (autopilot runs its own sweep in
+	# _drive_autopilot). Throttled to 5 Hz, shared accumulator — the two branches
+	# are mutually exclusive so there's no double-count.
+	_discover_t += delta
+	if _discover_t >= 0.2:
+		_discover_t = 0.0
+		_detect_nearby_lime()
 	_drive_context_action()
 
 
@@ -397,8 +408,10 @@ func _check_lime_proximity() -> void:
 		if script == null or not script.resource_path.ends_with("resource_node.gd"):
 			continue
 		if rn.global_position.distance_to(global_position) <= LIME_CONFIRM_RANGE:
+			# Close-range "confirmed" flourish (sound + centre caption). The log
+			# toast is emitted by GameState.discover_lime via the detect sweep, so
+			# we don't add_log here too — that would double up the feed.
 			_lime_confirmed = true
-			GameState.add_log("Kino spotted lime deposits.")
 			Audio.play("res://sounds/menu_open.ogg")
 			if _caption != null:
 				_caption.text = "LIME DEPOSITS CONFIRMED"
@@ -724,13 +737,18 @@ func _drive_autopilot(delta: float) -> void:
 	# discovered (resource_node._mark_discovered records it in GameState).
 	# Throttled to 5 Hz; the loop is small but uniform per-frame work isn't
 	# free with multiple drones patrolling.
-	_autopilot_discover_t += delta
-	if _autopilot_discover_t >= 0.2:
-		_autopilot_discover_t = 0.0
-		_autopilot_discover_nearby()
+	_discover_t += delta
+	if _discover_t >= 0.2:
+		_discover_t = 0.0
+		_detect_nearby_lime()
 
 
-func _autopilot_discover_nearby() -> void:
+# Mark every un-discovered lime deposit within AUTO_DETECT_RANGE as discovered.
+# Shared by autopilot patrol AND manual piloting (called from _physics_process)
+# so flying past a deposit reliably reveals it → compass pip + batched toast via
+# GameState.discover_lime. The drone is not in group "player", so resource_node's
+# own 50 m fog-of-war sweep never fires for it — this is the drone's eyes.
+func _detect_nearby_lime() -> void:
 	for n in get_tree().get_nodes_in_group("lime_node"):
 		if not (n is Node3D):
 			continue

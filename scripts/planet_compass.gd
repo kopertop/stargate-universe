@@ -222,47 +222,67 @@ func _draw_markers(ppos: Vector3) -> void:
 # Lime-surface markers: return gate, away-team companions, discovered (un-mined)
 # deposits, and Kinos deployed in this scene.
 func _draw_planet_markers(ppos: Vector3) -> void:
-	var gate: Node3D = _find_gate("to_ship")
-	if gate != null:
-		_draw_pip(gate.global_position, GATE_COL, "Gate", ppos)
-	for c in get_tree().get_nodes_in_group("companion"):
-		if c is Node3D:
-			_draw_pip((c as Node3D).global_position, COMP_COL, "", ppos)
-	for n in get_tree().get_nodes_in_group("lime_node"):
-		if not (n is Node3D):
-			continue
-		if not n.has_method("is_discovered") or n.call("is_discovered") != true:
-			continue
-		# Mined deposits stay in the tree (their resource_node script keeps the
-		# node alive but hides it) — drop them from the compass too so the
-		# strip reflects only actionable destinations.
-		if n.get("depleted") == true:
-			continue
-		_draw_pip((n as Node3D).global_position, LIME_COL, "", ppos)
-	_draw_deployed_kinos(ppos)
+	if GameState.compass_show_gate:
+		var gate: Node3D = _find_gate("to_ship")
+		if gate != null:
+			_draw_pip(gate.global_position, GATE_COL, "Gate", ppos)
+	if GameState.compass_show_companions:
+		for c in get_tree().get_nodes_in_group("companion"):
+			if c is Node3D:
+				_draw_pip((c as Node3D).global_position, COMP_COL, "", ppos)
+	if GameState.compass_show_lime:
+		for n in get_tree().get_nodes_in_group("lime_node"):
+			if not (n is Node3D):
+				continue
+			if not n.has_method("is_discovered") or n.call("is_discovered") != true:
+				continue
+			# Mined deposits stay in the tree (their resource_node script keeps the
+			# node alive but hides it) — drop them from the compass too so the
+			# strip reflects only actionable destinations.
+			if n.get("depleted") == true:
+				continue
+			_draw_pip((n as Node3D).global_position, LIME_COL, "", ppos)
+	_draw_kinos(ppos)
 
 
 # Ship markers: the active objective waypoint (cross-room bearing comes free from
 # the in-world quest_waypoint node), deployed Kinos, and the outbound gate when
 # we're in the gate room.
 func _draw_ship_markers(ppos: Vector3) -> void:
-	var wp: Node = get_tree().get_first_node_in_group("quest_waypoint")
-	if wp is Node3D:
-		_draw_pip((wp as Node3D).global_position, GATE_COL, "Objective", ppos)
-	var gate: Node3D = _find_gate("to_planet")
-	if gate != null:
-		_draw_pip(gate.global_position, GATE_COL, "Gate", ppos)
-	_draw_deployed_kinos(ppos)
+	if GameState.compass_show_gate:
+		var wp: Node = get_tree().get_first_node_in_group("quest_waypoint")
+		if wp is Node3D:
+			_draw_pip((wp as Node3D).global_position, GATE_COL, "Objective", ppos)
+		var gate: Node3D = _find_gate("to_planet")
+		if gate != null:
+			_draw_pip(gate.global_position, GATE_COL, "Gate", ppos)
+	_draw_kinos(ppos)
 
 
-# Shared: draw a cyan pip for every Kino deployed in the current scene. The
-# tracker returns Vector3 world positions for the matching scene.
-func _draw_deployed_kinos(ppos: Vector3) -> void:
-	if _scene_path == "":
+# Draw a cyan pip for every Kino in (or tracked to) the current scene. Live drone
+# nodes win — a patrolling/parked Kino's pip tracks its REAL current position
+# (the drone joins group "kino_drone" in kino_drone.gd::_ready). Fall back to the
+# stored deploy positions only when no live node is instanced this scene (e.g.
+# after the player left and re-entered, so the parked drone wasn't rebuilt).
+func _draw_kinos(ppos: Vector3) -> void:
+	if not GameState.compass_show_kinos:
 		return
-	for k in GameState.deployed_kinos_in_scene(_scene_path):
-		if k is Vector3:
-			_draw_pip(k, KINO_COL, "K", ppos)
+	for pos in _kino_positions():
+		_draw_pip(pos, KINO_COL, "K", ppos)
+
+
+func _kino_positions() -> Array:
+	var out: Array = []
+	for d in get_tree().get_nodes_in_group("kino_drone"):
+		if d is Node3D and is_instance_valid(d):
+			out.append((d as Node3D).global_position)
+	if not out.is_empty():
+		return out
+	if _scene_path != "":
+		for k in GameState.deployed_kinos_in_scene(_scene_path):
+			if k is Vector3:
+				out.append(k)
+	return out
 
 func _draw_pip(target: Vector3, color: Color, glyph: String, ppos: Vector3) -> void:
 	var delta: Vector3 = target - ppos

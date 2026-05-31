@@ -181,6 +181,12 @@ if [[ "$MODE" == "kino-autoexplore" || "$MODE" == "all" ]]; then
 	RAN_KINOEXPLORE=1
 fi
 
+if [[ "$MODE" == "kino-discovery" || "$MODE" == "all" ]]; then
+	run_script_test "kino_discovery" "res://tests/smoke/kino_discovery.gd"
+	RC_KINODISC=$?
+	RAN_KINODISC=1
+fi
+
 if [[ "$MODE" == "gamepad" || "$MODE" == "all" ]]; then
 	run_script_test "gamepad" "res://tests/smoke/gamepad.gd"
 	RC_GAMEPAD=$?
@@ -247,12 +253,13 @@ echo "==============================="
 [[ $RAN_ATMO -eq 1 ]] && echo "atmosphere:          $([[ $RC_ATMO -eq 0 ]] && echo PASS || echo "FAIL ($RC_ATMO)")" || echo "atmosphere:          SKIPPED"
 [[ $RAN_KINODOORS -eq 1 ]] && echo "kino_doors:          $([[ $RC_KINODOORS -eq 0 ]] && echo PASS || echo "FAIL ($RC_KINODOORS)")" || echo "kino_doors:          SKIPPED"
 [[ $RAN_KINOEXPLORE -eq 1 ]] && echo "kino_autoexplore:    $([[ $RC_KINOEXPLORE -eq 0 ]] && echo PASS || echo "FAIL ($RC_KINOEXPLORE)")" || echo "kino_autoexplore:    SKIPPED"
+[[ $RAN_KINODISC -eq 1 ]] && echo "kino_discovery:      $([[ $RC_KINODISC -eq 0 ]] && echo PASS || echo "FAIL ($RC_KINODISC)")" || echo "kino_discovery:      SKIPPED"
 [[ $RAN_GAMEPAD -eq 1 ]] && echo "gamepad:             $([[ $RC_GAMEPAD -eq 0 ]] && echo PASS || echo "FAIL ($RC_GAMEPAD)")" || echo "gamepad:             SKIPPED"
 [[ $RAN_NPCCHAT -eq 1 ]] && echo "npc_chat:            $([[ $RC_NPCCHAT -eq 0 ]] && echo PASS || echo "FAIL ($RC_NPCCHAT)")" || echo "npc_chat:            SKIPPED"
 [[ $RAN_SAVE -eq 1 ]] && echo "save_store:          $([[ $RC_SAVE_UNIT -eq 0 ]] && echo PASS || echo "FAIL ($RC_SAVE_UNIT)")" || echo "save_store:          SKIPPED"
 [[ $RAN_SAVE -eq 1 ]] && echo "save_slot_resume:    $([[ $RC_SAVE_RESUME -eq 0 ]] && echo PASS || echo "FAIL ($RC_SAVE_RESUME)")" || echo "save_slot_resume:    SKIPPED"
 
-if [[ ( $RAN_LINT -eq 1 && $RC_LINT -ne 0 ) || ( $RAN_LINT -eq 1 && $RC_FORKS -ne 0 ) || ( $RAN_SCENE -eq 1 && $RC_SCENE -ne 0 ) || ( $RAN_FLOW -eq 1 && $RC_FLOW -ne 0 ) || ( $RAN_QUEST -eq 1 && $RC_QUEST -ne 0 ) || ( $RAN_PLAY -eq 1 && $RC_PLAY -ne 0 ) || ( $RAN_RESUME -eq 1 && $RC_RESUME -ne 0 ) || ( $RAN_AUTOPILOT -eq 1 && $RC_AUTOPILOT -ne 0 ) || ( $RAN_QUESTLOG -eq 1 && $RC_QUESTLOG -ne 0 ) || ( $RAN_INV -eq 1 && $RC_INV -ne 0 ) || ( $RAN_ATMO -eq 1 && $RC_ATMO -ne 0 ) || ( $RAN_KINODOORS -eq 1 && $RC_KINODOORS -ne 0 ) || ( $RAN_KINOEXPLORE -eq 1 && $RC_KINOEXPLORE -ne 0 ) || ( $RAN_GAMEPAD -eq 1 && $RC_GAMEPAD -ne 0 ) || ( $RAN_NPCCHAT -eq 1 && $RC_NPCCHAT -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_UNIT -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_RESUME -ne 0 ) ]]; then
+if [[ ( $RAN_LINT -eq 1 && $RC_LINT -ne 0 ) || ( $RAN_LINT -eq 1 && $RC_FORKS -ne 0 ) || ( $RAN_SCENE -eq 1 && $RC_SCENE -ne 0 ) || ( $RAN_FLOW -eq 1 && $RC_FLOW -ne 0 ) || ( $RAN_QUEST -eq 1 && $RC_QUEST -ne 0 ) || ( $RAN_PLAY -eq 1 && $RC_PLAY -ne 0 ) || ( $RAN_RESUME -eq 1 && $RC_RESUME -ne 0 ) || ( $RAN_AUTOPILOT -eq 1 && $RC_AUTOPILOT -ne 0 ) || ( $RAN_QUESTLOG -eq 1 && $RC_QUESTLOG -ne 0 ) || ( $RAN_INV -eq 1 && $RC_INV -ne 0 ) || ( $RAN_ATMO -eq 1 && $RC_ATMO -ne 0 ) || ( $RAN_KINODOORS -eq 1 && $RC_KINODOORS -ne 0 ) || ( $RAN_KINOEXPLORE -eq 1 && $RC_KINOEXPLORE -ne 0 ) || ( $RAN_KINODISC -eq 1 && $RC_KINODISC -ne 0 ) || ( $RAN_GAMEPAD -eq 1 && $RC_GAMEPAD -ne 0 ) || ( $RAN_NPCCHAT -eq 1 && $RC_NPCCHAT -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_UNIT -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_RESUME -ne 0 ) ]]; then
 	exit 1
 fi
 exit 0

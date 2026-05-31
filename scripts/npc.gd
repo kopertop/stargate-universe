@@ -10,6 +10,12 @@ extends Interactable
 # scene and walks toward them up to `auto_greet_distance`; once close enough,
 # it fires its own first interact. Used so Lt Scott approaches the player
 # during the arrival beat instead of waiting to be talked to.
+#
+# Independently of interaction, an NPC with `ambient_lines` (and optionally
+# `alert_lines`) pops a passive over-the-head speech bubble when the player
+# wanders near — small personality-flavored chatter ("Hey, Eli.") that swaps to
+# the alert pool ("What's that alarm?!") while the ship's red alert is active.
+# See issue #35 / the "Passive ambient chat bubbles" section below.
 
 @export var character_name: String = "NPC"
 @export var dialogue_lines: Array[String] = []
@@ -36,7 +42,30 @@ extends Interactable
 @export var auto_greet_delay: float = 1.5
 @export var auto_greet_speed: float = 1.8
 
+# Passive ambient chatter (issue #35). When the player wanders within
+# `ambient_bubble_distance` an over-the-head speech bubble pops up with a
+# personality-flavored one-liner — no interaction needed. These pools give
+# each NPC their own voice; the bubble auto-clears after `ambient_bubble_hold`
+# seconds and won't re-trigger until `ambient_bubble_cooldown` has elapsed so
+# a parked player isn't spammed. `alert_lines` (if any) take precedence
+# whenever the ship's red alert is active, so soldiers react to the hull alarm
+# instead of small-talking. All optional — an NPC with no pools stays silent.
+@export var ambient_lines: Array[String] = []
+@export var alert_lines: Array[String] = []
+@export var ambient_bubble_distance: float = 4.0
+@export var ambient_bubble_hold: float = 3.2
+@export var ambient_bubble_cooldown: float = 8.0
+
 var _line_index: int = 0
+# Ambient-bubble runtime. _ambient_t accumulates since the last bubble; the
+# Label3D is created lazily on first show. _ambient_index walks the pool so an
+# NPC cycles its lines (deterministic + testable) rather than repeating one.
+var _ambient_bubble: Label3D = null
+var _ambient_t: float = 0.0
+var _ambient_visible_t: float = 0.0
+var _ambient_index: int = 0
+var _ambient_alert_index: int = 0
+var _ambient_shown: bool = false
 var _auto_greet_done: bool = false
 var _auto_greet_t: float = 0.0
 # walk_to: a one-shot scripted stroll to an absolute world target (used by the
@@ -61,9 +90,13 @@ func _ready() -> void:
 	collision_layer = 1 | 4
 	if prompt == "Interact":
 		prompt = "Talk to %s" % character_name
-	# StaticBody3D nodes don't process by default. Only flip when auto-greet is
-	# requested so passive NPCs (Rush) don't pay the per-frame cost.
-	set_process(auto_greet)
+	# StaticBody3D nodes don't process by default. Flip on when auto-greet OR
+	# ambient chatter is requested so passive NPCs without either stay free of
+	# the per-frame cost.
+	set_process(auto_greet or _has_ambient_chatter())
+	# Start the cooldown part-way in so NPCs don't all bark the instant the
+	# scene loads with the player nearby — stagger via the pool size.
+	_ambient_t = float(_ambient_index) * 0.7
 	# Resume previously-captured dialogue progress / placement if this NPC
 	# has been saved before. NPCState gates on node name (stable as long as
 	# the scene's NPC isn't renamed). On a fresh spawn this just records
@@ -88,9 +121,13 @@ func walk_to(target: Vector3, speed: float = 2.5, delay: float = 0.0) -> void:
 func _process(delta: float) -> void:
 	if _walking_to:
 		_step_walk(delta)
+	# Passive chatter runs for any NPC with a pool, independent of auto-greet.
+	if _has_ambient_chatter():
+		_step_ambient(delta)
+	# Auto-greet is the only other reason to keep processing once the walk is
+	# done; bail (and stop processing if nothing else needs it) otherwise.
 	if not auto_greet or _auto_greet_done:
-		# If we were only processing for the (now-finished) walk, stop.
-		if not _walking_to:
+		if not _walking_to and not _has_ambient_chatter():
 			set_process(false)
 		return
 	_auto_greet_t += delta
@@ -105,7 +142,8 @@ func _process(delta: float) -> void:
 	var dist: float = to_player.length()
 	if dist <= auto_greet_distance:
 		_auto_greet_done = true
-		set_process(false)
+		if not _has_ambient_chatter():
+			set_process(false)
 		look_at(Vector3(player.global_position.x, global_position.y, player.global_position.z), Vector3.UP)
 		_on_interact(player)
 		return
@@ -113,6 +151,113 @@ func _process(delta: float) -> void:
 	global_position += to_player.normalized() * step
 	# Face the way we're walking so the model doesn't moonwalk.
 	look_at(Vector3(player.global_position.x, global_position.y, player.global_position.z), Vector3.UP)
+
+
+# --------------- Passive ambient chat bubbles (issue #35) ------------------
+
+func _has_ambient_chatter() -> bool:
+	return not ambient_lines.is_empty() or not alert_lines.is_empty()
+
+
+# One frame of ambient-bubble logic. Holds a visible bubble for
+# `ambient_bubble_hold`, then hides it; once `ambient_bubble_cooldown` has
+# elapsed and the player is within range, pops a fresh line. Headless/instant
+# runs (no player, no frames) simply never trigger — the bubble is cosmetic.
+func _step_ambient(delta: float) -> void:
+	if _ambient_shown:
+		_ambient_visible_t += delta
+		if _ambient_visible_t >= ambient_bubble_hold:
+			_hide_ambient_bubble()
+		return
+	_ambient_t += delta
+	if _ambient_t < ambient_bubble_cooldown:
+		return
+	var player: Node3D = get_tree().get_first_node_in_group("player") as Node3D
+	if player == null:
+		return
+	var to_player: Vector3 = player.global_position - global_position
+	to_player.y = 0.0
+	if to_player.length() > ambient_bubble_distance:
+		return
+	var line: String = next_ambient_line()
+	if line == "":
+		return
+	show_ambient_bubble(line)
+
+
+# Choose the next ambient line, context-aware: when the ship's red alert is
+# active and this NPC has alert_lines, draw from that pool; otherwise cycle the
+# normal ambient pool. Each pool advances its own cursor so lines rotate
+# deterministically (testable). Returns "" when no pool applies.
+#
+# `alert_active` is injectable so tests can drive both branches without standing
+# up the GameState autoload (ShipAlert reads the bare GameState singleton, which
+# does not exist under -s). When -1 (default) we resolve it ourselves.
+func next_ambient_line(alert_active: int = -1) -> String:
+	var alerted: bool = (alert_active == 1) if alert_active >= 0 else _is_alert_active()
+	if alerted and not alert_lines.is_empty():
+		var l: String = alert_lines[_ambient_alert_index % alert_lines.size()]
+		_ambient_alert_index += 1
+		return l
+	if ambient_lines.is_empty():
+		return ""
+	var line: String = ambient_lines[_ambient_index % ambient_lines.size()]
+	_ambient_index += 1
+	return line
+
+
+# Autoload-tolerant alert check — ShipAlert reads the GameState autoload, which
+# is absent in -s scene-boot runs. The bare GameState identifier won't even
+# resolve there, so gate the whole call behind the autoload's presence: no
+# autoload means "no alert".
+func _is_alert_active() -> bool:
+	if get_node_or_null("/root/GameState") == null:
+		return false
+	return ShipAlert.is_alert_active()
+
+
+# Pop a speech bubble with `text` over the NPC's head. Lazily builds the Label3D
+# (a billboarded panel-ish caption above the nametag). Public so tests/cinematics
+# can force a bubble without waiting for proximity.
+func show_ambient_bubble(text: String) -> void:
+	if _ambient_bubble == null:
+		_ambient_bubble = _build_ambient_bubble()
+		add_child(_ambient_bubble)
+	_ambient_bubble.text = text
+	_ambient_bubble.visible = true
+	_ambient_shown = true
+	_ambient_visible_t = 0.0
+
+
+func _hide_ambient_bubble() -> void:
+	_ambient_shown = false
+	_ambient_t = 0.0
+	_ambient_visible_t = 0.0
+	if _ambient_bubble != null:
+		_ambient_bubble.visible = false
+
+
+# True while a bubble is on screen — handy for tests/HUD.
+func is_ambient_bubble_visible() -> bool:
+	return _ambient_shown
+
+
+func _build_ambient_bubble() -> Label3D:
+	var b: Label3D = Label3D.new()
+	b.name = "AmbientBubble"
+	# Sit above the nametag (which lives at y=2.0) so the two don't overlap.
+	b.position = Vector3(0.0, 2.42, 0.0)
+	b.pixel_size = 0.0038
+	b.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	b.shaded = false
+	b.double_sided = true
+	b.outline_size = 8
+	b.modulate = Color(0.82, 0.94, 1.0, 1.0)
+	b.outline_modulate = Color(0.02, 0.05, 0.09, 0.9)
+	b.width = 420.0
+	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	b.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	return b
 
 # One frame of a scripted walk toward _walk_target. Planar step at _walk_speed,
 # smooth yaw toward travel, arrive within 0.3 m. Mirrors Companion._step_toward

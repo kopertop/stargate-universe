@@ -940,7 +940,9 @@ func _spawn_npc(
 		glb_path: String,
 		dialog_tree: Array,
 		met_flag: String = "",
-		script: Script = NpcScript
+		script: Script = NpcScript,
+		ambient: Array[String] = [],
+		alert: Array[String] = []
 	) -> StaticBody3D:
 	var body: StaticBody3D = StaticBody3D.new()
 	body.set_script(script)
@@ -950,6 +952,10 @@ func _spawn_npc(
 	body.set("character_name", character_name)
 	body.set("prompt", "Talk to %s" % character_name)
 	body.set("dialogue_tree", dialog_tree)
+	if not ambient.is_empty():
+		body.set("ambient_lines", ambient)
+	if not alert.is_empty():
+		body.set("alert_lines", alert)
 	if met_flag != "":
 		body.set("met_flag", met_flag)
 		body.set("first_meet_recompute_objective", true)
@@ -1028,6 +1034,18 @@ func _spawn_colonel_young() -> void:
 			},
 		],
 		"met_young",
+		NpcScript,
+		# Command-school cadence — calm, dry, watchful.
+		[
+			"Wallace.",
+			"Keep your eyes open, son.",
+			"Rush thinks he's got the consoles. We'll see.",
+			"How're we doing on air?",
+		],
+		[
+			"That's a hull alarm. Wallace — with me.",
+			"Everybody stay calm and move with purpose.",
+		],
 	)
 
 
@@ -1224,6 +1242,19 @@ func _spawn_chloe() -> void:
 			},
 		],
 		"met_chloe",
+		NpcScript,
+		# Anxious, searching — a civilian out of her depth.
+		[
+			"Oh — hi again.",
+			"Do you think we're going to be okay?",
+			"It's so quiet up here. I can't stand it.",
+			"Have you seen my dad?",
+		],
+		# Frightened during the alarm.
+		[
+			"What is that?! Is the ship breaking apart?",
+			"Eli — where are we supposed to go?!",
+		],
 	)
 
 
@@ -1263,6 +1294,20 @@ func _spawn_soldier() -> void:
 			},
 		],
 		"met_soldier",
+		NpcScript,
+		# Clipped, professional — a soldier walking a beat.
+		[
+			"Hey, Eli.",
+			"Corridor's clear, sir.",
+			"Watch your step — ship's still mapping this section.",
+			"Stay in the lit hallways.",
+		],
+		# Red-alert chatter — reacts to the hull alarm.
+		[
+			"Eli — that alarm! What's going on?!",
+			"Hull breach somewhere. Move!",
+			"Get to a sealed compartment!",
+		],
 	)
 
 

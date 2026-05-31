@@ -43,18 +43,10 @@ const ACTION_BORDER_ATTENTION: Color = Color(1.0, 0.78, 0.30, 0.95)
 var _action_bar: HBoxContainer = null
 var _action_pulse: Tween = null
 
-# Always-on per-room atmosphere readout (top-right). Built in code like the
-# action bar. Shows the breathability of the room the player is standing in —
-# the breached section reads VENTING/VACUUM until sealed, every room reads
-# DEGRADED during the air crisis. Refreshed on room change, O2 change, scrubber
-# change, and objective change (the breach-seal proxy — sealing the breach has
-# no signal of its own but always advances the objective).
-const ATMO_PANEL_WIDTH: float = 264.0
-# Preloaded rather than referenced by class_name for the same headless
-# class_name-registration reason as kino_drone.gd.
-const AtmoReadoutScript := preload("res://scripts/atmo_readout.gd")
-var _atmo_panel: PanelContainer = null
-var _atmo_box: VBoxContainer = null
+# NOTE: the atmosphere readout is a KINO recon affordance — it lives on the
+# drone's overlay (kino_drone.gd::_build_atmo_readout) and is only visible while
+# piloting a Kino, NOT on Eli's HUD. The per-room data model (GameState.
+# room_atmosphere) + the shared renderer (atmo_readout.gd) feed it there.
 
 # Always-on direction compass (top banner). Single spawner for ALL gameplay
 # scenes: ship interiors + gate room read "ship" mode, the lime planet reads
@@ -93,15 +85,6 @@ func _ready() -> void:
 	_dialog_panel.visible = false
 	_build_action_bar()
 	_refresh_action_bar()
-	_build_atmo_readout()
-	GameState.current_room_changed.connect(_on_atmo_signal_room)
-	GameState.oxygen_changed.connect(_on_atmo_signal_oxygen)
-	GameState.scrubber_level_changed.connect(_on_atmo_signal_scrubber)
-	# objective_changed is the breach-seal proxy: seal_breach() has no dedicated
-	# signal but always advances the objective, so refreshing here flips the
-	# breached section from VENTING → NOMINAL the instant it's sealed.
-	GameState.objective_changed.connect(_on_atmo_signal_objective)
-	_refresh_atmo_readout()
 	_build_edge_arrow()
 	_spawn_compass()
 	# Defer player lookup so the scene tree is settled.
@@ -268,57 +251,6 @@ func _build_action_bar() -> void:
 	_action_bar.offset_bottom = -ACTION_BAR_MARGIN
 	_action_bar.add_theme_constant_override("separation", 8)
 	add_child(_action_bar)
-
-
-# Top-right atmosphere panel, anchored to the corner. Mirrors the Kino recon
-# panel's chrome (kino_drone.gd::_build_atmo_readout) and renders through the
-# shared AtmoReadout helper so the two readouts stay visually identical.
-func _build_atmo_readout() -> void:
-	_atmo_panel = PanelContainer.new()
-	_atmo_panel.name = "AtmoReadout"
-	_atmo_panel.anchor_left = 1.0
-	_atmo_panel.anchor_right = 1.0
-	_atmo_panel.offset_left = -(ATMO_PANEL_WIDTH + 24.0)
-	_atmo_panel.offset_right = -24.0
-	_atmo_panel.offset_top = 16.0
-	_atmo_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var sb: StyleBoxFlat = StyleBoxFlat.new()
-	sb.bg_color = Color(0.02, 0.07, 0.11, 0.55)
-	sb.border_color = Color(0.4, 0.75, 1.0, 0.7)
-	sb.set_border_width_all(1)
-	sb.set_corner_radius_all(6)
-	sb.set_content_margin_all(10.0)
-	_atmo_panel.add_theme_stylebox_override("panel", sb)
-	add_child(_atmo_panel)
-
-	_atmo_box = VBoxContainer.new()
-	_atmo_box.add_theme_constant_override("separation", 4)
-	_atmo_panel.add_child(_atmo_box)
-
-
-# Re-render the readout for the room the player is currently in. Pulls the
-# derived dict from GameState (no stored state) and hands it to the shared
-# renderer.
-func _refresh_atmo_readout() -> void:
-	if _atmo_box == null:
-		return
-	AtmoReadoutScript.render(_atmo_box, GameState.room_atmosphere(GameState.current_room_id))
-
-
-func _on_atmo_signal_room(_room_id: String) -> void:
-	_refresh_atmo_readout()
-
-
-func _on_atmo_signal_oxygen(_value: float) -> void:
-	_refresh_atmo_readout()
-
-
-func _on_atmo_signal_scrubber(_level: float) -> void:
-	_refresh_atmo_readout()
-
-
-func _on_atmo_signal_objective(_text: String) -> void:
-	_refresh_atmo_readout()
 
 
 # One slot per currently-available tool. Today just the Kino Remote (gated on

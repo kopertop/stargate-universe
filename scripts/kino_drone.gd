@@ -241,12 +241,17 @@ func _build_atmo_readout(layer: CanvasLayer) -> void:
 	panel.add_child(_atmo_box)
 	_render_atmo()
 
-# Delegates to AtmoReadout.render — the single source of truth shared with the
-# always-on ship readout in hud.gd. The planet telemetry dict carries no
-# "status" key, so the recon panel keeps its original composition/temp/rad/tox
-# layout while the ship readout adds a leading status banner.
+# Delegates to AtmoReadout.render — the single source of truth for the readout.
+# On the planet, planet.gd hands us the scan dict in `atmosphere`. When flying
+# INSIDE the ship there's no planet telemetry, so derive the current room's scan
+# from GameState.room_atmosphere (the per-room model) — that's the atmospheric
+# scan the player wants while piloting the Kino through the ship. Re-derived each
+# render and the drone is rebuilt per room hop, so it tracks the Kino's room.
 func _render_atmo() -> void:
-	AtmoReadoutScript.render(_atmo_box, atmosphere)
+	var atmo: Dictionary = atmosphere
+	if atmo.is_empty() and GameState.current_room_id != "":
+		atmo = GameState.room_atmosphere(GameState.current_room_id)
+	AtmoReadoutScript.render(_atmo_box, atmo)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if _ending or _camera == null:

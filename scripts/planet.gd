@@ -94,13 +94,15 @@ func _spawn_compass() -> void:
 	add_child(layer)
 	var compass: Control = PlanetCompassScript.new()
 	compass.name = "PlanetCompass"
-	compass.anchor_left = 0.5
-	compass.anchor_right = 0.5
+	# Span ~70% of the screen width, centred. The strip draws to the control's
+	# actual width, so the anchors define how wide it reads.
+	compass.anchor_left = 0.15
+	compass.anchor_right = 0.85
 	# Slot below the GATE WINDOW countdown label (which sits around y=14..40);
 	# the compass strip occupies ~58 px from offset_top, so 46..104 keeps both
 	# readouts vertically clear.
-	compass.offset_left = -180.0
-	compass.offset_right = 180.0
+	compass.offset_left = 0.0
+	compass.offset_right = 0.0
 	compass.offset_top = 46.0
 	compass.offset_bottom = 110.0
 	layer.add_child(compass)

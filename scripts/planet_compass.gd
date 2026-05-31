@@ -13,10 +13,18 @@ extends Control
 # Built by planet.gd at MINE_LIME (live play only) under a CanvasLayer so the
 # Cinematic letterbox auto-hides it during the departure cutscene.
 
-const STRIP_W: float = 360.0
+const STRIP_W: float = 360.0           # fallback width before the control is sized
 const STRIP_H: float = 28.0
 const TOP_PAD: float = 14.0
 const HALF_FOV: float = PI             # ±180° fills the strip — full panoramic.
+# Ruler-style ticks every 15°: cardinals (90°) are tall + lettered, the
+# intercardinals (45° → NE/SE/SW/NW) are medium + small-lettered, and the rest
+# are short minor notches with no label.
+const TICK_STEP_DEG: int = 15
+const TICK_LEN_MAJOR: float = 18.0
+const TICK_LEN_INTER: float = 12.0
+const TICK_LEN_MINOR: float = 6.0
+const INTERCARDINALS: Dictionary = {45: "NE", 135: "SE", 225: "SW", 315: "NW"}
 # A panoramic compass (±180°) means EVERY world direction maps to a strip
 # position and nothing ever clamps to the edges, so pips move smoothly even
 # as the player makes large rotations. The trade-off is that things directly
@@ -24,9 +32,12 @@ const HALF_FOV: float = PI             # ±180° fills the strip — full panora
 # but for a top-down planet surface where exploration directions matter in
 # every quadrant, the readability gain beats the "ahead vs behind" cue.
 
-const BG: Color = Color(0.04, 0.07, 0.12, 0.78)
-const FRAME: Color = Color(0.55, 0.85, 1.0, 0.55)
-const TICK: Color = Color(0.55, 0.85, 1.0, 0.85)
+# More transparent than before so the strip floats over the world without
+# blocking it. Minor ticks are dimmer still.
+const BG: Color = Color(0.04, 0.07, 0.12, 0.30)
+const FRAME: Color = Color(0.55, 0.85, 1.0, 0.22)
+const TICK: Color = Color(0.70, 0.90, 1.0, 0.85)
+const TICK_MINOR: Color = Color(0.70, 0.90, 1.0, 0.35)
 const GATE_COL: Color = Color(1.0, 0.85, 0.35, 1.0)     # warm amber — exit
 const LIME_COL: Color = Color(0.93, 0.96, 1.0, 1.0)     # chalky white — deposit
 const KINO_COL: Color = Color(0.45, 0.95, 1.0, 1.0)     # cyan tech — drone
@@ -37,7 +48,9 @@ var _scene_path: String = ""
 var _font: Font = null
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(STRIP_W, TOP_PAD + STRIP_H + 16.0)
+	# Width comes from the control's anchors (≈70% of the screen); only the
+	# height is constrained here.
+	custom_minimum_size = Vector2(0.0, TOP_PAD + STRIP_H + 16.0)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_font = ThemeDB.fallback_font
 	# Live refresh when the underlying state changes (a deposit gets spotted, a
@@ -67,52 +80,88 @@ func _process(_dt: float) -> void:
 		_player = get_tree().get_first_node_in_group("player") as Node3D
 	queue_redraw()
 
+# Current strip width — the control's actual size (≈70% screen), with a sane
+# floor before layout settles.
+func _strip_w() -> float:
+	return maxf(size.x, STRIP_W)
+
+
+# Screen X for a bearing relative to the heading: -HALF_FOV → left edge,
+# 0 → centre, +HALF_FOV → right edge.
+func _bearing_to_x(rel: float) -> float:
+	var w: float = _strip_w()
+	return w / 2.0 + (rel / HALF_FOV) * (w / 2.0)
+
+
 func _draw() -> void:
 	# `_draw` runs synchronously after queue_redraw within the same frame, but a
 	# scene change between _process and _draw could leave `_player` freed-but-
 	# non-null. is_instance_valid blocks the rotation read on a dead handle.
 	if _player == null or not is_instance_valid(_player):
 		return
-	var bar: Rect2 = Rect2(0.0, TOP_PAD, STRIP_W, STRIP_H)
+	var bar: Rect2 = Rect2(0.0, TOP_PAD, _strip_w(), STRIP_H)
 	draw_rect(bar, BG, true)
 	draw_rect(bar, FRAME, false)
-	_draw_cardinals()
+	_draw_ticks()
 	_draw_markers(_player.global_position)
 
 
-# Bearing of a world-space vector (point or direction) in the player's local
-# frame: 0 = straight ahead, +π/2 = directly to the right, ±π = behind,
-# -π/2 = directly to the left. Y is zeroed because the planet is flat — height
-# offsets must not skew the horizontal bearing.
+# Yaw-only basis aligned with the CAMERA's horizontal forward, so the heading
+# tracks where the player is LOOKING — not the body's facing. Strafing
+# left/right no longer spins the compass; only turning the camera does. Falls
+# back to the player body when no 3D camera is active.
+func _heading_basis() -> Basis:
+	var cam: Camera3D = get_viewport().get_camera_3d()
+	if cam == null:
+		return _player.global_transform.basis
+	var fwd: Vector3 = -cam.global_transform.basis.z
+	fwd.y = 0.0
+	if fwd.length() < 0.001:
+		return _player.global_transform.basis
+	return Basis.looking_at(fwd.normalized(), Vector3.UP)
+
+
+# Bearing of a world-space vector (point or direction) relative to the camera
+# heading: 0 = straight ahead, +π/2 = directly to the right, ±π = behind,
+# -π/2 = directly to the left. Y is zeroed because the planet is flat.
 #
-# Why this beats `wrapf(world_yaw - player.rotation.y, ...)`: Godot's +Y
-# rotation is counterclockwise viewed from above (player at yaw=+π/2 actually
-# faces WEST), so the naive subtraction inverts the left/right sign relative
-# to player intuition. Going through `basis.inverse()` collapses every
-# orientation case into a single XZ comparison with no sign traps.
+# Why through `basis.inverse()`: Godot's +Y rotation is counterclockwise from
+# above, so a naive `world_yaw - heading_yaw` subtraction inverts the left/right
+# sign. Collapsing into a single XZ comparison in the heading frame has no sign
+# traps.
 func _bearing(world_offset: Vector3) -> float:
 	var flat: Vector3 = Vector3(world_offset.x, 0.0, world_offset.z)
-	var local: Vector3 = _player.basis.inverse() * flat
+	var local: Vector3 = _heading_basis().inverse() * flat
 	return atan2(local.x, -local.z)
 
 
-func _draw_cardinals() -> void:
-	# Fixed WORLD directions — N is -Z, E is +X, S is +Z, W is -X.
-	var cardinals: Array = [
-		{"label": "N", "dir": Vector3(0, 0, -1)},
-		{"label": "E", "dir": Vector3(1, 0, 0)},
-		{"label": "S", "dir": Vector3(0, 0, 1)},
-		{"label": "W", "dir": Vector3(-1, 0, 0)},
-	]
-	for c in cardinals:
-		var rel: float = _bearing(c["dir"] as Vector3)
+# Ruler-style ticks every TICK_STEP_DEG around the full circle: tall lettered
+# cardinals, medium lettered intercardinals, short minor notches between.
+func _draw_ticks() -> void:
+	for deg in range(0, 360, TICK_STEP_DEG):
+		var rad: float = deg_to_rad(float(deg))
+		# World direction for this compass heading (0°=N=-Z, 90°=E=+X, …).
+		var dir: Vector3 = Vector3(sin(rad), 0.0, -cos(rad))
+		var rel: float = _bearing(dir)
 		if absf(rel) > HALF_FOV:
 			continue
-		var x: float = STRIP_W / 2.0 + (rel / HALF_FOV) * (STRIP_W / 2.0)
-		draw_line(Vector2(x, TOP_PAD), Vector2(x, TOP_PAD + STRIP_H), TICK, 1.0)
-		if _font != null:
-			draw_string(_font, Vector2(x - 4.0, TOP_PAD - 2.0), String(c["label"]),
-				HORIZONTAL_ALIGNMENT_LEFT, -1.0, 11, TICK)
+		var x: float = _bearing_to_x(rel)
+		var label: String = ""
+		var tick_len: float = TICK_LEN_MINOR
+		var col: Color = TICK_MINOR
+		if deg % 90 == 0:
+			label = ["N", "E", "S", "W"][deg / 90]
+			tick_len = TICK_LEN_MAJOR
+			col = TICK
+		elif INTERCARDINALS.has(deg):
+			label = String(INTERCARDINALS[deg])
+			tick_len = TICK_LEN_INTER
+			col = TICK
+		draw_line(Vector2(x, TOP_PAD), Vector2(x, TOP_PAD + tick_len), col, 1.0)
+		if label != "" and _font != null:
+			var fsize: int = 12 if deg % 90 == 0 else 9
+			draw_string(_font, Vector2(x - 4.0, TOP_PAD - 2.0), label,
+				HORIZONTAL_ALIGNMENT_LEFT, -1.0, fsize, col)
 
 func _draw_markers(ppos: Vector3) -> void:
 	var gate: Node3D = _find_gate()
@@ -148,14 +197,14 @@ func _draw_pip(target: Vector3, color: Color, glyph: String, ppos: Vector3) -> v
 	var rel: float = _bearing(delta)
 	var off_strip: bool = absf(rel) > HALF_FOV
 	var clamped: float = clampf(rel, -HALF_FOV, HALF_FOV)
-	var x: float = STRIP_W / 2.0 + (clamped / HALF_FOV) * (STRIP_W / 2.0)
+	var x: float = _bearing_to_x(clamped)
 	var y: float = TOP_PAD + STRIP_H / 2.0
 	var col: Color = color
 	if off_strip:
 		col.a *= 0.55
 	draw_circle(Vector2(x, y), 5.0, col)
 	if off_strip:
-		var edge_x: float = STRIP_W if rel > 0.0 else 0.0
+		var edge_x: float = _strip_w() if rel > 0.0 else 0.0
 		var dirx: float = -1.0 if rel > 0.0 else 1.0
 		draw_colored_polygon(PackedVector2Array([
 			Vector2(edge_x, y),

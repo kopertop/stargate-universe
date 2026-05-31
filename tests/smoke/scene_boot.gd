@@ -125,6 +125,8 @@ func _run_checks() -> void:
 	await _check_post_scout_gate()
 	await _check_assembled_away_team()
 	await _check_kino_gate_arrival()
+	await _check_kino_recon_faces_away()
+	await _check_gate_room_restore_heading()
 	await _check_returned_away_team()
 	await _check_hud_compass()
 	_report()
@@ -658,6 +660,99 @@ func _check_kino_gate_arrival() -> void:
 	if ok:
 		print("  OK (KinoDrone spawned deployed; player rig torn down)")
 		_passes += 1
+	root.remove_child(inst)
+	await process_frame
+	inst.free()
+	_game_state.call("reset")
+	if router != null:
+		router.set("instant_mode", prev_instant)
+
+
+# Facing bug 1: a Kino flown THROUGH the ship gate to the planet must emerge
+# looking OUT into the planet — the gate is behind it, not in front. Boot
+# planet.tscn as a fresh scout (kino_pilot_mode, no tracked target) and assert
+# the recon drone's forward (-basis.z) points AWAY from the PlanetReturnStargate.
+func _check_kino_recon_faces_away() -> void:
+	print("\n=== facing: Kino recon emerges facing AWAY from the gate ===")
+	var router: Node = root.get_node_or_null("SceneRouter")
+	var prev_instant: bool = router != null and router.get("instant_mode") == true
+	if router != null:
+		router.set("instant_mode", true)
+	_game_state.call("reset")
+	_game_state.set("kino_pilot_mode", true)        # fresh scout arrival (no kino_pilot_target_pos)
+	var packed := load("res://scenes/planet.tscn") as PackedScene
+	if packed == null:
+		_fail("res://scenes/planet.tscn", "load() returned null for recon-facing check")
+		if router != null:
+			router.set("instant_mode", prev_instant)
+		return
+	var inst := packed.instantiate()
+	root.add_child(inst)
+	await process_frame
+	var drone := inst.get_node_or_null("KinoDrone") as Node3D
+	var gate := inst.get_node_or_null("World/PlanetReturnStargate") as Node3D
+	if drone == null:
+		_fail("res://scenes/planet.tscn", "recon KinoDrone did not spawn")
+	elif gate == null:
+		_fail("res://scenes/planet.tscn", "PlanetReturnStargate missing — can't check facing")
+	else:
+		var forward: Vector3 = -drone.global_transform.basis.z
+		forward.y = 0.0
+		var away: Vector3 = drone.global_position - gate.global_position
+		away.y = 0.0
+		if forward.length() < 0.01 or away.length() < 0.01:
+			_fail("res://scenes/planet.tscn", "recon facing check has a zero vector")
+		else:
+			var dot: float = forward.normalized().dot(away.normalized())
+			if dot > 0.5:
+				print("  OK (recon drone faces out into the planet, gate behind it; dot=%.2f)" % dot)
+				_passes += 1
+			else:
+				_fail("res://scenes/planet.tscn",
+					"recon drone faces the gate instead of away (dot=%.2f, want >0.5)" % dot)
+	root.remove_child(inst)
+	await process_frame
+	inst.free()
+	_game_state.call("reset")
+	if router != null:
+		router.set("instant_mode", prev_instant)
+
+
+# Facing bug 2: returning to the body in the gate room (e.g. closing a Kino remote
+# flown on the planet) must restore the body's HEADING, not just its position. The
+# View must re-snap to the restored yaw, or player.gd's idle-facing swings the
+# body back to the camera's default. Boot gate_room via the save-spawn path with a
+# distinctive yaw, tick several IDLE frames, and assert the heading didn't drift.
+func _check_gate_room_restore_heading() -> void:
+	print("\n=== facing: gate-room body restore keeps heading (no idle drift) ===")
+	var router: Node = root.get_node_or_null("SceneRouter")
+	var prev_instant: bool = router != null and router.get("instant_mode") == true
+	if router != null:
+		router.set("instant_mode", true)
+	_game_state.call("reset")
+	const WANT_YAW: float = 2.0                      # ~115°, well away from the default 0
+	_game_state.set("skip_arrival_cinematic", true)
+	_game_state.set("pending_spawn_position", Vector3(0.0, 0.05, 0.0))
+	_game_state.set("pending_spawn_yaw", WANT_YAW)
+	var packed := load("res://scenes/gate_room.tscn") as PackedScene
+	var inst := packed.instantiate()
+	root.add_child(inst)
+	# Tick idle frames: with the fix the View is snapped to WANT_YAW so the body
+	# holds; without it the body lerps toward the camera's default (~0).
+	for i in 20:
+		await process_frame
+	var player := inst.get_node_or_null("Player") as Node3D
+	if player == null:
+		_fail("res://scenes/gate_room.tscn", "Player missing after save-spawn restore")
+	else:
+		var drift: float = abs(angle_difference(player.rotation.y, WANT_YAW))
+		if drift < 0.25:
+			print("  OK (heading held at %.2f rad after idle; drift=%.3f)" % [WANT_YAW, drift])
+			_passes += 1
+		else:
+			_fail("res://scenes/gate_room.tscn",
+				"body heading drifted from restored yaw (now %.2f, want %.2f, drift=%.2f)"
+				% [player.rotation.y, WANT_YAW, drift])
 	root.remove_child(inst)
 	await process_frame
 	inst.free()

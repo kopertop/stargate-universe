@@ -117,7 +117,8 @@ func _start_kino_recon(planet_data: Dictionary) -> void:
 	var spawn_yaw: float = marker.global_transform.basis.get_euler().y
 	# Re-taking control of a Kino already left on the planet → spawn it AT that
 	# tracked spot. A fresh scout arrival (no target) → frame it emerging from the
-	# return gate (pushed back a few metres, facing the gate it came through).
+	# return gate (pushed back a few metres, looking out into the planet — the gate
+	# is BEHIND it, since it just flew through).
 	var target: Variant = GameState.kino_pilot_target_pos
 	if target is Vector3 and GameState.kino_pilot_target_scene == "res://scenes/planet.tscn":
 		spawn = target
@@ -130,9 +131,9 @@ func _start_kino_recon(planet_data: Dictionary) -> void:
 			away.y = 0.0
 			if away.length() > 0.5:
 				spawn += away.normalized() * 5.0
-				var toward: Vector3 = return_gate.global_position - spawn
-				toward.y = 0.0
-				spawn_yaw = atan2(-toward.x, -toward.z)
+				# Face AWAY from the gate (forward = -basis.z must point along
+				# `away`): you pass THROUGH a gate, so it ends up behind you.
+				spawn_yaw = atan2(-away.x, -away.z)
 	if is_instance_valid(_player):
 		_player.queue_free()
 	if is_instance_valid(_view):

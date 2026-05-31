@@ -56,6 +56,21 @@ const AtmoReadoutScript := preload("res://scripts/atmo_readout.gd")
 var _atmo_panel: PanelContainer = null
 var _atmo_box: VBoxContainer = null
 
+# Always-on direction compass (top banner). Single spawner for ALL gameplay
+# scenes: ship interiors + gate room read "ship" mode, the lime planet reads
+# "planet" mode. Preloaded by path (not class_name) so a fresh headless run
+# can't trip the class_name-registration race.
+const PlanetCompassScript := preload("res://scripts/planet_compass.gd")
+# Scene-path → compass mode. Anything not listed (e.g. title) gets no compass.
+const COMPASS_SHIP_SCENES: Array = [
+	"res://scenes/gate_room.tscn",
+	"res://scenes/room.tscn",
+]
+const COMPASS_PLANET_SCENES: Array = [
+	"res://scenes/planet.tscn",
+]
+var _compass: Control = null
+
 func _ready() -> void:
 	# Wrap the objective within its ~676px box (offset 24→700 in the scene)
 	# instead of overflowing across the full top row into the top-right log
@@ -88,8 +103,48 @@ func _ready() -> void:
 	GameState.objective_changed.connect(_on_atmo_signal_objective)
 	_refresh_atmo_readout()
 	_build_edge_arrow()
+	_spawn_compass()
 	# Defer player lookup so the scene tree is settled.
 	call_deferred("_bind_player")
+
+
+# Build the always-on direction compass as a child of this HUD layer. Single
+# entry point for every gameplay scene — the mode (ship vs planet) is resolved
+# from the active scene's file path. Skipped headlessly / during cinematics
+# (instant_mode), where there's no camera to read a heading from and the
+# capture harnesses would otherwise see an unexpected child.
+func _spawn_compass() -> void:
+	if SceneRouter.instant_mode:
+		return
+	# Idempotent — never grow a second strip (also lets a headless test re-invoke
+	# once current_scene is set, since _ready fires before that can happen).
+	if _compass != null and is_instance_valid(_compass):
+		return
+	var scene_path: String = ""
+	var current: Node = get_tree().current_scene
+	if current != null:
+		scene_path = current.scene_file_path
+	var compass_mode: String = ""
+	if COMPASS_SHIP_SCENES.has(scene_path):
+		compass_mode = "ship"
+	elif COMPASS_PLANET_SCENES.has(scene_path):
+		compass_mode = "planet"
+	if compass_mode == "":
+		return
+	_compass = PlanetCompassScript.new()
+	_compass.name = "PlanetCompass"
+	# Span ~70% of the screen width, centred. The strip draws to the control's
+	# actual width, so the anchors define how wide it reads. Pinned to the VERY
+	# TOP as the top banner; the objective label sits below it.
+	_compass.anchor_left = 0.15
+	_compass.anchor_right = 0.85
+	_compass.offset_left = 0.0
+	_compass.offset_right = 0.0
+	_compass.offset_top = 4.0
+	_compass.offset_bottom = 64.0
+	_compass.call("set_mode", compass_mode)
+	_compass.call("set_scene_path", scene_path)
+	add_child(_compass)
 
 
 func _build_edge_arrow() -> void:

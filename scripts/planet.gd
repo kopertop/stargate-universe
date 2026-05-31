@@ -9,7 +9,6 @@ const PlanetGeneratorRef: Script = preload("res://scripts/planet_generator.gd")
 const KinoDroneScript: Script = preload("res://scripts/kino_drone.gd")
 const PlanetTimerScript: Script = preload("res://scripts/planet_timer.gd")
 const CompanionScript: Script = preload("res://scripts/companion.gd")
-const PlanetCompassScript: Script = preload("res://scripts/planet_compass.gd")
 
 @onready var _world: Node3D = $World
 @onready var _player: Node3D = $Player
@@ -52,7 +51,6 @@ func _ready() -> void:
 		# lime and skewing resource assertions.
 		if not SceneRouter.instant_mode:
 			_spawn_away_team(_player.global_position)
-			_spawn_compass()
 
 
 func _exit_tree() -> void:
@@ -84,28 +82,6 @@ func _on_resource_changed(type: String, _count: int) -> void:
 func _refresh_lime_objective() -> void:
 	var have: int = GameState.resource_count(GameState.AIR_LIME_RESOURCE)
 	GameState.set_objective(GameState.lime_objective_text(have, GameState.AIR_LIME_REQUIRED))
-
-# Build the planet compass HUD (F3) under its own CanvasLayer so the Cinematic
-# overlay's HUD-hide pass auto-sweeps it during the departure cutscene.
-func _spawn_compass() -> void:
-	var layer: CanvasLayer = CanvasLayer.new()
-	layer.name = "PlanetCompassLayer"
-	layer.layer = 12
-	add_child(layer)
-	var compass: Control = PlanetCompassScript.new()
-	compass.name = "PlanetCompass"
-	# Span ~70% of the screen width, centred. The strip draws to the control's
-	# actual width, so the anchors define how wide it reads.
-	compass.anchor_left = 0.15
-	compass.anchor_right = 0.85
-	# Pinned to the VERY TOP — it's the top banner; the GATE WINDOW countdown and
-	# the objective label sit BELOW it (see planet_timer.gd + hud objective y).
-	compass.offset_left = 0.0
-	compass.offset_right = 0.0
-	compass.offset_top = 4.0
-	compass.offset_bottom = 64.0
-	layer.add_child(compass)
-	compass.call("set_scene_path", "res://scenes/planet.tscn")
 
 # Greer, Park and Scott followed Eli through the gate. They follow him on the
 # surface and fan out to mine lime, then rush back through the gate when the

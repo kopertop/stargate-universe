@@ -1,0 +1,13 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3 uid="uid://b8anmtlhorizon1"]
+
+[ext_resource type="Shader" path="res://shaders/event_horizon.gdshader" id="1_ehshader"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_ehshader")
+shader_parameter/core_color = Color(0.32, 0.84, 1.0, 1.0)
+shader_parameter/rim_color = Color(0.62, 0.95, 1.0, 1.0)
+shader_parameter/energy = 2.6
+shader_parameter/swirl_speed = 0.35
+shader_parameter/noise_scale = 3.5
+shader_parameter/fresnel_power = 2.2

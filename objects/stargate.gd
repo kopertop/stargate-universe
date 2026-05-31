@@ -61,15 +61,8 @@ func _build_outer_ring() -> void:
 	mi.mesh = torus
 	# Torus default lies flat on Y; rotate to stand upright facing -Z.
 	mi.rotation_degrees = Vector3(90.0, 0.0, 0.0)
-	var mat: StandardMaterial3D = StandardMaterial3D.new()
-	mat.albedo_color = Color(0.18, 0.17, 0.20, 1.0)
-	mat.metallic = 0.92
-	mat.metallic_specular = 0.65
-	mat.roughness = 0.38
-	mat.emission_enabled = true
-	mat.emission = Color(0.32, 0.20, 0.10, 1.0)
-	mat.emission_energy_multiplier = 0.22
-	mi.material_override = mat
+	# Ancient-metal triplanar shader (dark steel, faint amber seam glow).
+	mi.material_override = load("res://shaders/ancient_metal_ring.tres")
 	add_child(mi)
 
 func _build_inner_glyph_band() -> void:
@@ -85,14 +78,8 @@ func _build_inner_glyph_band() -> void:
 	torus.rings = 16
 	mi.mesh = torus
 	mi.rotation_degrees = Vector3(90.0, 0.0, 0.0)
-	var mat: StandardMaterial3D = StandardMaterial3D.new()
-	mat.albedo_color = Color(0.12, 0.11, 0.13, 1.0)
-	mat.metallic = 0.6
-	mat.roughness = 0.62
-	mat.emission_enabled = true
-	mat.emission = Color(0.55, 0.32, 0.10, 1.0)
-	mat.emission_energy_multiplier = 0.12
-	mi.material_override = mat
+	# Darker/rougher Ancient-metal variant — the glyph band.
+	mi.material_override = load("res://shaders/ancient_metal_band.tres")
 	add_child(mi)
 
 func _build_chevrons() -> void:
@@ -100,14 +87,8 @@ func _build_chevrons() -> void:
 	# the ring's outer rim) and the inward-pointing tip (a small wedge that
 	# crosses the ring inward toward the center). They're parented to a pivot
 	# Node3D so we can rotate the pair as a unit around the gate's axis.
-	var chev_mat: StandardMaterial3D = StandardMaterial3D.new()
-	chev_mat.albedo_color = Color(0.22, 0.20, 0.22, 1.0)
-	chev_mat.metallic = 0.95
-	chev_mat.metallic_specular = 0.8
-	chev_mat.roughness = 0.28
-	chev_mat.emission_enabled = true
-	chev_mat.emission = Color(0.85, 0.45, 0.15, 1.0)
-	chev_mat.emission_energy_multiplier = 0.18
+	# Brighter Ancient-metal variant with stronger orange-gold seam glow.
+	var chev_mat: Material = load("res://shaders/ancient_metal_chevron.tres")
 
 	# Bracket dimensions (block hugging the outer rim).
 	var bracket_w: float = 0.85   # along the tangent
@@ -161,17 +142,8 @@ func _build_event_horizon() -> void:
 	disk.rings = 2
 	_horizon.mesh = disk
 	_horizon.rotation_degrees = Vector3(90.0, 0.0, 0.0)
-	var mat: StandardMaterial3D = StandardMaterial3D.new()
-	mat.albedo_color = Color(0.28, 0.75, 1.0, 0.72)
-	mat.metallic = 0.0
-	mat.roughness = 0.35
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	mat.emission_enabled = true
-	mat.emission = Color(0.32, 0.84, 1.0, 1.0)
-	mat.emission_energy_multiplier = 2.6
-	_horizon.material_override = mat
+	# Animated energy-surface shader (scrolling noise + Fresnel rim).
+	_horizon.material_override = load("res://shaders/event_horizon.tres")
 	_horizon.visible = active
 	add_child(_horizon)
 

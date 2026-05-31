@@ -37,6 +37,14 @@ func _run() -> void:
 		quit(1)
 		return
 
+	# Isolate saves off the real player file BEFORE driving any state. This
+	# harness boots the planet through SceneRouter with live autoloads, and
+	# SaveManager autosaves on room/objective changes — without this redirect
+	# the capture overwrites the player's user://save.json (see issue #44).
+	var save_mgr: Node = root.get_node_or_null("SaveManager")
+	if save_mgr != null:
+		save_mgr.call("configure_test_paths", "shot_cutscene")
+
 	# Already met Scott at this point in the spine, so the gate-room arrival on
 	# recall must NOT re-trigger his walk-up greet (that's first-boot behaviour).
 	gs.set("met_scott", true)

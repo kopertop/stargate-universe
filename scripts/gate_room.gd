@@ -159,7 +159,7 @@ func _ready() -> void:
 		_start_ambient()
 
 func _process(_delta: float) -> void:
-	_refresh_lime_gate_state()
+	_refresh_gate_state()
 
 # ----- spawn -----------------------------------------------------------------
 
@@ -245,10 +245,10 @@ func _build_ship_gate_portal() -> void:
 	_world.add_child(_gate_portal)
 	_gate_portal.monitoring = false
 
-func _refresh_lime_gate_state() -> void:
+func _refresh_gate_state() -> void:
 	if _arrival_running:
 		return
-	var gate_open: bool = GameState.is_lime_gate_open()
+	var gate_open: bool = GameState.is_gate_open()
 	if _stargate != null and "active" in _stargate:
 		_stargate.active = gate_open
 	if _gate_portal != null:
@@ -333,7 +333,7 @@ func _assemble_away_team_at_gate() -> void:
 		_gate_team.append(c)
 	# Lock the player out of the gate until the team has walked through.
 	_gate_player_locked = true
-	_refresh_lime_gate_state()
+	_refresh_gate_state()
 	# Scott already joined the team at the gate — hide his briefing-spot NPC
 	# (built by _build_npcs near the dais) so we don't have two Scotts on screen.
 	var briefing_scott: Node = _world.get_node_or_null("LtScott")
@@ -551,7 +551,7 @@ func _run_team_walkthrough() -> void:
 			c.visible = false
 	# Whole team through — open the gate for the player and free the trigger.
 	_gate_player_locked = false
-	_refresh_lime_gate_state()
+	_refresh_gate_state()
 	var trigger: Node = _world.get_node_or_null("TeamWalkthroughTrigger")
 	if trigger != null:
 		trigger.queue_free()

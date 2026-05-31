@@ -209,7 +209,7 @@ func _drive() -> void:
 	_expect(GameState.quest_step == GameState.QUEST_SCOUT_KINO, "quest: holding a Kino -> scout the planet")
 	GameState.complete_kino_scout()
 	_expect(GameState.kino_scout_done, "quest: Kino recon confirmed")
-	_expect(GameState.is_lime_gate_open(), "quest: ship gate open to lime world")
+	_expect(GameState.is_gate_open(), "quest: ship gate open to lime world")
 	_expect(GameState.quest_step == GameState.QUEST_MINE_LIME, "quest: scout done -> mine lime")
 	await _shot("gate_room_lime_dial")
 	await _demo_hold()

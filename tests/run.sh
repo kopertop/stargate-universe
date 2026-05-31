@@ -10,7 +10,7 @@
 #   6. questlog     — data-driven QuestLog autoload (predicate + event advance,
 #                     save round-trip, old-format migration)
 #
-# Usage: tests/run.sh [lint|scene|flow|quest|playthrough|resume|autopilot|questlog|inventory|atmosphere|kino-doors|kino-autoexplore|save|all]
+# Usage: tests/run.sh [lint|scene|flow|quest|playthrough|resume|autopilot|questlog|inventory|atmosphere|kino-doors|kino-autoexplore|gamepad|save|all]
 #                                                                          (default: all)
 #
 # Pre-commit hook: .githooks/pre-commit invokes the lint subset via
@@ -45,6 +45,7 @@ RAN_SAVE=0
 RAN_ATMO=0
 RAN_KINODOORS=0
 RAN_KINOEXPLORE=0
+RAN_GAMEPAD=0
 RC_SCENE=0
 RC_FLOW=0
 RC_QUEST=0
@@ -60,6 +61,7 @@ RC_SAVE_RESUME=0
 RC_ATMO=0
 RC_KINODOORS=0
 RC_KINOEXPLORE=0
+RC_GAMEPAD=0
 
 # Run a SceneTree-extending script (synchronous, no autoloads).
 #
@@ -177,6 +179,12 @@ if [[ "$MODE" == "kino-autoexplore" || "$MODE" == "all" ]]; then
 	RAN_KINOEXPLORE=1
 fi
 
+if [[ "$MODE" == "gamepad" || "$MODE" == "all" ]]; then
+	run_script_test "gamepad" "res://tests/smoke/gamepad.gd"
+	RC_GAMEPAD=$?
+	RAN_GAMEPAD=1
+fi
+
 if [[ "$MODE" == "save" || "$MODE" == "all" ]]; then
 	run_script_test "save_store" "res://tests/save/save_store_test.gd"
 	RC_SAVE_UNIT=$?
@@ -229,10 +237,11 @@ echo "==============================="
 [[ $RAN_ATMO -eq 1 ]] && echo "atmosphere:          $([[ $RC_ATMO -eq 0 ]] && echo PASS || echo "FAIL ($RC_ATMO)")" || echo "atmosphere:          SKIPPED"
 [[ $RAN_KINODOORS -eq 1 ]] && echo "kino_doors:          $([[ $RC_KINODOORS -eq 0 ]] && echo PASS || echo "FAIL ($RC_KINODOORS)")" || echo "kino_doors:          SKIPPED"
 [[ $RAN_KINOEXPLORE -eq 1 ]] && echo "kino_autoexplore:    $([[ $RC_KINOEXPLORE -eq 0 ]] && echo PASS || echo "FAIL ($RC_KINOEXPLORE)")" || echo "kino_autoexplore:    SKIPPED"
+[[ $RAN_GAMEPAD -eq 1 ]] && echo "gamepad:             $([[ $RC_GAMEPAD -eq 0 ]] && echo PASS || echo "FAIL ($RC_GAMEPAD)")" || echo "gamepad:             SKIPPED"
 [[ $RAN_SAVE -eq 1 ]] && echo "save_store:          $([[ $RC_SAVE_UNIT -eq 0 ]] && echo PASS || echo "FAIL ($RC_SAVE_UNIT)")" || echo "save_store:          SKIPPED"
 [[ $RAN_SAVE -eq 1 ]] && echo "save_slot_resume:    $([[ $RC_SAVE_RESUME -eq 0 ]] && echo PASS || echo "FAIL ($RC_SAVE_RESUME)")" || echo "save_slot_resume:    SKIPPED"
 
-if [[ ( $RAN_LINT -eq 1 && $RC_LINT -ne 0 ) || ( $RAN_LINT -eq 1 && $RC_FORKS -ne 0 ) || ( $RAN_SCENE -eq 1 && $RC_SCENE -ne 0 ) || ( $RAN_FLOW -eq 1 && $RC_FLOW -ne 0 ) || ( $RAN_QUEST -eq 1 && $RC_QUEST -ne 0 ) || ( $RAN_PLAY -eq 1 && $RC_PLAY -ne 0 ) || ( $RAN_RESUME -eq 1 && $RC_RESUME -ne 0 ) || ( $RAN_AUTOPILOT -eq 1 && $RC_AUTOPILOT -ne 0 ) || ( $RAN_QUESTLOG -eq 1 && $RC_QUESTLOG -ne 0 ) || ( $RAN_INV -eq 1 && $RC_INV -ne 0 ) || ( $RAN_ATMO -eq 1 && $RC_ATMO -ne 0 ) || ( $RAN_KINODOORS -eq 1 && $RC_KINODOORS -ne 0 ) || ( $RAN_KINOEXPLORE -eq 1 && $RC_KINOEXPLORE -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_UNIT -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_RESUME -ne 0 ) ]]; then
+if [[ ( $RAN_LINT -eq 1 && $RC_LINT -ne 0 ) || ( $RAN_LINT -eq 1 && $RC_FORKS -ne 0 ) || ( $RAN_SCENE -eq 1 && $RC_SCENE -ne 0 ) || ( $RAN_FLOW -eq 1 && $RC_FLOW -ne 0 ) || ( $RAN_QUEST -eq 1 && $RC_QUEST -ne 0 ) || ( $RAN_PLAY -eq 1 && $RC_PLAY -ne 0 ) || ( $RAN_RESUME -eq 1 && $RC_RESUME -ne 0 ) || ( $RAN_AUTOPILOT -eq 1 && $RC_AUTOPILOT -ne 0 ) || ( $RAN_QUESTLOG -eq 1 && $RC_QUESTLOG -ne 0 ) || ( $RAN_INV -eq 1 && $RC_INV -ne 0 ) || ( $RAN_ATMO -eq 1 && $RC_ATMO -ne 0 ) || ( $RAN_KINODOORS -eq 1 && $RC_KINODOORS -ne 0 ) || ( $RAN_KINOEXPLORE -eq 1 && $RC_KINOEXPLORE -ne 0 ) || ( $RAN_GAMEPAD -eq 1 && $RC_GAMEPAD -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_UNIT -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_RESUME -ne 0 ) ]]; then
 	exit 1
 fi
 exit 0

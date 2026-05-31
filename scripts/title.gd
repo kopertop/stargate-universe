@@ -84,6 +84,13 @@ func _ready() -> void:
 	_sfx_slider.value_changed.connect(_on_sfx_changed)
 	_difficulty_option.item_selected.connect(_on_difficulty_selected)
 
+	# Code-owned "Configure Controller" button in the Settings overlay. Opens the
+	# face-button mapping wizard for the active pad (the same wizard that pops on
+	# hot-plug), so a player whose A/B/X/Y are swapped can remap on demand. Built
+	# here rather than in the .tscn to keep the scene minimal (same approach as
+	# the Load button). Inserted just above the Back button.
+	_build_controller_button()
+
 	# Continue shows as disabled/greyed when there's no save to resume.
 	# Load Game mirrors it — both are meaningless with no slots on disk.
 	_btn_continue.disabled = not GameState.has_save()
@@ -270,6 +277,31 @@ func _start_new_game() -> void:
 	# NPCState, etc. in sync without title.gd having to enumerate them.
 	SaveManager.start_new_game()
 	SceneRouter.change_to("res://scenes/gate_room.tscn", "FromGate")
+
+func _build_controller_button() -> void:
+	var settings_vbox: Node = _back_btn.get_parent()
+	if settings_vbox == null:
+		return
+	var btn: Button = Button.new()
+	btn.name = "ConfigureControllerButton"
+	btn.text = "Configure Controller"
+	btn.pressed.connect(_on_configure_controller_pressed)
+	Audio.attach_ui_hover(btn)
+	settings_vbox.add_child(btn)
+	# Sit it directly above Back.
+	settings_vbox.move_child(btn, _back_btn.get_index())
+
+
+func _on_configure_controller_pressed() -> void:
+	# Launch the wizard for the active pad if one is connected; otherwise use a
+	# sentinel GUID so a player can pre-configure with no pad (the wizard simply
+	# won't capture until a pad button is pressed, and Esc skips).
+	var device: int = int(Gamepad.active_device)
+	var guid: String = String(Gamepad.active_guid())
+	if guid == "":
+		guid = "manual-config"
+	GamepadConfigDialog.open_wizard(device, guid)
+
 
 func _on_settings_pressed() -> void:
 	_settings_overlay.visible = true

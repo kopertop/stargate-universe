@@ -72,7 +72,7 @@ func _build_hud() -> void:
 	_label.anchor_right = 0.5
 	_label.offset_left = -130.0
 	_label.offset_right = 130.0
-	_label.offset_top = 14.0
+	_label.offset_top = 72.0   # below the top compass banner
 	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_label.add_theme_font_size_override("font_size", 22)
 	_label.add_theme_color_override("font_color", NORMAL_COL)

@@ -98,13 +98,12 @@ func _spawn_compass() -> void:
 	# actual width, so the anchors define how wide it reads.
 	compass.anchor_left = 0.15
 	compass.anchor_right = 0.85
-	# Slot below the GATE WINDOW countdown label (which sits around y=14..40);
-	# the compass strip occupies ~58 px from offset_top, so 46..104 keeps both
-	# readouts vertically clear.
+	# Pinned to the VERY TOP — it's the top banner; the GATE WINDOW countdown and
+	# the objective label sit BELOW it (see planet_timer.gd + hud objective y).
 	compass.offset_left = 0.0
 	compass.offset_right = 0.0
-	compass.offset_top = 46.0
-	compass.offset_bottom = 110.0
+	compass.offset_top = 4.0
+	compass.offset_bottom = 64.0
 	layer.add_child(compass)
 	compass.call("set_scene_path", "res://scenes/planet.tscn")
 

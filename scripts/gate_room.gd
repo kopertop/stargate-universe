@@ -17,6 +17,7 @@ const STARGATE_SCENE: PackedScene = preload("res://objects/stargate.tscn")
 const FLOOR_SCENE: PackedScene = preload("res://models/sci-fi/space-station/floor.glb")
 const GATE_CONSOLE_SCRIPT: Script = preload("res://scripts/gate_console.gd")
 const NPC_SCRIPT: Script = preload("res://scripts/npc.gd")
+const GREER_SCRIPT: Script = preload("res://scripts/greer.gd")
 const PLANET_GATE_SCRIPT: Script = preload("res://scripts/planet_gate.gd")
 const QuestWaypointScript: Script = preload("res://scripts/quest_waypoint.gd")
 const CompanionScript: Script = preload("res://scripts/companion.gd")
@@ -358,9 +359,12 @@ func _assemble_away_team_at_gate() -> void:
 
 
 # The away team that mined with the player on the planet steps back through the
-# gate too. Stand them on the main floor just north of the FromPlanet landing
-# (between the player and the gate), facing into the room — "we made it back."
-# Stationary; no walkthrough trigger (that's the departure flow only).
+# gate too. They land on the dais just south of the event horizon, then walk
+# (staggered) down to their home posts on the main floor and idle there — fully
+# talkable NPCs, not the static Companion props they used to be (issue #43).
+# Lt Scott reuses his quest-aware repeat line; Greer uses the Greer hint script;
+# Park gets a short authored wrap-up. Skipped in instant_mode (headless tests
+# drive state directly), so the e1_playthrough path is unaffected.
 func _spawn_returned_away_team() -> void:
 	var sr: Node = get_node_or_null("/root/SceneRouter")
 	if sr != null and sr.get("instant_mode"):
@@ -369,24 +373,31 @@ func _spawn_returned_away_team() -> void:
 		return
 	const SCOTT_GLB: String = "res://models/characters/scott.glb"
 	const GREER_TINT: Color = Color(0.66, 0.50, 0.38)
+	# Spawn line: on the dais top (y=1.05) a couple metres south of the event
+	# horizon, mirroring the departure muster. Home line: down on the main floor
+	# (y=0.05), gate-side of the FromPlanet landing so the player lands behind
+	# them and watches them spread out. Slight per-member X spread at each end.
+	var gate_z: float = room_size.y * 0.5 - 3.8
+	var spawn_z: float = gate_z - 2.4               # ≈ +9.8 on the dais
+	var home_z: float = room_size.y * 0.5 - 10.5    # ≈ +5.5 on the main floor
 	var roster: Array = [
-		{"name": "Greer", "glb": SCOTT_GLB, "tint": GREER_TINT, "x": -1.8},
-		{"name": "Park", "glb": "res://models/characters/park.glb", "tint": Color.WHITE, "x": 0.0},
-		{"name": "Lt Scott", "glb": SCOTT_GLB, "tint": Color.WHITE, "x": 1.8},
+		{"name": "Greer", "glb": SCOTT_GLB, "tint": GREER_TINT, "x": -2.4, "kind": "greer"},
+		{"name": "Park", "glb": "res://models/characters/park.glb", "tint": Color.WHITE, "x": 0.0, "kind": "park"},
+		{"name": "Lt Scott", "glb": SCOTT_GLB, "tint": Color.WHITE, "x": 2.4, "kind": "scott"},
 	]
-	# A couple metres north (gateward) of the FromPlanet landing (z≈+4), on the
-	# main floor. rotation.y = PI → the internally-flipped model faces -Z, i.e.
-	# toward the player who lands just south of them.
-	var line_z: float = room_size.y * 0.5 - 9.0
 	for i in roster.size():
 		var entry: Dictionary = roster[i]
-		var c: Node3D = CompanionScript.new()
-		c.name = "ReturnTeam_" + String(entry["name"]).replace(" ", "")
-		c.set("stationary", true)
-		_world.add_child(c)
-		c.position = Vector3(float(entry["x"]), 0.05, line_z)
-		c.rotation.y = PI
-		c.call("setup", String(entry["name"]), String(entry["glb"]), i, entry["tint"])
+		var npc: StaticBody3D = _build_returned_crew_npc(
+			String(entry["name"]), String(entry["kind"]),
+			String(entry["glb"]), entry["tint"])
+		# Stand on the dais facing the room (-Z forward), then stroll to the home
+		# post. rotation.y=0 → -Z forward (toward the player landing south).
+		npc.position = Vector3(float(entry["x"]), 1.05, spawn_z)
+		npc.rotation.y = 0.0
+		_world.add_child(npc)
+		# Fan out: each member targets its home post with a small stagger so they
+		# don't march in lockstep. ~2.5 m/s reads as an unhurried "we made it".
+		npc.call("walk_to", Vector3(float(entry["x"]), 0.05, home_z), 2.5, float(i) * 0.4)
 	# Scott is part of the returned team — hide the briefing-spot LtScott NPC so
 	# there aren't two Scotts on screen (same fix as _assemble_away_team_at_gate).
 	var briefing_scott: Node = _world.get_node_or_null("LtScott")
@@ -395,6 +406,121 @@ func _spawn_returned_away_team() -> void:
 		if "enabled" in briefing_scott:
 			briefing_scott.set("enabled", false)
 	GameState.add_log("The away team steps back through the gate onto Destiny.")
+
+
+# Build one returned-crew NPC body: StaticBody3D + the right dialogue script,
+# CapsuleShape3D, GLB model holder (scaled 2.6×, internally flipped 180° to face
+# the body's -Z), colormap/tint, idle anim, and a billboard nametag. Mirrors the
+# _build_npcs Lt-Scott pattern so the returned trio share that one code path.
+# `kind` picks the dialogue wiring: "scott" (quest-aware repeat line), "greer"
+# (Greer hint script), or "park" (short authored wrap-up).
+func _build_returned_crew_npc(display_name: String, kind: String, glb_path: String,
+		tint: Color) -> StaticBody3D:
+	var body: StaticBody3D = StaticBody3D.new()
+	body.name = "ReturnTeam_" + display_name.replace(" ", "")
+	match kind:
+		"greer":
+			body.set_script(GREER_SCRIPT)
+		_:
+			body.set_script(NPC_SCRIPT)
+	body.set("character_name", display_name)
+	body.set("prompt", "Talk to %s" % display_name)
+	if kind == "scott":
+		# Reuse Scott's quest-aware repeat line so the returned Scott reflects the
+		# post-mission step ("Get that lime to the scrubber…").
+		body.set("dialogue_tree", _returned_scott_dialog())
+		body.set("repeat_dialogue_tree", _returned_scott_dialog())
+	elif kind == "park":
+		body.set("dialogue_tree", _returned_park_dialog())
+		body.set("repeat_dialogue_tree", _returned_park_dialog())
+	# Greer rebuilds its tree from quest_step on every interact (greer.gd), so it
+	# needs no authored tree here.
+
+	# Collision capsule — blocks the player and acts as the interactable hitbox.
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var cap: CapsuleShape3D = CapsuleShape3D.new()
+	cap.radius = 0.35
+	cap.height = 1.8
+	cs.shape = cap
+	cs.position = Vector3(0.0, 0.9, 0.0)
+	body.add_child(cs)
+
+	# Visual body — Kenney mini-char GLB, flipped 180° (export +Z forward).
+	var model_holder: Node3D = Node3D.new()
+	model_holder.name = "Model"
+	model_holder.scale = Vector3(2.6, 2.6, 2.6)
+	model_holder.rotation.y = PI
+	var glb: PackedScene = load(glb_path)
+	if glb != null:
+		var inst: Node = glb.instantiate()
+		model_holder.add_child(inst)
+		var colormap: Texture2D = load("res://models/characters/Textures/colormap.png")
+		Npc.apply_kenney_colormap(inst, colormap)
+		if tint != Color.WHITE:
+			_tint_kenney_model(inst, tint)
+		Npc.play_idle_animation(inst)
+	body.add_child(model_holder)
+
+	var tag: Label3D = Label3D.new()
+	tag.name = "Nametag"
+	tag.text = display_name
+	tag.pixel_size = 0.0042
+	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	tag.outline_size = 6
+	tag.shaded = false
+	tag.modulate = Color(0.95, 0.92, 0.78, 1.0)
+	tag.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
+	tag.position = Vector3(0.0, 2.05, 0.0)
+	body.add_child(tag)
+	return body
+
+
+# Re-tint the just-applied colormap material per-instance so Greer can share
+# Scott's body GLB and still read as a different character (same trick as
+# Companion._apply_tint — duplicate the shared material before mutating albedo).
+func _tint_kenney_model(root: Node, tint: Color) -> void:
+	var stack: Array = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is MeshInstance3D:
+			var mi: MeshInstance3D = n as MeshInstance3D
+			if mi.material_override is StandardMaterial3D:
+				var mat: StandardMaterial3D = (mi.material_override as StandardMaterial3D).duplicate() as StandardMaterial3D
+				mat.albedo_color = tint
+				mi.material_override = mat
+		for c in n.get_children():
+			stack.append(c)
+
+
+# Returned Lt Scott — quest-aware wrap-up. The repeat line method already maps
+# the post-mission steps (REPAIR_SCRUBBER → "Get that lime to the scrubber…").
+func _returned_scott_dialog() -> Array:
+	return [
+		{
+			"speaker": "Lt Scott",
+			"text": _scott_repeat_line(),
+			"choices": [{"text": "On it.", "next": "exit"}],
+		},
+	]
+
+
+# Returned Dr Park — short authored wrap-up beat (she had no dialogue before).
+func _returned_park_dialog() -> Array:
+	return [
+		{
+			"speaker": "Dr Park",
+			"text": "We actually pulled it off. Get that lime to the scrubber and we might just keep breathing.",
+			"choices": [
+				{"text": "How are you holding up?", "next": 1},
+				{"text": "On my way.", "next": "exit"},
+			],
+		},
+		{
+			"speaker": "Dr Park",
+			"text": "Rattled, but in one piece. First alien world I've ever set foot on — I'll process that later. Go on, the scrubber won't wait.",
+			"choices": [{"text": "Hang in there.", "next": "exit"}],
+		},
+	]
 
 
 func _on_team_walkthrough_trigger(body: Node) -> void:

@@ -123,6 +123,7 @@ func _run_checks() -> void:
 	await _check_kino_dispenser()
 	await _check_gate_room_phase_e_crew()
 	await _check_post_scout_gate()
+	await _check_returned_away_team()
 	await _check_hud_compass()
 	_report()
 
@@ -544,6 +545,76 @@ func _check_post_scout_gate() -> void:
 		ok = false
 	if ok:
 		print("  OK (Scott supportive + gate crew present for the away-party briefing)")
+		_passes += 1
+	root.remove_child(inst)
+	await process_frame
+	inst.free()
+	_game_state.call("reset")
+	if router != null:
+		router.set("instant_mode", prev_instant)
+
+
+# Issue #43: the away team that returns through the gate from the lime planet
+# must be TALKABLE NPCs (Interactable, collision layer 4), not static Companion
+# props — and they walk to home posts, so they start armed for a scripted walk.
+# Boot gate_room with pending_planet_return set and instant_mode OFF (the spawn
+# is guarded by instant_mode), then assert the three ReturnTeam_ NPCs spawned,
+# are interactable, and that Scott's repeat line reflects the post-mission step.
+func _check_returned_away_team() -> void:
+	print("\n=== Issue #43: returned away-team (talkable + fan-out) ===")
+	var router: Node = root.get_node_or_null("SceneRouter")
+	var prev_instant: bool = router != null and router.get("instant_mode") == true
+	if router != null:
+		router.set("instant_mode", false)
+	_game_state.call("reset")
+	# Returning from the planet leaves the quest at REPAIR_SCRUBBER and arms the
+	# pending-return spawn that gate_room._ready consumes.
+	_game_state.set("quest_step", "repair_scrubber")
+	_game_state.set("pending_planet_return", true)
+	var packed := load("res://scenes/gate_room.tscn") as PackedScene
+	if packed == null:
+		_fail("res://scenes/gate_room.tscn", "load() returned null for returned-team check")
+		if router != null:
+			router.set("instant_mode", prev_instant)
+		return
+	var inst := packed.instantiate()
+	root.add_child(inst)
+	await process_frame
+	var names: Array = ["ReturnTeam_Greer", "ReturnTeam_Park", "ReturnTeam_LtScott"]
+	var ok: bool = true
+	for n in names:
+		var crew: Node = inst.get_node_or_null("World/" + n)
+		if crew == null:
+			_fail("res://scenes/gate_room.tscn", "returned crew node missing: " + n)
+			ok = false
+			continue
+		if not (crew is CollisionObject3D):
+			_fail("res://scenes/gate_room.tscn", n + " is not a CollisionObject3D (can't be interacted with)")
+			ok = false
+			continue
+		if not crew.is_in_group("interactable"):
+			_fail("res://scenes/gate_room.tscn", n + " is not in the 'interactable' group")
+			ok = false
+		var layer: int = (crew as CollisionObject3D).collision_layer
+		if (layer & 4) == 0:
+			_fail("res://scenes/gate_room.tscn", "%s missing interactable collision layer 4 (layer=%d)" % [n, layer])
+			ok = false
+	# Scott's returned line must reflect the post-mission step, not the early nag.
+	var scott: Node = inst.get_node_or_null("World/ReturnTeam_LtScott")
+	if scott != null:
+		var tree: Array = scott.call("_active_dialogue_tree")
+		var line: String = String((tree[0] as Dictionary).get("text", "")) if tree.size() > 0 else ""
+		if line.find("scrubber") == -1:
+			_fail("res://scenes/gate_room.tscn",
+				"Returned Lt Scott line should reflect REPAIR_SCRUBBER step, got: '%s'" % line)
+			ok = false
+	# The briefing-spot Scott must be hidden so there aren't two Scotts.
+	var briefing_scott: Node = inst.get_node_or_null("World/LtScott")
+	if briefing_scott is Node3D and (briefing_scott as Node3D).visible:
+		_fail("res://scenes/gate_room.tscn", "briefing-spot LtScott still visible — double-Scott")
+		ok = false
+	if ok:
+		print("  OK (Greer/Park/Scott returned as interactable NPCs; Scott line = post-mission; no double-Scott)")
 		_passes += 1
 	root.remove_child(inst)
 	await process_frame

@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/smoke/npc_chat.gd" id="1"]
+
+[node name="NpcChatTest" type="Node"]
+script = ExtResource("1")

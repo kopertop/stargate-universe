@@ -1,6 +1,12 @@
 class_name KinoDrone
 extends CharacterBody3D
 
+# Preloaded (not referenced by class_name) so a -s SceneTree test that loads
+# this script in the same headless run doesn't hit "Identifier 'AtmoReadout'
+# not declared" — freshly-added class_name globals aren't guaranteed registered
+# mid-run (see memory feedback_godot_class_name_headless).
+const AtmoReadoutScript := preload("res://scripts/atmo_readout.gd")
+
 # Pilotable scout Kino — the small orb the player launches to recon the lime
 # planet before stepping through to mine. Two launch modes:
 #
@@ -224,43 +230,12 @@ func _build_atmo_readout(layer: CanvasLayer) -> void:
 	panel.add_child(_atmo_box)
 	_render_atmo()
 
+# Delegates to AtmoReadout.render — the single source of truth shared with the
+# always-on ship readout in hud.gd. The planet telemetry dict carries no
+# "status" key, so the recon panel keeps its original composition/temp/rad/tox
+# layout while the ship readout adds a leading status banner.
 func _render_atmo() -> void:
-	if _atmo_box == null:
-		return
-	for c in _atmo_box.get_children():
-		c.queue_free()
-	_atmo_row("ATMOSPHERIC SCAN", "", Color(0.55, 0.85, 1.0, 1.0), 14)
-	if atmosphere.is_empty():
-		_atmo_row("— awaiting telemetry —", "", Color(0.7, 0.8, 0.9, 0.8), 12)
-		return
-	_atmo_row("Atmosphere", String(atmosphere.get("composition", "BREATHABLE")),
-		_atmo_color(bool(atmosphere.get("breathable", true))), 13)
-	var temp_c: int = int(atmosphere.get("temperature_c", 47))
-	var temp_note: String = String(atmosphere.get("temperature_note", "HOT"))
-	_atmo_row("Temperature", "%d°C  %s" % [temp_c, temp_note],
-		Color(1.0, 0.7, 0.3, 1.0) if temp_note != "" else Color(0.6, 1.0, 0.6, 1.0), 13)
-	_atmo_row("Radiation", String(atmosphere.get("radiation", "LOW")),
-		_level_color(String(atmosphere.get("radiation", "LOW"))), 13)
-	_atmo_row("Toxins", String(atmosphere.get("toxins", "NONE")),
-		_level_color(String(atmosphere.get("toxins", "NONE"))), 13)
-
-func _atmo_row(label: String, value: String, color: Color, size: int) -> void:
-	var l: Label = Label.new()
-	l.text = label if value == "" else ("%s:  %s" % [label, value])
-	l.add_theme_font_size_override("font_size", size)
-	l.add_theme_color_override("font_color", color)
-	l.add_theme_color_override("font_outline_color", Color(0.0, 0.05, 0.08, 0.8))
-	l.add_theme_constant_override("outline_size", 3)
-	_atmo_box.add_child(l)
-
-func _atmo_color(good: bool) -> Color:
-	return Color(0.6, 1.0, 0.6, 1.0) if good else Color(1.0, 0.45, 0.4, 1.0)
-
-# Green for LOW/NONE/SAFE, amber otherwise — so radiation/toxin readouts read
-# at a glance whether the far side is safe to step onto.
-func _level_color(level: String) -> Color:
-	var safe: bool = level.to_upper() in ["LOW", "NONE", "SAFE", "TRACE", "NEGLIGIBLE"]
-	return Color(0.6, 1.0, 0.6, 1.0) if safe else Color(1.0, 0.7, 0.3, 1.0)
+	AtmoReadoutScript.render(_atmo_box, atmosphere)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if _ending or _camera == null:

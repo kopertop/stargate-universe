@@ -661,6 +661,46 @@ static func lime_objective_text(have: int, need: int) -> String:
 		return "Lime collected — %d/%d  ✓  head back to the gate" % [have, need]
 	return "Collect at least %d lime deposits — %d/%d" % [need, have, need]
 
+# Read-only, fully DERIVED atmosphere readout for a given room — no new stored
+# state. Drives the always-on top-right ship readout (hud.gd) and could feed any
+# future per-room display. E1 rules, in priority order:
+#   • Base = nominal (N2/O2, breathable, current O2), merged over an optional
+#     authored `atmosphere` field on the ShipLayout row (so a room can declare a
+#     custom composition / temperature in data without code changes).
+#   • The unsealed south breach reads as hard vacuum (VENTING) until sealed.
+#   • During the air crisis, before the scrubber is repaired, every other room
+#     reads DEGRADED with elevated CO2.
+#   • Otherwise NOMINAL.
+func room_atmosphere(room_id: String) -> Dictionary:
+	var atmo: Dictionary = {
+		"status": "NOMINAL",
+		"composition": "N2/O2 NOMINAL",
+		"breathable": true,
+		"oxygen": int(round(oxygen)),
+		"radiation": "LOW",
+		"toxins": "NONE",
+	}
+	# Authored per-room overrides from the ship layout (default {}).
+	var sl: Node = _autoload_node("ShipLayout")
+	if sl != null and sl.has_method("room"):
+		var row: Dictionary = sl.call("room", room_id)
+		var authored: Variant = row.get("atmosphere", {})
+		if authored is Dictionary:
+			for k in (authored as Dictionary).keys():
+				atmo[k] = (authored as Dictionary)[k]
+	# Unsealed south breach → hard vacuum until sealed.
+	if room_id == "breached_section_south" and not breaches_sealed.has("breach_a"):
+		atmo["status"] = "VENTING"
+		atmo["composition"] = "VACUUM"
+		atmo["breathable"] = false
+		atmo["oxygen"] = 0
+		atmo["temperature_note"] = "FREEZING"
+	# Air crisis pre-repair → CO2 climbing everywhere that isn't venting.
+	elif air_crisis_started and not scrubber_repaired:
+		atmo["status"] = "DEGRADED"
+		atmo["toxins"] = "CO2 ELEVATED"
+	return atmo
+
 func add_log(line: String) -> void:
 	log_entries.append(line)
 	log_added.emit(line)

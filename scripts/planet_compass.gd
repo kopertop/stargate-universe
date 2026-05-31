@@ -35,9 +35,10 @@ const INTERCARDINALS: Dictionary = {45: "NE", 135: "SE", 225: "SW", 315: "NW"}
 # More transparent than before so the strip floats over the world without
 # blocking it. Minor ticks are dimmer still.
 const BG: Color = Color(0.04, 0.07, 0.12, 0.30)
-const FRAME: Color = Color(0.55, 0.85, 1.0, 0.22)
-const TICK: Color = Color(0.70, 0.90, 1.0, 0.85)
-const TICK_MINOR: Color = Color(0.70, 0.90, 1.0, 0.35)
+const FRAME: Color = Color(0.45, 0.95, 1.0, 0.22)
+# "Tech blue" cyan for the cardinal labels + ruler dashes (matches KINO_COL).
+const TICK: Color = Color(0.45, 0.95, 1.0, 0.90)
+const TICK_MINOR: Color = Color(0.45, 0.95, 1.0, 0.40)
 const GATE_COL: Color = Color(1.0, 0.85, 0.35, 1.0)     # warm amber — exit
 const LIME_COL: Color = Color(0.93, 0.96, 1.0, 1.0)     # chalky white — deposit
 const KINO_COL: Color = Color(0.45, 0.95, 1.0, 1.0)     # cyan tech — drone

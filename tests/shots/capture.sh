@@ -32,6 +32,8 @@ case "$PRESET" in
 	jungle)      ARGS="scene=res://scenes/planet.tscn out=user://${PRESET}.png biome=jungle kino_pilot=1 wait=60" ;;
 	# Toxic / no-atmosphere biome (issue #89): barren toxic palette, thin sickly sky.
 	toxic)       ARGS="scene=res://scenes/planet.tscn out=user://${PRESET}.png biome=toxic kino_pilot=1 wait=60" ;;
+	# Urban/suburban biome (issue #90): graybox settlement + negotiation residents.
+	urban)       ARGS="scene=res://scenes/planet.tscn out=user://${PRESET}.png biome=urban kino_pilot=1 wait=60" ;;
 	gate-room)   ARGS="scene=res://scenes/gate_room.tscn out=user://${PRESET}.png kino_pilot=0 wait=50" ;;
 	# Ship-side Kino recon (epic #45): the compass on a ship room (body), and a
 	# Kino piloting a ship room with the auto-explore hint + atmosphere readout.

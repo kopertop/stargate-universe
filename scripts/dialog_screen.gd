@@ -16,9 +16,13 @@ extends Control
 #
 # Dialog tree shape (passed to start()):
 #   tree: Array[Dictionary] — each node:
-#     { "speaker": String, "text": String,
-#       "choices": Array[Dictionary] of { "text": String, "next": int|"exit" } }
+#     { "speaker": String, "text": String, "action": String?,
+#       "choices": Array[Dictionary] of
+#         { "text": String, "next": int|"exit", "action": String? } }
 #   `next = "exit"` ends the conversation. `next = <int>` jumps to that index.
+#   An optional `action` on a NODE fires when the node is shown; an optional
+#   `action` on a CHOICE fires when that choice is picked. Both emit
+#   GameState.dialog_action (the negotiation trade payoff rides the choice form).
 
 signal closed()
 
@@ -83,13 +87,21 @@ func _lay_out_choices(choices: Array) -> void:
 		btn.focus_mode = Control.FOCUS_ALL
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var nxt: Variant = choice.get("next", "exit")
-		btn.pressed.connect(_on_choice_pressed.bind(nxt))
+		var act: String = String(choice.get("action", ""))
+		btn.pressed.connect(_on_choice_pressed.bind(nxt, act))
 		Audio.attach_ui_hover(btn)
 		_choices_box.add_child(btn)
 	if _choices_box.get_child_count() > 0:
 		(_choices_box.get_child(0) as Control).grab_focus()
 
-func _on_choice_pressed(next_value: Variant) -> void:
+func _on_choice_pressed(next_value: Variant, action: String = "") -> void:
+	# A choice may carry its own data-driven side effect (e.g. a negotiation
+	# "trade:<resource>:<amount>" payoff, issue #90). Fire it before advancing so
+	# listeners (npc.gd::_on_dialog_action) react while the conversation is open.
+	# This mirrors the node-level action in _render_node — choices and nodes share
+	# the GameState.dialog_action channel.
+	if action != "":
+		GameState.dialog_action.emit(action)
 	if next_value is String and String(next_value) == "exit":
 		close()
 		return

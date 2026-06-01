@@ -56,6 +56,13 @@ extends Interactable
 @export var ambient_bubble_hold: float = 3.2
 @export var ambient_bubble_cooldown: float = 8.0
 
+# Negotiation trades (issue #90). When a dialog-tree node carries an
+# `action: "trade:<resource>:<amount>"` and the player picks it, this NPC grants
+# that resource ONCE. Completed trades are tracked in ONE registry keyed by the
+# full action string (NOT a per-trade bool) so a resident who offers several
+# trades can't be milked and the set stays save-round-trippable.
+var _trades_done: Dictionary = {}
+
 var _line_index: int = 0
 # Ambient-bubble runtime. _ambient_t accumulates since the last bubble; the
 # Label3D is created lazily on first show. _ambient_index walks the pool so an
@@ -351,6 +358,7 @@ func get_save_state() -> Dictionary:
 	return {
 		"line_index": _line_index,
 		"auto_greet_done": _auto_greet_done,
+		"trades_done": _trades_done.keys(),
 		"pos": [global_position.x, global_position.y, global_position.z],
 		"yaw": rotation.y,
 	}
@@ -359,6 +367,11 @@ func get_save_state() -> Dictionary:
 func apply_save_state(s: Dictionary) -> void:
 	_line_index = int(s.get("line_index", 0))
 	_auto_greet_done = s.get("auto_greet_done", false) == true
+	_trades_done.clear()
+	var td: Variant = s.get("trades_done", [])
+	if td is Array:
+		for k in (td as Array):
+			_trades_done[String(k)] = true
 	var pos_raw: Variant = s.get("pos", null)
 	if pos_raw is Array and (pos_raw as Array).size() == 3:
 		var arr: Array = pos_raw
@@ -449,11 +462,51 @@ func _begin_conversation_facing(by: Node) -> void:
 	_face_interactor(by)
 	if not GameState.dialog_closed.is_connected(_on_talk_ended):
 		GameState.dialog_closed.connect(_on_talk_ended, CONNECT_ONE_SHOT)
+	# Negotiation: while THIS NPC's dialog is open, listen for trade actions a
+	# choice fires (DialogScreen emits GameState.dialog_action with the picked
+	# choice's `action`). Hooked here so only the active conversation's NPC reacts.
+	if not GameState.dialog_action.is_connected(_on_dialog_action):
+		GameState.dialog_action.connect(_on_dialog_action)
+
+
+# A dialog node fired an action while talking to this NPC. A
+# "trade:<resource>:<amount>" action grants that resource once — the negotiation
+# payoff (issue #90). Any other action id is ignored here (other systems hook the
+# same signal for their own ids — scrubber_rush, etc.).
+func _on_dialog_action(action_id: String) -> void:
+	if action_id.begins_with("trade:"):
+		var parts: PackedStringArray = action_id.split(":")
+		if parts.size() >= 3:
+			grant_trade(String(parts[1]), int(parts[2]))
+
+
+# Grant a negotiated resource ONCE per (resource, amount) trade. Routes through
+# GameState.add_resource so the count, log line, and resource_changed signal all
+# fire normally. Returns true only on the first successful grant. Public so a
+# test (or cinematic) can drive the negotiation payoff directly.
+func grant_trade(resource: String, amount: int) -> bool:
+	if resource == "" or amount <= 0:
+		return false
+	var key: String = "%s:%d" % [resource, amount]
+	if _trades_done.has(key):
+		return false
+	_trades_done[key] = true
+	_notify_npc_state_update()
+	var gs: Node = get_node_or_null("/root/GameState")
+	if gs == null:
+		return true
+	if gs.has_method("add_resource"):
+		gs.call("add_resource", resource, amount, "trade with %s" % character_name)
+	return true
 
 
 # Dialog closed — ease back to the pre-talk facing over the shortest arc so the
 # NPC resumes what they were doing (their idle animation never stopped).
 func _on_talk_ended() -> void:
+	# Drop the negotiation hook so only the NPC currently being talked to reacts
+	# to a trade action (the conversation just closed).
+	if GameState.dialog_action.is_connected(_on_dialog_action):
+		GameState.dialog_action.disconnect(_on_dialog_action)
 	if not _facing_player:
 		return
 	_facing_player = false

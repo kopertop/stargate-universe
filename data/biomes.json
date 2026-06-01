@@ -110,7 +110,7 @@
 		}
 	},
 	"urban": {
-		"label": "Urban Ruins",
+		"label": "Urban Settlement",
 		"terrain": {
 			"height": 1.8,
 			"frequency": 0.005,
@@ -130,6 +130,93 @@
 		},
 		"walkability": {
 			"max_prop_height": 2.4
+		},
+		"settlement": {
+			"building_count": 14,
+			"min_radius": 18.0,
+			"max_radius": 130.0,
+			"building_color": [0.52, 0.52, 0.56]
+		},
+		"negotiation": {
+			"npc_count": 3,
+			"min_radius": 16.0,
+			"max_radius": 60.0,
+			"residents": [
+				{
+					"name": "Merchant Oren",
+					"tint": [0.78, 0.66, 0.50],
+					"trade": {"resource": "water", "amount": 4},
+					"tree": [
+						{
+							"speaker": "Merchant Oren",
+							"text": "Travellers from the ring. You look parched. I have water to spare — for a fair word.",
+							"choices": [
+								{"text": "We could use water. What's your price?", "next": 1},
+								{"text": "Just passing through.", "next": "exit"}
+							]
+						},
+						{
+							"speaker": "Merchant Oren",
+							"text": "No price. You closed the ring's old wound years before our time. Take it — with thanks.",
+							"choices": [
+								{"text": "Gratefully accept the water.", "action": "trade:water:4", "next": 2}
+							]
+						},
+						{
+							"speaker": "Merchant Oren",
+							"text": "Safe roads, ring-walkers.",
+							"choices": [
+								{"text": "Thank you.", "next": "exit"}
+							]
+						}
+					]
+				},
+				{
+					"name": "Watchwoman Sela",
+					"tint": [0.62, 0.58, 0.70],
+					"trade": {},
+					"tree": [
+						{
+							"speaker": "Watchwoman Sela",
+							"text": "Keep clear of the eastern blocks after dusk — the floors there give way. Lost two of our own to it.",
+							"choices": [
+								{"text": "We'll stay west. Thank you for the warning.", "next": "exit"},
+								{"text": "Understood.", "next": "exit"}
+							]
+						}
+					]
+				},
+				{
+					"name": "Elder Maro",
+					"tint": [0.70, 0.62, 0.54],
+					"trade": {"resource": "parts", "amount": 3},
+					"tree": [
+						{
+							"speaker": "Elder Maro",
+							"text": "You wear the ring-makers' look about you. We salvage their machines but cannot read them. Trade?",
+							"choices": [
+								{"text": "We can read some. What do you offer?", "next": 1},
+								{"text": "Another time, Elder.", "next": "exit"}
+							]
+						},
+						{
+							"speaker": "Elder Maro",
+							"text": "Salvaged parts — take what you can carry, if you tell us what the glyphs by the well mean.",
+							"choices": [
+								{"text": "Decode the glyphs and accept the parts.", "action": "trade:parts:3", "next": 2},
+								{"text": "We can't help with that. Keep your parts.", "next": "exit"}
+							]
+						},
+						{
+							"speaker": "Elder Maro",
+							"text": "The ring-makers' wisdom lives on. Go well.",
+							"choices": [
+								{"text": "Farewell, Elder.", "next": "exit"}
+							]
+						}
+					]
+				}
+			]
 		}
 	},
 	"alien_tech": {

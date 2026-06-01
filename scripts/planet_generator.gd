@@ -30,6 +30,7 @@ const PLANET_GATE_SCRIPT: Script = preload("res://scripts/planet_gate.gd")
 const POI_NODE_SCRIPT: Script = preload("res://scripts/poi_node.gd")
 const CHUNK_MANAGER_SCRIPT: Script = preload("res://scripts/planet_chunk_manager.gd")
 const HAZARD_ZONE_SCRIPT: Script = preload("res://scripts/hazard_zone.gd")
+const NPC_SCRIPT: Script = preload("res://scripts/npc.gd")
 
 const BIOMES_PATH: String = "res://data/biomes.json"
 const DEFAULT_BIOME: String = "desert"
@@ -74,6 +75,11 @@ static func build(world: Node3D, spec_or_row: Dictionary) -> Node3D:
 		_build_lime_nodes(world, spec, rng, params)
 	_build_pois(world, spec, rng, params)
 	_build_props(world, rng, params)
+	# Urban/suburban settlement (issue #90): seat graybox buildings + negotiation
+	# residents driven by the biome's `settlement` / `negotiation` blocks. A biome
+	# with neither block (desert, jungle, …) places none — so this is urban-only.
+	_build_settlement(world, spec, rng, params)
+	_build_negotiation_npcs(world, spec, rng, params)
 	# Hazard zones: damage traps / hazardous flora (issue #88). Built from the
 	# biome's `hazard.traps` block (or a spec hazard_params override), so a biome
 	# with no traps block (desert, temperate, …) places none.
@@ -317,6 +323,31 @@ static func _to_color(arr: Array) -> Color:
 	if arr.size() >= 3:
 		return Color(float(arr[0]), float(arr[1]), float(arr[2]))
 	return Color(0.5, 0.5, 0.5)
+
+
+# Resolve the settlement (graybox buildings) block for a spec (issue #90). A
+# spec hazard_params.settlement override wins; else the biome's `settlement`
+# block from biomes.json. Empty when the biome defines none (so only urban
+# scatters buildings).
+static func settlement_block(spec: Dictionary) -> Dictionary:
+	var hp: Variant = spec.get("hazard_params", {})
+	if hp is Dictionary and (hp as Dictionary).get("settlement", null) is Dictionary:
+		return (hp as Dictionary)["settlement"]
+	var bp: Dictionary = biome_params(String(spec.get("biome", DEFAULT_BIOME)))
+	var s: Variant = bp.get("settlement", {})
+	return s if s is Dictionary else {}
+
+
+# Resolve the negotiation (talkable residents) block for a spec (issue #90). A
+# spec hazard_params.negotiation override wins; else the biome's `negotiation`
+# block from biomes.json. Empty when the biome defines none (urban-only).
+static func negotiation_block(spec: Dictionary) -> Dictionary:
+	var hp: Variant = spec.get("hazard_params", {})
+	if hp is Dictionary and (hp as Dictionary).get("negotiation", null) is Dictionary:
+		return (hp as Dictionary)["negotiation"]
+	var bp: Dictionary = biome_params(String(spec.get("biome", DEFAULT_BIOME)))
+	var n: Variant = bp.get("negotiation", {})
+	return n if n is Dictionary else {}
 
 
 # --- Global height function -------------------------------------------------
@@ -590,6 +621,134 @@ static func _build_props(world: Node3D, rng: RandomNumberGenerator, params: Dict
 		prop.add_child(cs)
 		prop.rotation.y = rng.randf_range(0.0, TAU)
 		world.add_child(prop)
+
+
+# --- Urban settlement: buildings + negotiation residents (issue #90) --------
+#
+# The Urban/suburban biome is the NEGOTIATION biome: no combat, no damage
+# hazard — the "hazard" is social (a bad trade costs time / closes a resource,
+# never death). It seats graybox buildings on the walkable streets and places
+# talkable residents (the existing npc.gd + DialogScreen choice-tree system) who
+# can be negotiated with for a needed resource, a warning, or passage.
+
+# Seat graybox settlement buildings FLUSH on the ground as walk-around blocks,
+# laid out in a loose ring around the landing zone so streets stay walkable
+# between them. Buildings are visual structures (taller than scatter props) but
+# the player never has to jump them — they're obstacles to route around, like
+# the ship's room walls. Deterministic from the shared RNG (placement survives
+# save/load). No-op for a biome with no `settlement` block.
+static func _build_settlement(world: Node3D, spec: Dictionary,
+		rng: RandomNumberGenerator, params: Dictionary) -> void:
+	var s: Dictionary = settlement_block(spec)
+	if s.is_empty():
+		return
+	var count: int = int(s.get("building_count", 0))
+	if count <= 0:
+		return
+	var min_r: float = float(s.get("min_radius", 18.0))
+	var max_r: float = float(s.get("max_radius", 130.0))
+	var col: Array = s.get("building_color", [0.52, 0.52, 0.56]) if s.get("building_color", []) is Array else [0.52, 0.52, 0.56]
+	var base: Color = _to_color(col)
+	for i in count:
+		var angle: float = (TAU / float(max(count, 1))) * float(i) + rng.randf_range(-0.5, 0.5)
+		var dist: float = rng.randf_range(min_r, max_r)
+		var x: float = cos(angle) * dist
+		var z: float = sin(angle) * dist
+		var w: float = rng.randf_range(3.0, 6.0)
+		var d: float = rng.randf_range(3.0, 6.0)
+		var h: float = rng.randf_range(3.5, 8.0)
+		var building: StaticBody3D = StaticBody3D.new()
+		building.name = "Building%d" % (i + 1)
+		building.collision_layer = 1 | 2   # block player AND camera (it's a wall)
+		building.collision_mask = 0
+		building.add_to_group("settlement_building")
+		building.position = Vector3(x, height_at(x, z, params), z)
+		building.rotation.y = rng.randf_range(0.0, TAU)
+		var mat: StandardMaterial3D = StandardMaterial3D.new()
+		# Slight per-building tonal variation so the street doesn't read as clones.
+		mat.albedo_color = base.lightened(rng.randf_range(-0.12, 0.12))
+		mat.roughness = 0.92
+		_add_box(building, Vector3(0.0, h * 0.5, 0.0), Vector3(w, h, d), mat)
+		var cs: CollisionShape3D = CollisionShape3D.new()
+		var box: BoxShape3D = BoxShape3D.new()
+		box.size = Vector3(w, h, d)
+		cs.shape = box
+		cs.position = Vector3(0.0, h * 0.5, 0.0)
+		building.add_child(cs)
+		world.add_child(building)
+
+
+# Place the biome's negotiation residents (issue #90). Each resident is a
+# graybox StaticBody3D running npc.gd with a choice-tree dialogue from data; at
+# least one offers a `trade` that yields a needed resource via the dialog
+# `action: "trade:<resource>:<amount>"` path (npc.gd::grant_trade). Residents are
+# in group "negotiation_npc" so a test / compass can enumerate them. No-op for a
+# biome with no `negotiation` block. Deterministic placement from the shared RNG.
+static func _build_negotiation_npcs(world: Node3D, spec: Dictionary,
+		rng: RandomNumberGenerator, params: Dictionary) -> void:
+	var neg: Dictionary = negotiation_block(spec)
+	if neg.is_empty():
+		return
+	var residents: Array = neg.get("residents", []) if neg.get("residents", []) is Array else []
+	if residents.is_empty():
+		return
+	var count: int = int(neg.get("npc_count", residents.size()))
+	count = min(count, residents.size())
+	var min_r: float = float(neg.get("min_radius", 16.0))
+	var max_r: float = float(neg.get("max_radius", 60.0))
+	for i in count:
+		var r: Dictionary = residents[i] if residents[i] is Dictionary else {}
+		if r.is_empty():
+			continue
+		var angle: float = (TAU / float(max(count, 1))) * float(i) + rng.randf_range(-0.3, 0.3)
+		var dist: float = rng.randf_range(min_r, max_r)
+		var x: float = cos(angle) * dist
+		var z: float = sin(angle) * dist
+		_spawn_negotiation_npc(world, r, i + 1, Vector3(x, height_at(x, z, params), z))
+
+
+# Build one negotiation resident: a graybox capsule body running npc.gd, wired
+# with the resident's choice-tree dialogue. A resident whose `trade` names a
+# resource grants it once via the dialog action path. Graybox (no GLB) keeps the
+# urban crowd headless-safe and avoids the Kenney colormap-sibling trap.
+static func _spawn_negotiation_npc(world: Node3D, r: Dictionary, idx: int, pos: Vector3) -> void:
+	var name_s: String = String(r.get("name", "Resident %d" % idx))
+	var body: StaticBody3D = StaticBody3D.new()
+	body.set_script(NPC_SCRIPT)
+	# Unique per-instance node name so NPCState position/dialogue keys never
+	# collide (NPCState keys by node name globally).
+	body.name = "Resident%d_%s" % [idx, name_s.replace(" ", "")]
+	body.position = pos
+	body.set("character_name", name_s)
+	var tree: Array = r.get("tree", []) if r.get("tree", []) is Array else []
+	body.set("dialogue_tree", tree)
+
+	var tint: Color = _to_color(r.get("tint", [0.7, 0.65, 0.55]) if r.get("tint", []) is Array else [0.7, 0.65, 0.55])
+	var mat: StandardMaterial3D = StandardMaterial3D.new()
+	mat.albedo_color = tint
+	mat.roughness = 0.8
+	var mi: MeshInstance3D = MeshInstance3D.new()
+	var cap: CapsuleMesh = CapsuleMesh.new()
+	cap.radius = 0.35
+	cap.height = 1.7
+	mi.mesh = cap
+	mi.material_override = mat
+	mi.position = Vector3(0.0, 0.95, 0.0)
+	body.add_child(mi)
+
+	# Interact + walk-block collider sized ~1.7 m tall so the chest-height
+	# interact ray (1.1 m) lands a hit (feedback_interactable_ray_chest_height).
+	# Interactable._ready sets collision_layer = 4; npc.gd adds layer 1 after.
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var shape: CapsuleShape3D = CapsuleShape3D.new()
+	shape.radius = 0.4
+	shape.height = 1.7
+	cs.shape = shape
+	cs.position = Vector3(0.0, 0.95, 0.0)
+	body.add_child(cs)
+
+	body.add_to_group("negotiation_npc")
+	world.add_child(body)
 
 
 # --- Hazard zones (damage traps / hazardous flora) --------------------------

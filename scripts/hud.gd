@@ -1,15 +1,13 @@
 extends Control
 
 # SGU HUD. Listens to GameState signals + the active scene's player to render:
-#   • Current objective (top-left)
-#   • Health + oxygen bars (bottom-left)
+#   • Player unit frame (upper-left): Eli portrait + name + health/oxygen bars
+#   • Current objective (left, below the unit frame — moves to the quest tracker)
 #   • Interact prompt (bottom-center, only when target in range)
 #   • Kino Remote reminder (bottom-right, only after acquisition)
 #   • Recent log feed (top-right, last 3 entries)
 
 @onready var _objective_label: Label = $Objective
-@onready var _health_bar: ProgressBar = $Status/Health/Bar
-@onready var _oxygen_bar: ProgressBar = $Status/Oxygen/Bar
 @onready var _interact_label: Label = $InteractPrompt
 @onready var _kino_hint: Label = $KinoHint
 @onready var _log_box: VBoxContainer = $Log
@@ -18,6 +16,30 @@ extends Control
 @onready var _dialog_line: Label = $DialogPanel/Line
 
 var _player: Node = null
+
+# WoW-style player unit frame (upper-left, below the compass banner). A square
+# portrait of Eli on the left, his name plate top-right of it, and the Health +
+# Oxygen bars stacked beneath the name (relocated here from the old bottom-left
+# Status VBox). Built in code so the hud.tscn diff stays minimal; the bar refs
+# (_health_bar / _oxygen_bar) are assigned during the build and keep the
+# existing GameState.health_changed / oxygen_changed bindings. (#65)
+const PortraitLoaderScript := preload("res://scripts/portrait_loader.gd")
+const UNIT_PLAYER_NAME: String = "Eli Wallace"
+const UNIT_PORTRAIT_KEY: String = "Eli"
+const UNIT_FRAME_POS: Vector2 = Vector2(24.0, 70.0)
+const UNIT_PORTRAIT_SIZE: Vector2 = Vector2(72.0, 72.0)
+const UNIT_BAR_WIDTH: float = 196.0
+const UNIT_ACCENT: Color = Color(0.6, 0.75, 0.95, 0.65)
+const UNIT_HEALTH_FILL: Color = Color(0.35, 0.85, 0.45, 0.95)
+const UNIT_HEALTH_CRITICAL_FILL: Color = Color(0.95, 0.3, 0.3, 0.98)
+const UNIT_OXYGEN_FILL: Color = Color(0.4, 0.85, 0.95, 0.95)
+# Below this fraction of max HP the health bar turns red and pulses.
+const UNIT_HEALTH_CRITICAL_FRAC: float = 0.3
+var _unit_frame: Control = null
+var _health_bar: ProgressBar = null
+var _oxygen_bar: ProgressBar = null
+var _health_fill_style: StyleBoxFlat = null
+var _health_pulse: Tween = null
 # Active dialog auto-hide tween. Held so a follow-up line can cancel the old
 # fade — otherwise rapid talking would leave the panel half-faded.
 var _dialog_tween: Tween = null
@@ -93,7 +115,6 @@ func _ready() -> void:
 	# instead of overflowing across the full top row into the top-right log
 	# feed. Extra vertical room lets a long objective wrap to 2–3 lines.
 	_objective_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_objective_label.offset_bottom = 130.0
 	GameState.objective_changed.connect(_on_objective_changed)
 	GameState.health_changed.connect(_on_health_changed)
 	GameState.oxygen_changed.connect(_on_oxygen_changed)
@@ -104,6 +125,9 @@ func _ready() -> void:
 	GameState.dialog_started.connect(_on_dialog_started)
 	GameState.room_discovered.connect(_on_room_discovered)
 	GameState.current_room_changed.connect(_on_current_room_changed)
+	# Unit frame builds the relocated health/oxygen bars, so it must exist before
+	# the initial _on_health_changed / _on_oxygen_changed binds below.
+	_build_unit_frame()
 	_on_objective_changed(GameState.current_objective)
 	_on_health_changed(GameState.health)
 	_on_oxygen_changed(GameState.oxygen)
@@ -162,6 +186,97 @@ func _spawn_compass() -> void:
 	_compass.call("set_mode", compass_mode)
 	_compass.call("set_scene_path", scene_path)
 	add_child(_compass)
+
+
+# WoW-style player unit frame: a portrait of Eli (left) with his name plate and
+# the Health + Oxygen bars stacked to its right. Anchored top-left, just below
+# the compass banner. Portrait is loaded via the shared PortraitLoader so a
+# missing PNG leaves the frame gracefully blank.
+func _build_unit_frame() -> void:
+	if _unit_frame != null and is_instance_valid(_unit_frame):
+		return
+	var frame: HBoxContainer = HBoxContainer.new()
+	frame.name = "UnitFrame"
+	frame.position = UNIT_FRAME_POS
+	frame.add_theme_constant_override("separation", 10)
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	# Portrait, framed by a thin accent border.
+	var portrait_frame: Panel = Panel.new()
+	portrait_frame.name = "PortraitFrame"
+	portrait_frame.custom_minimum_size = UNIT_PORTRAIT_SIZE
+	portrait_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var pf_style: StyleBoxFlat = StyleBoxFlat.new()
+	pf_style.bg_color = Color(0.04, 0.06, 0.09, 0.6)
+	pf_style.border_color = UNIT_ACCENT
+	pf_style.set_border_width_all(2)
+	pf_style.set_corner_radius_all(4)
+	portrait_frame.add_theme_stylebox_override("panel", pf_style)
+
+	var portrait: TextureRect = TextureRect.new()
+	portrait.name = "Portrait"
+	portrait.set_anchors_preset(Control.PRESET_FULL_RECT)
+	portrait.offset_left = 2.0
+	portrait.offset_top = 2.0
+	portrait.offset_right = -2.0
+	portrait.offset_bottom = -2.0
+	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Graceful blank if the PNG is missing — texture stays null.
+	portrait.texture = PortraitLoaderScript.portrait_for(UNIT_PORTRAIT_KEY)
+	portrait_frame.add_child(portrait)
+	frame.add_child(portrait_frame)
+
+	# Right column: name plate over the two vitals bars.
+	var col: VBoxContainer = VBoxContainer.new()
+	col.name = "Vitals"
+	col.add_theme_constant_override("separation", 4)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.custom_minimum_size = Vector2(UNIT_BAR_WIDTH, 0.0)
+
+	var name_label: Label = Label.new()
+	name_label.name = "PlayerName"
+	name_label.text = UNIT_PLAYER_NAME
+	name_label.add_theme_font_size_override("font_size", 16)
+	name_label.add_theme_color_override("font_color", Color(0.95, 0.98, 1.0, 1.0))
+	name_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	name_label.add_theme_constant_override("outline_size", 5)
+	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(name_label)
+
+	_health_bar = _make_vital_bar("Health", UNIT_HEALTH_FILL)
+	_health_fill_style = _health_bar.get_theme_stylebox("fill") as StyleBoxFlat
+	col.add_child(_health_bar)
+	_oxygen_bar = _make_vital_bar("Oxygen", UNIT_OXYGEN_FILL)
+	col.add_child(_oxygen_bar)
+
+	frame.add_child(col)
+	add_child(frame)
+	_unit_frame = frame
+
+
+# A single thin vitals ProgressBar styled to match the old Status bars: dark
+# translucent track with an accent border, a coloured fill, no percentage text.
+func _make_vital_bar(bar_name: String, fill_color: Color) -> ProgressBar:
+	var bar: ProgressBar = ProgressBar.new()
+	bar.name = bar_name
+	bar.custom_minimum_size = Vector2(UNIT_BAR_WIDTH, 14.0)
+	bar.max_value = 100.0
+	bar.value = 100.0
+	bar.show_percentage = false
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var bg: StyleBoxFlat = StyleBoxFlat.new()
+	bg.bg_color = Color(0.05, 0.07, 0.1, 0.55)
+	bg.border_color = UNIT_ACCENT
+	bg.set_border_width_all(1)
+	bg.set_corner_radius_all(2)
+	bar.add_theme_stylebox_override("background", bg)
+	var fill: StyleBoxFlat = StyleBoxFlat.new()
+	fill.bg_color = fill_color
+	fill.set_corner_radius_all(2)
+	bar.add_theme_stylebox_override("fill", fill)
+	return bar
 
 
 func _build_edge_arrow() -> void:
@@ -359,10 +474,32 @@ func _on_objective_changed(text: String) -> void:
 	_objective_label.text = text
 
 func _on_health_changed(v: float) -> void:
+	if _health_bar == null:
+		return
 	_health_bar.value = v
-	# Pulse red when critical (handled by modulate via theme override would be nicer; keep simple).
+	_update_health_critical(v)
+
+# Below UNIT_HEALTH_CRITICAL_FRAC of max HP the health bar turns red and pulses
+# its opacity; above it, the bar returns to its calm green and any pulse stops.
+func _update_health_critical(v: float) -> void:
+	if _health_bar == null or _health_fill_style == null:
+		return
+	var critical: bool = v <= GameState.MAX_HEALTH * UNIT_HEALTH_CRITICAL_FRAC
+	_health_fill_style.bg_color = UNIT_HEALTH_CRITICAL_FILL if critical else UNIT_HEALTH_FILL
+	if critical:
+		if _health_pulse == null or not _health_pulse.is_running():
+			_health_pulse = create_tween().set_loops()
+			_health_pulse.tween_property(_health_bar, "modulate:a", 0.45, 0.45)
+			_health_pulse.tween_property(_health_bar, "modulate:a", 1.0, 0.45)
+	else:
+		if _health_pulse != null and _health_pulse.is_running():
+			_health_pulse.kill()
+		_health_pulse = null
+		_health_bar.modulate.a = 1.0
 
 func _on_oxygen_changed(v: float) -> void:
+	if _oxygen_bar == null:
+		return
 	_oxygen_bar.value = v
 
 func _on_kino_changed(_acquired: bool) -> void:

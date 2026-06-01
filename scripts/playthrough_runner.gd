@@ -260,7 +260,19 @@ func _drive() -> void:
 #     up after itself.
 func _verify_save_round_trip() -> void:
 	var store: SaveStore = SaveStore.new(SaveManager._store.saves_root)
-	var primary: String = store.primary_path("autosave")
+	# Autosaves now land in the active profile's autosave RING (a checkpoint
+	# dir), not a flat "autosave" slot. Resolve the most-recent autosave
+	# checkpoint's save.json — that's what play wrote.
+	var pid: String = SaveManager.active_profile_id()
+	var primary: String = ""
+	if pid != "":
+		for cp in store.list_checkpoints(pid):
+			if String(cp.get("kind", "")) == SaveStore.KIND_AUTOSAVE:
+				primary = store.checkpoint_dir(pid, String(cp.get("checkpoint_id", ""))) + "save.json"
+				break
+	if primary == "":
+		# Fallback for any path that still uses the flat slot.
+		primary = store.primary_path("autosave")
 	_expect(FileAccess.file_exists(primary),
 		"autosave: primary save.json exists after playthrough")
 	var f: FileAccess = FileAccess.open(primary, FileAccess.READ)
@@ -291,11 +303,12 @@ func _verify_save_round_trip() -> void:
 		if gc is Dictionary:
 			_expect(float((gc as Dictionary).get("elapsed_seconds", 0.0)) > 0.0,
 				"autosave: GameClock.elapsed_seconds > 0 after play")
-	SaveManager.wipe("autosave")
+	# wipe("") clears the active profile's ROLLING checkpoints (autosaves +
+	# quicksave); permanent manual/episode checkpoints survive. After it, the
+	# autosave checkpoint's save.json must be gone.
+	SaveManager.wipe("")
 	_expect(not FileAccess.file_exists(primary),
-		"autosave: wipe() removes primary save")
-	for bak in store.backup_paths("autosave"):
-		_expect(not FileAccess.file_exists(bak), "autosave: wipe() removes " + bak)
+		"autosave: wipe() removes the autosave checkpoint save")
 
 
 # --- transitions ---------------------------------------------------------

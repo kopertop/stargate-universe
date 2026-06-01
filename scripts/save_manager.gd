@@ -1,16 +1,35 @@
 extends Node
 
-# Owns auto-save / quicksave / resume orchestration over a slot-based store.
+# Owns auto-save / manual / episode / resume orchestration over the PROFILE +
+# CHECKPOINT store (SaveStore, issue #77). A profile is one named playthrough;
+# it owns a checkpoints/ timeline:
 #
-# Slots: "autosave" + "quicksave" + N manual slots ("manual_1".."manual_N").
-# Each slot is its own directory with a primary snapshot, 3 rotating backups,
-# and a lightweight meta.json sidecar (read on its own for menu listing).
+#   autosave_<ts>   rolling ring — newest SaveStore.AUTOSAVE_RING_KEEP kept
+#   quicksave       single rolling slot (F5)
+#   manual_<ts>     permanent, written by the in-game "Save" action
+#   episode_<id>    permanent, auto-created once at each episode boundary
+#
+# Triggers:
+#   - GameState.objective_changed / current_room_changed -> a NEW autosave
+#     checkpoint in the active profile, then prune the ring to 3.
+#   - GameState.episode_completed -> a permanent episode checkpoint, idempotent.
+#   - save_manual(label) -> a permanent manual checkpoint.
+#   - F5 -> quicksave; F9 -> wipe the active profile's checkpoints.
+#
+# Resume:
+#   - load_and_resume(profile_id, checkpoint_id) restores a specific point.
+#   - Continue calls load_and_resume("") which resumes the active profile's
+#     most-recent checkpoint.
+#
+# Back-compat: the pre-#79 slot-based API (save("autosave"|"manual_1"|...),
+# quicksave(), list_slots(), load_and_resume("manual_2"), has_save()) is
+# retained and transparently mapped onto the active profile's checkpoints, so
+# title.gd / pause_menu.gd keep working unchanged. A single string arg to
+# load_and_resume is resolved as a checkpoint id in the active profile, falling
+# back to a flat slot for legacy on-disk layouts (slot_resume probe).
+#
 # All file/path I/O lives in SaveStore (RefCounted, no autoload deps) so the
 # headless CLI tools can reuse the exact same persistence without autoloads.
-#
-# Autosave triggers: GameState.objective_changed and GameState.current_room_changed
-# fire on every quest advance and every room transition; each writes the
-# "autosave" slot. F5 -> "quicksave"; F9 -> wipe_all.
 #
 # Subsystems plug in via register_system(id, system) where `system`
 # implements `serialize() -> Dictionary` and `deserialize(data, version)
@@ -20,6 +39,7 @@ extends Node
 signal save_written()
 signal save_loaded()
 signal save_wiped()
+signal profile_changed(profile_id: String)
 
 const SAVE_VERSION: int = 2
 
@@ -31,6 +51,14 @@ const SAVE_VERSION: int = 2
 const PLAYER_SAVES_ROOT: String = "user://saves/"
 const SANDBOX_SAVES_ROOT: String = "user://saves_sandbox/"
 
+# Top-level sidecar (under saves_root) tracking which profile is active. Kept
+# alongside the profiles/ dir so each isolated root has its own pointer.
+const ACTIVE_PROFILE_FILE: String = "active.json"
+
+# Legacy flat slot ids still accepted by save()/load_and_resume for back-compat.
+const _LEGACY_QUICKSAVE: String = "quicksave"
+const _LEGACY_AUTOSAVE: String = "autosave"
+
 var _store: SaveStore = SaveStore.new(PLAYER_SAVES_ROOT)
 
 var _systems: Dictionary = {}
@@ -38,6 +66,9 @@ var _autosave_hooks_ready: bool = false
 # Set during deserialize so the signals fired by GameState/etc.'s hydration
 # pass don't recursively trigger autosaves while we're mid-load.
 var _loading: bool = false
+# Active profile id (in-memory); persisted in saves_root/active.json. "" until
+# resolved/created. Lazily ensured by _ensure_active_profile().
+var _active_profile_id: String = ""
 
 
 func _ready() -> void:
@@ -45,6 +76,11 @@ func _ready() -> void:
 	set_saves_root(_resolve_saves_root())
 	# Pull a pre-slots single save into the autosave slot once. Idempotent.
 	_store.migrate_legacy()
+	# Fold any existing FLAT slot layout into a Default profile, once.
+	_store.migrate_flat_to_profile()
+	# Resolve the active profile pointer from disk (may be empty for a fresh
+	# install — created lazily on first New Game / first autosave).
+	_active_profile_id = _read_active_profile()
 	# Defer signal hookup so we don't depend on GameState being ready in
 	# this _ready() — every autoload's _ready runs in registration order;
 	# call_deferred guarantees ours runs after the whole batch settles.
@@ -68,8 +104,10 @@ func _resolve_saves_root() -> String:
 
 # Point all save I/O at a named root. Tests use this for a throwaway temp
 # root; the playthrough/probe runners use the configure_test_paths alias.
+# Re-resolves the active profile pointer for the new root.
 func set_saves_root(root: String) -> void:
 	_store.set_saves_root(root)
+	_active_profile_id = _read_active_profile()
 
 
 # Back-compat alias for the pre-slots API still called by the integration
@@ -100,32 +138,170 @@ func _install_autosave_hooks() -> void:
 	# + atomic, so over-saving is cheap; losing progress is not.
 	GameState.objective_changed.connect(_on_quest_changed)
 	GameState.current_room_changed.connect(_on_room_changed)
+	# Episode boundary -> one permanent checkpoint per episode.
+	if GameState.has_signal("episode_completed"):
+		GameState.episode_completed.connect(_on_episode_completed)
 
 
-# True if ANY slot has a save (slot_id == ""), or if the named slot does.
+# =========================================================================
+# ACTIVE PROFILE
+# =========================================================================
+
+func active_profile_id() -> String:
+	return _active_profile_id
+
+
+# Returns the active profile id, creating a Default profile if none is set.
+# Called lazily on the first write so a fresh install autosaves into a real
+# profile without forcing New Game through any extra ceremony.
+func _ensure_active_profile() -> String:
+	if _active_profile_id != "" and _store.has_profile(_active_profile_id):
+		return _active_profile_id
+	# Prefer an existing Default; otherwise mint one.
+	if _store.has_profile(SaveStore.DEFAULT_PROFILE_ID):
+		_set_active_profile(SaveStore.DEFAULT_PROFILE_ID)
+		return _active_profile_id
+	var pid: String = _store.create_profile(SaveStore.DEFAULT_PROFILE_NAME, SaveStore.DEFAULT_PROFILE_ID)
+	if pid == "":
+		return ""
+	_set_active_profile(pid)
+	return pid
+
+
+# Creates a new profile and makes it active. New Game calls this.
+func create_profile(display_name: String) -> String:
+	var pid: String = _store.create_profile(display_name)
+	if pid == "":
+		return ""
+	_set_active_profile(pid)
+	return pid
+
+
+func set_active_profile(profile_id: String) -> bool:
+	if not _store.has_profile(profile_id):
+		return false
+	_set_active_profile(profile_id)
+	return true
+
+
+func _set_active_profile(profile_id: String) -> void:
+	_active_profile_id = profile_id
+	_write_active_profile(profile_id)
+	profile_changed.emit(profile_id)
+
+
+func list_profiles() -> Array[Dictionary]:
+	return _store.list_profiles()
+
+
+func _active_profile_path() -> String:
+	return _store.saves_root + ACTIVE_PROFILE_FILE
+
+
+func _read_active_profile() -> String:
+	var path: String = _active_profile_path()
+	if not FileAccess.file_exists(path):
+		return ""
+	var f: FileAccess = FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return ""
+	var parsed: Variant = JSON.parse_string(f.get_as_text())
+	f.close()
+	if parsed is Dictionary:
+		return String((parsed as Dictionary).get("active_profile", ""))
+	return ""
+
+
+func _write_active_profile(profile_id: String) -> void:
+	var dir: DirAccess = DirAccess.open("user://")
+	if dir != null:
+		dir.make_dir_recursive(_store.saves_root)
+	var f: FileAccess = FileAccess.open(_active_profile_path(), FileAccess.WRITE)
+	if f == null:
+		return
+	f.store_string(JSON.stringify({"active_profile": profile_id}, "\t"))
+	f.close()
+
+
+# Stamps the active checkpoint pointer + last_played on the active profile.
+func _touch_active_checkpoint(checkpoint_id: String) -> void:
+	if _active_profile_id == "":
+		return
+	var prof: Dictionary = _store.read_profile(_active_profile_id)
+	if prof.is_empty():
+		return
+	prof["active_checkpoint"] = checkpoint_id
+	prof["last_played"] = int(Time.get_unix_time_from_system())
+	_store.write_profile(_active_profile_id, prof)
+
+
+# =========================================================================
+# QUERIES (back-compat surface for title.gd / pause_menu.gd)
+# =========================================================================
+
+# True if ANY checkpoint exists in the active profile (slot_id == ""), or if a
+# named checkpoint/slot does. Powers the title Continue button's enabled state.
 func has_save(slot_id := "") -> bool:
 	if slot_id == "":
+		if _active_profile_id != "":
+			if not _store.list_checkpoints(_active_profile_id).is_empty():
+				return true
+		# Any profile with a checkpoint counts as "has a save".
+		for prof in _store.list_profiles():
+			if not _store.list_checkpoints(String(prof.get("id", ""))).is_empty():
+				return true
+		# Legacy flat slots (un-migrated on-disk layouts).
 		return not _store.list_slots().is_empty()
+	if _active_profile_id != "" and _store.has_checkpoint(_active_profile_id, slot_id):
+		return true
 	return _store.has_slot(slot_id)
 
 
-# Slot ids that currently have a save, plus their meta — for the load/save UI.
+# Checkpoints in the active profile, each with its meta — for the load/save UI.
+# Falls back to legacy flat slots when no profile is active. Each entry carries
+# `slot_id` (its checkpoint/slot id) for back-compat with the existing UI.
 func list_slots() -> Array[Dictionary]:
+	if _active_profile_id != "":
+		var out: Array[Dictionary] = []
+		for cp in _store.list_checkpoints(_active_profile_id):
+			var entry: Dictionary = cp.duplicate(true)
+			entry["slot_id"] = String(cp.get("checkpoint_id", ""))
+			out.append(entry)
+		if not out.is_empty():
+			return out
 	return _store.list_slots()
 
+
+# Checkpoint metas for an explicit profile (load UI / profile picker).
+func list_checkpoints(profile_id: String) -> Array[Dictionary]:
+	return _store.list_checkpoints(profile_id)
+
+
+# =========================================================================
+# AUTOSAVE / MANUAL / EPISODE TRIGGERS
+# =========================================================================
 
 func _on_quest_changed(_step: String) -> void:
 	if _loading:
 		return
 	if _can_autosave():
-		save("autosave")
+		_write_autosave()
 
 
 func _on_room_changed(_room_id: String) -> void:
 	if _loading:
 		return
 	if _can_autosave():
-		save("autosave")
+		_write_autosave()
+
+
+func _on_episode_completed() -> void:
+	if _loading:
+		return
+	# An episode checkpoint is gameplay-critical: write it even mid-transition
+	# as long as we can capture a player + scene. Idempotent per episode id.
+	var episode: String = GameState.current_episode if "current_episode" in GameState else "1"
+	save_episode(episode)
 
 
 func _can_autosave() -> bool:
@@ -144,72 +320,179 @@ func _can_autosave() -> bool:
 	return true
 
 
-# Capture live state into a snapshot + meta and write the given slot.
-func save(slot_id := "autosave") -> void:
-	if GameState.current_scene_path == "":
+# Writes a NEW autosave checkpoint into the active profile, then prunes the
+# ring to AUTOSAVE_RING_KEEP (prune happens inside SaveStore.write_checkpoint).
+func _write_autosave() -> void:
+	var pid: String = _ensure_active_profile()
+	if pid == "":
 		return
 	var data: Dictionary = _build_snapshot()
 	if data.is_empty():
 		return
-	var meta: Dictionary = _build_meta(slot_id, data)
-	if not _store.write_snapshot(slot_id, data, meta):
+	var cid: String = SaveStore.new_autosave_id()
+	# Two autosaves within the same second would collide on the unix-stamped id
+	# and the second would rotate-overwrite the first. Disambiguate so the ring
+	# truly holds distinct entries.
+	if _store.has_checkpoint(pid, cid):
+		cid = "%s_%d" % [cid, _store.list_checkpoints(pid).size()]
+	var meta: Dictionary = _build_meta(cid, data)
+	meta["kind"] = SaveStore.KIND_AUTOSAVE
+	meta["label"] = "Autosave"
+	if not _store.write_checkpoint(pid, cid, data, meta):
 		return
+	_touch_active_checkpoint(cid)
 	save_written.emit()
 
 
-# F5 entrypoint — writes the dedicated quicksave slot.
+# In-game "Save" action — writes a PERMANENT manual checkpoint in the active
+# profile. Returns the checkpoint id, or "" on failure.
+func save_manual(label := "") -> String:
+	var pid: String = _ensure_active_profile()
+	if pid == "":
+		return ""
+	var data: Dictionary = _build_snapshot()
+	if data.is_empty():
+		return ""
+	var cid: String = SaveStore.new_manual_id()
+	if _store.has_checkpoint(pid, cid):
+		cid = "%s_%d" % [cid, _store.list_checkpoints(pid).size()]
+	var meta: Dictionary = _build_meta(cid, data)
+	meta["kind"] = SaveStore.KIND_MANUAL
+	meta["label"] = label if label != "" else "Manual save"
+	if not _store.write_checkpoint(pid, cid, data, meta):
+		return ""
+	_touch_active_checkpoint(cid)
+	save_written.emit()
+	return cid
+
+
+# Episode boundary — writes a PERMANENT episode_<id> checkpoint. Idempotent:
+# a second call for the same episode is a no-op (the checkpoint already exists).
+func save_episode(episode: String, label := "") -> String:
+	var pid: String = _ensure_active_profile()
+	if pid == "":
+		return ""
+	var cid: String = SaveStore.episode_id(episode)
+	if _store.has_checkpoint(pid, cid):
+		return cid  # already recorded — idempotent
+	var data: Dictionary = _build_snapshot()
+	if data.is_empty():
+		return ""
+	var meta: Dictionary = _build_meta(cid, data)
+	meta["kind"] = SaveStore.KIND_EPISODE
+	meta["episode"] = episode
+	meta["label"] = label if label != "" else "Episode %s — Complete" % episode
+	if not _store.write_checkpoint(pid, cid, data, meta):
+		return ""
+	_touch_active_checkpoint(cid)
+	save_written.emit()
+	return cid
+
+
+# Quicksave (F5) — single rolling quicksave checkpoint in the active profile.
 func quicksave() -> void:
-	save("quicksave")
+	var pid: String = _ensure_active_profile()
+	if pid == "":
+		return
+	var data: Dictionary = _build_snapshot()
+	if data.is_empty():
+		return
+	var meta: Dictionary = _build_meta(SaveStore.KIND_QUICKSAVE, data)
+	meta["kind"] = SaveStore.KIND_QUICKSAVE
+	meta["label"] = "Quicksave"
+	if not _store.write_checkpoint(pid, SaveStore.KIND_QUICKSAVE, data, meta):
+		return
+	_touch_active_checkpoint(SaveStore.KIND_QUICKSAVE)
+	save_written.emit()
 
 
-func _build_snapshot() -> Dictionary:
-	var player_block: Dictionary = _capture_player_transform()
-	if player_block.is_empty():
-		return {}
-	var systems_data: Dictionary = {}
-	for id in _systems.keys():
-		var sys: Object = _systems[id]
-		var d: Variant = sys.call("serialize")
-		if d is Dictionary:
-			systems_data[id] = d
-	return {
-		"version": SAVE_VERSION,
-		"timestamp": int(Time.get_unix_time_from_system()),
-		"scene_path": GameState.current_scene_path,
-		"player": player_block,
-		"systems": systems_data,
-	}
+# Back-compat slot entrypoint still called by pause_menu.gd / playthrough
+# runners. Maps a legacy slot id onto the right checkpoint write in the active
+# profile: "autosave"->autosave ring, "quicksave"->quicksave, "manual_N"->
+# permanent manual. An empty/unknown id is treated as an autosave.
+func save(slot_id := _LEGACY_AUTOSAVE) -> void:
+	if GameState.current_scene_path == "":
+		return
+	if slot_id == _LEGACY_QUICKSAVE:
+		quicksave()
+	elif slot_id.begins_with("manual"):
+		save_manual()
+	else:
+		_write_autosave()
 
 
-# Build the meta sidecar from live state. SaveStore can't reach autoloads, so
-# we hand it the playtime/objective/room it needs.
-func _build_meta(slot_id: String, snapshot: Dictionary) -> Dictionary:
-	return {
-		"version": int(snapshot.get("version", SAVE_VERSION)),
-		"timestamp": int(snapshot.get("timestamp", Time.get_unix_time_from_system())),
-		"playtime_seconds": GameClock.elapsed_seconds,
-		"scene_path": GameState.current_scene_path,
-		"room_id": GameState.current_room_id,
-		"objective": GameState.current_objective,
-		"slot_id": slot_id,
-	}
+# =========================================================================
+# RESUME
+# =========================================================================
+
+# Resume a specific (profile, checkpoint): read it, restore every registered
+# system, stage the player spawn, and trigger a scene transition. Returns
+# false if no readable checkpoint exists.
+func load_and_resume_checkpoint(profile_id: String, checkpoint_id: String) -> bool:
+	if profile_id == "":
+		profile_id = _active_profile_id
+	if profile_id == "":
+		return false
+	if checkpoint_id == "":
+		checkpoint_id = _store.most_recent_checkpoint(profile_id)
+	if checkpoint_id == "":
+		return false
+	var data: Dictionary = _store.read_checkpoint(profile_id, checkpoint_id)
+	if data.is_empty():
+		return false
+	_set_active_profile(profile_id)
+	_touch_active_checkpoint(checkpoint_id)
+	return _resume_from_snapshot(data)
 
 
-func _capture_player_transform() -> Dictionary:
-	var player: Node = get_tree().get_first_node_in_group("player")
-	if player == null or not (player is Node3D):
-		return {}
-	var p3: Node3D = player
-	return {
-		"pos": [p3.global_position.x, p3.global_position.y, p3.global_position.z],
-		"yaw": p3.rotation.y,
-	}
-
-
-# Read a slot (or the most recent if slot_id == ""), restore every registered
-# system, stage the player spawn, and trigger a scene transition. Title
-# "Continue" calls this with "". Returns false if no readable save exists.
+# Back-compat single-arg resume. "" = the active profile's most-recent
+# checkpoint (the Continue path). A non-empty arg is resolved as a checkpoint
+# id in the active profile, then as a flat slot for legacy on-disk layouts
+# (the slot_resume probe writes flat slots directly into the store).
 func load_and_resume(slot_id := "") -> bool:
+	# Continue: most-recent checkpoint of the active (or any) profile.
+	if slot_id == "":
+		var pid: String = _active_profile_id
+		if pid == "" or _store.most_recent_checkpoint(pid) == "":
+			pid = _newest_profile_with_checkpoint()
+		if pid != "":
+			var cid: String = _store.most_recent_checkpoint(pid)
+			if cid != "":
+				return load_and_resume_checkpoint(pid, cid)
+		# Legacy flat fallback.
+		return _resume_flat_slot("")
+	# Named: prefer a checkpoint in the active profile, else a flat slot.
+	if _active_profile_id != "" and _store.has_checkpoint(_active_profile_id, slot_id):
+		return load_and_resume_checkpoint(_active_profile_id, slot_id)
+	return _resume_flat_slot(slot_id)
+
+
+# Most-recent checkpoint id in the active profile — powers Continue.
+func most_recent(profile_id := "") -> String:
+	if profile_id == "":
+		profile_id = _active_profile_id
+	if profile_id == "":
+		return ""
+	return _store.most_recent_checkpoint(profile_id)
+
+
+func _newest_profile_with_checkpoint() -> String:
+	var best_pid: String = ""
+	var best_ts: int = -1
+	for prof in _store.list_profiles():
+		var pid: String = String(prof.get("id", ""))
+		var cps: Array[Dictionary] = _store.list_checkpoints(pid)
+		if cps.is_empty():
+			continue
+		var ts: int = int(cps[0].get("timestamp", 0))  # list is newest-first
+		if ts > best_ts:
+			best_ts = ts
+			best_pid = pid
+	return best_pid
+
+
+# Legacy flat-slot resume (un-migrated on-disk layouts / the slot_resume probe).
+func _resume_flat_slot(slot_id: String) -> bool:
 	if slot_id == "":
 		slot_id = _store.most_recent_slot()
 	if slot_id == "":
@@ -217,6 +500,11 @@ func load_and_resume(slot_id := "") -> bool:
 	var data: Dictionary = _store.read_snapshot(slot_id)
 	if data.is_empty():
 		return false
+	return _resume_from_snapshot(data)
+
+
+# Shared hydrate + stage + transition path for both checkpoint and flat resume.
+func _resume_from_snapshot(data: Dictionary) -> bool:
 	_loading = true
 	var version: int = int(data.get("version", 1))
 	# v1 saves: whole dict is the flat game_state payload; no `systems` key.
@@ -272,29 +560,99 @@ func _stage_player_spawn(data: Dictionary) -> void:
 	GameState.pending_spawn_yaw = float(yaw_raw)
 
 
-# Wipe a single slot. With slot_id == "" wipes every slot (the F9 / "start
-# over" behaviour). Emits save_wiped so listeners can refresh button states.
+# =========================================================================
+# SNAPSHOT / META BUILDERS
+# =========================================================================
+
+func _build_snapshot() -> Dictionary:
+	var player_block: Dictionary = _capture_player_transform()
+	if player_block.is_empty():
+		return {}
+	var systems_data: Dictionary = {}
+	for id in _systems.keys():
+		var sys: Object = _systems[id]
+		var d: Variant = sys.call("serialize")
+		if d is Dictionary:
+			systems_data[id] = d
+	return {
+		"version": SAVE_VERSION,
+		"timestamp": int(Time.get_unix_time_from_system()),
+		"scene_path": GameState.current_scene_path,
+		"player": player_block,
+		"systems": systems_data,
+	}
+
+
+# Build the meta sidecar from live state. SaveStore can't reach autoloads, so
+# we hand it the playtime/objective/room it needs.
+func _build_meta(checkpoint_id: String, snapshot: Dictionary) -> Dictionary:
+	return {
+		"version": int(snapshot.get("version", SAVE_VERSION)),
+		"timestamp": int(snapshot.get("timestamp", Time.get_unix_time_from_system())),
+		"playtime_seconds": GameClock.elapsed_seconds,
+		"scene_path": GameState.current_scene_path,
+		"room_id": GameState.current_room_id,
+		"objective": GameState.current_objective,
+		"slot_id": checkpoint_id,
+	}
+
+
+func _capture_player_transform() -> Dictionary:
+	var player: Node = get_tree().get_first_node_in_group("player")
+	if player == null or not (player is Node3D):
+		return {}
+	var p3: Node3D = player
+	return {
+		"pos": [p3.global_position.x, p3.global_position.y, p3.global_position.z],
+		"yaw": p3.rotation.y,
+	}
+
+
+# =========================================================================
+# WIPE / NEW GAME
+# =========================================================================
+
+# Wipe a single checkpoint/slot. With slot_id == "" wipes the active profile's
+# rolling checkpoints (the F9 / "start over" behaviour); permanent manual /
+# episode checkpoints survive. Emits save_wiped so listeners refresh.
 func wipe(slot_id := "") -> void:
 	if slot_id == "":
-		_store.wipe_all()
+		if _active_profile_id != "":
+			for cp in _store.list_checkpoints(_active_profile_id):
+				_store.delete_checkpoint(_active_profile_id, String(cp.get("checkpoint_id", "")))
+		else:
+			_store.wipe_all()
 	else:
-		_store.wipe_slot(slot_id)
+		if _active_profile_id != "" and _store.has_checkpoint(_active_profile_id, slot_id):
+			_store.delete_checkpoint(_active_profile_id, slot_id)
+		else:
+			_store.wipe_slot(slot_id)
 	save_wiped.emit()
 
 
+# Full wipe of the active profile (every checkpoint, permanent included) plus
+# the legacy flat slots. Used by hard "delete profile" flows.
 func wipe_all() -> void:
+	if _active_profile_id != "":
+		_store.delete_profile(_active_profile_id)
+		_active_profile_id = ""
+		_write_active_profile("")
 	_store.wipe_all()
 	save_wiped.emit()
 
 
 # Reset every registered system that exposes reset(), so "New Game" wipes
-# in-memory state across the whole save graph in one call. Title.gd uses
+# in-memory state across the whole save graph in one call, and mint a fresh
+# active profile so the first autosave lands in a clean timeline. Title.gd uses
 # this instead of touching each autoload individually.
 func start_new_game() -> void:
 	for id in _systems.keys():
 		var sys: Object = _systems[id]
 		if sys.has_method("reset"):
 			sys.call("reset")
+	# A fresh playthrough gets a fresh profile so its autosave ring + permanent
+	# checkpoints never mingle with a prior run's.
+	create_profile(SaveStore.DEFAULT_PROFILE_NAME)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -311,6 +669,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			GameState.add_log("Save unavailable — nothing to record yet.")
 		get_viewport().set_input_as_handled()
 	elif key_event.keycode == KEY_F9:
-		wipe_all()
+		wipe()
 		GameState.add_log("Save wiped.")
 		get_viewport().set_input_as_handled()

@@ -42,6 +42,7 @@ func _ready() -> void:
 	_test_urban_renders_walkable_with_buildings()
 	_test_negotiation_npcs_spawn_with_dialogue_trees()
 	_test_a_trade_yields_a_resource_once()
+	_test_trade_choice_press_through_dialog_screen_grants()
 	_test_urban_only_and_data_driven()
 
 	_report()
@@ -168,6 +169,119 @@ func _test_a_trade_yields_a_resource_once() -> void:
 	world.queue_free()
 
 
+# --- 3b: REAL UI path — press the trade choice button in DialogScreen --------
+# Regression for the choice-level-action drop (PR #120 review): the authored
+# trade lives on a CHOICE object, and the only player-reachable path is a button
+# press inside DialogScreen. This drives that exact path — instantiate the real
+# DialogScreen, render the trader's tree, walk to the trade node, and press its
+# choice button — and asserts the resource is granted. It must FAIL if
+# DialogScreen drops choice-level actions (which it did before the fix).
+func _test_trade_choice_press_through_dialog_screen_grants() -> void:
+	var gs: Node = get_node_or_null("/root/GameState")
+	if gs == null:
+		_expect(false, "GameState autoload attached (dialog-screen path)")
+		return
+	gs.call("reset")
+
+	var spec: Dictionary = _spec(7, "urban")
+	var world: Node3D = Node3D.new()
+	add_child(world)
+	_gen.build(world, spec)
+
+	# Find a trader whose tree has a CHOICE carrying a trade action (the broken path).
+	var trader: Node = null
+	var trade_path: Dictionary = {}
+	for n in world.get_tree().get_nodes_in_group("negotiation_npc"):
+		if (n as Node).get_parent() != world:
+			continue
+		var path: Dictionary = _find_choice_trade(n.get("dialogue_tree"))
+		if not path.is_empty():
+			trader = n
+			trade_path = path
+			break
+	_expect(trader != null, "a resident carries a trade action ON A CHOICE (the UI path)")
+	if trader == null:
+		world.queue_free()
+		return
+
+	var resource: String = String(trade_path.get("resource", ""))
+	var amount: int = int(trade_path.get("amount", 0))
+	# Isolate from prior tests/NPCState: same-named residents can restore a
+	# `_trades_done` registry, which would block the grant and mask the press path.
+	trader.set("_trades_done", {})
+	var before: int = int(gs.call("resource_count", resource))
+
+	# Wire the trader to the dialog_action channel exactly as a live conversation
+	# does (npc.gd::_begin_conversation_facing). This is the listener that grants.
+	var listener: Callable = Callable(trader, "_on_dialog_action")
+	if not gs.is_connected("dialog_action", listener):
+		gs.connect("dialog_action", listener)
+
+	# Instance the REAL DialogScreen (same scene hud.gd loads) and start it.
+	var dlg_scene: PackedScene = load("res://objects/dialog_screen.tscn")
+	_expect(dlg_scene != null, "dialog_screen.tscn loads")
+	if dlg_scene == null:
+		world.queue_free()
+		return
+	var screen: Control = dlg_scene.instantiate()
+	add_child(screen)
+	var tree: Array = trader.get("dialogue_tree")
+	screen.call("start", trader, tree)
+
+	# Walk the rendered nodes to the one whose choice carries the trade action,
+	# pressing the choice button that advances toward it. We re-render by pressing
+	# buttons (the real input path), then press the trade choice itself.
+	var pressed_trade: bool = _press_to_trade_choice(screen, tree)
+	_expect(pressed_trade, "navigated DialogScreen to the trade choice and pressed it")
+
+	# Pressing the trade choice button must have fired its action -> grant.
+	var after: int = int(gs.call("resource_count", resource))
+	_expect(after == before + amount,
+		"pressing the trade CHOICE button grants %s (%d -> %d, +%d)" % [resource, before, after, amount])
+
+	# Cleanup: unpause (DialogScreen pauses on start), drop the listener, free.
+	get_tree().paused = false
+	if gs.is_connected("dialog_action", listener):
+		gs.disconnect("dialog_action", listener)
+	if is_instance_valid(screen):
+		screen.queue_free()
+	world.queue_free()
+
+
+# Navigate the live DialogScreen by pressing choice buttons until we reach and
+# press the choice carrying a "trade:" action. Returns true if we pressed it.
+# Bounded by the node count so a malformed tree can't loop forever.
+func _press_to_trade_choice(screen: Control, tree: Array) -> bool:
+	var box: VBoxContainer = screen.get_node_or_null("Window/Margin/VBox/ChoicesVBox")
+	if box == null:
+		return false
+	for _step in range(tree.size() + 2):
+		var idx: int = int(screen.get("_current_index"))
+		if idx < 0 or idx >= tree.size():
+			return false
+		var node: Dictionary = tree[idx]
+		var choices: Array = node.get("choices", [])
+		var trade_btn: int = -1
+		var advance_btn: int = -1
+		for i in range(choices.size()):
+			var c: Dictionary = choices[i]
+			if String(c.get("action", "")).begins_with("trade:"):
+				trade_btn = i
+				break
+			# Prefer a choice that jumps deeper (toward the trade node).
+			var nxt: Variant = c.get("next")
+			var is_num: bool = typeof(nxt) == TYPE_FLOAT or typeof(nxt) == TYPE_INT
+			if advance_btn < 0 and is_num and int(nxt) > idx:
+				advance_btn = i
+		var press: int = trade_btn if trade_btn >= 0 else advance_btn
+		if press < 0 or press >= box.get_child_count():
+			return false
+		(box.get_child(press) as Button).emit_signal("pressed")
+		if trade_btn >= 0:
+			return true
+	return false
+
+
 # --- 4: urban-only + data-driven --------------------------------------------
 func _test_urban_only_and_data_driven() -> void:
 	# Desert places NO settlement / negotiation content.
@@ -225,6 +339,25 @@ func _find_trade_action(tree: Variant) -> Dictionary:
 		for a in candidates:
 			if String(a).begins_with("trade:"):
 				var parts: PackedStringArray = String(a).split(":")
+				if parts.size() >= 3:
+					return {"resource": String(parts[1]), "amount": int(parts[2])}
+	return {}
+
+
+# Like _find_trade_action but ONLY considers actions on CHOICE objects (the
+# player-reachable UI path). Returns {resource, amount} or {}.
+func _find_choice_trade(tree: Variant) -> Dictionary:
+	if not (tree is Array):
+		return {}
+	for node in (tree as Array):
+		if not (node is Dictionary):
+			continue
+		for c in (node as Dictionary).get("choices", []):
+			if not (c is Dictionary):
+				continue
+			var a: String = String((c as Dictionary).get("action", ""))
+			if a.begins_with("trade:"):
+				var parts: PackedStringArray = a.split(":")
 				if parts.size() >= 3:
 					return {"resource": String(parts[1]), "amount": int(parts[2])}
 	return {}

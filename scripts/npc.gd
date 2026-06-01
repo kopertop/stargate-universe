@@ -463,8 +463,8 @@ func _begin_conversation_facing(by: Node) -> void:
 	if not GameState.dialog_closed.is_connected(_on_talk_ended):
 		GameState.dialog_closed.connect(_on_talk_ended, CONNECT_ONE_SHOT)
 	# Negotiation: while THIS NPC's dialog is open, listen for trade actions a
-	# choice fires (DialogScreen emits GameState.dialog_action with the node's
-	# `action`). Hooked here so only the active conversation's NPC reacts.
+	# choice fires (DialogScreen emits GameState.dialog_action with the picked
+	# choice's `action`). Hooked here so only the active conversation's NPC reacts.
 	if not GameState.dialog_action.is_connected(_on_dialog_action):
 		GameState.dialog_action.connect(_on_dialog_action)
 

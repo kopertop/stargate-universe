@@ -25,6 +25,11 @@ const EXPECTED_CATALOG_IDS: Array[String] = [
 	"lime",
 	"small_fuse",
 	"large_fuse",
+	"marine_helmet",
+	"recon_cap",
+	"tac_vest",
+	"field_backpack",
+	"combat_boots",
 ]
 
 var _failures: Array[String] = []
@@ -129,6 +134,86 @@ func _initialize() -> void:
 	_expect(int(inv.call("count", "small_fuse")) == 1, "legacy migration: small_fuse_found → small_fuse")
 	_expect(int(inv.call("count", "kino_orb")) == 2, "legacy migration: kino_orbs → kino_orb count")
 	_expect(int(inv.call("count", "lime")) == 3, "legacy migration: resources dict → lime count")
+
+	# --- 9. equipment: slot metadata loads (issue #71) ---------------------
+	gs.call("reset")
+	_expect(bool(inv.call("is_equippable", "marine_helmet")), "marine_helmet is_equippable")
+	_expect(String(inv.call("slot_of", "marine_helmet")) == "head", "marine_helmet → head slot")
+	_expect(String(inv.call("slot_of", "tac_vest")) == "torso", "tac_vest → torso slot")
+	_expect(String(inv.call("slot_of", "field_backpack")) == "back", "field_backpack → back slot")
+	_expect(String(inv.call("slot_of", "combat_boots")) == "legs", "combat_boots → legs slot")
+	_expect(not bool(inv.call("is_equippable", "rations")), "non-equipment item is not equippable")
+	var helmet_def: Dictionary = inv.call("definition", "marine_helmet")
+	_expect(String(helmet_def.get("model", "")).begins_with("res://models/equipment/"),
+		"equipment def carries a model path")
+	_expect(String(helmet_def.get("socket", "")) == "Head", "equipment def carries a socket hint")
+
+	# --- 10. equip / unequip mutate ONE _equipped dict + emit --------------
+	var equip_events: Array = []
+	inv.connect("equipment_changed", func(slot: String, item_id: String) -> void:
+		equip_events.append([slot, item_id]))
+
+	# Can't equip what you don't hold.
+	_expect(not bool(inv.call("equip", "marine_helmet")), "equip fails when item not held")
+
+	inv.call("add_item", "marine_helmet", 1, "test")
+	_expect(bool(inv.call("equip", "marine_helmet")), "equip succeeds when item held")
+	_expect(String(inv.call("equipped_in", "head")) == "marine_helmet", "equipped_in(head) reflects equip")
+	_expect(bool(inv.call("is_equipped", "marine_helmet")), "is_equipped(marine_helmet) true")
+	_expect(int(inv.call("count", "marine_helmet")) == 0, "equipping consumes the item from the pool")
+	_expect(not _entry_ids(inv).has("marine_helmet"), "equipped item drops out of inventory entries()")
+	_expect(equip_events.size() == 1 and equip_events[0][0] == "head" and equip_events[0][1] == "marine_helmet",
+		"equipment_changed emitted once with (head, marine_helmet)")
+
+	# --- 11. slots are independent (equip legs, head unaffected) -----------
+	inv.call("add_item", "combat_boots", 1, "test")
+	_expect(bool(inv.call("equip", "combat_boots")), "equip combat_boots into legs")
+	_expect(String(inv.call("equipped_in", "legs")) == "combat_boots", "legs slot filled independently")
+	_expect(String(inv.call("equipped_in", "head")) == "marine_helmet", "head slot unaffected by legs equip")
+	var loadout: Dictionary = inv.call("equipped_items")
+	_expect(loadout.size() == 2 and loadout.get("head", "") == "marine_helmet" and loadout.get("legs", "") == "combat_boots",
+		"equipped_items() returns the full two-slot loadout")
+
+	# --- 12. equipping a full slot swaps cleanly (old item returns) --------
+	# recon_cap is also a head item; equipping it must evict marine_helmet back
+	# into the pool and seat recon_cap, all on the ONE _equipped dict.
+	inv.call("add_item", "recon_cap", 1, "test")
+	equip_events.clear()
+	_expect(bool(inv.call("equip", "recon_cap")), "equip recon_cap into the occupied head slot")
+	_expect(String(inv.call("equipped_in", "head")) == "recon_cap", "head slot now holds recon_cap")
+	_expect(int(inv.call("count", "marine_helmet")) == 1, "swapped-out marine_helmet returns to the pool")
+	_expect(_entry_ids(inv).has("marine_helmet"), "swapped-out item reappears in entries()")
+	_expect(int(inv.call("count", "recon_cap")) == 0, "swapped-in item consumed from the pool")
+	_expect(not bool(inv.call("is_equipped", "marine_helmet")), "marine_helmet no longer equipped after swap")
+	_expect(equip_events.size() == 1 and equip_events[0][0] == "head" and equip_events[0][1] == "recon_cap",
+		"swap emits equipment_changed(head, recon_cap) once")
+
+	# --- 13. unequip clears the slot + returns item to pool ----------------
+	equip_events.clear()
+	inv.call("unequip", "head")
+	_expect(String(inv.call("equipped_in", "head")) == "", "unequip clears the slot")
+	_expect(not bool(inv.call("is_equipped", "recon_cap")), "is_equipped false after unequip")
+	_expect(int(inv.call("count", "recon_cap")) == 1, "unequip returns the item to the pool")
+	_expect(equip_events.size() == 1 and equip_events[0][0] == "head" and equip_events[0][1] == "",
+		"equipment_changed(head, '') emitted on unequip")
+	inv.call("unequip", "head")
+	_expect(String(inv.call("equipped_in", "head")) == "", "unequip on an empty slot is a no-op (no crash)")
+
+	# Seat a torso item so the round-trip below covers multiple filled slots.
+	inv.call("add_item", "tac_vest", 1, "test")
+	_expect(bool(inv.call("equip", "tac_vest")), "equip tac_vest into torso")
+
+	# --- 14. loadout round-trips through save / load -----------------------
+	var snap2: Dictionary = inv.call("serialize")
+	_expect((snap2.get("equipped", {}) as Dictionary).size() == 2, "serialize captures the 2-slot loadout")
+	inv.call("reset")
+	_expect(inv.call("equipped_items").is_empty(), "reset clears the loadout")
+	_expect(String(inv.call("equipped_in", "torso")) == "", "reset empties torso slot")
+	inv.call("deserialize", snap2, 2)
+	_expect(String(inv.call("equipped_in", "torso")) == "tac_vest", "deserialize restores torso slot")
+	_expect(String(inv.call("equipped_in", "legs")) == "combat_boots", "deserialize restores legs slot")
+	_expect(String(inv.call("equipped_in", "head")) == "", "head slot stays empty after round-trip")
+	_expect(inv.call("equipped_items").size() == 2, "loadout round-trips through save/load")
 
 	_report()
 

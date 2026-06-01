@@ -76,8 +76,10 @@ func _seed_profile() -> String:
 		_write_cp(pid, cid, "autosave", "Autosave", "", "room_%d" % i, "Explore room %d" % i, ts)
 	# quicksave (rolling)
 	_write_cp(pid, "quicksave", "quicksave", "Quicksave", "", "kino_room", "Pilot the Kino", base + 5)
-	# manual (permanent)
-	_write_cp(pid, "manual_%d" % (base + 10), "manual", "Before the leak", "", "control_interface_room", "Talk to Rush", base + 10)
+	# manual (permanent) — seeded WITH an episode, matching what _build_meta now
+	# writes for every checkpoint. A blank episode here would let the missing
+	# meta-wiring regression (issue #80 AC1) slip past unnoticed.
+	_write_cp(pid, "manual_%d" % (base + 10), "manual", "Before the leak", "air", "control_interface_room", "Talk to Rush", base + 10)
 	# episode (permanent)
 	_write_cp(pid, "episode_air", "episode", "Episode 1: Air — Complete", "1", "breached_section_south", "Survive", base + 8)
 	return pid
@@ -128,6 +130,12 @@ func _test_profile_level(pid: String) -> void:
 		# Newest checkpoint is the manual (base+10) — its objective surfaces on
 		# the profile row so the player can tell playthroughs apart.
 		_check(label.contains("Talk to Rush"), "profile row shows newest checkpoint objective (got '%s')" % label)
+		# AC1: the row must show the EPISODE, sourced from the newest checkpoint's
+		# meta.episode. This is the structural assertion that catches the missing
+		# _build_meta wiring (issue #80) — with episode="air" seeded, the label
+		# must render "Episode air", never the "—" placeholder.
+		_check(label.contains("Episode air"),
+			"profile row shows newest checkpoint episode (AC1) (got '%s')" % label)
 
 
 # ---- level 2: checkpoints -----------------------------------------------

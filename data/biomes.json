@@ -1,0 +1,112 @@
+{
+	"desert": {
+		"label": "Desert",
+		"terrain": {
+			"height": 3.0,
+			"frequency": 0.006,
+			"detail_frequency": 0.018,
+			"detail_strength": 0.25,
+			"slope_limit_deg": 30.0
+		},
+		"ground_color": [0.66, 0.56, 0.36],
+		"sky_horizon": [0.85, 0.74, 0.55],
+		"prop_set": "rocks",
+		"prop_density": 0.7,
+		"ambient_sfx": "wind_dry",
+		"hazard": {
+			"type": "heat",
+			"temperature_c": 48
+		},
+		"walkability": {
+			"max_prop_height": 1.6
+		}
+	},
+	"jungle": {
+		"label": "Jungle",
+		"terrain": {
+			"height": 3.4,
+			"frequency": 0.007,
+			"detail_frequency": 0.020,
+			"detail_strength": 0.25,
+			"slope_limit_deg": 30.0
+		},
+		"ground_color": [0.20, 0.34, 0.18],
+		"sky_horizon": [0.55, 0.68, 0.52],
+		"prop_set": "foliage",
+		"prop_density": 1.2,
+		"ambient_sfx": "jungle_amb",
+		"hazard": {
+			"type": "humidity",
+			"temperature_c": 32
+		},
+		"walkability": {
+			"max_prop_height": 2.0
+		}
+	},
+	"toxic": {
+		"label": "Toxic",
+		"terrain": {
+			"height": 2.6,
+			"frequency": 0.006,
+			"detail_frequency": 0.016,
+			"detail_strength": 0.22,
+			"slope_limit_deg": 28.0
+		},
+		"ground_color": [0.34, 0.40, 0.22],
+		"sky_horizon": [0.46, 0.52, 0.30],
+		"prop_set": "rocks",
+		"prop_density": 0.5,
+		"ambient_sfx": "toxic_amb",
+		"hazard": {
+			"type": "toxin",
+			"toxins": "CHLORINE",
+			"breathable": false
+		},
+		"walkability": {
+			"max_prop_height": 1.6
+		}
+	},
+	"urban": {
+		"label": "Urban Ruins",
+		"terrain": {
+			"height": 1.8,
+			"frequency": 0.005,
+			"detail_frequency": 0.014,
+			"detail_strength": 0.20,
+			"slope_limit_deg": 26.0
+		},
+		"ground_color": [0.44, 0.44, 0.46],
+		"sky_horizon": [0.58, 0.60, 0.66],
+		"prop_set": "structures",
+		"prop_density": 0.9,
+		"ambient_sfx": "city_wind",
+		"hazard": {
+			"type": "none"
+		},
+		"walkability": {
+			"max_prop_height": 2.4
+		}
+	},
+	"alien_tech": {
+		"label": "Alien Tech",
+		"terrain": {
+			"height": 2.4,
+			"frequency": 0.006,
+			"detail_frequency": 0.018,
+			"detail_strength": 0.22,
+			"slope_limit_deg": 28.0
+		},
+		"ground_color": [0.30, 0.28, 0.40],
+		"sky_horizon": [0.40, 0.36, 0.56],
+		"prop_set": "structures",
+		"prop_density": 0.8,
+		"ambient_sfx": "tech_hum",
+		"hazard": {
+			"type": "radiation",
+			"radiation": "MODERATE"
+		},
+		"walkability": {
+			"max_prop_height": 2.4
+		}
+	}
+}

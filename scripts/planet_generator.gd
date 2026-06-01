@@ -1,21 +1,40 @@
 class_name PlanetGenerator
 extends Object
 
-# Deterministic graybox planet builder. The data row owns the seed and counts;
-# this script turns that into a large heightmapped terrain, a return Stargate,
-# and lime. The terrain is a procedural mesh: rolling noise hills in the middle,
-# a raised mountain rim so there's no edge to walk off, and a flattened landing
-# zone around the gate. Lime can sit in valleys behind ridges, so the player has
-# to fly the recon Kino around to spot it.
+# Biome-parameterized, near-infinite procedural planet builder (issue #85).
+#
+# A per-run PlanetSpec drives generation:
+#   { "seed": int, "biome": String, "resource_table": Dictionary,
+#     "hazard_params": Dictionary }
+# build(world, spec) reads the biome's parameter block from data/biomes.json
+# (terrain shaping, ground palette, prop set, walkability), then:
+#   * installs a PlanetChunkManager that STREAMS terrain chunks around the body
+#     (near-infinite — walking toward any edge reveals more world; no walling rim
+#     or fixed bowl). The height field is a SINGLE global function of world
+#     (x, z) — height_at() — so chunk borders stitch seamlessly.
+#   * places the return Stargate at the fixed "home" anchor (origin),
+#   * scatters lime + non-lime POIs deterministically from seed + world position,
+#   * seats walk-around props flush on the ground (no jump-requiring ledges).
+#
+# Walkable everywhere reachable: terrain_height is low and frequencies gentle so
+# local slope stays well under the CharacterBody3D floor limit; max_slope_deg()
+# lets tests assert it. Props are obstacles to walk AROUND, not steps to hop.
+#
+# Back-compat: build() also accepts a legacy planets.json row (no "biome" key) —
+# it is normalized into a desert spec so the existing Air lime planet keeps
+# rendering until the Desert-biome sub-issue migrates the data row.
 
 const STARGATE_SCENE: PackedScene = preload("res://objects/stargate.tscn")
 const RESOURCE_NODE_SCRIPT: Script = preload("res://scripts/resource_node.gd")
 const PLANET_GATE_SCRIPT: Script = preload("res://scripts/planet_gate.gd")
 const POI_NODE_SCRIPT: Script = preload("res://scripts/poi_node.gd")
+const CHUNK_MANAGER_SCRIPT: Script = preload("res://scripts/planet_chunk_manager.gd")
+
+const BIOMES_PATH: String = "res://data/biomes.json"
+const DEFAULT_BIOME: String = "desert"
 
 # Non-lime points-of-interest the Kino's auto-search can turn up. category →
-# [default count, toast/compass label]. Overridable per planet via a "poi_counts"
-# dict in planets.json (e.g. {"ore": 5}).
+# [default count, toast/compass label].
 const POI_KINDS: Dictionary = {
 	"ruin":   [2, "Ancient Ruin"],
 	"ore":    [3, "Ore Vein"],
@@ -23,123 +42,202 @@ const POI_KINDS: Dictionary = {
 	"debris": [2, "Crashed Debris"],
 }
 
-static func build(world: Node3D, planet_data: Dictionary) -> void:
-	if world == null:
-		return
-	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
-	rng.seed = int(planet_data.get("seed", 1))
-	var tp: Dictionary = _terrain_params(planet_data)
-	_build_terrain(world, tp)
-	_build_return_gate(world, tp)
-	_build_lime_nodes(world, planet_data, rng, tp)
-	_build_pois(world, planet_data, rng, tp)
-	_build_rocks(world, rng, tp)
-	_build_landmarks(world, rng, tp)
 
-# Bundle the terrain shaping inputs (two noise fields + the radial profile) so
-# the same height function drives both the mesh and where props sit.
-static func _terrain_params(planet_data: Dictionary) -> Dictionary:
-	var seed: int = int(planet_data.get("seed", 1))
+# Build a planet from a PlanetSpec (or a legacy planets.json row). Returns the
+# installed PlanetChunkManager so the scene can hand it the body to track.
+static func build(world: Node3D, spec_or_row: Dictionary) -> Node3D:
+	if world == null:
+		return null
+	var spec: Dictionary = _normalize_spec(spec_or_row)
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = int(spec.get("seed", 1))
+	var params: Dictionary = build_params(spec)
+
+	var manager: Node3D = _install_chunk_manager(world, params)
+	_build_return_gate(world, params)
+	_build_lime_nodes(world, spec, rng, params)
+	_build_pois(world, spec, rng, params)
+	_build_props(world, rng, params)
+	return manager
+
+
+# --- Spec normalization ----------------------------------------------------
+
+# Accept either a real PlanetSpec or a legacy planets.json row. A legacy row has
+# no "biome" key — fold its lime/seed fields into a desert spec so the Air lime
+# planet keeps working unchanged.
+static func _normalize_spec(src: Dictionary) -> Dictionary:
+	if src.has("biome"):
+		return {
+			"seed": int(src.get("seed", 1)),
+			"biome": String(src.get("biome", DEFAULT_BIOME)),
+			"resource_table": src.get("resource_table", {}) if src.get("resource_table", {}) is Dictionary else {},
+			"hazard_params": src.get("hazard_params", {}) if src.get("hazard_params", {}) is Dictionary else {},
+			"name": String(src.get("name", "Planet")),
+		}
+	# Legacy planets.json row → desert spec, carrying the old lime placement.
+	return {
+		"seed": int(src.get("seed", 1)),
+		"biome": DEFAULT_BIOME,
+		"resource_table": {
+			"lime_nodes": int(src.get("lime_nodes", 5)),
+			"lime_per_node": int(src.get("lime_per_node", 1)),
+			"lime_min_radius": float(src.get("lime_min_radius", 70.0)),
+			"lime_max_radius": float(src.get("lime_max_radius", 200.0)),
+			"lime_far_count": int(src.get("lime_far_count", 0)),
+			"lime_far_min_radius": float(src.get("lime_far_min_radius", 380.0)),
+			"lime_far_max_radius": float(src.get("lime_far_max_radius", 440.0)),
+			"lime_far_arc": float(src.get("lime_far_arc", 0.7)),
+			"poi_counts": src.get("poi_counts", {}) if src.get("poi_counts", {}) is Dictionary else {},
+		},
+		"hazard_params": src.get("atmosphere", {}) if src.get("atmosphere", {}) is Dictionary else {},
+		"name": String(src.get("name", "Lime World")),
+	}
+
+
+# Read a biome's parameter block from data/biomes.json. Missing file/biome falls
+# back to a safe built-in desert block so generation never hard-fails.
+static func biome_params(biome: String) -> Dictionary:
+	var f: FileAccess = FileAccess.open(BIOMES_PATH, FileAccess.READ)
+	var fallback: Dictionary = _builtin_desert_block()
+	if f == null:
+		return fallback
+	var parsed: Variant = JSON.parse_string(f.get_as_text())
+	f.close()
+	if not (parsed is Dictionary):
+		return fallback
+	var table: Dictionary = parsed
+	if table.has(biome) and table[biome] is Dictionary:
+		return table[biome]
+	if table.has(DEFAULT_BIOME) and table[DEFAULT_BIOME] is Dictionary:
+		return table[DEFAULT_BIOME]
+	return fallback
+
+
+static func _builtin_desert_block() -> Dictionary:
+	return {
+		"label": "Desert",
+		"terrain": {"height": 3.0, "frequency": 0.006, "detail_frequency": 0.018,
+			"detail_strength": 0.25, "slope_limit_deg": 30.0},
+		"ground_color": [0.66, 0.56, 0.36],
+		"prop_set": "rocks", "prop_density": 0.7,
+		"walkability": {"max_prop_height": 1.6},
+	}
+
+
+# Bundle the global height-function inputs (two seeded noise octaves + biome
+# shaping) so the SAME function drives chunk meshes AND where props sit. Pure
+# data: safe to pass to PlanetChunkManager and to height_at().
+static func build_params(spec: Dictionary) -> Dictionary:
+	var seed: int = int(spec.get("seed", 1))
+	var biome: String = String(spec.get("biome", DEFAULT_BIOME))
+	var bp: Dictionary = biome_params(biome)
+	var terrain: Dictionary = bp.get("terrain", {}) if bp.get("terrain", {}) is Dictionary else {}
+
 	var n1: FastNoiseLite = FastNoiseLite.new()
 	n1.seed = seed
 	n1.noise_type = FastNoiseLite.TYPE_SIMPLEX
-	n1.frequency = 0.012
+	n1.frequency = float(terrain.get("frequency", 0.010))
 	var n2: FastNoiseLite = FastNoiseLite.new()
 	n2.seed = seed + 7
 	n2.noise_type = FastNoiseLite.TYPE_SIMPLEX
-	n2.frequency = 0.045
+	n2.frequency = float(terrain.get("detail_frequency", 0.040))
+
+	var col: Array = bp.get("ground_color", [0.5, 0.5, 0.5]) if bp.get("ground_color", []) is Array else [0.5, 0.5, 0.5]
 	return {
+		"seed": seed,
+		"biome": biome,
 		"noise": n1,
 		"noise2": n2,
-		"extent": float(planet_data.get("terrain_extent", 240.0)),
-		"res": int(planet_data.get("terrain_resolution", 96)),
-		"height": float(planet_data.get("terrain_height", 9.0)),
-		"rim_height": float(planet_data.get("rim_height", 34.0)),
-		"landing_radius": float(planet_data.get("landing_radius", 22.0)),
+		"height": float(terrain.get("height", 5.5)),
+		"detail_strength": float(terrain.get("detail_strength", 0.35)),
+		"slope_limit_deg": float(terrain.get("slope_limit_deg", 30.0)),
+		"landing_radius": 22.0,
+		"ground_color": _to_color(col),
+		"prop_set": String(bp.get("prop_set", "rocks")),
+		"prop_density": float(bp.get("prop_density", 0.7)),
+		"max_prop_height": float((bp.get("walkability", {}) as Dictionary).get("max_prop_height", 1.8)) \
+			if bp.get("walkability", {}) is Dictionary else 1.8,
 	}
 
-# Terrain height at world (x, z). Combines: rolling hills (two noise octaves),
-# a mountain rim that rises toward the map edge (so there's no cliff to fall
-# off), and a flattened landing zone near the origin (gate + spawn).
-static func _height(x: float, z: float, tp: Dictionary) -> float:
-	var dist: float = sqrt(x * x + z * z)
-	var n1: FastNoiseLite = tp["noise"]
-	var n2: FastNoiseLite = tp["noise2"]
-	var height: float = float(tp["height"])
-	var h: float = n1.get_noise_2d(x, z) * height
-	h += n2.get_noise_2d(x, z) * height * 0.45
-	# Raise toward the rim: a ring of mountains walling in the playable bowl.
-	var extent: float = float(tp["extent"])
-	var rim_start: float = extent * 0.32
-	var rim_full: float = extent * 0.5
-	var rim_t: float = clampf((dist - rim_start) / max(rim_full - rim_start, 0.001), 0.0, 1.0)
-	h += pow(rim_t, 2.2) * float(tp["rim_height"])
+
+static func _to_color(arr: Array) -> Color:
+	if arr.size() >= 3:
+		return Color(float(arr[0]), float(arr[1]), float(arr[2]))
+	return Color(0.5, 0.5, 0.5)
+
+
+# --- Global height function -------------------------------------------------
+
+# Terrain height at world (x, z). The single source of truth for terrain shape:
+# every chunk samples this at true world coordinates, so neighbouring chunks
+# agree on shared-edge heights (seamless — no cliffs/gaps). Two gentle noise
+# octaves + a flattened landing zone around the origin (gate + spawn). NO walling
+# rim and NO radial bowl — the world is open in every direction (streamed).
+#
+# Walkable: amplitude is small and frequencies low, so the gradient (hence local
+# slope) stays well under the CharacterBody3D floor limit everywhere.
+static func height_at(x: float, z: float, params: Dictionary) -> float:
+	var n1: FastNoiseLite = params["noise"]
+	var n2: FastNoiseLite = params["noise2"]
+	var amp: float = float(params.get("height", 5.5))
+	var detail: float = float(params.get("detail_strength", 0.35))
+	var h: float = n1.get_noise_2d(x, z) * amp
+	h += n2.get_noise_2d(x, z) * amp * detail
 	# Flatten toward the centre so the gate + landing zone sit on stable ground.
-	var land_t: float = smoothstep(0.0, 1.0, clampf(dist / max(float(tp["landing_radius"]), 0.001), 0.0, 1.0))
+	var dist: float = sqrt(x * x + z * z)
+	var landing: float = float(params.get("landing_radius", 22.0))
+	var land_t: float = smoothstep(0.0, 1.0, clampf(dist / max(landing, 0.001), 0.0, 1.0))
 	return lerpf(0.0, h, land_t)
 
-static func _build_terrain(world: Node3D, tp: Dictionary) -> void:
-	var body: StaticBody3D = StaticBody3D.new()
-	body.name = "PlanetGround"
-	body.collision_layer = 1 | 2   # 1 = player/drone, 2 = camera spring
-	body.collision_mask = 0
-	world.add_child(body)
 
-	var res: int = int(tp["res"])
-	var extent: float = float(tp["extent"])
-	var step: float = extent / float(res)
-	var half: float = extent * 0.5
-	const UV_SCALE: float = 0.25
+# Worst-case local slope (degrees) of the height field over a sampled region,
+# centred on the origin out to `radius`, stepping every `step` metres. Tests
+# assert this stays under the CharacterBody3D floor limit (jump never required).
+static func max_slope_deg(params: Dictionary, radius: float, step: float) -> float:
+	var worst: float = 0.0
+	var x: float = -radius
+	while x <= radius:
+		var z: float = -radius
+		while z <= radius:
+			var h: float = height_at(x, z, params)
+			var hx: float = height_at(x + step, z, params)
+			var hz: float = height_at(x, z + step, params)
+			var slope_x: float = rad_to_deg(atan(abs(hx - h) / step))
+			var slope_z: float = rad_to_deg(atan(abs(hz - h) / step))
+			worst = max(worst, max(slope_x, slope_z))
+			z += step
+		x += step
+	return worst
 
-	var st: SurfaceTool = SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for i in res:
-		for j in res:
-			var x0: float = -half + i * step
-			var z0: float = -half + j * step
-			var x1: float = x0 + step
-			var z1: float = z0 + step
-			var p00: Vector3 = Vector3(x0, _height(x0, z0, tp), z0)
-			var p10: Vector3 = Vector3(x1, _height(x1, z0, tp), z0)
-			var p11: Vector3 = Vector3(x1, _height(x1, z1, tp), z1)
-			var p01: Vector3 = Vector3(x0, _height(x0, z1, tp), z1)
-			# Winding chosen so SurfaceTool.generate_normals() faces +Y (up) —
-			# the reverse order leaves normals pointing down, which lights the
-			# ground from below and reads as an upside-down/inside-out world.
-			_st_tri(st, p00, p11, p01, UV_SCALE)
-			_st_tri(st, p00, p10, p11, UV_SCALE)
-	st.generate_normals()
-	var mesh: ArrayMesh = st.commit()
 
-	var mi: MeshInstance3D = MeshInstance3D.new()
-	mi.name = "Surface"
-	mi.mesh = mesh
-	mi.material_override = _ground_mat()
-	body.add_child(mi)
+# --- Terrain streaming ------------------------------------------------------
 
-	var cs: CollisionShape3D = CollisionShape3D.new()
-	cs.shape = mesh.create_trimesh_shape()
-	body.add_child(cs)
+static func _install_chunk_manager(world: Node3D, params: Dictionary) -> Node3D:
+	var manager: Node3D = CHUNK_MANAGER_SCRIPT.new()
+	manager.name = "PlanetGround"   # keep the historical node name (scene_boot, saves)
+	world.add_child(manager)
+	manager.call("configure", params, _ground_mat(params))
+	# Prime the window around the origin SYNCHRONOUSLY so ground exists under the
+	# spawn before the first frame; planet.gd hands the body over for streaming.
+	manager.call("prime_around", Vector3.ZERO)
+	return manager
 
-static func _st_tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, uv_scale: float) -> void:
-	st.set_uv(Vector2(a.x, a.z) * uv_scale)
-	st.add_vertex(a)
-	st.set_uv(Vector2(b.x, b.z) * uv_scale)
-	st.add_vertex(b)
-	st.set_uv(Vector2(c.x, c.z) * uv_scale)
-	st.add_vertex(c)
 
-static func _ground_mat() -> StandardMaterial3D:
+static func _ground_mat(params: Dictionary) -> StandardMaterial3D:
 	var m: StandardMaterial3D = StandardMaterial3D.new()
-	m.albedo_color = Color(0.42, 0.39, 0.28)
+	m.albedo_color = params.get("ground_color", Color(0.42, 0.39, 0.28))
 	m.roughness = 0.95
 	m.metallic = 0.0
 	# Double-sided so a graybox terrain never vanishes on a winding flip.
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return m
 
-static func _build_return_gate(world: Node3D, tp: Dictionary) -> void:
-	var ground_y: float = _height(0.0, -9.0, tp)
+
+# --- Return gate (fixed home anchor) ----------------------------------------
+
+static func _build_return_gate(world: Node3D, params: Dictionary) -> void:
+	var ground_y: float = height_at(0.0, -9.0, params)
 	var gate: Node3D = STARGATE_SCENE.instantiate()
 	gate.name = "PlanetReturnStargate"
 	gate.position = Vector3(0.0, ground_y + 3.2, -9.0)
@@ -153,7 +251,6 @@ static func _build_return_gate(world: Node3D, tp: Dictionary) -> void:
 	portal.position = Vector3(0.0, ground_y + 2.0, -9.0)
 	portal.set("mode", "to_ship")
 	portal.set("target_scene", "res://scenes/gate_room.tscn")
-	# Land past the platform (not on the dais) and bring the away team back too.
 	portal.set("target_spawn", "FromPlanet")
 	var cs: CollisionShape3D = CollisionShape3D.new()
 	var shape: BoxShape3D = BoxShape3D.new()
@@ -162,13 +259,16 @@ static func _build_return_gate(world: Node3D, tp: Dictionary) -> void:
 	portal.add_child(cs)
 	world.add_child(portal)
 
-static func _build_lime_nodes(world: Node3D, planet_data: Dictionary, rng: RandomNumberGenerator, tp: Dictionary) -> void:
-	var count: int = int(planet_data.get("lime_nodes", 4))
-	var amount: int = int(planet_data.get("lime_per_node", 1))
-	var min_r: float = float(planet_data.get("lime_min_radius", 40.0))
-	var max_r: float = float(planet_data.get("lime_max_radius", 95.0))
+
+# --- Lime deposits ----------------------------------------------------------
+
+static func _build_lime_nodes(world: Node3D, spec: Dictionary, rng: RandomNumberGenerator, params: Dictionary) -> void:
+	var rt: Dictionary = spec.get("resource_table", {}) if spec.get("resource_table", {}) is Dictionary else {}
+	var count: int = int(rt.get("lime_nodes", 4))
+	var amount: int = int(rt.get("lime_per_node", 1))
+	var min_r: float = float(rt.get("lime_min_radius", 40.0))
+	var max_r: float = float(rt.get("lime_max_radius", 95.0))
 	# Lime reads as WHITE rock / sand (a chalky mineral deposit), not crystals.
-	# A faint white emission keeps deposits spottable from the Kino / at distance.
 	var lime_mat: StandardMaterial3D = StandardMaterial3D.new()
 	lime_mat.albedo_color = Color(0.93, 0.94, 0.91)
 	lime_mat.roughness = 0.9
@@ -177,46 +277,39 @@ static func _build_lime_nodes(world: Node3D, planet_data: Dictionary, rng: Rando
 	lime_mat.emission = Color(0.86, 0.90, 0.96)
 	lime_mat.emission_energy_multiplier = 0.28
 
-	var label: String = String(planet_data.get("name", "lime planet"))
+	var label: String = String(spec.get("name", "lime planet"))
 	var idx: int = 0
-
-	# Standard spread — evenly distributed around the gate at mid radii.
 	for i in count:
-		var angle: float = (TAU / float(count)) * float(i) + rng.randf_range(-0.4, 0.4)
+		var angle: float = (TAU / float(max(count, 1))) * float(i) + rng.randf_range(-0.4, 0.4)
 		var dist: float = rng.randf_range(min_r, max_r)
 		idx += 1
-		_spawn_lime_deposit(world, idx, angle, dist, amount, label, lime_mat, tp)
+		_spawn_lime_deposit(world, idx, angle, dist, amount, label, lime_mat, params)
 
-	# Optional far cluster — N deposits packed into a small angular arc at the
-	# very edge of the map. Drives a "venture-far" risk/reward beat on top of
-	# the convenient near-gate spread.
-	var far_count: int = int(planet_data.get("lime_far_count", 0))
+	var far_count: int = int(rt.get("lime_far_count", 0))
 	if far_count > 0:
-		var far_min: float = float(planet_data.get("lime_far_min_radius", min_r * 4.0))
-		var far_max: float = float(planet_data.get("lime_far_max_radius", min_r * 5.0))
-		var far_arc: float = float(planet_data.get("lime_far_arc", 0.6))  # radians of spread
+		var far_min: float = float(rt.get("lime_far_min_radius", min_r * 4.0))
+		var far_max: float = float(rt.get("lime_far_max_radius", min_r * 5.0))
+		var far_arc: float = float(rt.get("lime_far_arc", 0.6))
 		var cluster_center: float = rng.randf_range(0.0, TAU)
 		for j in far_count:
 			var angle: float = cluster_center + rng.randf_range(-far_arc * 0.5, far_arc * 0.5)
 			var dist: float = rng.randf_range(far_min, far_max)
 			idx += 1
-			_spawn_lime_deposit(world, idx, angle, dist, amount, label, lime_mat, tp)
+			_spawn_lime_deposit(world, idx, angle, dist, amount, label, lime_mat, params)
 
 
-# Build one mineable lime deposit at (angle, radius) on the heightmapped
-# terrain. Shared by the standard spread and the optional far cluster.
 static func _spawn_lime_deposit(world: Node3D, idx: int, angle: float, dist: float,
-		amount: int, source_label: String, lime_mat: StandardMaterial3D, tp: Dictionary) -> void:
+		amount: int, source_label: String, lime_mat: StandardMaterial3D, params: Dictionary) -> void:
 	var x: float = cos(angle) * dist
 	var z: float = sin(angle) * dist
 	var node: StaticBody3D = StaticBody3D.new()
 	node.set_script(RESOURCE_NODE_SCRIPT)
 	node.name = "LimeNode%d" % idx
-	node.position = Vector3(x, _height(x, z, tp), z)
+	node.position = Vector3(x, height_at(x, z, params), z)
 	node.set("resource_type", GameState.AIR_LIME_RESOURCE)
 	node.set("amount", amount)
 	node.set("source_label", source_label)
-	node.add_to_group("lime_node")   # shared handle for companions + compass
+	node.add_to_group("lime_node")
 
 	var cs: CollisionShape3D = CollisionShape3D.new()
 	var shape: BoxShape3D = BoxShape3D.new()
@@ -225,79 +318,85 @@ static func _spawn_lime_deposit(world: Node3D, idx: int, angle: float, dist: flo
 	cs.position = Vector3(0.0, 0.65, 0.0)
 	node.add_child(cs)
 
-	# A low pile of white rock chunks (chalky lime deposit).
 	_add_box(node, Vector3(0.0, 0.22, 0.0), Vector3(1.15, 0.44, 0.95), lime_mat)
 	_add_box(node, Vector3(-0.34, 0.50, 0.10), Vector3(0.52, 0.46, 0.50), lime_mat)
 	_add_box(node, Vector3(0.30, 0.44, -0.22), Vector3(0.46, 0.40, 0.52), lime_mat)
 	_add_box(node, Vector3(0.10, 0.64, 0.22), Vector3(0.34, 0.32, 0.36), lime_mat)
 	world.add_child(node)
 
-# Scatter the non-lime POIs (ruins, ore, water, debris) around the bowl, between
-# the landing zone and the rim, so the auto-search Kino has varied things to find.
-# Deterministic: driven by the same seeded RNG, so a node name always maps to the
-# same spot (discovery survives save/load).
-static func _build_pois(world: Node3D, planet_data: Dictionary, rng: RandomNumberGenerator, tp: Dictionary) -> void:
-	var counts: Dictionary = planet_data.get("poi_counts", {})
-	var min_r: float = float(tp["landing_radius"]) + 28.0
-	var max_r: float = float(tp["extent"]) * 0.45
+
+# --- Non-lime POIs ----------------------------------------------------------
+
+# Deterministic from seed: a node name always maps to the same spot (discovery
+# survives save/load). Placed in a ring between the landing zone and the lime
+# band so the auto-search Kino has varied things to find.
+static func _build_pois(world: Node3D, spec: Dictionary, rng: RandomNumberGenerator, params: Dictionary) -> void:
+	var rt: Dictionary = spec.get("resource_table", {}) if spec.get("resource_table", {}) is Dictionary else {}
+	var counts: Dictionary = rt.get("poi_counts", {}) if rt.get("poi_counts", {}) is Dictionary else {}
+	var min_r: float = float(params.get("landing_radius", 22.0)) + 28.0
+	var max_r: float = min_r + 120.0
 	for cat in POI_KINDS.keys():
-		var spec: Array = POI_KINDS[cat]
-		var n: int = int(counts.get(cat, spec[0]))
-		var label: String = String(spec[1])
+		var pspec: Array = POI_KINDS[cat]
+		var n: int = int(counts.get(cat, pspec[0]))
+		var label: String = String(pspec[1])
 		for i in n:
 			var angle: float = rng.randf_range(0.0, TAU)
 			var dist: float = rng.randf_range(min_r, max_r)
 			var x: float = cos(angle) * dist
 			var z: float = sin(angle) * dist
 			var poi: Node3D = POI_NODE_SCRIPT.new()
-			# Set name + exports BEFORE add_child so _ready restores discovery and
-			# builds the right category visual.
 			poi.name = "Poi_%s_%d" % [cat, i + 1]
 			poi.set("poi_category", cat)
 			poi.set("poi_label", label)
-			poi.position = Vector3(x, _height(x, z, tp), z)
+			poi.position = Vector3(x, height_at(x, z, params), z)
 			world.add_child(poi)
 
 
-static func _build_rocks(world: Node3D, rng: RandomNumberGenerator, tp: Dictionary) -> void:
-	var rock_mat: StandardMaterial3D = StandardMaterial3D.new()
-	rock_mat.albedo_color = Color(0.25, 0.24, 0.22)
-	rock_mat.roughness = 0.9
-	var spread: float = float(tp["extent"]) * 0.42
-	for i in 48:
-		var angle: float = rng.randf_range(0.0, TAU)
-		var dist: float = rng.randf_range(6.0, spread)
-		var size: float = rng.randf_range(0.5, 2.6)
-		var x: float = cos(angle) * dist
-		var z: float = sin(angle) * dist
-		var rock: MeshInstance3D = MeshInstance3D.new()
-		rock.name = "Rock%d" % i
-		var mesh: BoxMesh = BoxMesh.new()
-		mesh.size = Vector3(size * rng.randf_range(0.8, 1.8), size * 0.6, size)
-		rock.mesh = mesh
-		rock.material_override = rock_mat
-		rock.position = Vector3(x, _height(x, z, tp) + size * 0.25, z)
-		rock.rotation = Vector3(rng.randf_range(-0.12, 0.12), rng.randf_range(0.0, TAU), rng.randf_range(-0.12, 0.12))
-		world.add_child(rock)
+# --- Walk-around props ------------------------------------------------------
 
-static func _build_landmarks(world: Node3D, rng: RandomNumberGenerator, tp: Dictionary) -> void:
-	var marker_mat: StandardMaterial3D = StandardMaterial3D.new()
-	marker_mat.albedo_color = Color(0.56, 0.50, 0.36)
-	marker_mat.metallic = 0.15
-	marker_mat.roughness = 0.8
-	var extent: float = float(tp["extent"])
-	for i in 8:
+# Seat biome props FLUSH on the ground as obstacles to walk AROUND, capped at the
+# biome's max_prop_height so none is a step the player must HOP. Deterministic
+# from seed (the shared RNG), placed in a band near the landing zone.
+static func _build_props(world: Node3D, rng: RandomNumberGenerator, params: Dictionary) -> void:
+	var prop_mat: StandardMaterial3D = StandardMaterial3D.new()
+	var base: Color = params.get("ground_color", Color(0.42, 0.39, 0.28))
+	prop_mat.albedo_color = base.darkened(0.35)
+	prop_mat.roughness = 0.9
+	var density: float = float(params.get("prop_density", 0.7))
+	var cap: float = float(params.get("max_prop_height", 1.8))
+	var n: int = int(round(48.0 * density))
+	for i in n:
 		var angle: float = rng.randf_range(0.0, TAU)
-		var dist: float = rng.randf_range(extent * 0.18, extent * 0.34)
-		var h: float = 2.6 + rng.randf_range(0.0, 2.2)
+		var dist: float = rng.randf_range(8.0, 160.0)
+		# Height capped UNDER the floor-step a CharacterBody3D would have to jump.
+		var h: float = rng.randf_range(0.4, cap)
+		var w: float = rng.randf_range(0.5, 1.8)
+		var d: float = rng.randf_range(0.5, 1.8)
 		var x: float = cos(angle) * dist
 		var z: float = sin(angle) * dist
-		_add_box(
-			world,
-			Vector3(x, _height(x, z, tp) + h * 0.5, z),
-			Vector3(0.55, h, 0.55),
-			marker_mat
-		)
+		var prop: StaticBody3D = StaticBody3D.new()
+		prop.name = "Prop%d" % i
+		prop.collision_layer = 1   # walk-blocker (player), not camera
+		prop.collision_mask = 0
+		prop.add_to_group("planet_prop")
+		# Seat flush: bottom at ground, mesh + collider both lifted by h/2.
+		prop.position = Vector3(x, height_at(x, z, params), z)
+		var mesh_inst: MeshInstance3D = MeshInstance3D.new()
+		var mesh: BoxMesh = BoxMesh.new()
+		mesh.size = Vector3(w, h, d)
+		mesh_inst.mesh = mesh
+		mesh_inst.material_override = prop_mat
+		mesh_inst.position = Vector3(0.0, h * 0.5, 0.0)
+		prop.add_child(mesh_inst)
+		var cs: CollisionShape3D = CollisionShape3D.new()
+		var box: BoxShape3D = BoxShape3D.new()
+		box.size = Vector3(w, h, d)
+		cs.shape = box
+		cs.position = Vector3(0.0, h * 0.5, 0.0)
+		prop.add_child(cs)
+		prop.rotation.y = rng.randf_range(0.0, TAU)
+		world.add_child(prop)
+
 
 static func _add_box(parent: Node3D, pos: Vector3, size: Vector3, mat: StandardMaterial3D) -> void:
 	var mi: MeshInstance3D = MeshInstance3D.new()

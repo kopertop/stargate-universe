@@ -36,6 +36,33 @@
     "show_in_inventory": true
   },
   {
+    "id": "water",
+    "name": "Water",
+    "category": "resource",
+    "icon": "res://sprites/ui/items/water.png",
+    "description": "Potable water reclaimed from off-world sources. The crew and the ship's systems both run dry without it.",
+    "stackable": true,
+    "show_in_inventory": true
+  },
+  {
+    "id": "food",
+    "name": "Food",
+    "category": "resource",
+    "icon": "res://sprites/ui/items/food.png",
+    "description": "Edible stores foraged or grown to keep the crew fed beyond the dwindling ration supply.",
+    "stackable": true,
+    "show_in_inventory": true
+  },
+  {
+    "id": "parts",
+    "name": "Ship Parts",
+    "category": "resource",
+    "icon": "res://sprites/ui/items/parts.png",
+    "description": "Salvaged components and raw stock used to repair Destiny's failing systems.",
+    "stackable": true,
+    "show_in_inventory": true
+  },
+  {
     "id": "small_fuse",
     "name": "Small Fuse",
     "category": "story_item",

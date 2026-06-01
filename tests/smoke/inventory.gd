@@ -54,8 +54,14 @@ func _initialize() -> void:
 	for expected in EXPECTED_CATALOG_IDS:
 		_expect(ids.has(expected), "catalog contains '%s'" % expected)
 
-	# --- 2. fresh state is empty -------------------------------------------
-	_expect(inv.call("entries").is_empty(), "fresh inventory is empty after reset")
+	# --- 2. fresh state holds only the seeded tracked resources ------------
+	# reset() seeds the tracked-resource opening stock (water/food/parts/lime —
+	# issue #86); nothing else (no story items, no kino) should be present.
+	var fresh_ids: Array = _entry_ids(inv)
+	var tracked_ids: Array = gs.call("tracked_resource_ids")
+	for fid in fresh_ids:
+		_expect(tracked_ids.has(fid), "fresh inventory only carries tracked resources (stray: %s)" % fid)
+	_expect(int(inv.call("count", "water")) > 0, "water seeded with opening stock after reset")
 	_expect(int(inv.call("count", "small_fuse")) == 0, "small_fuse count starts at 0")
 
 	# --- 3. picking up items surfaces them (THE BUG REGRESSION) ------------
@@ -109,7 +115,18 @@ func _initialize() -> void:
 
 	# --- 7. reset + save round-trip ----------------------------------------
 	gs.call("reset")
-	_expect(inv.call("entries").is_empty(), "GameState.reset() clears the inventory store")
+	# reset() clears prior items (fuses, kino, rations) back to the seeded
+	# tracked-resource baseline — no story/tool items survive.
+	var post_reset_ids: Array = _entry_ids(inv)
+	var tracked_after: Array = gs.call("tracked_resource_ids")
+	var only_tracked: bool = true
+	for rid in post_reset_ids:
+		if not tracked_after.has(rid):
+			only_tracked = false
+	_expect(only_tracked, "GameState.reset() clears non-tracked items from the store")
+	_expect(not _entry_ids(inv).has("small_fuse"), "reset() drops looted story items")
+	# Clear the seeded baseline too so the save round-trip below starts clean.
+	inv.call("reset")
 	inv.call("add_item", "lime", 2, "test")
 	inv.call("add_item", "small_fuse", 1, "test")
 	var snap: Dictionary = inv.call("serialize")

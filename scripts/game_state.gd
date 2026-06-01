@@ -90,6 +90,24 @@ const QUEST_COMPLETE: String = "complete"
 const E1_QUEST_ID: String = "e1_air"
 const AIR_LIME_RESOURCE: String = "lime"
 const AIR_LIME_REQUIRED: int = 3
+
+# Tracked crew resources (issue #86) — the SINGLE registry of resources whose
+# scarcity the crew cares about and that procedural-planet generation targets.
+# ONE ordered collection (no per-resource `*_low` / `has_*` bools — honors the
+# collection-fork lint). Each row: { id, label, low_threshold, default_amount }.
+#   * id            — the Inventory item id holding the live count (counts persist
+#                     in the Inventory pool, NOT here).
+#   * low_threshold — at/under this the crew is "low" on it; deficit = threshold
+#                     - amount drives resource_scarcity() ranking + targeting.
+#   * default_amount— the starting stock seeded on a new game / reset().
+# Lime stays the air-crisis resource AND a tracked resource so generation can
+# target it when the scrubber is starved.
+const TRACKED_RESOURCES: Array[Dictionary] = [
+	{"id": "water", "label": "Water", "low_threshold": 10, "default_amount": 4},
+	{"id": "food", "label": "Food", "low_threshold": 10, "default_amount": 6},
+	{"id": "parts", "label": "Ship Parts", "low_threshold": 6, "default_amount": 2},
+	{"id": "lime", "label": "Lime", "low_threshold": 3, "default_amount": 0},
+]
 # Phase G ongoing scrubber loop.
 # One lime = one cartridge bar = a third of full charge.
 const SCRUBBER_LIME_RECHARGE: float = 100.0 / float(AIR_LIME_REQUIRED)
@@ -476,6 +494,9 @@ func reset() -> void:
 	var inv: Node = _inv()
 	if inv != null and inv.has_method("reset"):
 		inv.call("reset")
+	# Seed the tracked-resource opening stock (water/food/parts/lime) so a fresh
+	# run starts with the authored amounts and scarcity targeting is meaningful.
+	seed_default_resources()
 	met_scott = false
 	met_rush = false
 	ftl_drop_game_time = -1.0
@@ -871,6 +892,138 @@ func spend_resource(type: String, amount: int, reason: String = "") -> bool:
 	resource_changed.emit(type, resource_count(type))
 	advance_air_quest()
 	return true
+
+
+# --- Tracked resources + scarcity targeting (issue #86) ----------------------
+
+# Seed the starting stock for every tracked resource. Called from reset() so a
+# fresh run begins with the authored default amounts (the Inventory pool is the
+# store; these are just the opening counts). Idempotent-ish: it SETS the counts,
+# so calling it twice yields the same opening stock.
+func seed_default_resources() -> void:
+	var inv: Node = _inv()
+	if inv == null:
+		return
+	for row in TRACKED_RESOURCES:
+		inv.call("set_count", String(row["id"]), int(row.get("default_amount", 0)))
+
+
+# The ids of every tracked resource, in registry order. The ONE enumerable
+# surface — callers iterate this instead of naming water/food/parts/lime.
+func tracked_resource_ids() -> Array:
+	var ids: Array = []
+	for row in TRACKED_RESOURCES:
+		ids.append(String(row["id"]))
+	return ids
+
+
+# How far below its threshold a tracked resource currently sits (clamped at 0 —
+# a resource at/over threshold has deficit 0, never negative). Drives ranking.
+func resource_deficit(id: String) -> int:
+	for row in TRACKED_RESOURCES:
+		if String(row["id"]) == id:
+			return maxi(0, int(row.get("low_threshold", 0)) - resource_count(id))
+	return 0
+
+
+# Rank tracked resources by how badly the crew needs them: deficit (threshold -
+# amount) DESCENDING, ties broken by registry order (stable) so the result is
+# deterministic. Returns a fresh array of
+#   { "id": String, "label": String, "amount": int, "threshold": int, "deficit": int }
+# The first entry is the SCARCEST resource — generation guarantees it (see
+# build_resource_table).
+func resource_scarcity() -> Array:
+	var rows: Array = []
+	var order: int = 0
+	for row in TRACKED_RESOURCES:
+		var id: String = String(row["id"])
+		var amount: int = resource_count(id)
+		var threshold: int = int(row.get("low_threshold", 0))
+		rows.append({
+			"id": id,
+			"label": String(row.get("label", id.capitalize())),
+			"amount": amount,
+			"threshold": threshold,
+			"deficit": maxi(0, threshold - amount),
+			"_order": order,
+		})
+		order += 1
+	rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if int(a["deficit"]) != int(b["deficit"]):
+			return int(a["deficit"]) > int(b["deficit"])
+		return int(a["_order"]) < int(b["_order"]))
+	for r in rows:
+		(r as Dictionary).erase("_order")
+	return rows
+
+
+# Build a `resource_table` for a procedural planet, targeting crew scarcity
+# (issue #86). DECIDED rule:
+#   * the single SCARCEST tracked resource is GUARANTEED present in good quantity
+#     (its own deposit cluster), AND
+#   * 1-2 ADDITIONAL tracked resource types are chosen semi-randomly (seeded off
+#     the spec seed, deterministic) as secondaries.
+# The chosen clusters are emitted under `clusters` as an ordered list of
+#   { "type": String, "nodes": int, "per_node": int, "min_radius": float,
+#     "max_radius": float }
+# which PlanetGenerator places (generalized resource_node per type). The legacy
+# top-level lime_* keys are still emitted ONLY when lime is among the clusters,
+# so existing lime-only consumers / saves keep working.
+func build_resource_table(seed: int) -> Dictionary:
+	var ranked: Array = resource_scarcity()
+	if ranked.is_empty():
+		return {}
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = seed
+	# Primary: the scarcest. Guaranteed, richer cluster.
+	var primary_id: String = String((ranked[0] as Dictionary)["id"])
+	var chosen: Array = [primary_id]
+	# Secondaries: 1-2 of the remaining tracked resources, seeded.
+	var pool: Array = []
+	for r in ranked.slice(1):
+		pool.append(String((r as Dictionary)["id"]))
+	var want_extra: int = (1 if pool.size() <= 1 else rng.randi_range(1, 2))
+	want_extra = mini(want_extra, pool.size())
+	# Shuffle the pool deterministically (Fisher-Yates with the seeded rng), then
+	# take the first want_extra. This keeps selection stable for a given seed.
+	for i in range(pool.size() - 1, 0, -1):
+		var j: int = rng.randi_range(0, i)
+		var tmp: Variant = pool[i]
+		pool[i] = pool[j]
+		pool[j] = tmp
+	for k in want_extra:
+		chosen.append(String(pool[k]))
+
+	var clusters: Array = []
+	var first: bool = true
+	for type in chosen:
+		# Primary gets more nodes + a tighter band (easy to find); secondaries are
+		# leaner and ring further out. All radii deterministic per seed.
+		var nodes: int = (5 if first else 3)
+		var per_node: int = (2 if first else 1)
+		var min_r: float = (50.0 if first else 90.0)
+		var max_r: float = (120.0 if first else 200.0)
+		clusters.append({
+			"type": type,
+			"nodes": nodes,
+			"per_node": per_node,
+			"min_radius": min_r,
+			"max_radius": max_r,
+		})
+		first = false
+
+	var table: Dictionary = {"clusters": clusters}
+	# Back-compat: surface the lime cluster's params under the legacy keys so a
+	# lime-only reader (or the legacy generator path) still finds lime placement.
+	for c in clusters:
+		if String((c as Dictionary)["type"]) == AIR_LIME_RESOURCE:
+			table["lime_nodes"] = int((c as Dictionary)["nodes"])
+			table["lime_per_node"] = int((c as Dictionary)["per_node"])
+			table["lime_min_radius"] = float((c as Dictionary)["min_radius"])
+			table["lime_max_radius"] = float((c as Dictionary)["max_radius"])
+			break
+	return table
+
 
 func can_start_air_crisis() -> bool:
 	var inv: Node = _inv()

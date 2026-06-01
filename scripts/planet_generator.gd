@@ -34,6 +34,13 @@ const HAZARD_ZONE_SCRIPT: Script = preload("res://scripts/hazard_zone.gd")
 const BIOMES_PATH: String = "res://data/biomes.json"
 const DEFAULT_BIOME: String = "desert"
 
+# Biomes the dial/selection flow may roll BY DEFAULT (no story prerequisite).
+# A biome whose hazard block declares a `requires_flag` is excluded from the
+# pool until that GameState flag is set — see eligible_biomes()/select_biome().
+# The Toxic biome carries `requires_flag: "pressure_suits_found"`, so it never
+# generates until the crew has found pressure suits (issue #89, decoupled from
+# the Equipment epic — a standalone story flag gates it).
+
 # Non-lime points-of-interest the Kino's auto-search can turn up. category →
 # [default count, toast/compass label].
 const POI_KINDS: Dictionary = {
@@ -127,6 +134,60 @@ static func biome_params(biome: String) -> Dictionary:
 	return fallback
 
 
+# Read the full biome table (id → block) from biomes.json. Empty on a missing /
+# malformed file so callers degrade to the built-in default rather than crash.
+static func biome_table() -> Dictionary:
+	var f: FileAccess = FileAccess.open(BIOMES_PATH, FileAccess.READ)
+	if f == null:
+		return {}
+	var parsed: Variant = JSON.parse_string(f.get_as_text())
+	f.close()
+	return parsed if parsed is Dictionary else {}
+
+
+# The story flag (if any) a biome's hazard block requires before it may be rolled
+# by the selection flow. "" = always eligible. Toxic returns "pressure_suits_found".
+static func biome_required_flag(biome: String) -> String:
+	var bp: Dictionary = biome_params(biome)
+	var hz: Variant = bp.get("hazard", {})
+	if hz is Dictionary:
+		return String((hz as Dictionary).get("requires_flag", ""))
+	return ""
+
+
+# The biomes the dial/selection flow may roll, given the set of satisfied story
+# flags. A biome with a `requires_flag` is EXCLUDED until that flag is true in
+# `flags` (a {flag_name: bool} dict — e.g. GameState exposes
+# `{"pressure_suits_found": true}`). Order is stable (biomes.json key order) so
+# selection is deterministic for a given seed. Issue #89: Toxic only appears once
+# pressure_suits_found is set.
+static func eligible_biomes(flags: Dictionary = {}) -> Array:
+	var table: Dictionary = biome_table()
+	var out: Array = []
+	for biome in table.keys():
+		if not (table[biome] is Dictionary):
+			continue
+		var hz: Variant = (table[biome] as Dictionary).get("hazard", {})
+		var req: String = String((hz as Dictionary).get("requires_flag", "")) if hz is Dictionary else ""
+		if req != "" and flags.get(req, false) != true:
+			continue
+		out.append(String(biome))
+	return out
+
+
+# Deterministically pick ONE biome from the eligible pool for a planet run, seeded
+# off `seed` so the same seed + flag set always rolls the same biome. Returns
+# DEFAULT_BIOME when the pool is somehow empty (file missing). A toxic roll is only
+# possible when pressure_suits_found is among the satisfied flags.
+static func select_biome(seed: int, flags: Dictionary = {}) -> String:
+	var pool: Array = eligible_biomes(flags)
+	if pool.is_empty():
+		return DEFAULT_BIOME
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = seed
+	return String(pool[rng.randi_range(0, pool.size() - 1)])
+
+
 static func _builtin_desert_block() -> Dictionary:
 	return {
 		"label": "Desert",
@@ -160,6 +221,28 @@ static func gate_window_for(spec: Dictionary) -> float:
 static func water_drain_for(spec: Dictionary) -> float:
 	var hz: Dictionary = _hazard_block(spec)
 	return float(hz.get("water_drain_per_sec", DEFAULT_WATER_DRAIN))
+
+
+# Whether a spec's biome has a breathable atmosphere. A toxin/no-atmosphere biome
+# (toxic) reports false; everything else true. Drives the on-surface oxygen drain.
+static func breathable_for(spec: Dictionary) -> bool:
+	var hz: Dictionary = _hazard_block(spec)
+	return hz.get("breathable", true) != false
+
+
+# Oxygen drained per second on the surface for a spec's biome (issue #89). A
+# breathable biome drains 0; a toxin/no-atmosphere biome (toxic) drains at its
+# `oxygen_drain_per_sec`. When `suited` is true (the crew has pressure suits —
+# GameState.pressure_suits_found), the drain is slowed by the biome's
+# `suit_drain_multiplier` (a suit doesn't make it free, just survivable).
+static func oxygen_drain_for(spec: Dictionary, suited: bool = false) -> float:
+	var hz: Dictionary = _hazard_block(spec)
+	if breathable_for(spec):
+		return 0.0
+	var base: float = float(hz.get("oxygen_drain_per_sec", 0.0))
+	if suited:
+		base *= float(hz.get("suit_drain_multiplier", 1.0))
+	return base
 
 
 # The biome's hazard block. Prefers the spec's own hazard_params (carried from a

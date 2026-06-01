@@ -325,6 +325,14 @@ var pending_planet_return: bool = false
 # with kino + quarters + breach, this is the E1 completion gate.
 var met_scott: bool = false
 var met_rush: bool = false
+# Standalone story flag (issue #89) — set by a story beat (E2+) when the crew
+# finds pressure suits. Decoupled from the Equipment epic: this single flag both
+# (a) gates the Toxic / no-atmosphere biome (the dial/selection flow may only roll
+# it once this is true — see PlanetGenerator.eligible_biomes / select_biome), and
+# (b) slows the on-surface oxygen drain on such a biome (suits don't make a toxic
+# world free, just survivable). Persists via save.
+# @collection-ok: one standalone story gate, not an enumerated collection
+var pressure_suits_found: bool = false
 
 # Stamped by trigger_ftl_drop() with GameClock.elapsed_seconds at the
 # moment the FTL window opens. The gate console computes the live
@@ -455,10 +463,32 @@ func start_gate_window(duration: float) -> bool:
 
 func _tick_gate_window(delta: float) -> void:
 	_tick_heat_water_drain(delta)
+	# Toxic / no-atmosphere biome (issue #89): oxygen drains while on-surface, slowed
+	# by pressure suits. Run BEFORE the countdown decrement so a knock_out() it
+	# triggers (oxygen hits 0) ends the window itself. _tick_atmosphere_oxygen_drain
+	# returns true when it routed a knockout, in which case the window is already over.
+	if _tick_atmosphere_oxygen_drain(delta):
+		return
 	gate_window_remaining = maxf(0.0, gate_window_remaining - delta)
 	if gate_window_remaining <= 0.0:
 		gate_window_active = false
 		gate_window_expired.emit()
+
+
+# On a toxin/no-atmosphere biome the away team's air drains while on the surface
+# (issue #89). Reuses the existing `oxygen` pool + the sub-25% health bleed in
+# consume_oxygen. Pressure suits (pressure_suits_found) slow the drain. When
+# oxygen hits 0 the run ends via the no-death knockout, cause "asphyxiation".
+# Returns true when it fired a knockout (the caller stops ticking the window).
+func _tick_atmosphere_oxygen_drain(delta: float) -> bool:
+	var rate: float = PlanetGenerator.oxygen_drain_for(active_planet_spec, pressure_suits_found)
+	if rate <= 0.0:
+		return false
+	consume_oxygen(rate * delta)
+	if oxygen <= 0.0:
+		knock_out("asphyxiation")
+		return true
+	return false
 
 
 # Burn Water on the surface at the biome's drain rate (issue #87). Water is an
@@ -550,6 +580,7 @@ func reset() -> void:
 	seed_default_resources()
 	met_scott = false
 	met_rush = false
+	pressure_suits_found = false
 	ftl_drop_game_time = -1.0
 	kino_pan_x = 0.0
 	kino_pan_y = 0.0
@@ -593,6 +624,22 @@ func reset() -> void:
 	if ql != null and ql.has_method("reset"):
 		ql.call("reset")
 	advance_air_quest()
+
+# Set by a story beat (E2+) when the crew recovers pressure suits. Idempotent.
+# Unlocks the Toxic biome in the selection pool and arms suit-slowed oxygen drain.
+func mark_pressure_suits_found() -> void:
+	if pressure_suits_found:
+		return
+	pressure_suits_found = true
+	add_log("Recovered a cache of pressure suits — no-atmosphere worlds are survivable now.")
+
+
+# Snapshot of the satisfied story flags the biome-selection pool consults. ONE
+# place that maps story state → the {flag: bool} the generator reads, so adding a
+# future biome gate doesn't fork selection logic.
+func biome_flags() -> Dictionary:
+	return {"pressure_suits_found": pressure_suits_found}
+
 
 func damage(amount: float) -> void:
 	health = clampf(health - amount, 0.0, MAX_HEALTH)
@@ -1588,6 +1635,7 @@ func serialize() -> Dictionary:
 		"log_entries": log_entries.duplicate(),
 		"met_scott": met_scott,
 		"met_rush": met_rush,
+		"pressure_suits_found": pressure_suits_found,
 		"prologue_complete": prologue_complete,
 		"air_crisis_started": air_crisis_started,
 		"control_room_returned": control_room_returned,
@@ -1641,6 +1689,7 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	current_objective = String(data.get("objective", current_objective))
 	met_scott = data.get("met_scott", false) == true
 	met_rush = data.get("met_rush", false) == true
+	pressure_suits_found = data.get("pressure_suits_found", false) == true
 	prologue_complete = data.get("prologue_complete", false) == true
 	air_crisis_started = data.get("air_crisis_started", false) == true
 	control_room_returned = data.get("control_room_returned", false) == true

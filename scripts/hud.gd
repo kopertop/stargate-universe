@@ -2,11 +2,17 @@ extends Control
 
 # SGU HUD. Listens to GameState signals + the active scene's player to render:
 #   • Player unit frame (upper-left): Eli portrait + name + health/oxygen bars
-#   • Current objective (left, below the unit frame — moves to the quest tracker)
 #   • Interact prompt (bottom-center, only when target in range)
 #   • Kino Remote reminder (bottom-right, only after acquisition)
-#   • Recent log feed (top-right, last 3 entries)
+#   • Quest objective tracker (upper-right): tracked quest title + objective
+#   • Recent log feed (top-right, last 3 entries, stacked below the tracker)
+#
+# The single-line objective used to live in the top-left $Objective label; it
+# moved entirely to the upper-right quest tracker (#66), so that label is hidden
+# in _ready and no longer wired to GameState.objective_changed.
 
+# Retired top-left objective label — kept in the scene but hidden in _ready (see
+# the comment there). Held only so _ready can flip it off.
 @onready var _objective_label: Label = $Objective
 @onready var _interact_label: Label = $InteractPrompt
 @onready var _kino_hint: Label = $KinoHint
@@ -65,6 +71,27 @@ const ACTION_BORDER_ATTENTION: Color = Color(1.0, 0.78, 0.30, 0.95)
 var _action_bar: HBoxContainer = null
 var _action_pulse: Tween = null
 
+# WoW-style quest objective tracker (upper-right). The tracked quest's title in
+# an accent header above its active objective line, prefixed with an empty
+# checkbox. Built in code so the hud.tscn diff stays minimal. Driven by the
+# QuestLog autoload: refreshed on _ready and whenever GameState mirrors a
+# QuestLog step change (GameState.quest_step_changed). Hidden cleanly when no
+# quest is tracked. Sits ABOVE the recent-log feed (which is pushed down in
+# _ready) so the two top-right elements never overlap. (#66)
+const TRACKER_POS_RIGHT: float = -24.0       # offset from the right edge
+const TRACKER_POS_TOP: float = 70.0          # below the compass banner
+const TRACKER_WIDTH: float = 300.0
+const TRACKER_TITLE_COLOR: Color = Color(1.0, 0.84, 0.42, 1.0)
+const TRACKER_OBJECTIVE_COLOR: Color = Color(0.92, 0.96, 1.0, 1.0)
+const TRACKER_OUTLINE: Color = Color(0, 0, 0, 0.85)
+# Push the recent-log feed below the tracker so they share the top-right corner
+# without fighting. Recomputed after each tracker refresh from its real height.
+const LOG_GAP_BELOW_TRACKER: float = 12.0
+const LOG_TOP_NO_TRACKER: float = 18.0
+var _tracker_root: Control = null
+var _tracker_title: Label = null
+var _tracker_objective: Label = null
+
 # NOTE: the atmosphere readout is a KINO recon affordance — it lives on the
 # drone's overlay (kino_drone.gd::_build_atmo_readout) and is only visible while
 # piloting a Kino, NOT on Eli's HUD. The per-room data model (GameState.
@@ -111,11 +138,12 @@ var _discovery_room_id: String = ""
 var _first_discovery_consumed: bool = false
 
 func _ready() -> void:
-	# Wrap the objective within its ~676px box (offset 24→700 in the scene)
-	# instead of overflowing across the full top row into the top-right log
-	# feed. Extra vertical room lets a long objective wrap to 2–3 lines.
-	_objective_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	GameState.objective_changed.connect(_on_objective_changed)
+	# The single-line objective now lives in the upper-right quest tracker
+	# (_build_quest_tracker / _refresh_quest_tracker, #66). The old top-left
+	# $Objective label is retired so the objective never renders in two corners
+	# at once — hidden here rather than deleted from the scene to keep the
+	# hud.tscn diff minimal and any external NodePath references intact.
+	_objective_label.visible = false
 	GameState.health_changed.connect(_on_health_changed)
 	GameState.oxygen_changed.connect(_on_oxygen_changed)
 	GameState.kino_changed.connect(_on_kino_changed)
@@ -128,7 +156,6 @@ func _ready() -> void:
 	# Unit frame builds the relocated health/oxygen bars, so it must exist before
 	# the initial _on_health_changed / _on_oxygen_changed binds below.
 	_build_unit_frame()
-	_on_objective_changed(GameState.current_objective)
 	_on_health_changed(GameState.health)
 	_on_oxygen_changed(GameState.oxygen)
 	_on_kino_changed(Inventory.has("kino_remote"))
@@ -136,6 +163,8 @@ func _ready() -> void:
 	_dialog_panel.visible = false
 	_build_action_bar()
 	_refresh_action_bar()
+	_build_quest_tracker()
+	_refresh_quest_tracker()
 	_build_edge_arrow()
 	_build_discovery_toast()
 	_spawn_compass()
@@ -470,9 +499,6 @@ func _on_interact_target_changed(target: Node) -> void:
 		prompt = String(target.prompt)
 	_interact_label.text = "[E]  %s" % prompt
 
-func _on_objective_changed(text: String) -> void:
-	_objective_label.text = text
-
 func _on_health_changed(v: float) -> void:
 	if _health_bar == null:
 		return
@@ -508,6 +534,7 @@ func _on_kino_changed(_acquired: bool) -> void:
 
 func _on_quest_step_changed(_step: String) -> void:
 	_refresh_action_bar()
+	_refresh_quest_tracker()
 
 
 # Bottom-right action bar anchored to the corner, growing leftward as tools
@@ -623,6 +650,103 @@ func _on_action_slot_input(event: InputEvent, item_id: String) -> void:
 			if has_node("/root/KinoRemote"):
 				get_node("/root/KinoRemote").call("open_remote")
 	accept_event()
+
+# Upper-right quest tracker: a transparent VBox holding the accent quest title
+# over the active objective line. Anchored to the top-right edge, grows down.
+# Built empty + hidden; _refresh_quest_tracker fills it from QuestLog.
+func _build_quest_tracker() -> void:
+	if _tracker_root != null and is_instance_valid(_tracker_root):
+		return
+	var box: VBoxContainer = VBoxContainer.new()
+	box.name = "QuestTracker"
+	box.anchor_left = 1.0
+	box.anchor_top = 0.0
+	box.anchor_right = 1.0
+	box.anchor_bottom = 0.0
+	box.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	box.offset_left = -(TRACKER_WIDTH)
+	box.offset_right = TRACKER_POS_RIGHT
+	box.offset_top = TRACKER_POS_TOP
+	box.add_theme_constant_override("separation", 4)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.visible = false
+
+	var title: Label = Label.new()
+	title.name = "Title"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.add_theme_font_size_override("font_size", 17)
+	title.add_theme_color_override("font_color", TRACKER_TITLE_COLOR)
+	title.add_theme_color_override("font_outline_color", TRACKER_OUTLINE)
+	title.add_theme_constant_override("outline_size", 5)
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(title)
+
+	var objective: Label = Label.new()
+	objective.name = "Objective"
+	objective.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	objective.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	objective.custom_minimum_size = Vector2(TRACKER_WIDTH, 0.0)
+	objective.add_theme_font_size_override("font_size", 14)
+	objective.add_theme_color_override("font_color", TRACKER_OBJECTIVE_COLOR)
+	objective.add_theme_color_override("font_outline_color", TRACKER_OUTLINE)
+	objective.add_theme_constant_override("outline_size", 4)
+	objective.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(objective)
+
+	add_child(box)
+	_tracker_root = box
+	_tracker_title = title
+	_tracker_objective = objective
+	# The objective wraps to a variable number of lines, so the tracker's height
+	# isn't known until layout settles. Re-stack the log feed whenever the
+	# tracker resizes (incl. the deferred first layout) so they never overlap.
+	box.resized.connect(_apply_log_feed_position)
+
+
+# Pull the tracked quest's title + active objective from QuestLog and render
+# them. Hides the whole panel when nothing is tracked / there's no objective,
+# keeping the empty state clean. Also repositions the recent-log feed below the
+# tracker so they don't overlap in the top-right corner.
+func _refresh_quest_tracker() -> void:
+	if _tracker_root == null or not is_instance_valid(_tracker_root):
+		return
+	var ql: Node = get_node_or_null("/root/QuestLog")
+	var quest_title: String = ""
+	var objective_text: String = ""
+	if ql != null:
+		if ql.has_method("title"):
+			quest_title = String(ql.call("title"))
+		if ql.has_method("objective"):
+			objective_text = String(ql.call("objective"))
+	# Empty/again state: nothing tracked → hide the panel and restore the log
+	# feed to its standalone top position.
+	if quest_title == "" and objective_text == "":
+		_tracker_root.visible = false
+		_reposition_log_feed()
+		return
+	_tracker_title.text = quest_title
+	# Active objective line, prefixed with an empty checkbox glyph (WoW-style).
+	_tracker_objective.text = "☐ %s" % objective_text if objective_text != "" else ""
+	_tracker_root.visible = true
+	_reposition_log_feed()
+
+
+# Stack the recent-log feed under the quest tracker so they share the corner
+# cleanly. Deferred a frame so the tracker's containers have laid out and its
+# size is known before we read it.
+func _reposition_log_feed() -> void:
+	call_deferred("_apply_log_feed_position")
+
+
+func _apply_log_feed_position() -> void:
+	if _log_box == null or not is_instance_valid(_log_box):
+		return
+	var new_top: float = LOG_TOP_NO_TRACKER
+	if _tracker_root != null and is_instance_valid(_tracker_root) and _tracker_root.visible:
+		new_top = TRACKER_POS_TOP + _tracker_root.size.y + LOG_GAP_BELOW_TRACKER
+	_log_box.offset_top = new_top
+
 
 func _on_dialogue_shown(character_name: String, line: String) -> void:
 	_dialog_name.text = character_name

@@ -426,6 +426,12 @@ func _spawn_returned_away_team() -> void:
 		return
 	if _world == null:
 		return
+	# Idempotent: the returned away team comes home exactly once. Bail if any
+	# member is already present so a double pending_planet_return (or a re-entry)
+	# can't put two of each crewmember on screen. Members are named ReturnTeam_*.
+	for child in _world.get_children():
+		if String(child.name).begins_with("ReturnTeam_"):
+			return
 	const SCOTT_GLB: String = "res://models/characters/scott.glb"
 	const GREER_TINT: Color = Color(0.66, 0.50, 0.38)
 	# Spawn line: on the dais top (y=1.05) a couple metres south of the event

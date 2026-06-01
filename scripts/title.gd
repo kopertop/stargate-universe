@@ -16,16 +16,23 @@ extends Control
 # Built lazily in _ready since it isn't in the .tscn — a code-owned
 # ConfirmationDialog lets us update copy without touching the scene.
 var _new_game_confirm: ConfirmationDialog
-# Code-owned "Load Game" button (inserted after Continue) + slot-select
-# overlay, both built in _ready so the .tscn stays untouched.
+# Code-owned "Load Game" button (inserted after Continue) + two-level
+# load browser overlay, both built in _ready so the .tscn stays untouched.
 var _btn_load: Button
 var _load_overlay: Control
-# Cached row container. Looking it up by string path is brittle: code-built
-# nodes added without an explicit name get an auto-name like
+# Cached node refs for the code-built overlay. Looking them up by string path is
+# brittle: code-built nodes added without an explicit name get an auto-name like
 # "@MarginContainer@119", so a literal "Panel/MarginContainer/..." path fails,
 # the populate aborts mid-call, and the overlay shows zero rows (the load-game
-# empty-list bug). Hold the reference instead.
+# empty-list bug, #80). Hold the references instead.
 var _load_rows: VBoxContainer
+var _load_header: Label
+var _load_back_btn: Button
+
+# Two-level browser state: pick a PROFILE, then a CHECKPOINT within it.
+enum LoadLevel { PROFILE, CHECKPOINT }
+var _load_level: int = LoadLevel.PROFILE
+var _selected_profile_id: String = ""
 @onready var _music_slider: HSlider = $SettingsOverlay/Panel/V/MusicRow/MusicHBox/MusicSlider
 @onready var _music_value: Label = $SettingsOverlay/Panel/V/MusicRow/MusicHBox/MusicValue
 @onready var _sfx_slider: HSlider = $SettingsOverlay/Panel/V/SfxRow/SfxHBox/SfxSlider
@@ -146,7 +153,14 @@ func _on_continue_pressed() -> void:
 		_on_new_game_pressed()
 
 
-# ---- Load Game slot-select overlay --------------------------------------
+# ---- Load Game two-level browser (profile -> checkpoint) ----------------
+#
+# Level 1 lists save PROFILES (named playthroughs). Selecting one drills into
+# level 2: that profile's checkpoints, sectioned into permanent (episode +
+# manual) vs. the rolling autosave/quicksave ring. Back walks checkpoint ->
+# profile -> title. Every node is built with a CACHED reference (not a string
+# get_node path) — auto-named code-built containers broke the old flat overlay
+# (the load-game empty-list bug, #80).
 
 func _build_load_overlay() -> void:
 	_load_overlay = Control.new()
@@ -169,10 +183,10 @@ func _build_load_overlay() -> void:
 	panel.anchor_top = 0.5
 	panel.anchor_right = 0.5
 	panel.anchor_bottom = 0.5
-	panel.offset_left = -240
-	panel.offset_right = 240
-	panel.offset_top = -200
-	panel.offset_bottom = 200
+	panel.offset_left = -280
+	panel.offset_right = 280
+	panel.offset_top = -240
+	panel.offset_bottom = 240
 	_load_overlay.add_child(panel)
 
 	var margin: MarginContainer = MarginContainer.new()
@@ -188,68 +202,240 @@ func _build_load_overlay() -> void:
 	margin.add_child(vbox)
 
 	var header: Label = Label.new()
+	header.name = "Header"
 	header.text = "LOAD GAME"
 	header.add_theme_font_size_override("font_size", 20)
 	header.add_theme_color_override("font_color", Color(0.55, 0.85, 1.0, 1.0))
 	vbox.add_child(header)
+	_load_header = header
+
+	# Scrollable rows so a profile with many manual/episode checkpoints doesn't
+	# overflow the panel.
+	var scroll: ScrollContainer = ScrollContainer.new()
+	scroll.name = "Scroll"
+	scroll.custom_minimum_size = Vector2(520, 360)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	vbox.add_child(scroll)
 
 	var rows: VBoxContainer = VBoxContainer.new()
 	rows.name = "Rows"
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	rows.add_theme_constant_override("separation", 6)
-	vbox.add_child(rows)
+	scroll.add_child(rows)
 	_load_rows = rows
 
 	var close: Button = Button.new()
-	close.name = "CloseButton"
+	close.name = "BackButton"
 	close.text = "Back"
-	close.pressed.connect(_on_load_overlay_close)
+	close.pressed.connect(_on_load_back_pressed)
 	Audio.attach_ui_hover(close)
 	vbox.add_child(close)
+	_load_back_btn = close
 
 
 func _on_load_pressed() -> void:
-	_populate_load_rows()
+	_show_profile_level()
 	_load_overlay.visible = true
 
 
-func _on_load_overlay_close() -> void:
+# Back walks one level in (checkpoint -> profile), then out (profile -> title).
+func _on_load_back_pressed() -> void:
+	if _load_level == LoadLevel.CHECKPOINT:
+		_show_profile_level()
+		return
 	_load_overlay.visible = false
 	_btn_load.grab_focus()
 
 
-func _populate_load_rows() -> void:
-	var rows: Node = _load_rows
+# ---- level 1: profiles --------------------------------------------------
+
+func _show_profile_level() -> void:
+	_load_level = LoadLevel.PROFILE
+	_selected_profile_id = ""
+	_populate_profile_rows()
+
+
+func _populate_profile_rows() -> void:
+	var rows: VBoxContainer = _load_rows
 	if rows == null:
 		return
-	for child in rows.get_children():
-		child.queue_free()
-	var slots: Array[Dictionary] = SaveManager.list_slots()
-	if slots.is_empty():
-		var empty: Label = Label.new()
-		empty.text = "(no saves)"
-		rows.add_child(empty)
+	_load_header.text = "LOAD GAME — PROFILES"
+	_clear_rows(rows)
+	var profiles: Array[Dictionary] = SaveManager.list_profiles()
+	# Only show profiles that have at least one loadable checkpoint.
+	var playable: Array[Dictionary] = []
+	for prof in profiles:
+		if not SaveManager.list_checkpoints(String(prof.get("id", ""))).is_empty():
+			playable.append(prof)
+	if playable.is_empty():
+		_add_empty_row(rows, "(no saved profiles)")
+		_focus_first_row(rows)
 		return
-	# Most-recent first so the freshest save reads at the top.
-	slots.sort_custom(func(a, b): return int(a.get("timestamp", 0)) > int(b.get("timestamp", 0)))
-	for meta in slots:
-		var slot_id: String = String(meta.get("slot_id", ""))
+	# Most-recently-played first.
+	playable.sort_custom(func(a, b): return int(a.get("last_played", 0)) > int(b.get("last_played", 0)))
+	for prof in playable:
+		var pid: String = String(prof.get("id", ""))
 		var b: Button = Button.new()
-		b.text = _slot_row_label(meta)
-		b.custom_minimum_size = Vector2(420, 40)
-		b.pressed.connect(_on_slot_chosen.bind(slot_id))
+		b.text = _profile_row_label(prof)
+		b.custom_minimum_size = Vector2(480, 48)
+		b.pressed.connect(_on_profile_chosen.bind(pid))
 		Audio.attach_ui_hover(b)
 		rows.add_child(b)
+	_focus_first_row(rows)
 
 
-# "manual_1 · Find the CO2 scrubber · 02:14 · 2026-05-30 14:02"
-func _slot_row_label(meta: Dictionary) -> String:
-	var slot_id: String = String(meta.get("slot_id", "?"))
-	var obj: String = String(meta.get("objective", ""))
+func _on_profile_chosen(profile_id: String) -> void:
+	_selected_profile_id = profile_id
+	_show_checkpoint_level()
+
+
+# "Default · Episode 1: Air · Find the CO2 scrubber · 2026-05-30 14:02"
+func _profile_row_label(prof: Dictionary) -> String:
+	var name: String = String(prof.get("display_name", prof.get("id", "?")))
+	var pid: String = String(prof.get("id", ""))
+	# Pull episode / objective from the profile's most-recent checkpoint meta.
+	var episode: String = ""
+	var objective: String = ""
+	var checkpoints: Array[Dictionary] = SaveManager.list_checkpoints(pid)
+	if not checkpoints.is_empty():
+		var newest: Dictionary = checkpoints[0]  # list is newest-first
+		episode = String(newest.get("episode", ""))
+		objective = String(newest.get("objective", ""))
+		if objective == "":
+			objective = String(newest.get("room_id", ""))
+	var when: String = _format_timestamp(int(prof.get("last_played", 0)))
+	var ep_part: String = "Episode %s" % episode if episode != "" else "—"
+	return "%s  ·  %s  ·  %s  ·  %s" % [name, ep_part, objective, when]
+
+
+# ---- level 2: checkpoints for the chosen profile ------------------------
+
+func _show_checkpoint_level() -> void:
+	_load_level = LoadLevel.CHECKPOINT
+	_populate_checkpoint_rows()
+
+
+func _populate_checkpoint_rows() -> void:
+	var rows: VBoxContainer = _load_rows
+	if rows == null:
+		return
+	var prof: Dictionary = {}
+	for p in SaveManager.list_profiles():
+		if String(p.get("id", "")) == _selected_profile_id:
+			prof = p
+			break
+	var name: String = String(prof.get("display_name", _selected_profile_id))
+	_load_header.text = "LOAD GAME — %s" % name.to_upper()
+	_clear_rows(rows)
+
+	var checkpoints: Array[Dictionary] = SaveManager.list_checkpoints(_selected_profile_id)
+	if checkpoints.is_empty():
+		_add_empty_row(rows, "(no checkpoints)")
+		_focus_first_row(rows)
+		return
+
+	# Partition: permanent (episode + manual) vs. rolling (autosave + quicksave).
+	var permanent: Array[Dictionary] = []
+	var rolling: Array[Dictionary] = []
+	for cp in checkpoints:
+		if cp.get("permanent", false) == true:
+			permanent.append(cp)
+		else:
+			rolling.append(cp)
+
+	# Both lists arrive newest-first from list_checkpoints.
+	if not permanent.is_empty():
+		_add_section_header(rows, "Checkpoints")
+		for cp in permanent:
+			_add_checkpoint_row(rows, cp)
+	if not rolling.is_empty():
+		_add_section_header(rows, "Recent")
+		for cp in rolling:
+			_add_checkpoint_row(rows, cp)
+	_focus_first_row(rows)
+
+
+func _add_checkpoint_row(rows: VBoxContainer, cp: Dictionary) -> void:
+	var cid: String = String(cp.get("checkpoint_id", cp.get("slot_id", "")))
+	var b: Button = Button.new()
+	b.text = _checkpoint_row_label(cp)
+	b.custom_minimum_size = Vector2(480, 40)
+	b.pressed.connect(_on_checkpoint_chosen.bind(cid))
+	Audio.attach_ui_hover(b)
+	rows.add_child(b)
+
+
+func _on_checkpoint_chosen(checkpoint_id: String) -> void:
+	_load_overlay.visible = false
+	if not SaveManager.load_and_resume_checkpoint(_selected_profile_id, checkpoint_id):
+		_on_new_game_pressed()
+
+
+# "Episode 1: Air — Complete · breached_section_south · 02:14 · 2026-05-30 14:02"
+# Reuses the slot label shape but leads with the human kind/label instead of the
+# raw checkpoint id.
+func _checkpoint_row_label(cp: Dictionary) -> String:
+	var label: String = String(cp.get("label", ""))
+	if label == "":
+		label = _kind_display(String(cp.get("kind", "")))
+	var obj: String = String(cp.get("objective", ""))
 	if obj == "":
-		obj = String(meta.get("room_id", ""))
-	var playtime: String = _format_playtime(float(meta.get("playtime_seconds", 0.0)))
-	var when: String = _format_timestamp(int(meta.get("timestamp", 0)))
-	return "%s  ·  %s  ·  %s  ·  %s" % [slot_id, obj, playtime, when]
+		obj = String(cp.get("room_id", ""))
+	var playtime: String = _format_playtime(float(cp.get("playtime_seconds", 0.0)))
+	var when: String = _format_timestamp(int(cp.get("timestamp", 0)))
+	return "%s  ·  %s  ·  %s  ·  %s" % [label, obj, playtime, when]
+
+
+func _kind_display(kind: String) -> String:
+	match kind:
+		"autosave":
+			return "Autosave"
+		"quicksave":
+			return "Quicksave"
+		"manual":
+			return "Manual save"
+		"episode":
+			return "Episode"
+		_:
+			return "Save"
+
+
+# ---- shared row helpers -------------------------------------------------
+
+func _clear_rows(rows: VBoxContainer) -> void:
+	# remove_child BEFORE queue_free so the old rows are gone synchronously —
+	# queue_free is deferred, so re-reading get_children() in the same frame
+	# (a rapid re-populate, or a headless test) would otherwise still see the
+	# stale rows from the previous level.
+	for child in rows.get_children():
+		rows.remove_child(child)
+		child.queue_free()
+
+
+func _add_empty_row(rows: VBoxContainer, text: String) -> void:
+	var empty: Label = Label.new()
+	empty.text = text
+	rows.add_child(empty)
+
+
+func _add_section_header(rows: VBoxContainer, text: String) -> void:
+	var sec: Label = Label.new()
+	sec.text = text.to_upper()
+	sec.add_theme_font_size_override("font_size", 13)
+	sec.add_theme_color_override("font_color", Color(0.75, 0.85, 0.95, 0.85))
+	rows.add_child(sec)
+
+
+# Grab focus on the first selectable Button row so keyboard / controller can
+# drive the browser immediately (mouse focus is automatic).
+func _focus_first_row(rows: VBoxContainer) -> void:
+	for child in rows.get_children():
+		if child is Button:
+			(child as Button).grab_focus()
+			return
+	# No rows to focus — fall back to Back so focus is never lost.
+	if _load_back_btn != null:
+		_load_back_btn.grab_focus()
 
 
 func _format_playtime(seconds: float) -> String:
@@ -262,12 +448,6 @@ func _format_timestamp(ts: int) -> String:
 		return "—"
 	var dt: Dictionary = Time.get_datetime_dict_from_unix_time(ts)
 	return "%04d-%02d-%02d %02d:%02d" % [dt.year, dt.month, dt.day, dt.hour, dt.minute]
-
-
-func _on_slot_chosen(slot_id: String) -> void:
-	_load_overlay.visible = false
-	if not SaveManager.load_and_resume(slot_id):
-		_on_new_game_pressed()
 
 func _on_new_game_pressed() -> void:
 	# When a save exists, route through the confirmation dialog first.

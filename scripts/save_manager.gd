@@ -593,6 +593,7 @@ func _build_meta(checkpoint_id: String, snapshot: Dictionary) -> Dictionary:
 		"scene_path": GameState.current_scene_path,
 		"room_id": GameState.current_room_id,
 		"objective": GameState.current_objective,
+		"episode": GameState.current_episode if "current_episode" in GameState else "",
 		"slot_id": checkpoint_id,
 	}
 

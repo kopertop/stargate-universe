@@ -591,7 +591,7 @@ func _is_permanent_meta(meta: Dictionary, checkpoint_id: String) -> bool:
 
 # Classifies a checkpoint by its id prefix when meta is unavailable.
 func _kind_from_id(checkpoint_id: String) -> String:
-	if checkpoint_id == KIND_QUICKSAVE or checkpoint_id.begins_with(KIND_QUICKSAVE):
+	if checkpoint_id.begins_with(KIND_QUICKSAVE):
 		return KIND_QUICKSAVE
 	if checkpoint_id.begins_with(KIND_AUTOSAVE):
 		return KIND_AUTOSAVE
@@ -644,6 +644,11 @@ func migrate_flat_to_profile() -> bool:
 	if pid == "":
 		return false
 
+	# Shared monotonic base so the autosave ring is always newer than migrated
+	# manuals. This keeps most_recent_checkpoint() (and the active_checkpoint it
+	# seeds) anchored on the real most-recent play state, not a permanent manual.
+	var base_ts: int = int(Time.get_unix_time_from_system())
+
 	# --- autosave ring: primary + backups, newest first ---
 	if has_slot("autosave"):
 		var auto_dir: String = slot_dir("autosave")
@@ -651,7 +656,6 @@ func migrate_flat_to_profile() -> bool:
 		for b in _backup_paths_in(auto_dir):
 			ring_sources.append(b)
 		# Newest gets the largest timestamp so list/ring ordering is correct.
-		var base_ts: int = int(Time.get_unix_time_from_system())
 		var written: int = 0
 		for i in range(ring_sources.size()):
 			var snap: Dictionary = _read_json_dict(ring_sources[i])
@@ -678,6 +682,10 @@ func migrate_flat_to_profile() -> bool:
 			write_checkpoint(pid, KIND_QUICKSAVE, qsnap, qmeta)
 
 	# --- manual_N -> permanent manual checkpoints ---
+	# Stamped strictly OLDER than the autosave ring (base_ts - ring - i) so a
+	# migrated manual never outranks the real most-recent autosave in
+	# most_recent_checkpoint(); manuals are permanent, so their relative order is
+	# cosmetic.
 	for i in range(1, MANUAL_SLOT_COUNT + 1):
 		var mslot: String = "manual_%d" % i
 		if not has_slot(mslot):
@@ -685,7 +693,7 @@ func migrate_flat_to_profile() -> bool:
 		var msnap: Dictionary = read_snapshot(mslot)
 		if msnap.is_empty():
 			continue
-		var cid_m: String = "%s_%d" % [KIND_MANUAL, int(Time.get_unix_time_from_system()) + i]
+		var cid_m: String = "%s_%d" % [KIND_MANUAL, base_ts - AUTOSAVE_RING_KEEP - i]
 		var mmeta: Dictionary = build_meta_from_snapshot(cid_m, msnap)
 		mmeta["kind"] = KIND_MANUAL
 		mmeta["label"] = "Manual save %d" % i

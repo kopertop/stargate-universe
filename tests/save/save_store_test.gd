@@ -422,6 +422,12 @@ func _t_migrate_flat(root: String) -> bool:
 		if cp.get("kind", "") == "manual" and cp.get("permanent", false) == true:
 			has_perm_manual = true
 	ok = _assert(has_perm_manual, "manual slot folded into a permanent manual checkpoint") and ok
+	# Regression: active_checkpoint must resolve to the real most-recent AUTOSAVE,
+	# not a migrated permanent manual. Manuals were once stamped now+i (future),
+	# which let them outrank the autosave ring in most_recent_checkpoint().
+	var prof: Dictionary = store.read_profile("default")
+	var active: String = String(prof.get("active_checkpoint", ""))
+	ok = _assert(store._kind_from_id(active) == "autosave", "active_checkpoint is an autosave, not a migrated manual (got '%s')" % active) and ok
 	return ok
 
 

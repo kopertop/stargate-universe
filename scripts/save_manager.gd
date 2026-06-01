@@ -184,6 +184,23 @@ func set_active_profile(profile_id: String) -> bool:
 	return true
 
 
+# Permanently delete a profile and its entire checkpoint set (permanent
+# manual / episode checkpoints included — the player-facing copy must warn).
+# If the deleted profile was active, clears the active pointer so the next
+# write mints a fresh Default rather than resurrecting a dead profile dir.
+# Returns true if the profile existed and was removed.
+func delete_profile(profile_id: String) -> bool:
+	if profile_id == "" or not _store.has_profile(profile_id):
+		return false
+	_store.delete_profile(profile_id)
+	if _active_profile_id == profile_id:
+		_active_profile_id = ""
+		_write_active_profile("")
+		profile_changed.emit("")
+	save_wiped.emit()
+	return true
+
+
 func _set_active_profile(profile_id: String) -> void:
 	_active_profile_id = profile_id
 	_write_active_profile(profile_id)
@@ -646,14 +663,17 @@ func wipe_all() -> void:
 # in-memory state across the whole save graph in one call, and mint a fresh
 # active profile so the first autosave lands in a clean timeline. Title.gd uses
 # this instead of touching each autoload individually.
-func start_new_game() -> void:
+func start_new_game(profile_name := "") -> void:
 	for id in _systems.keys():
 		var sys: Object = _systems[id]
 		if sys.has_method("reset"):
 			sys.call("reset")
 	# A fresh playthrough gets a fresh profile so its autosave ring + permanent
-	# checkpoints never mingle with a prior run's.
-	create_profile(SaveStore.DEFAULT_PROFILE_NAME)
+	# checkpoints never mingle with a prior run's. New Game passes the
+	# player-chosen display name; an empty name falls back to "Default".
+	if profile_name == "":
+		profile_name = SaveStore.DEFAULT_PROFILE_NAME
+	create_profile(profile_name)
 
 
 func _unhandled_input(event: InputEvent) -> void:

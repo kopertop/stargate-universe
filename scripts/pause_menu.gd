@@ -27,9 +27,6 @@ var _btn_title: Button
 var _btn_restart: Button
 var _status: Label
 
-var _save_picker: PanelContainer
-var _save_rows: VBoxContainer
-
 var _open: bool = false
 var _initialized: bool = false
 var _restart_armed: bool = false
@@ -122,50 +119,6 @@ func _init_ui() -> void:
 	footer.add_theme_color_override("font_color", Color(0.6, 0.75, 0.9, 0.7))
 	vbox.add_child(footer)
 
-	_build_save_picker()
-
-
-# Manual-slot picker (autosave + quicksave + manual_N). Hidden until "Save
-# Now" is pressed; choosing a slot writes that slot via SaveManager.save().
-func _build_save_picker() -> void:
-	_save_picker = PanelContainer.new()
-	_save_picker.add_theme_stylebox_override("panel", _panel_stylebox())
-	_save_picker.anchor_left = 0.5
-	_save_picker.anchor_top = 0.5
-	_save_picker.anchor_right = 0.5
-	_save_picker.anchor_bottom = 0.5
-	_save_picker.offset_left = -220
-	_save_picker.offset_right = 220
-	_save_picker.offset_top = -200
-	_save_picker.offset_bottom = 200
-	_save_picker.visible = false
-	_root.add_child(_save_picker)
-
-	var margin: MarginContainer = MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 24)
-	margin.add_theme_constant_override("margin_right", 24)
-	margin.add_theme_constant_override("margin_top", 20)
-	margin.add_theme_constant_override("margin_bottom", 20)
-	_save_picker.add_child(margin)
-
-	var vbox: VBoxContainer = VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 10)
-	margin.add_child(vbox)
-
-	var header: Label = Label.new()
-	header.text = "SAVE TO SLOT"
-	header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	header.add_theme_font_size_override("font_size", 18)
-	header.add_theme_color_override("font_color", Color(0.55, 0.85, 1.0, 1.0))
-	vbox.add_child(header)
-
-	_save_rows = VBoxContainer.new()
-	_save_rows.add_theme_constant_override("separation", 6)
-	vbox.add_child(_save_rows)
-
-	var back: Button = _build_button(vbox, "Cancel", _on_save_picker_close)
-	back.custom_minimum_size = Vector2(280, 36)
-
 
 func _build_button(parent: Node, label: String, handler: Callable) -> Button:
 	var b: Button = Button.new()
@@ -251,8 +204,6 @@ func _open_menu() -> void:
 		_init_ui()
 	_open = true
 	_root.visible = true
-	if _save_picker != null:
-		_save_picker.visible = false
 	_panel.visible = true
 	_restart_armed = false
 	_refresh_buttons()
@@ -295,48 +246,21 @@ func _on_resume_pressed() -> void:
 
 
 func _on_save_pressed() -> void:
-	# Open the manual-slot picker. Choosing a slot routes through
-	# SaveManager.save(slot_id) — the same write path as autosave.
-	_populate_save_rows()
-	_panel.visible = false
-	_save_picker.visible = true
-
-
-func _populate_save_rows() -> void:
-	for child in _save_rows.get_children():
-		child.queue_free()
-	# Manual slots first (the player-facing ones), then quicksave for parity.
-	var ids: Array[String] = []
-	for i in range(1, SaveStore.MANUAL_SLOT_COUNT + 1):
-		ids.append("manual_%d" % i)
-	ids.append("quicksave")
-	var metas: Dictionary = {}
-	for meta in SaveManager.list_slots():
-		metas[String(meta.get("slot_id", ""))] = meta
-	for slot_id in ids:
-		var label: String = slot_id
-		if metas.has(slot_id):
-			var obj: String = String(metas[slot_id].get("objective", ""))
-			label = "%s — %s" % [slot_id, obj] if obj != "" else slot_id
-		else:
-			label = "%s — (empty)" % slot_id
-		var b: Button = _build_button(_save_rows, label, _on_save_slot_chosen.bind(slot_id))
-		b.custom_minimum_size = Vector2(360, 38)
-
-
-func _on_save_slot_chosen(slot_id: String) -> void:
-	if SaveManager.has_method("save"):
-		SaveManager.save(slot_id)
-		_set_status("Saved to %s." % slot_id)
+	# Write a PERMANENT manual checkpoint into the active profile. Each press
+	# is its own timestamped checkpoint (manual saves are unlimited + never
+	# pruned), so there's no slot to pick — just save and confirm. Falls back
+	# to the legacy slot save only on an older SaveManager without save_manual.
+	var cid: String = ""
+	if SaveManager.has_method("save_manual"):
+		cid = String(SaveManager.call("save_manual"))
+	elif SaveManager.has_method("save"):
+		SaveManager.save("manual_1")
+		cid = "manual_1"
+	if cid != "":
+		_set_status("Game saved.")
+		GameState.add_log("Game saved.")
 	else:
-		_set_status("Save unavailable.")
-	_on_save_picker_close()
-
-
-func _on_save_picker_close() -> void:
-	_save_picker.visible = false
-	_panel.visible = true
-	_btn_save.grab_focus()
+		_set_status("Save unavailable — nothing to record yet.")
 
 
 func _on_kino_pressed() -> void:

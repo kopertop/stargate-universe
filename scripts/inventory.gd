@@ -262,6 +262,73 @@ func equipped_items() -> Dictionary:
 	return _equipped.duplicate()
 
 
+# --- functional-effect hook seams (#75) --------------------------------------
+#
+# Equipment is COSMETIC-FIRST by design decision (#32/#75): equipping gear today
+# only changes the character's look. These seams exist so a FOLLOW-UP issue can
+# attach gameplay effects to gear WITHOUT a refactor — gameplay code can already
+# ask the loadout "do I have atmosphere protection?" / "what's my carry-capacity
+# modifier?" and get a correct (currently zero/false) answer that lights up the
+# moment effect data is added to data/items.json. No effect is implemented here.
+#
+# Contract: an equipment def in data/items.json MAY carry an optional
+# `effects` sub-object, e.g.
+#     "effects": { "atmosphere_protection": true, "carry_capacity": 4 }
+# When absent (the cosmetic-first default for every shipped item), the seams
+# below report the no-effect baseline. The follow-up issue: (a) authors `effects`
+# on the relevant defs, (b) wires the call sites flagged with TODO(#75-followup)
+# below into the systems that consume them (planet atmosphere gate, inventory
+# capacity). The accumulation rules here (any-true / additive-sum) are the
+# intended semantics; only the consumer wiring is deferred.
+
+# The raw `effects` dict declared on an item def (empty when none / not a def).
+func _effects_of(item_id: String) -> Dictionary:
+	var def: Dictionary = _by_id.get(item_id, {})
+	var e: Variant = def.get("effects", null)
+	return e if e is Dictionary else {}
+
+
+# Sum a numeric `effects` field across the whole equipped loadout (additive
+# stacking across slots). Returns `default` contribution when no gear declares
+# the field. Generic accumulator the named seams below delegate to.
+func equipped_effect_total(field: String, default: float = 0.0) -> float:
+	_ensure_loaded()
+	var total: float = default
+	for slot in _equipped:
+		var fx: Dictionary = _effects_of(String(_equipped[slot]))
+		if fx.has(field):
+			total += float(fx[field])
+	return total
+
+
+# True if ANY equipped item declares a truthy `effects` boolean `field`
+# (any-true stacking — one protective piece is enough). Generic predicate the
+# named seams below delegate to.
+func equipped_effect_flag(field: String) -> bool:
+	_ensure_loaded()
+	for slot in _equipped:
+		var fx: Dictionary = _effects_of(String(_equipped[slot]))
+		if fx.get(field, false) == true:
+			return true
+	return false
+
+
+# SEAM: head-slot helmet → off-world atmosphere protection (#75 future hook).
+# TODO(#75-followup): call from the planet atmosphere gate (planet.gd /
+# atmo_readout.gd) so a protected crew member ignores a hostile-atmosphere
+# debuff. Reports false today (no shipped def carries the effect — cosmetic).
+func has_atmosphere_protection() -> bool:
+	return equipped_effect_flag("atmosphere_protection")
+
+
+# SEAM: back-slot pack → carry-capacity modifier (#75 future hook).
+# TODO(#75-followup): add this to the base pack size where carry limits are
+# enforced (the inventory cap is presently unbounded, so this is inert until
+# capacity is introduced). Reports 0 today (no shipped def carries the effect).
+func carry_capacity_modifier() -> int:
+	return int(equipped_effect_total("carry_capacity", 0.0))
+
+
 # --- save / load -------------------------------------------------------------
 
 func serialize() -> Dictionary:

@@ -102,6 +102,10 @@ func _ready() -> void:
 		_alert_applied = true
 	GameState.discover_room(room_id, String(_room_data.get("name", room_id)))
 	GameState.set_current_room(room_id)
+	# Leaving the infirmary after a recovery beat clears the knockout flag so the
+	# next infirmary visit shows the normal post-crisis ward (issue #92).
+	if room_id != "infirmary" and GameState.recovering_in_infirmary:
+		GameState.clear_infirmary_recovery()
 	if room_id == "quarters_room_1":
 		GameState.mark_quarters_found()
 	elif room_id == "eli_quarters":
@@ -405,10 +409,13 @@ func _spawn_interactables() -> void:
 		"north_corridor":
 			_spawn_soldier()
 		"infirmary":
-			# Post-crisis, James has moved Young here to recover. Pre-crisis the
-			# pair are still in the gate-room arrival tableau, so the ward is
-			# empty (just the room shell).
-			if GameState.air_crisis_started:
+			# A downed player wakes here for the no-death recovery beat (issue
+			# #92): TJ at the bedside with a cause-tagged line. Otherwise, post-
+			# crisis James has moved Young here to recover; pre-crisis the pair
+			# are still in the gate-room arrival tableau (empty ward).
+			if GameState.recovering_in_infirmary:
+				_spawn_recovery_ward()
+			elif GameState.air_crisis_started:
 				_spawn_infirmary_ward()
 
 
@@ -1204,6 +1211,45 @@ func _spawn_infirmary_ward() -> void:
 	)
 	james.set("pace_a", bedside)
 	james.set("pace_b", deskside)
+
+
+# No-death recovery beat (issue #92): the player wakes on the infirmary bed and
+# TJ is at the bedside with a cause-tagged, semi-random wake-up line. The line is
+# resolved at spawn time from GameState (data-driven pool per cause) and seeded
+# into TJ's one-node dialog tree so it plays on the auto-greet. Leaving the
+# infirmary clears the recovery flag (back to the normal ward next visit).
+func _spawn_recovery_ward() -> void:
+	var d_m: float = float(_room_data.get("height", 200)) * ShipLayout.SCALE
+	var half_z: float = d_m * 0.5
+
+	# Bed (frame + mattress) on the -Z wall — Eli's bed for the recovery beat.
+	var bed_pos: Vector3 = Vector3(-2.5, 0.0, -half_z + 1.8)
+	_add_mesh_box(self, bed_pos + Vector3(0.0, 0.25, 0.0), Vector3(1.0, 0.5, 2.2), _flat_mat(Color(0.20, 0.22, 0.26), 0.4, 0.6))
+	_add_mesh_box(self, bed_pos + Vector3(0.0, 0.55, 0.0), Vector3(0.9, 0.16, 2.0), _flat_mat(Color(0.78, 0.80, 0.84), 0.1, 0.7))
+
+	var picked: Dictionary = GameState.knockout_line()
+	var speaker: String = String(picked.get("speaker", "TJ"))
+	var line: String = String(picked.get("line", "You're awake. You'll be fine."))
+
+	# TJ at the bedside, reusing the medic model. Unique node name so NPCState
+	# doesn't cross-restore her to any other scene's tableau.
+	var bedside: Vector3 = bed_pos + Vector3(1.6, 0.0, 0.2)
+	var tj: StaticBody3D = _spawn_npc(
+		"InfirmaryTJ",
+		speaker,
+		bedside,
+		PI,  # face -X toward the bed/player
+		"res://models/characters/james.glb",
+		[
+			{
+				"speaker": speaker,
+				"text": line,
+				"choices": [{"text": "…where am I?", "next": "exit"}],
+			},
+		],
+	)
+	tj.set("auto_greet", true)
+	tj.set("auto_greet_distance", 2.6)
 
 
 # Civilian along the south corridor — Chloe, the IOA daughter. She's already

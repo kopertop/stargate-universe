@@ -230,10 +230,16 @@ func _begin_departure() -> void:
 	_recall_to_ship()
 
 func _play_departure_cutscene() -> void:
+	# The window CLOSED with the player still on the surface — this is the downed
+	# outcome (issue #92), so the cutscene must read as a near-miss, NOT a clean
+	# escape. The team scrambles for the gate, the away team makes it through, but
+	# Eli doesn't reach the event horizon in time and goes down — which is exactly
+	# the framing knock_out("window_closed") + the infirmary wake-up pick up. (The
+	# manual player-walks-through-gate success path is a different flow entirely.)
 	GameState.add_log("Destiny is jumping — the away team scrambles back through the gate!")
 	Audio.play("res://sounds/radio_off.ogg")
 	await Cinematic.letterbox_in(0.4)
-	Cinematic.set_caption("Hurry, we need to make it back before Destiny jumps to FTL!")
+	Cinematic.set_caption("Move! Destiny jumps to FTL any second — get to the gate!")
 	var gate: Node3D = _find_return_gate()
 	var gate_pos: Vector3 = gate.global_position if gate != null else Vector3.ZERO
 	# High, slightly-angled overhead shot framing the gate + the team racing in.
@@ -245,19 +251,22 @@ func _play_departure_cutscene() -> void:
 	# Let them actually run the distance — wait until the lead runner reaches the
 	# gate (capped, in case someone snags on terrain).
 	await _await_arrival(gate_pos)
-	# They vanish through the event horizon.
+	# The away team makes it through the event horizon — Eli (the player) does NOT.
+	var player: Node3D = get_tree().get_first_node_in_group("player") as Node3D
 	for r in runners:
-		if is_instance_valid(r):
+		if is_instance_valid(r) and r != player:
 			(r as Node3D).visible = false
-	Cinematic.set_caption("")   # they're through — drop the "hurry" subtitle
-	await Cinematic.flash(Color(0.6, 0.85, 1.0), 0.6)
-	# Everyone's through — the gate shuts down behind them.
+	# The gate shuts down with the player still on the surface — he's missed it.
 	if gate != null and "active" in gate:
 		gate.set("active", false)
 	Audio.play("res://sounds/break.ogg")   # gate-shutdown SFX (matches gate_room)
+	Cinematic.set_caption("No — wait! …He's not going to make it.")
 	await get_tree().create_timer(0.8).timeout
+	# Eli goes down; everything fades to black into the infirmary wake-up.
+	Cinematic.set_caption("")
+	await Cinematic.flash(Color(0.0, 0.0, 0.0), 0.7)
 	# Keep the bars up THROUGH the recall; SceneRouter lifts them once the gate
-	# room has faded in, so the cut reads as one continuous cinematic.
+	# room (infirmary) has faded in, so the cut reads as one continuous cinematic.
 	Cinematic.close_on_next_scene_change()
 
 # Send the player + away team dashing to the gate. Returns the runner nodes so
@@ -300,14 +309,12 @@ func _await_arrival(gate_pos: Vector3) -> void:
 			return
 
 func _recall_to_ship() -> void:
-	# Keep whatever lime was gathered. If it's enough, complete the run; else the
-	# team returns empty-handed and can re-dial. Never strands anyone.
-	if GameState.has_resource(GameState.AIR_LIME_RESOURCE, GameState.AIR_LIME_REQUIRED):
-		GameState.return_from_lime_planet()
-	# The whole away team scrambled back through — bring them into the gate room
-	# with the player and land everyone past the platform (FromPlanet spawn).
-	GameState.pending_planet_return = true
-	SceneRouter.change_to("res://scenes/gate_room.tscn", "FromPlanet")
+	# The window closed with the player still on the surface — that's a "downed"
+	# outcome (issue #92). Route through the single no-death knockout entry point:
+	# the player wakes in the infirmary with a window-closed TJ line, banks only
+	# the minimum-necessary lime, and forfeits the rest of the run. knock_out()
+	# ends the window and routes to the infirmary (instant_mode-aware).
+	GameState.knock_out("window_closed")
 
 func _find_return_gate() -> Node3D:
 	for n in get_tree().get_nodes_in_group("planet_gate"):

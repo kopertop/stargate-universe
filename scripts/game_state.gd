@@ -295,6 +295,18 @@ var returned_from_lime_planet: bool = false
 # instant_mode). Persisted so a resumed save keeps the same remaining time.
 var gate_window_active: bool = false
 var gate_window_remaining: float = 0.0
+# Snapshot of tracked-resource counts captured the moment a planet run's gate
+# window opens (run start). knock_out() reconciles against this: a downed run
+# forfeits everything gathered this run EXCEPT the minimum-necessary bank of the
+# run's scarce target resource. Empty = no run snapshot taken. Persisted so a
+# save mid-run still reconciles correctly. Keyed by resource id → count.
+var run_start_resources: Dictionary = {}
+# Recovery beat (issue #92): set by knock_out() so the infirmary spawns TJ at the
+# player's bedside with a cause-tagged wake-up line instead of the post-crisis
+# James ward. recovering_in_infirmary stays true until the player leaves the
+# infirmary; knockout_cause is consumed by the ward spawn to pick the line pool.
+var recovering_in_infirmary: bool = false
+var knockout_cause: String = ""
 # Transient (NOT persisted): set just before a planet→gate-room return so the
 # gate room spawns the away team that came back WITH the player and lands them
 # past the platform. Consumed (cleared) by gate_room on arrival.
@@ -422,6 +434,12 @@ func start_gate_window(duration: float) -> bool:
 		return false
 	gate_window_active = true
 	gate_window_remaining = duration
+	# Snapshot the crew's tracked-resource stock at run start so a knock-out can
+	# forfeit everything gathered this run while banking the minimum of the
+	# scarce target (issue #92).
+	run_start_resources = {}
+	for id in tracked_resource_ids():
+		run_start_resources[id] = resource_count(id)
 	return true
 
 func _tick_gate_window(delta: float) -> void:
@@ -490,6 +508,9 @@ func reset() -> void:
 	active_planet_spec = {}
 	gate_window_active = false
 	gate_window_remaining = 0.0
+	run_start_resources = {}
+	recovering_in_infirmary = false
+	knockout_cause = ""
 	# Items live in the Inventory store now — wipe it too (autoload-tolerant).
 	var inv: Node = _inv()
 	if inv != null and inv.has_method("reset"):
@@ -1275,8 +1296,153 @@ func return_from_lime_planet() -> void:
 	# The departure window is over once the team is back aboard — stop the clock
 	# so it can't keep ticking invisibly (and fire a phantom expiry) in the ship.
 	gate_window_active = false
+	run_start_resources = {}
 	add_log("Returned to Destiny with lime from the planet.")
 	advance_air_quest()
+
+
+# --- No-death knockout → med-bay recovery loop (issue #92) -------------------
+#
+# THE single "downed" entry point. Ship-wide rule: NO DEATH, NO STRANDING — the
+# worst outcome on a planet is waking in the infirmary. Every hazard biome calls
+# this instead of any death/game-over path. `cause` is a tag
+# ("trap", "asphyxiation", "heat", "alarm"/"alien_defense", "window_closed",
+# "generic"); it selects a semi-random TJ wake-up line pool and is consumed by
+# the infirmary ward spawn.
+#
+# Consequence (decided): the downed run banks ONLY the minimum-necessary bank of
+# the run's scarce target resource (so a run is never a total loss) and forfeits
+# every other resource gathered this run plus the remaining window (the run
+# ends). Reconciliation is against the run-start snapshot.
+#
+# Respects SceneRouter.instant_mode: headless flips all state + routes the
+# infirmary baton but skips the fade/cutscene so the playthrough doesn't hang.
+const KNOCKOUT_TARGET_BANK: int = 1
+const _KNOCKOUT_LINES_PATH: String = "res://data/knockout_lines.json"
+
+func knock_out(cause: String = "generic") -> void:
+	var tag: String = cause if cause != "" else "generic"
+	# Reconcile this run's gathered resources down to the guaranteed minimum of
+	# the scarce target; forfeit the rest. Then end the window (run over).
+	_reconcile_run_resources_on_knockout()
+	gate_window_active = false
+	gate_window_remaining = 0.0
+	run_start_resources = {}
+	# Heal the player fully on wake — health AND oxygen, since asphyxiation is one
+	# of the causes.
+	health = MAX_HEALTH
+	oxygen = MAX_OXYGEN
+	health_changed.emit(health)
+	oxygen_changed.emit(oxygen)
+	# Arm the infirmary recovery beat: the ward spawns TJ with the cause-tagged
+	# line instead of the post-crisis James tableau.
+	recovering_in_infirmary = true
+	knockout_cause = tag
+	add_log("Eli goes down. Everything fades to black…")
+	_route_to_infirmary()
+
+
+# The resource the run was after — the scarcest tracked target, derived from the
+# active planet spec's first resource cluster, defaulting to lime (the air-crisis
+# resource). This is what a downed run is allowed to bank a minimum of.
+func run_target_resource() -> String:
+	var spec: Dictionary = active_planet_spec
+	var rt: Variant = spec.get("resource_table", {})
+	if rt is Dictionary:
+		var clusters: Variant = (rt as Dictionary).get("clusters", [])
+		if clusters is Array and not (clusters as Array).is_empty():
+			var first: Variant = (clusters as Array)[0]
+			if first is Dictionary:
+				var t: String = String((first as Dictionary).get("type", ""))
+				if t != "":
+					return t
+	return AIR_LIME_RESOURCE
+
+
+# Forfeit everything gathered this run except the minimum-necessary bank of the
+# run's target. Reconciles each tracked resource back to its run-start count;
+# the target gets run-start + min(gathered, KNOCKOUT_TARGET_BANK). With no run
+# snapshot (e.g. a hazard with no open window) this is a no-op so we never strip
+# resources the player legitimately holds.
+func _reconcile_run_resources_on_knockout() -> void:
+	if run_start_resources.is_empty():
+		return
+	var inv: Node = _inv()
+	if inv == null:
+		return
+	var target: String = run_target_resource()
+	for id in tracked_resource_ids():
+		if not run_start_resources.has(id):
+			continue
+		var start_count: int = int(run_start_resources[id])
+		var current: int = resource_count(id)
+		var gathered: int = maxi(0, current - start_count)
+		var keep: int = start_count
+		if id == target:
+			keep = start_count + mini(gathered, KNOCKOUT_TARGET_BANK)
+		if keep != current:
+			inv.call("set_count", id, keep)
+			resource_changed.emit(id, keep)
+
+
+# Route the downed player to the infirmary. Headless / instant_mode flips the
+# scene baton + room state directly (no fade, no cutscene) so the playthrough
+# doesn't hang. Live play fades to black, then loads the infirmary room.
+func _route_to_infirmary() -> void:
+	var router: Node = _autoload_node("SceneRouter")
+	var headless: bool = router == null or router.get("instant_mode") == true
+	next_room_id = "infirmary"
+	if headless:
+		# Flip state without the cinematic. current_room_id mirrors the load so
+		# anything keying off the active room sees the infirmary immediately.
+		set_current_room("infirmary")
+		return
+	router.call("change_to", "res://scenes/room.tscn", "")
+
+
+# Pick a semi-random TJ wake-up line for the active knockout cause. Reads the
+# per-cause pool from data (editable), falling back to "generic" for an unknown
+# cause and to a hardcoded safety line only if the data file is missing/empty.
+# Returns { "speaker": String, "line": String }.
+func knockout_line(cause: String = "") -> Dictionary:
+	var tag: String = cause if cause != "" else knockout_cause
+	if tag == "":
+		tag = "generic"
+	var data: Dictionary = _load_knockout_data()
+	var speaker: String = String(data.get("speaker", "TJ"))
+	var pools: Variant = data.get("pools", {})
+	var pool: Array = []
+	if pools is Dictionary:
+		var picked: Variant = (pools as Dictionary).get(tag, null)
+		if picked is Array and not (picked as Array).is_empty():
+			pool = picked as Array
+		else:
+			var fallback: Variant = (pools as Dictionary).get("generic", null)
+			if fallback is Array:
+				pool = fallback as Array
+	var line: String = "You're awake. You took a knock out there — you'll be fine."
+	if not pool.is_empty():
+		line = String(pool[randi() % pool.size()])
+	return {"speaker": speaker, "line": line}
+
+
+func _load_knockout_data() -> Dictionary:
+	if not FileAccess.file_exists(_KNOCKOUT_LINES_PATH):
+		return {}
+	var f: FileAccess = FileAccess.open(_KNOCKOUT_LINES_PATH, FileAccess.READ)
+	if f == null:
+		return {}
+	var text: String = f.get_as_text()
+	f.close()
+	var parsed: Variant = JSON.parse_string(text)
+	return parsed if parsed is Dictionary else {}
+
+
+# Called by room.gd when the player leaves the infirmary after a recovery beat,
+# so a later (non-knockout) infirmary visit shows the normal James ward.
+func clear_infirmary_recovery() -> void:
+	recovering_in_infirmary = false
+	knockout_cause = ""
 
 func repair_scrubber_with_lime() -> bool:
 	if scrubber_repaired:
@@ -1415,6 +1581,9 @@ func serialize() -> Dictionary:
 		"active_planet_spec": active_planet_spec.duplicate(true),
 		"gate_window_active": gate_window_active,
 		"gate_window_remaining": gate_window_remaining,
+		"run_start_resources": run_start_resources.duplicate(true),
+		"recovering_in_infirmary": recovering_in_infirmary,
+		"knockout_cause": knockout_cause,
 		"kino_pan_x": kino_pan_x,
 		"kino_pan_y": kino_pan_y,
 		"kino_zoom": kino_zoom,
@@ -1473,6 +1642,13 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	active_planet_spec = (saved_spec as Dictionary).duplicate(true) if saved_spec is Dictionary else {}
 	gate_window_active = data.get("gate_window_active", false) == true
 	gate_window_remaining = float(data.get("gate_window_remaining", 0.0))
+	run_start_resources = {}
+	var saved_run_res: Variant = data.get("run_start_resources", {})
+	if saved_run_res is Dictionary:
+		for k in (saved_run_res as Dictionary).keys():
+			run_start_resources[String(k)] = int((saved_run_res as Dictionary)[k])
+	recovering_in_infirmary = data.get("recovering_in_infirmary", false) == true
+	knockout_cause = String(data.get("knockout_cause", ""))
 	# --- legacy item migration ---------------------------------------------
 	# Pre-store saves kept items here (kino_acquired / *_fuse_found / kino_orbs
 	# / a `resources` dict). Seed the Inventory pool from them. Runs BEFORE the

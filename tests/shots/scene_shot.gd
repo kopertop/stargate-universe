@@ -31,6 +31,18 @@ func _run() -> void:
 		save_mgr.call("configure_test_paths", "shot_scene")
 
 	var gs: Node = root.get_node_or_null("GameState")
+	# Optional biome: set an active PlanetSpec so planet.tscn builds a specific
+	# biome (jungle traps/flora, etc.) rather than the default desert lime world.
+	var biome: String = String(args.get("biome", ""))
+	if biome != "" and gs != null:
+		gs.set("active_planet_spec", {
+			"seed": int(args.get("seed", "7")),
+			"biome": biome,
+			"resource_table": {"lime_nodes": 4, "lime_per_node": 1,
+				"lime_min_radius": 50.0, "lime_max_radius": 120.0},
+			"hazard_params": {},
+			"name": "%s capture" % biome.capitalize(),
+		})
 	# Pick the procedural room (room.tscn serves many rooms via next_room_id).
 	var room_id: String = String(args.get("room", ""))
 	if room_id != "" and gs != null:

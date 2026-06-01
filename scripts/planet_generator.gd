@@ -29,6 +29,7 @@ const RESOURCE_NODE_SCRIPT: Script = preload("res://scripts/resource_node.gd")
 const PLANET_GATE_SCRIPT: Script = preload("res://scripts/planet_gate.gd")
 const POI_NODE_SCRIPT: Script = preload("res://scripts/poi_node.gd")
 const CHUNK_MANAGER_SCRIPT: Script = preload("res://scripts/planet_chunk_manager.gd")
+const HAZARD_ZONE_SCRIPT: Script = preload("res://scripts/hazard_zone.gd")
 
 const BIOMES_PATH: String = "res://data/biomes.json"
 const DEFAULT_BIOME: String = "desert"
@@ -66,6 +67,10 @@ static func build(world: Node3D, spec_or_row: Dictionary) -> Node3D:
 		_build_lime_nodes(world, spec, rng, params)
 	_build_pois(world, spec, rng, params)
 	_build_props(world, rng, params)
+	# Hazard zones: damage traps / hazardous flora (issue #88). Built from the
+	# biome's `hazard.traps` block (or a spec hazard_params override), so a biome
+	# with no traps block (desert, temperate, …) places none.
+	_build_hazard_zones(world, spec, rng, params)
 	return manager
 
 
@@ -206,7 +211,23 @@ static func build_params(spec: Dictionary) -> Dictionary:
 		"hazard_type": String(hz.get("type", "none")),
 		"gate_window": float(hz.get("gate_window", DEFAULT_GATE_WINDOW)),
 		"water_drain_per_sec": float(hz.get("water_drain_per_sec", DEFAULT_WATER_DRAIN)),
+		"traps": traps_block(spec),
 	}
+
+
+# Resolve the trap/hazardous-flora block for a spec (issue #88). A spec's own
+# hazard_params.traps wins (dialed planet / per-run override → density tunable
+# from data), else the biome's hazard.traps from biomes.json. Empty when the
+# biome defines no traps (so non-jungle biomes scatter none).
+static func traps_block(spec: Dictionary) -> Dictionary:
+	var hp: Variant = spec.get("hazard_params", {})
+	if hp is Dictionary and (hp as Dictionary).get("traps", null) is Dictionary:
+		return (hp as Dictionary)["traps"]
+	var bp: Dictionary = biome_params(String(spec.get("biome", DEFAULT_BIOME)))
+	var hz: Variant = bp.get("hazard", {})
+	if hz is Dictionary and (hz as Dictionary).get("traps", null) is Dictionary:
+		return (hz as Dictionary)["traps"]
+	return {}
 
 
 static func _to_color(arr: Array) -> Color:
@@ -486,6 +507,69 @@ static func _build_props(world: Node3D, rng: RandomNumberGenerator, params: Dict
 		prop.add_child(cs)
 		prop.rotation.y = rng.randf_range(0.0, TAU)
 		world.add_child(prop)
+
+
+# --- Hazard zones (damage traps / hazardous flora) --------------------------
+#
+# Scatter HazardZone Area3D volumes from the biome's trap block (issue #88).
+# Each zone deals steady damage while the player stands in it and routes the
+# no-death knockout when health hits 0 (cause-tagged). Telegraphed FAIRLY: a
+# distinct red-tinted flora cluster marks the trap so a careful player can read
+# it. Deterministic from the shared RNG so placement survives save/load.
+#
+# Density + strength come from `params.traps` (resolved from biome hazard.traps
+# or a spec hazard_params override) — hazard density is tunable from data.
+const HAZARD_FLORA_TINT: Color = Color(0.52, 0.16, 0.20)   # sickly red-green warning hue
+static func _build_hazard_zones(world: Node3D, spec: Dictionary,
+		rng: RandomNumberGenerator, params: Dictionary) -> void:
+	var traps: Dictionary = params.get("traps", {}) if params.get("traps", {}) is Dictionary else {}
+	if traps.is_empty():
+		return
+	var count: int = int(traps.get("count", 0))
+	if count <= 0:
+		return
+	var dps: float = float(traps.get("damage_per_second", 12.0))
+	var tick: float = float(traps.get("tick_interval", 0.5))
+	var radius: float = float(traps.get("radius", 2.4))
+	var min_r: float = float(traps.get("min_radius", 26.0))
+	var max_r: float = float(traps.get("max_radius", 150.0))
+	var trap_cause: String = String(traps.get("cause", "trap"))
+	var tell: String = String(traps.get("telegraph", "rustling vines"))
+
+	var flora_mat: StandardMaterial3D = StandardMaterial3D.new()
+	flora_mat.albedo_color = HAZARD_FLORA_TINT
+	flora_mat.roughness = 0.85
+	flora_mat.emission_enabled = true
+	flora_mat.emission = HAZARD_FLORA_TINT
+	flora_mat.emission_energy_multiplier = 0.22
+
+	for i in count:
+		var angle: float = (TAU / float(max(count, 1))) * float(i) + rng.randf_range(-0.4, 0.4)
+		var dist: float = rng.randf_range(min_r, max_r)
+		var x: float = cos(angle) * dist
+		var z: float = sin(angle) * dist
+		var ground_y: float = height_at(x, z, params)
+
+		var zone: Area3D = HAZARD_ZONE_SCRIPT.new()
+		zone.name = "HazardZone%d" % (i + 1)
+		zone.position = Vector3(x, ground_y, z)
+		zone.set("damage_per_second", dps)
+		zone.set("tick_interval", tick)
+		zone.set("cause", trap_cause)
+		zone.set("telegraph", tell)
+
+		var cs: CollisionShape3D = CollisionShape3D.new()
+		var shape: BoxShape3D = BoxShape3D.new()
+		shape.size = Vector3(radius * 2.0, 3.0, radius * 2.0)
+		cs.shape = shape
+		cs.position = Vector3(0.0, 1.5, 0.0)
+		zone.add_child(cs)
+
+		# The "tell": a low cluster of red-tinted flora fronds the player can read.
+		_add_box(zone, Vector3(0.0, 0.30, 0.0), Vector3(0.9, 0.6, 0.9), flora_mat)
+		_add_box(zone, Vector3(-0.5, 0.55, 0.3), Vector3(0.4, 1.1, 0.4), flora_mat)
+		_add_box(zone, Vector3(0.45, 0.65, -0.25), Vector3(0.4, 1.3, 0.4), flora_mat)
+		world.add_child(zone)
 
 
 static func _add_box(parent: Node3D, pos: Vector3, size: Vector3, mat: StandardMaterial3D) -> void:

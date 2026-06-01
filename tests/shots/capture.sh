@@ -28,6 +28,8 @@ case "$PRESET" in
 	# (a direct instantiate would skip SceneRouter and hide spawn-clobber bugs).
 	kino-planet) ARGS="scene=res://scenes/planet.tscn out=user://${PRESET}.png kino_pilot=1 flow=1 spawn= wait=50" ;;
 	planet)      ARGS="scene=res://scenes/planet.tscn out=user://${PRESET}.png kino_pilot=0 wait=50" ;;
+	# Jungle biome (issue #88): dense flora + red-tinted hazard-trap tells.
+	jungle)      ARGS="scene=res://scenes/planet.tscn out=user://${PRESET}.png biome=jungle kino_pilot=1 wait=60" ;;
 	gate-room)   ARGS="scene=res://scenes/gate_room.tscn out=user://${PRESET}.png kino_pilot=0 wait=50" ;;
 	# Ship-side Kino recon (epic #45): the compass on a ship room (body), and a
 	# Kino piloting a ship room with the auto-explore hint + atmosphere readout.

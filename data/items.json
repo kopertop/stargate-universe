@@ -52,5 +52,70 @@
     "description": "A heavy-duty fuse looted from a Shuttle Dock crate. Too big for the jammed door panel — pocketed for later.",
     "stackable": true,
     "show_in_inventory": true
+  },
+  {
+    "id": "marine_helmet",
+    "name": "Marine Helmet",
+    "category": "equipment",
+    "slot": "head",
+    "model": "res://models/equipment/marine_helmet.glb",
+    "socket": "Head",
+    "attach_offset": [0.0, 0.0, 0.0],
+    "icon": "res://sprites/ui/items/marine_helmet.png",
+    "description": "Standard-issue ballistic helmet recovered from the Icarus expedition kit. Offers head protection off-world.",
+    "stackable": false,
+    "show_in_inventory": true
+  },
+  {
+    "id": "recon_cap",
+    "name": "Recon Cap",
+    "category": "equipment",
+    "slot": "head",
+    "model": "res://models/equipment/recon_cap.glb",
+    "socket": "Head",
+    "attach_offset": [0.0, 0.0, 0.0],
+    "icon": "res://sprites/ui/items/recon_cap.png",
+    "description": "Lightweight soft cap for low-threat reconnaissance. Trades protection for a clear field of view.",
+    "stackable": false,
+    "show_in_inventory": true
+  },
+  {
+    "id": "tac_vest",
+    "name": "Tactical Vest",
+    "category": "equipment",
+    "slot": "torso",
+    "model": "res://models/equipment/tac_vest.glb",
+    "socket": "Spine",
+    "attach_offset": [0.0, 0.0, 0.0],
+    "icon": "res://sprites/ui/items/tac_vest.png",
+    "description": "Load-bearing tactical vest. Worn over the fatigues for carrying gear and light armor plating.",
+    "stackable": false,
+    "show_in_inventory": true
+  },
+  {
+    "id": "field_backpack",
+    "name": "Field Backpack",
+    "category": "equipment",
+    "slot": "back",
+    "model": "res://models/equipment/field_backpack.glb",
+    "socket": "Spine",
+    "attach_offset": [0.0, -0.1, -0.18],
+    "icon": "res://sprites/ui/items/field_backpack.png",
+    "description": "Expedition rucksack for off-world excursions. Increases what the crew can haul back through the gate.",
+    "stackable": false,
+    "show_in_inventory": true
+  },
+  {
+    "id": "combat_boots",
+    "name": "Combat Boots",
+    "category": "equipment",
+    "slot": "legs",
+    "model": "res://models/equipment/combat_boots.glb",
+    "socket": "Hips",
+    "attach_offset": [0.0, 0.0, 0.0],
+    "icon": "res://sprites/ui/items/combat_boots.png",
+    "description": "Reinforced field boots and trousers. Standard footwear for surface missions.",
+    "stackable": false,
+    "show_in_inventory": true
   }
 ]

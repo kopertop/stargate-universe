@@ -100,7 +100,10 @@
 			"toxins": "CHLORINE",
 			"breathable": false,
 			"gate_window": 160.0,
-			"water_drain_per_sec": 0.0167
+			"water_drain_per_sec": 0.0167,
+			"oxygen_drain_per_sec": 2.5,
+			"suit_drain_multiplier": 0.25,
+			"requires_flag": "pressure_suits_found"
 		},
 		"walkability": {
 			"max_prop_height": 1.6

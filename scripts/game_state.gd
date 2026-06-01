@@ -1082,14 +1082,28 @@ func dial_lime_planet() -> void:
 	advance_air_quest()
 
 # Planet-agnostic: "is the Stargate currently dialed/open to a destination?"
+# An OPEN gate is a free two-way portal both directions, unlimited crossings,
+# UNTIL it closes (KEY RULE — design/gdd/stargate-planetary-runs.md). The window
+# opens when a destination is dialed and closes on the terminal world/story
+# condition (scrubber_repaired). It deliberately does NOT depend on whether the
+# player has crossed back once — that is the separate lime-return story latch
+# (returned_from_lime_planet) and must not slam the portal shut.
 # Today the only destination is the lime planet, so this reads the lime-dial
-# flags; when multiple/selectable destinations land, the dial state generalizes
+# flag; when multiple/selectable destinations land, the dial state generalizes
 # behind this same query and callers don't change.
 func is_gate_open() -> bool:
-	return lime_planet_dialed and not returned_from_lime_planet and not scrubber_repaired
+	return lime_planet_dialed and not scrubber_repaired
 
+# Whether the player on foot may step through to the lime planet right now. The
+# open gate alone permits the crossing (two-way, unlimited) for the whole window;
+# we keep a quest-span guard so a crossing can't fire before the away-team beat
+# (MINE_LIME) or after the gate has been retired by the story (post-REPAIR_SCRUBBER
+# → is_gate_open() is already false). The MINE_LIME outbound-success objective
+# (carry enough lime back) is enforced separately in planet_gate.gd's to_ship path.
 func can_travel_to_lime_planet() -> bool:
-	return is_gate_open() and (quest_step == QUEST_MINE_LIME or quest_step == QUEST_RETURN_DESTINY)
+	return is_gate_open() and (quest_step == QUEST_MINE_LIME \
+			or quest_step == QUEST_RETURN_DESTINY \
+			or quest_step == QUEST_REPAIR_SCRUBBER)
 
 func return_from_lime_planet() -> void:
 	if returned_from_lime_planet:

@@ -10,7 +10,7 @@
 #   6. questlog     — data-driven QuestLog autoload (predicate + event advance,
 #                     save round-trip, old-format migration)
 #
-# Usage: tests/run.sh [lint|scene|flow|quest|playthrough|resume|autopilot|questlog|inventory|atmosphere|kino-doors|kino-autoexplore|gamepad|npc-chat|shaders|ancient-text|discovery-toast|door-plaque|unit-frame|quest-tracker|hud-wow|save|all]
+# Usage: tests/run.sh [lint|scene|flow|quest|playthrough|resume|autopilot|questlog|inventory|atmosphere|kino-doors|kino-autoexplore|gamepad|npc-chat|shaders|ancient-text|discovery-toast|door-plaque|unit-frame|quest-tracker|hud-wow|gate-two-way|save|all]
 #                                                                          (default: all)
 #
 # Pre-commit hook: .githooks/pre-commit invokes the lint subset via
@@ -55,6 +55,7 @@ RAN_DOORPLAQUE=0
 RAN_UNITFRAME=0
 RAN_QUESTTRACKER=0
 RAN_HUDWOW=0
+RAN_GATETWOWAY=0
 RC_SCENE=0
 RC_FLOW=0
 RC_QUEST=0
@@ -80,6 +81,7 @@ RC_DOORPLAQUE=0
 RC_UNITFRAME=0
 RC_QUESTTRACKER=0
 RC_HUDWOW=0
+RC_GATETWOWAY=0
 
 # Run a SceneTree-extending script (synchronous, no autoloads).
 #
@@ -251,6 +253,12 @@ if [[ "$MODE" == "hud-wow" || "$MODE" == "all" ]]; then
 	RAN_HUDWOW=1
 fi
 
+if [[ "$MODE" == "gate-two-way" || "$MODE" == "all" ]]; then
+	run_script_test "gate_two_way" "res://tests/smoke/gate_two_way.gd"
+	RC_GATETWOWAY=$?
+	RAN_GATETWOWAY=1
+fi
+
 if [[ "$MODE" == "npc-chat" || "$MODE" == "all" ]]; then
 	# Scene-based (autoloads active) because npc.gd references the GameState
 	# autoload singleton, which won't compile under a bare -s script.
@@ -321,10 +329,11 @@ echo "==============================="
 [[ $RAN_UNITFRAME -eq 1 ]] && echo "unit_frame:          $([[ $RC_UNITFRAME -eq 0 ]] && echo PASS || echo "FAIL ($RC_UNITFRAME)")" || echo "unit_frame:          SKIPPED"
 [[ $RAN_QUESTTRACKER -eq 1 ]] && echo "quest_tracker:       $([[ $RC_QUESTTRACKER -eq 0 ]] && echo PASS || echo "FAIL ($RC_QUESTTRACKER)")" || echo "quest_tracker:       SKIPPED"
 [[ $RAN_HUDWOW -eq 1 ]] && echo "hud_wow:             $([[ $RC_HUDWOW -eq 0 ]] && echo PASS || echo "FAIL ($RC_HUDWOW)")" || echo "hud_wow:             SKIPPED"
+[[ $RAN_GATETWOWAY -eq 1 ]] && echo "gate_two_way:        $([[ $RC_GATETWOWAY -eq 0 ]] && echo PASS || echo "FAIL ($RC_GATETWOWAY)")" || echo "gate_two_way:        SKIPPED"
 [[ $RAN_SAVE -eq 1 ]] && echo "save_store:          $([[ $RC_SAVE_UNIT -eq 0 ]] && echo PASS || echo "FAIL ($RC_SAVE_UNIT)")" || echo "save_store:          SKIPPED"
 [[ $RAN_SAVE -eq 1 ]] && echo "save_slot_resume:    $([[ $RC_SAVE_RESUME -eq 0 ]] && echo PASS || echo "FAIL ($RC_SAVE_RESUME)")" || echo "save_slot_resume:    SKIPPED"
 
-if [[ ( $RAN_LINT -eq 1 && $RC_LINT -ne 0 ) || ( $RAN_LINT -eq 1 && $RC_FORKS -ne 0 ) || ( $RAN_SCENE -eq 1 && $RC_SCENE -ne 0 ) || ( $RAN_FLOW -eq 1 && $RC_FLOW -ne 0 ) || ( $RAN_QUEST -eq 1 && $RC_QUEST -ne 0 ) || ( $RAN_PLAY -eq 1 && $RC_PLAY -ne 0 ) || ( $RAN_RESUME -eq 1 && $RC_RESUME -ne 0 ) || ( $RAN_AUTOPILOT -eq 1 && $RC_AUTOPILOT -ne 0 ) || ( $RAN_QUESTLOG -eq 1 && $RC_QUESTLOG -ne 0 ) || ( $RAN_INV -eq 1 && $RC_INV -ne 0 ) || ( $RAN_ATMO -eq 1 && $RC_ATMO -ne 0 ) || ( $RAN_KINODOORS -eq 1 && $RC_KINODOORS -ne 0 ) || ( $RAN_KINOEXPLORE -eq 1 && $RC_KINOEXPLORE -ne 0 ) || ( $RAN_KINODISC -eq 1 && $RC_KINODISC -ne 0 ) || ( $RAN_GAMEPAD -eq 1 && $RC_GAMEPAD -ne 0 ) || ( $RAN_NPCCHAT -eq 1 && $RC_NPCCHAT -ne 0 ) || ( $RAN_SHADER -eq 1 && $RC_SHADER -ne 0 ) || ( $RAN_ANCIENTTEXT -eq 1 && $RC_ANCIENTTEXT -ne 0 ) || ( $RAN_DISCTOAST -eq 1 && $RC_DISCTOAST -ne 0 ) || ( $RAN_DOORPLAQUE -eq 1 && $RC_DOORPLAQUE -ne 0 ) || ( $RAN_UNITFRAME -eq 1 && $RC_UNITFRAME -ne 0 ) || ( $RAN_QUESTTRACKER -eq 1 && $RC_QUESTTRACKER -ne 0 ) || ( $RAN_HUDWOW -eq 1 && $RC_HUDWOW -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_UNIT -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_RESUME -ne 0 ) ]]; then
+if [[ ( $RAN_LINT -eq 1 && $RC_LINT -ne 0 ) || ( $RAN_LINT -eq 1 && $RC_FORKS -ne 0 ) || ( $RAN_SCENE -eq 1 && $RC_SCENE -ne 0 ) || ( $RAN_FLOW -eq 1 && $RC_FLOW -ne 0 ) || ( $RAN_QUEST -eq 1 && $RC_QUEST -ne 0 ) || ( $RAN_PLAY -eq 1 && $RC_PLAY -ne 0 ) || ( $RAN_RESUME -eq 1 && $RC_RESUME -ne 0 ) || ( $RAN_AUTOPILOT -eq 1 && $RC_AUTOPILOT -ne 0 ) || ( $RAN_QUESTLOG -eq 1 && $RC_QUESTLOG -ne 0 ) || ( $RAN_INV -eq 1 && $RC_INV -ne 0 ) || ( $RAN_ATMO -eq 1 && $RC_ATMO -ne 0 ) || ( $RAN_KINODOORS -eq 1 && $RC_KINODOORS -ne 0 ) || ( $RAN_KINOEXPLORE -eq 1 && $RC_KINOEXPLORE -ne 0 ) || ( $RAN_KINODISC -eq 1 && $RC_KINODISC -ne 0 ) || ( $RAN_GAMEPAD -eq 1 && $RC_GAMEPAD -ne 0 ) || ( $RAN_NPCCHAT -eq 1 && $RC_NPCCHAT -ne 0 ) || ( $RAN_SHADER -eq 1 && $RC_SHADER -ne 0 ) || ( $RAN_ANCIENTTEXT -eq 1 && $RC_ANCIENTTEXT -ne 0 ) || ( $RAN_DISCTOAST -eq 1 && $RC_DISCTOAST -ne 0 ) || ( $RAN_DOORPLAQUE -eq 1 && $RC_DOORPLAQUE -ne 0 ) || ( $RAN_UNITFRAME -eq 1 && $RC_UNITFRAME -ne 0 ) || ( $RAN_QUESTTRACKER -eq 1 && $RC_QUESTTRACKER -ne 0 ) || ( $RAN_HUDWOW -eq 1 && $RC_HUDWOW -ne 0 ) || ( $RAN_GATETWOWAY -eq 1 && $RC_GATETWOWAY -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_UNIT -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_RESUME -ne 0 ) ]]; then
 	exit 1
 fi
 exit 0

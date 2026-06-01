@@ -56,6 +56,7 @@ func _run() -> void:
 	_test_sections_and_ring()
 	_test_resume(pid)
 	_test_back_navigation()
+	_test_delete_profile(pid)
 
 	_wipe_test_root()
 	print("\nload_browser: %d passed, %d failed" % [_pass, _fail])
@@ -122,10 +123,14 @@ func _instantiate_title() -> Node:
 func _test_profile_level(pid: String) -> void:
 	_title.call("_show_profile_level")
 	var rows: VBoxContainer = _title.get("_load_rows")
-	var btns: Array = _button_rows(rows)
-	_check(btns.size() == 1, "profile level lists exactly 1 playable profile (got %d)" % btns.size())
-	if btns.size() >= 1:
-		var label: String = (btns[0] as Button).text
+	# Each profile row is an HBox holding the select button + a Delete button.
+	var select_btns: Array = _profile_select_buttons(rows)
+	_check(select_btns.size() == 1, "profile level lists exactly 1 playable profile (got %d)" % select_btns.size())
+	# Per-profile Delete button is present alongside the select button (AC2 UI).
+	var delete_btns: Array = _named_buttons(rows, "DeleteButton")
+	_check(delete_btns.size() == 1, "each profile row has a Delete button (got %d)" % delete_btns.size())
+	if select_btns.size() >= 1:
+		var label: String = (select_btns[0] as Button).text
 		_check(label.contains("Default"), "profile row shows display name (got '%s')" % label)
 		# Newest checkpoint is the manual (base+10) — its objective surfaces on
 		# the profile row so the player can tell playthroughs apart.
@@ -240,6 +245,27 @@ func _test_back_navigation() -> void:
 	_check(not overlay.visible, "Back from profile level closes the overlay")
 
 
+# ---- delete profile (AC2) -----------------------------------------------
+
+func _test_delete_profile(pid: String) -> void:
+	# Re-show the profile level, then drive the real delete handler the Delete
+	# button is wired to. Deleting must remove the whole profile (every
+	# checkpoint, permanent included) and drop it from the browser listing.
+	_title.call("_on_load_pressed")  # profile level
+	_check(_store.has_profile(pid), "profile present on disk before delete")
+	_title.call("_on_profile_delete_pressed", pid, "Default")
+	# The confirm dialog gates the destructive write — simulate the user
+	# clicking Delete by invoking the confirmed handler directly.
+	_title.call("_on_delete_confirmed")
+	_check(not _store.has_profile(pid), "profile dir removed from disk after delete (AC2)")
+	_check(_store.list_checkpoints(pid).is_empty(),
+		"every checkpoint (manual + episode included) gone after profile delete")
+	# Listing refreshes to empty.
+	var rows: VBoxContainer = _title.get("_load_rows")
+	var select_btns: Array = _profile_select_buttons(rows)
+	_check(select_btns.is_empty(), "profile list empty after deleting the only profile")
+
+
 # ---- helpers ------------------------------------------------------------
 
 func _button_rows(rows: VBoxContainer) -> Array:
@@ -249,6 +275,32 @@ func _button_rows(rows: VBoxContainer) -> Array:
 	for child in rows.get_children():
 		if child is Button:
 			out.append(child)
+	return out
+
+
+# The profile-select buttons (the wide row buttons), excluding Delete buttons.
+# Profile rows are HBoxes: [select Button, "DeleteButton" Button].
+func _profile_select_buttons(rows: VBoxContainer) -> Array:
+	var out: Array = []
+	if rows == null:
+		return out
+	for child in rows.get_children():
+		if child is HBoxContainer:
+			for sub in child.get_children():
+				if sub is Button and sub.name != "DeleteButton":
+					out.append(sub)
+	return out
+
+
+func _named_buttons(rows: VBoxContainer, node_name: String) -> Array:
+	var out: Array = []
+	if rows == null:
+		return out
+	for child in rows.get_children():
+		if child is HBoxContainer:
+			for sub in child.get_children():
+				if sub is Button and sub.name == node_name:
+					out.append(sub)
 	return out
 
 

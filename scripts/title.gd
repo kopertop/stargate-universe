@@ -14,8 +14,16 @@ extends Control
 @onready var _settings_overlay: Control = $SettingsOverlay
 
 # Built lazily in _ready since it isn't in the .tscn — a code-owned
-# ConfirmationDialog lets us update copy without touching the scene.
-var _new_game_confirm: ConfirmationDialog
+# dialog lets us update copy without touching the scene. New Game now prompts
+# for a PROFILE NAME (a named playthrough) rather than wiping a single global
+# save — each New Game mints its own profile, so a misclick can never destroy
+# an existing playthrough.
+var _new_game_dialog: ConfirmationDialog
+var _new_game_name_edit: LineEdit
+# Per-profile delete confirm in the Load browser (deleting a profile removes
+# its whole checkpoint set, permanent saves included).
+var _delete_confirm: ConfirmationDialog
+var _delete_pending_profile_id: String = ""
 # Code-owned "Load Game" button (inserted after Continue) + two-level
 # load browser overlay, both built in _ready so the .tscn stays untouched.
 var _btn_load: Button
@@ -74,17 +82,13 @@ func _ready() -> void:
 			_btn_exit, _back_btn, _difficulty_option]:
 		Audio.attach_ui_hover(b)
 
-	# Destructive-action guard: New Game wipes the save file. Without this
-	# prompt a misclick during a long playthrough silently destroys hours
-	# of progress, so we gate it behind an explicit confirm whenever a
-	# save exists. No-save case skips the dialog entirely (nothing to lose).
-	_new_game_confirm = ConfirmationDialog.new()
-	_new_game_confirm.title = "New Game"
-	_new_game_confirm.dialog_text = "Delete the current game?\n\nIf you do this you will lose all previous save data."
-	_new_game_confirm.get_ok_button().text = "Delete & Start Over"
-	_new_game_confirm.get_cancel_button().text = "Cancel"
-	_new_game_confirm.confirmed.connect(_start_new_game)
-	add_child(_new_game_confirm)
+	# New Game prompts for a PROFILE NAME (a named playthrough). Each New Game
+	# creates its own profile, so starting a new game NEVER destroys a prior
+	# one — the old destructive single-save wipe is gone. Per-profile delete
+	# lives in the Load browser instead.
+	_build_new_game_dialog()
+	# Per-profile delete confirm (shared by the Load-browser delete buttons).
+	_build_delete_confirm()
 
 	# Settings overlay UI wired to the Settings autoload.
 	_populate_difficulty_options()
@@ -274,14 +278,54 @@ func _populate_profile_rows() -> void:
 	# Most-recently-played first.
 	playable.sort_custom(func(a, b): return int(a.get("last_played", 0)) > int(b.get("last_played", 0)))
 	for prof in playable:
-		var pid: String = String(prof.get("id", ""))
-		var b: Button = Button.new()
-		b.text = _profile_row_label(prof)
-		b.custom_minimum_size = Vector2(480, 48)
-		b.pressed.connect(_on_profile_chosen.bind(pid))
-		Audio.attach_ui_hover(b)
-		rows.add_child(b)
+		_add_profile_row(rows, prof)
 	_focus_first_row(rows)
+
+
+# A profile row is the profile-select button plus a small Delete button, so the
+# player can remove a whole playthrough (its entire checkpoint set, permanent
+# saves included) from the Load browser — there's no destructive New Game path
+# anymore. Delete routes through a confirm.
+func _add_profile_row(rows: VBoxContainer, prof: Dictionary) -> void:
+	var pid: String = String(prof.get("id", ""))
+	var hbox: HBoxContainer = HBoxContainer.new()
+	hbox.add_theme_constant_override("separation", 6)
+	hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	var b: Button = Button.new()
+	b.text = _profile_row_label(prof)
+	b.custom_minimum_size = Vector2(420, 48)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.pressed.connect(_on_profile_chosen.bind(pid))
+	Audio.attach_ui_hover(b)
+	hbox.add_child(b)
+
+	var del: Button = Button.new()
+	del.name = "DeleteButton"
+	del.text = "Delete"
+	del.custom_minimum_size = Vector2(72, 48)
+	del.pressed.connect(_on_profile_delete_pressed.bind(pid, String(prof.get("display_name", pid))))
+	Audio.attach_ui_hover(del)
+	hbox.add_child(del)
+
+	rows.add_child(hbox)
+
+
+func _on_profile_delete_pressed(profile_id: String, display_name: String) -> void:
+	_delete_pending_profile_id = profile_id
+	_delete_confirm.dialog_text = "Delete \"%s\"?\n\nThis permanently removes every save in this profile, including manual and episode checkpoints." % display_name
+	_delete_confirm.popup_centered()
+
+
+func _on_delete_confirmed() -> void:
+	if _delete_pending_profile_id == "":
+		return
+	SaveManager.delete_profile(_delete_pending_profile_id)
+	_delete_pending_profile_id = ""
+	# Refresh the profile list in place; if it's now empty, the empty row shows.
+	_show_profile_level()
+	# Continue / Load buttons may need to grey out if the last save is gone.
+	_refresh_save_dependent_buttons()
 
 
 func _on_profile_chosen(profile_id: String) -> void:
@@ -426,16 +470,30 @@ func _add_section_header(rows: VBoxContainer, text: String) -> void:
 	rows.add_child(sec)
 
 
-# Grab focus on the first selectable Button row so keyboard / controller can
-# drive the browser immediately (mouse focus is automatic).
+# Grab focus on the first selectable Button so keyboard / controller can drive
+# the browser immediately (mouse focus is automatic). Profile rows wrap their
+# select button in an HBox (alongside Delete), so recurse one level.
 func _focus_first_row(rows: VBoxContainer) -> void:
 	for child in rows.get_children():
 		if child is Button:
 			(child as Button).grab_focus()
 			return
+		if child is HBoxContainer:
+			for sub in child.get_children():
+				if sub is Button:
+					(sub as Button).grab_focus()
+					return
 	# No rows to focus — fall back to Back so focus is never lost.
 	if _load_back_btn != null:
 		_load_back_btn.grab_focus()
+
+
+# Re-greys Continue + Load Game after a profile delete may have removed the
+# last save on disk. Mirrors the _ready() enable logic.
+func _refresh_save_dependent_buttons() -> void:
+	_btn_continue.disabled = not GameState.has_save()
+	if _btn_load != null:
+		_btn_load.disabled = _btn_continue.disabled
 
 
 func _format_playtime(seconds: float) -> String:
@@ -449,22 +507,71 @@ func _format_timestamp(ts: int) -> String:
 	var dt: Dictionary = Time.get_datetime_dict_from_unix_time(ts)
 	return "%04d-%02d-%02d %02d:%02d" % [dt.year, dt.month, dt.day, dt.hour, dt.minute]
 
+# Default profile name: "Destiny — 2026-05-31". A new playthrough never
+# clobbers an existing one, so no destructive confirm is needed — just name it.
+func _default_profile_name() -> String:
+	var dt: Dictionary = Time.get_datetime_dict_from_system()
+	return "Destiny — %04d-%02d-%02d" % [dt.year, dt.month, dt.day]
+
+
+func _build_new_game_dialog() -> void:
+	_new_game_dialog = ConfirmationDialog.new()
+	_new_game_dialog.title = "New Game"
+	_new_game_dialog.get_ok_button().text = "Start"
+	_new_game_dialog.get_cancel_button().text = "Cancel"
+
+	var vbox: VBoxContainer = VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	var prompt: Label = Label.new()
+	prompt.text = "Name this playthrough:"
+	vbox.add_child(prompt)
+	_new_game_name_edit = LineEdit.new()
+	_new_game_name_edit.custom_minimum_size = Vector2(320, 0)
+	_new_game_name_edit.text_submitted.connect(_on_new_game_name_submitted)
+	vbox.add_child(_new_game_name_edit)
+	_new_game_dialog.add_child(vbox)
+
+	_new_game_dialog.confirmed.connect(_on_new_game_confirmed)
+	add_child(_new_game_dialog)
+
+
+func _build_delete_confirm() -> void:
+	_delete_confirm = ConfirmationDialog.new()
+	_delete_confirm.title = "Delete Profile"
+	_delete_confirm.get_ok_button().text = "Delete"
+	_delete_confirm.get_cancel_button().text = "Cancel"
+	_delete_confirm.confirmed.connect(_on_delete_confirmed)
+	add_child(_delete_confirm)
+
+
 func _on_new_game_pressed() -> void:
-	# When a save exists, route through the confirmation dialog first.
-	# Cancel leaves the menu untouched; confirm calls _start_new_game.
-	if SaveManager.has_save():
-		_new_game_confirm.popup_centered()
-		return
-	_start_new_game()
+	# Prompt for a profile name. Pre-fill a dated default and select it so the
+	# player can either accept it or type over it immediately.
+	_new_game_name_edit.text = _default_profile_name()
+	_new_game_dialog.popup_centered()
+	_new_game_name_edit.grab_focus()
+	_new_game_name_edit.select_all()
 
 
-func _start_new_game() -> void:
-	# Wipe the on-disk save eagerly so the user's "start over" intent
-	# holds even if they quit at the title before any autosave lands.
-	SaveManager.wipe()
-	# Iterate every registered system and call reset() — keeps GameClock,
-	# NPCState, etc. in sync without title.gd having to enumerate them.
-	SaveManager.start_new_game()
+func _on_new_game_name_submitted(_text: String) -> void:
+	# Enter in the name field confirms the dialog.
+	_new_game_dialog.hide()
+	_on_new_game_confirmed()
+
+
+func _on_new_game_confirmed() -> void:
+	var name: String = _new_game_name_edit.text.strip_edges()
+	if name == "":
+		name = _default_profile_name()
+	_start_new_game(name)
+
+
+# Starts a brand-new playthrough in its OWN named profile. start_new_game
+# resets every registered system's in-memory state AND mints a fresh profile
+# (with the chosen name) — no on-disk profile is wiped, so prior playthroughs
+# survive untouched.
+func _start_new_game(profile_name: String) -> void:
+	SaveManager.start_new_game(profile_name)
 	SceneRouter.change_to("res://scenes/gate_room.tscn", "FromGate")
 
 func _build_controller_button() -> void:

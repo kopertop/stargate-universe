@@ -68,7 +68,16 @@ static func scramble(text: String, progress: float, seed: int = 0) -> String:
 		# Deterministic glyph for this (seed, position): seeding per char keeps
 		# neighbours independent so the field looks like noise, not a pattern.
 		rng.seed = hash([seed, i])
-		out += ANCIENT_GLYPHS[rng.randi_range(0, glyph_count - 1)]
+		var glyph: String = ANCIENT_GLYPHS[rng.randi_range(0, glyph_count - 1)]
+		# If the source char is itself a glyph (e.g. punctuation input), the draw
+		# can coincide with it and leak the original — re-roll deterministically
+		# until it differs, so an un-resolved position NEVER shows its real char.
+		var guard: int = 0
+		while glyph == ch and guard < glyph_count:
+			rng.seed = hash([seed, i, guard])
+			glyph = ANCIENT_GLYPHS[rng.randi_range(0, glyph_count - 1)]
+			guard += 1
+		out += glyph
 	return out
 
 
@@ -91,9 +100,8 @@ func play(text: String, duration: float = 1.2) -> void:
 	if duration <= 0.0 or (router != null and router.get("instant_mode") == true):
 		reveal_instant(text)
 		return
-	# Drive a 0→1 progress var; method_callback rewrites .text each tick. A live
-	# frame counter feeds `seed` so the un-resolved field shimmers, not strobes.
-	var progress: float = 0.0
+	# tween_method rewrites .text each tick. A live frame counter feeds `seed` so
+	# the un-resolved field shimmers, not strobes.
 	self.text = scramble(text, 0.0, 0)
 	_tween = create_tween()
 	_tween.tween_method(

@@ -72,6 +72,20 @@ func _test_boundary_zero_hides_all() -> void:
 	# Also assert at a hard negative to confirm clamping.
 	var negative: String = _scramble(s, -0.5)
 	_expect(negative.length() == s.length(), "scramble(s, -0.5) preserves length")
+	# Regression (#61 review): input made entirely of glyph-set chars must still
+	# never leak — the re-roll guard ensures a drawn glyph != the source char,
+	# even when the source char is itself one of ANCIENT_GLYPHS.
+	var punct: String = _AncientText.ANCIENT_GLYPHS
+	var punct_leaked: bool = false
+	for seed in range(2000):
+		var out: String = _scramble(punct, 0.0, seed)
+		for i in range(punct.length()):
+			if out[i] == punct[i]:
+				punct_leaked = true
+				break
+		if punct_leaked:
+			break
+	_expect(not punct_leaked, "scramble(glyph-only input, 0.0) never leaks (re-roll guard, 2000 seeds)")
 
 
 # --- progress >= 1.0 → verbatim. --------------------------------------------

@@ -188,6 +188,22 @@ func objective(quest_id: String = "") -> String:
 	return String(step.get("objective", ""))
 
 
+# Display title of the tracked quest (or of the named one). "" if no quest
+# is tracked / known. Drives the WoW-style quest tracker header (#66).
+func title(quest_id: String = "") -> String:
+	_ensure_initialized()
+	var qid: String = _resolve_quest_id(quest_id)
+	if qid == "" or not _quests.has(qid):
+		return ""
+	return String((_quests[qid] as Dictionary).get("title", ""))
+
+
+# Id of the quest the HUD currently tracks. "" until a tracked quest loads.
+func tracked_quest_id() -> String:
+	_ensure_initialized()
+	return _tracked_quest_id
+
+
 # Anchor for the in-world quest diamond. {} when off-ship / hidden.
 func target(quest_id: String = "") -> Dictionary:
 	_ensure_initialized()

@@ -44,12 +44,23 @@ const LEAF_HEIGHT: float = 2.05
 const LEAF_THICKNESS: float = 0.14
 const OPEN_OFFSET: float = 0.86          # how far each leaf slides outward
 const TOGGLE_DURATION: float = 0.55
+const PLAQUE_DECODE_DURATION: float = 1.4   # seconds for the obfuscated→real reveal
+
+# Pure scramble cipher (#61). Loaded by path rather than via the `AncientText`
+# class_name, which may not be registered in the same headless -s run.
+const ANCIENT_TEXT: GDScript = preload("res://scripts/ancient_text.gd")
 
 var _is_open: bool = false
 var _left_leaf: Node3D
 var _right_leaf: Node3D
 var _status_mat: StandardMaterial3D
 var _tween: Tween
+
+# Plaque Label3D nodes (mirrored on both sides) + the resolved destination name
+# they decode to. Held so GameState.room_discovered can animate them in place.
+var _plaque_labels: Array[Label3D] = []
+var _plaque_resolved: String = ""
+var _plaque_tween: Tween
 
 func _ready() -> void:
 	super()
@@ -61,6 +72,10 @@ func _ready() -> void:
 	_build_visual()
 	_refresh_prompt()
 	_refresh_status_light()
+	# Decode the plaque in place when the destination room becomes discovered.
+	# Only meaningful for room-id transition doors (target_room_id obfuscation).
+	if target_room_id != "" and not _plaque_labels.is_empty():
+		GameState.room_discovered.connect(_on_room_discovered)
 
 func _refresh_prompt() -> void:
 	if locked:
@@ -256,9 +271,14 @@ func _build_visual() -> void:
 # rather than competing with the bronze trim / status-light hardware on the
 # door itself. Mirrored on both sides like the status light.
 func _add_plaque(visual: Node3D, frame_mat: StandardMaterial3D) -> void:
-	var label_text: String = _resolve_plaque_text()
-	if label_text == "":
+	_plaque_resolved = _resolve_plaque_text()
+	if _plaque_resolved == "":
 		return
+	# Obfuscation only applies to data-driven room destinations: a room-id door
+	# to an undiscovered neighbour shows Ancient glyphs until that room is found.
+	# Hand-authored target_scene doors (gate_room) have no room-id to gate on, so
+	# they always show their resolved sign.
+	var label_text: String = _initial_plaque_text()
 	var plaque_w: float = FRAME_WIDTH - 0.1
 	var plaque_h: float = 0.30
 	var plaque_y: float = FRAME_HEIGHT + plaque_h * 0.5 + 0.08
@@ -290,6 +310,7 @@ func _add_plaque(visual: Node3D, frame_mat: StandardMaterial3D) -> void:
 		if side < 0.0:
 			label.rotation_degrees = Vector3(0.0, 180.0, 0.0)
 		visual.add_child(label)
+		_plaque_labels.append(label)
 
 
 # Priority: explicit plaque_label → ShipLayout row name → title-cased id/scene.
@@ -304,6 +325,53 @@ func _resolve_plaque_text() -> String:
 	if target_scene != "":
 		return _title_case_snake(target_scene.get_file().get_basename())
 	return ""
+
+
+# Initial text the plaque is built with: the real (resolved) name if the
+# destination room is already discovered OR this isn't a room-id door, else a
+# fully-obfuscated Ancient string of the same shape. In instant_mode/headless
+# this still settles on the deterministic correct value with no tween.
+func _initial_plaque_text() -> String:
+	if _destination_discovered():
+		return _plaque_resolved
+	return ANCIENT_TEXT.scramble(_plaque_resolved, 0.0)
+
+
+# True when the plaque should read in plain English: non-room-id doors (no
+# discovery to gate on) and room-id doors whose target room is discovered.
+func _destination_discovered() -> bool:
+	if target_room_id == "":
+		return true
+	return GameState.rooms_discovered.has(target_room_id)
+
+
+# Live reveal: when the room this door points at is discovered, decode every
+# mirrored plaque label from glyphs to the real name. Honors instant_mode /
+# headless (no tween — set the final text now) so captures and the playthrough
+# never depend on timing.
+func _on_room_discovered(room_id: String) -> void:
+	if room_id != target_room_id:
+		return
+	if _plaque_resolved == "" or _plaque_labels.is_empty():
+		return
+	var router: Node = get_node_or_null("/root/SceneRouter")
+	var instant: bool = router != null and router.get("instant_mode") == true
+	if instant or PLAQUE_DECODE_DURATION <= 0.0:
+		for label: Label3D in _plaque_labels:
+			label.text = _plaque_resolved
+		return
+	if _plaque_tween != null and _plaque_tween.is_valid():
+		_plaque_tween.kill()
+	_plaque_tween = create_tween()
+	_plaque_tween.tween_method(_apply_plaque_progress, 0.0, 1.0, PLAQUE_DECODE_DURATION)
+	_plaque_tween.tween_callback(_apply_plaque_progress.bind(1.0))
+
+
+func _apply_plaque_progress(progress: float) -> void:
+	var text: String = ANCIENT_TEXT.scramble(_plaque_resolved, progress, Engine.get_process_frames())
+	for label: Label3D in _plaque_labels:
+		if label != null:
+			label.text = text
 
 
 func _title_case_snake(s: String) -> String:

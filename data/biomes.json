@@ -15,7 +15,33 @@
 		"ambient_sfx": "wind_dry",
 		"hazard": {
 			"type": "heat",
-			"temperature_c": 48
+			"temperature_c": 48,
+			"gate_window": 150.0,
+			"water_drain_per_sec": 0.05
+		},
+		"walkability": {
+			"max_prop_height": 1.6
+		}
+	},
+	"temperate": {
+		"label": "Temperate",
+		"terrain": {
+			"height": 3.2,
+			"frequency": 0.006,
+			"detail_frequency": 0.018,
+			"detail_strength": 0.25,
+			"slope_limit_deg": 30.0
+		},
+		"ground_color": [0.40, 0.52, 0.34],
+		"sky_horizon": [0.62, 0.74, 0.86],
+		"prop_set": "rocks",
+		"prop_density": 0.7,
+		"ambient_sfx": "wind_soft",
+		"hazard": {
+			"type": "none",
+			"temperature_c": 18,
+			"gate_window": 180.0,
+			"water_drain_per_sec": 0.0167
 		},
 		"walkability": {
 			"max_prop_height": 1.6
@@ -37,7 +63,9 @@
 		"ambient_sfx": "jungle_amb",
 		"hazard": {
 			"type": "humidity",
-			"temperature_c": 32
+			"temperature_c": 32,
+			"gate_window": 175.0,
+			"water_drain_per_sec": 0.025
 		},
 		"walkability": {
 			"max_prop_height": 2.0
@@ -60,7 +88,9 @@
 		"hazard": {
 			"type": "toxin",
 			"toxins": "CHLORINE",
-			"breathable": false
+			"breathable": false,
+			"gate_window": 160.0,
+			"water_drain_per_sec": 0.0167
 		},
 		"walkability": {
 			"max_prop_height": 1.6
@@ -81,7 +111,9 @@
 		"prop_density": 0.9,
 		"ambient_sfx": "city_wind",
 		"hazard": {
-			"type": "none"
+			"type": "none",
+			"gate_window": 180.0,
+			"water_drain_per_sec": 0.0167
 		},
 		"walkability": {
 			"max_prop_height": 2.4
@@ -103,7 +135,9 @@
 		"ambient_sfx": "tech_hum",
 		"hazard": {
 			"type": "radiation",
-			"radiation": "MODERATE"
+			"radiation": "MODERATE",
+			"gate_window": 170.0,
+			"water_drain_per_sec": 0.0167
 		},
 		"walkability": {
 			"max_prop_height": 2.4

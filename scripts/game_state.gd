@@ -295,6 +295,13 @@ var returned_from_lime_planet: bool = false
 # instant_mode). Persisted so a resumed save keeps the same remaining time.
 var gate_window_active: bool = false
 var gate_window_remaining: float = 0.0
+# Per-run heat/hazard water drain (issue #87). While a planet gate window is open
+# the away team burns Water at the biome's rate (heat biomes drain faster). Water
+# is an integer resource, so we accumulate fractional drain here and spend whole
+# units as they cross 1.0. Rate is stamped at run start from the active biome.
+# Both persisted so a resumed mid-run save keeps draining at the right rate.
+var gate_window_water_drain: float = 0.0
+var _water_drain_accum: float = 0.0
 # Snapshot of tracked-resource counts captured the moment a planet run's gate
 # window opens (run start). knock_out() reconciles against this: a downed run
 # forfeits everything gathered this run EXCEPT the minimum-necessary bank of the
@@ -434,6 +441,10 @@ func start_gate_window(duration: float) -> bool:
 		return false
 	gate_window_active = true
 	gate_window_remaining = duration
+	# Heat/hazard water drain rate for THIS run, sourced from the active biome
+	# (issue #87). A heat biome drains Water faster than the temperate baseline.
+	gate_window_water_drain = PlanetGenerator.water_drain_for(active_planet_spec)
+	_water_drain_accum = 0.0
 	# Snapshot the crew's tracked-resource stock at run start so a knock-out can
 	# forfeit everything gathered this run while banking the minimum of the
 	# scarce target (issue #92).
@@ -443,10 +454,27 @@ func start_gate_window(duration: float) -> bool:
 	return true
 
 func _tick_gate_window(delta: float) -> void:
+	_tick_heat_water_drain(delta)
 	gate_window_remaining = maxf(0.0, gate_window_remaining - delta)
 	if gate_window_remaining <= 0.0:
 		gate_window_active = false
 		gate_window_expired.emit()
+
+
+# Burn Water on the surface at the biome's drain rate (issue #87). Water is an
+# integer resource, so we accumulate fractional drain and spend whole units as
+# they cross 1.0 — a hot biome reaches each whole unit sooner. Never drops below
+# zero; if the crew is out of water the accumulator just idles.
+func _tick_heat_water_drain(delta: float) -> void:
+	if gate_window_water_drain <= 0.0:
+		return
+	_water_drain_accum += gate_window_water_drain * delta
+	while _water_drain_accum >= 1.0:
+		_water_drain_accum -= 1.0
+		if resource_count("water") <= 0:
+			_water_drain_accum = 0.0
+			return
+		spend_resource("water", 1, "the heat")
 
 
 func _tick_scrubber(delta: float) -> void:
@@ -508,6 +536,8 @@ func reset() -> void:
 	active_planet_spec = {}
 	gate_window_active = false
 	gate_window_remaining = 0.0
+	gate_window_water_drain = 0.0
+	_water_drain_accum = 0.0
 	run_start_resources = {}
 	recovering_in_infirmary = false
 	knockout_cause = ""
@@ -1581,6 +1611,7 @@ func serialize() -> Dictionary:
 		"active_planet_spec": active_planet_spec.duplicate(true),
 		"gate_window_active": gate_window_active,
 		"gate_window_remaining": gate_window_remaining,
+		"gate_window_water_drain": gate_window_water_drain,
 		"run_start_resources": run_start_resources.duplicate(true),
 		"recovering_in_infirmary": recovering_in_infirmary,
 		"knockout_cause": knockout_cause,
@@ -1642,6 +1673,8 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	active_planet_spec = (saved_spec as Dictionary).duplicate(true) if saved_spec is Dictionary else {}
 	gate_window_active = data.get("gate_window_active", false) == true
 	gate_window_remaining = float(data.get("gate_window_remaining", 0.0))
+	gate_window_water_drain = float(data.get("gate_window_water_drain", 0.0))
+	_water_drain_accum = 0.0
 	run_start_resources = {}
 	var saved_run_res: Variant = data.get("run_start_resources", {})
 	if saved_run_res is Dictionary:

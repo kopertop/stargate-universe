@@ -5,13 +5,16 @@ extends SceneTree
 #   1. Every biome from a spec renders (terrain manager + gate + lime + POIs).
 #   2. Terrain is WALKABLE — max local slope stays under the CharacterBody3D
 #      floor limit (jump never required) for each biome.
-#   3. Chunk borders stitch SEAMLESSLY — the global height function returns the
-#      IDENTICAL height when two adjacent chunks sample their shared edge.
+#   3. Chunk borders stitch SEAMLESSLY — two adjacent chunks, each computing its
+#      shared-edge vertices via its OWN chunk-local coordinate math, land on the
+#      same world x and yield identical per-vertex heights.
 #   4. Near-infinite: the height function is finite + bounded far from the gate
 #      (no walling rim), and the chunk manager caps the loaded-chunk count.
-#   5. Deterministic per seed: same spec → same height + same node names; a
-#      different seed → a different height field.
-#   6. The persisted PlanetSpec rebuilds an IDENTICAL world (save/load).
+#   5. Deterministic per seed: same spec → same height field AND same content
+#      PLACEMENT (name + position); a different seed → a different height field
+#      AND different placements.
+#   6. The persisted PlanetSpec rebuilds an IDENTICAL world — same placements
+#      (name + position), not just the seed-independent node-name set (save/load).
 #
 # Run with:
 #   godot --headless --quit-after 600 -s res://tests/smoke/planet_generator.gd
@@ -85,26 +88,47 @@ func _test_each_biome_builds_and_is_walkable() -> void:
 		world.free()
 
 
-# --- 3: chunk borders stitch seamlessly (global height function) -------------
+# --- 3: chunk borders stitch seamlessly (two adjacent chunks' OWN edge verts) -
+# Reproduce PlanetChunkManager._build_chunk vertex math for two horizontally
+# adjacent chunks (coord (0,0) and (1,0)) INDEPENDENTLY. The left chunk's right
+# edge (local i = res) and the right chunk's left edge (local i = 0) are distinct
+# code paths that must land on the same world x; assert their per-vertex world
+# heights match exactly. A real seam (per-chunk randomness, or a chunk offsetting
+# its samples) would make these diverge — this fails if borders DON'T stitch.
 func _test_seamless_chunk_borders() -> void:
+	var chunk_script: Script = load(CHUNK_PATH)
+	if chunk_script == null:
+		_expect(false, "PlanetChunkManager script loads (seam test)")
+		return
 	var spec: Dictionary = _spec(7, "jungle")
 	var params: Dictionary = _gen.build_params(spec)
-	# Two adjacent chunks share an edge; both sample height_at() at the SAME world
-	# coords on that edge → identical heights (no cliffs/gaps). Sample several
-	# points along a shared chunk boundary at x = 64.0.
+	var mgr: Node3D = chunk_script.new()
+	var chunk_size: float = float(mgr.get("chunk_size"))
+	var res: int = max(int(mgr.get("chunk_res")), 2)
+	mgr.free()
+	var step: float = chunk_size / float(res)
+
+	# Left chunk (0,0): right-edge column is local i = res → world x = res*step.
+	# Right chunk (1,0): left-edge column is local i = 0 → world x = 1*chunk_size.
+	var left_origin_x: float = 0.0 * chunk_size
+	var right_origin_x: float = 1.0 * chunk_size
+	var left_edge_x: float = left_origin_x + float(res) * step
+	var right_edge_x: float = right_origin_x + 0.0 * step
+	_expect(abs(left_edge_x - right_edge_x) < 0.0001,
+		"adjacent chunks' shared edge lands on the same world x (%.4f vs %.4f)" % [left_edge_x, right_edge_x])
+
 	var seamless: bool = true
 	var max_diff: float = 0.0
-	var border_x: float = 64.0
-	for k in 20:
-		var z: float = -64.0 + float(k) * 6.4
-		# "Left chunk" and "right chunk" both compute the same world point.
-		var h_left: float = _gen.height_at(border_x, z, params)
-		var h_right: float = _gen.height_at(border_x, z, params)
+	var shared_origin_z: float = 0.0 * chunk_size
+	for j in (res + 1):
+		var z: float = shared_origin_z + float(j) * step
+		var h_left: float = _gen.height_at(left_edge_x, z, params)
+		var h_right: float = _gen.height_at(right_edge_x, z, params)
 		var diff: float = abs(h_left - h_right)
 		max_diff = max(max_diff, diff)
 		if diff > 0.0001:
 			seamless = false
-	_expect(seamless, "chunk-border heights identical across the shared edge (max diff %.5f)" % max_diff)
+	_expect(seamless, "left-chunk right edge == right-chunk left edge heights (max diff %.5f)" % max_diff)
 
 
 # --- 4: near-infinite — bounded height, no walling rim ----------------------
@@ -161,10 +185,14 @@ func _test_determinism_per_seed() -> void:
 	_expect(abs(h_a - h_a2) < 0.0001, "same seed → identical height field")
 	_expect(abs(h_a - h_b) > 0.0001, "different seed → different height field")
 
-	# Same spec → same deterministic node names (discovery survives save/load).
-	var names1: Array = _node_names(_spec(1234, "desert"))
-	var names2: Array = _node_names(_spec(1234, "desert"))
-	_expect(names1 == names2, "same seed → identical generated node names")
+	# Same spec → identical generated content PLACEMENT (name + position), not just
+	# names (names are fixed by _spec counts and seed-independent — comparing them
+	# alone would pass for ANY seed). A different seed must move the placements.
+	var place_a: Dictionary = _node_placements(_spec(1234, "desert"))
+	var place_a2: Dictionary = _node_placements(_spec(1234, "desert"))
+	var place_b: Dictionary = _node_placements(_spec(5678, "desert"))
+	_expect(_placements_equal(place_a, place_a2), "same seed → identical node placements (name + position)")
+	_expect(not _placements_equal(place_a, place_b), "different seed → different node placements")
 
 
 # --- 6: persisted spec rebuilds identically (save round-trip) ----------------
@@ -178,16 +206,18 @@ func _test_persisted_spec_rebuilds_identically() -> void:
 	gs.set("active_planet_spec", spec)
 	var saved: Dictionary = gs.call("serialize")
 	_expect(saved.has("active_planet_spec"), "serialize() carries active_planet_spec")
-	# Wipe + restore from the snapshot, then rebuild and compare node names.
-	var before: Array = _node_names(spec)
+	# Wipe + restore from the snapshot, then rebuild and compare PLACEMENTS (name +
+	# position) — proves the persisted spec reproduces the same lime/POI/prop spots,
+	# not merely the same (seed-independent) node-name set.
+	var before: Dictionary = _node_placements(spec)
 	gs.call("reset")
 	_expect((gs.get("active_planet_spec") as Dictionary).is_empty(), "reset() clears active_planet_spec")
 	gs.call("deserialize", saved, 1)
 	var restored: Dictionary = gs.get("active_planet_spec")
 	_expect(int(restored.get("seed", -1)) == 314159, "deserialize() restores spec seed")
 	_expect(String(restored.get("biome", "")) == "toxic", "deserialize() restores spec biome")
-	var after: Array = _node_names(restored)
-	_expect(before == after, "rebuild from persisted spec yields identical world")
+	var after: Dictionary = _node_placements(restored)
+	_expect(_placements_equal(before, after), "rebuild from persisted spec yields identical placements")
 
 
 # --- helpers ----------------------------------------------------------------
@@ -202,18 +232,33 @@ func _spec(seed: int, biome: String) -> Dictionary:
 	}
 
 
-# Build a planet into a throwaway world and collect its child node names (sorted)
-# so two builds from the same spec can be compared for determinism.
-func _node_names(spec: Dictionary) -> Array:
+# Build a planet into a throwaway world and collect a name → world-position map of
+# its children, so two builds can be compared on actual PLACEMENT (not just the
+# seed-independent name set). Positions are rounded to mm to avoid float jitter.
+func _node_placements(spec: Dictionary) -> Dictionary:
 	var world: Node3D = Node3D.new()
 	root.add_child(world)
 	_gen.build(world, spec)
-	var names: Array = []
+	var places: Dictionary = {}
 	for c in world.get_children():
-		names.append(c.name)
-	names.sort()
+		if c is Node3D:
+			var p: Vector3 = (c as Node3D).position
+			places[String(c.name)] = Vector3(snappedf(p.x, 0.001), snappedf(p.y, 0.001), snappedf(p.z, 0.001))
 	world.free()
-	return names
+	return places
+
+
+# Two placement maps are equal iff they have the same keys AND each key's position
+# matches within 1 mm.
+func _placements_equal(a: Dictionary, b: Dictionary) -> bool:
+	if a.size() != b.size():
+		return false
+	for key in a.keys():
+		if not b.has(key):
+			return false
+		if (a[key] as Vector3).distance_to(b[key] as Vector3) > 0.001:
+			return false
+	return true
 
 
 func _expect(condition: bool, label: String) -> void:

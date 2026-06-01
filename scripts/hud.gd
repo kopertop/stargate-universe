@@ -23,6 +23,22 @@ extends Control
 
 var _player: Node = null
 
+# --- Shared WoW-skin palette (cohesion pass, #62) --------------------------
+# One visual language across every code-built HUD widget (unit frame, action
+# bar, quest tracker, discovery toast): the SAME cool-blue accent border, the
+# SAME translucent dark panel fill, and the SAME corner radius. Each widget used
+# to redefine its own near-but-not-identical stylebox; these constants + the
+# _make_wow_stylebox factory are now the single source of truth. The warm-gold
+# accent (SKIN_ACCENT_GOLD) is the deliberate secondary highlight for quest
+# titles / attention states — also shared, not per-widget.
+const SKIN_ACCENT: Color = Color(0.60, 0.78, 0.95, 0.85)       # primary cool-blue border
+const SKIN_ACCENT_GOLD: Color = Color(1.0, 0.84, 0.42, 1.0)    # quest title / attention
+const SKIN_PANEL_BG: Color = Color(0.04, 0.06, 0.09, 0.6)      # translucent dark fill
+const SKIN_CORNER_RADIUS: int = 4
+const SKIN_BORDER_WIDTH: int = 2
+const SKIN_TEXT_PRIMARY: Color = Color(0.95, 0.98, 1.0, 1.0)
+const SKIN_TEXT_OUTLINE: Color = Color(0, 0, 0, 0.85)
+
 # WoW-style player unit frame (upper-left, below the compass banner). A square
 # portrait of Eli on the left, his name plate top-right of it, and the Health +
 # Oxygen bars stacked beneath the name (relocated here from the old bottom-left
@@ -35,7 +51,6 @@ const UNIT_PORTRAIT_KEY: String = "Eli"
 const UNIT_FRAME_POS: Vector2 = Vector2(24.0, 70.0)
 const UNIT_PORTRAIT_SIZE: Vector2 = Vector2(72.0, 72.0)
 const UNIT_BAR_WIDTH: float = 196.0
-const UNIT_ACCENT: Color = Color(0.6, 0.75, 0.95, 0.65)
 const UNIT_HEALTH_FILL: Color = Color(0.35, 0.85, 0.45, 0.95)
 const UNIT_HEALTH_CRITICAL_FILL: Color = Color(0.95, 0.3, 0.3, 0.98)
 const UNIT_OXYGEN_FILL: Color = Color(0.4, 0.85, 0.95, 0.95)
@@ -66,8 +81,6 @@ var _edge_arrow: Polygon2D = null
 # more tools can be added later. Driven by _refresh_action_bar.
 const ACTION_SLOT_SIZE: Vector2 = Vector2(58, 58)
 const ACTION_BAR_MARGIN: float = 20.0
-const ACTION_BORDER: Color = Color(0.70, 0.80, 0.95, 0.65)
-const ACTION_BORDER_ATTENTION: Color = Color(1.0, 0.78, 0.30, 0.95)
 var _action_bar: HBoxContainer = null
 var _action_pulse: Tween = null
 
@@ -81,9 +94,11 @@ var _action_pulse: Tween = null
 const TRACKER_POS_RIGHT: float = -24.0       # offset from the right edge
 const TRACKER_POS_TOP: float = 70.0          # below the compass banner
 const TRACKER_WIDTH: float = 300.0
-const TRACKER_TITLE_COLOR: Color = Color(1.0, 0.84, 0.42, 1.0)
-const TRACKER_OBJECTIVE_COLOR: Color = Color(0.92, 0.96, 1.0, 1.0)
-const TRACKER_OUTLINE: Color = Color(0, 0, 0, 0.85)
+# Tracker title uses the shared gold accent; objective + outline use the shared
+# primary text + outline so all four widgets read in one type/color language.
+const TRACKER_TITLE_COLOR: Color = SKIN_ACCENT_GOLD
+const TRACKER_OBJECTIVE_COLOR: Color = SKIN_TEXT_PRIMARY
+const TRACKER_OUTLINE: Color = SKIN_TEXT_OUTLINE
 # Push the recent-log feed below the tracker so they share the top-right corner
 # without fighting. Recomputed after each tracker refresh from its real height.
 const LOG_GAP_BELOW_TRACKER: float = 12.0
@@ -122,7 +137,10 @@ var _compass: Control = null
 # hud.tscn diff stays empty.
 const DISCOVERY_FADE_SECS: float = 3.0
 const DISCOVERY_DECODE_SECS: float = 1.1
-const DISCOVERY_ACCENT: Color = Color(0.55, 0.85, 1.0, 1.0)
+# Discovery header shares the cool-blue skin accent at full opacity (the header
+# must read crisply over the world), keeping the hue identical to the unit
+# frame / action-bar borders.
+const DISCOVERY_ACCENT: Color = Color(SKIN_ACCENT.r, SKIN_ACCENT.g, SKIN_ACCENT.b, 1.0)
 const DISCOVERY_STING_SOUND: String = "res://sounds/terminal_boot.ogg"
 var _discovery_root: Control = null
 var _discovery_name: Node = null      # AncientText (Label subclass) — duck-typed.
@@ -217,6 +235,23 @@ func _spawn_compass() -> void:
 	add_child(_compass)
 
 
+# Shared WoW-skin panel stylebox. Every framed HUD widget (portrait, vital bar
+# track, action slot) gets its border/fill/radius from here so the skin reads as
+# one cohesive treatment. `border_color` and `border_width` let a widget opt
+# into the gold attention accent or a thinner hairline while keeping the same
+# fill + corner language.
+func _make_wow_stylebox(
+		border_color: Color = SKIN_ACCENT,
+		border_width: int = SKIN_BORDER_WIDTH,
+		bg_color: Color = SKIN_PANEL_BG) -> StyleBoxFlat:
+	var sb: StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = bg_color
+	sb.border_color = border_color
+	sb.set_border_width_all(border_width)
+	sb.set_corner_radius_all(SKIN_CORNER_RADIUS)
+	return sb
+
+
 # WoW-style player unit frame: a portrait of Eli (left) with his name plate and
 # the Health + Oxygen bars stacked to its right. Anchored top-left, just below
 # the compass banner. Portrait is loaded via the shared PortraitLoader so a
@@ -235,12 +270,7 @@ func _build_unit_frame() -> void:
 	portrait_frame.name = "PortraitFrame"
 	portrait_frame.custom_minimum_size = UNIT_PORTRAIT_SIZE
 	portrait_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var pf_style: StyleBoxFlat = StyleBoxFlat.new()
-	pf_style.bg_color = Color(0.04, 0.06, 0.09, 0.6)
-	pf_style.border_color = UNIT_ACCENT
-	pf_style.set_border_width_all(2)
-	pf_style.set_corner_radius_all(4)
-	portrait_frame.add_theme_stylebox_override("panel", pf_style)
+	portrait_frame.add_theme_stylebox_override("panel", _make_wow_stylebox())
 
 	var portrait: TextureRect = TextureRect.new()
 	portrait.name = "Portrait"
@@ -268,8 +298,8 @@ func _build_unit_frame() -> void:
 	name_label.name = "PlayerName"
 	name_label.text = UNIT_PLAYER_NAME
 	name_label.add_theme_font_size_override("font_size", 16)
-	name_label.add_theme_color_override("font_color", Color(0.95, 0.98, 1.0, 1.0))
-	name_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	name_label.add_theme_color_override("font_color", SKIN_TEXT_PRIMARY)
+	name_label.add_theme_color_override("font_outline_color", SKIN_TEXT_OUTLINE)
 	name_label.add_theme_constant_override("outline_size", 5)
 	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(name_label)
@@ -295,15 +325,11 @@ func _make_vital_bar(bar_name: String, fill_color: Color) -> ProgressBar:
 	bar.value = 100.0
 	bar.show_percentage = false
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var bg: StyleBoxFlat = StyleBoxFlat.new()
-	bg.bg_color = Color(0.05, 0.07, 0.1, 0.55)
-	bg.border_color = UNIT_ACCENT
-	bg.set_border_width_all(1)
-	bg.set_corner_radius_all(2)
-	bar.add_theme_stylebox_override("background", bg)
+	# Bar track shares the skin fill + accent, with a hairline border (width 1).
+	bar.add_theme_stylebox_override("background", _make_wow_stylebox(SKIN_ACCENT, 1))
 	var fill: StyleBoxFlat = StyleBoxFlat.new()
 	fill.bg_color = fill_color
-	fill.set_corner_radius_all(2)
+	fill.set_corner_radius_all(SKIN_CORNER_RADIUS)
 	bar.add_theme_stylebox_override("fill", fill)
 	return bar
 
@@ -350,7 +376,7 @@ func _build_discovery_toast() -> void:
 	header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	header.add_theme_font_size_override("font_size", 16)
 	header.add_theme_color_override("font_color", DISCOVERY_ACCENT)
-	header.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	header.add_theme_color_override("font_outline_color", SKIN_TEXT_OUTLINE)
 	header.add_theme_constant_override("outline_size", 4)
 	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.add_child(header)
@@ -599,12 +625,10 @@ func _make_action_slot(item_id: String, key_label: String, attention: bool) -> P
 	slot.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	slot.tooltip_text = "Open the Kino Remote  [%s]" % key_label
 	slot.gui_input.connect(_on_action_slot_input.bind(item_id))
-	var sb: StyleBoxFlat = StyleBoxFlat.new()
-	sb.bg_color = Color(0.0, 0.0, 0.0, 0.55)
-	sb.border_color = ACTION_BORDER_ATTENTION if attention else ACTION_BORDER
-	sb.set_border_width_all(2)
-	sb.set_corner_radius_all(6)
-	slot.add_theme_stylebox_override("panel", sb)
+	# Shares the skin fill + corner; attention swaps to the gold accent (same gold
+	# the quest tracker title uses), otherwise the cool-blue primary border.
+	var border: Color = SKIN_ACCENT_GOLD if attention else SKIN_ACCENT
+	slot.add_theme_stylebox_override("panel", _make_wow_stylebox(border))
 
 	var icon_path: String = String(Inventory.definition(item_id).get("icon", ""))
 	if icon_path != "" and ResourceLoader.exists(icon_path):

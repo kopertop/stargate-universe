@@ -22,8 +22,6 @@ extends Control
 
 signal closed()
 
-const CHARACTERS_PATH: String = "res://data/characters.json"
-
 @onready var _speaker_label: Label = $Window/Margin/VBox/Header/SpeakerName
 @onready var _line_label: Label = $Window/Margin/VBox/BodyPanel/BodyScroll/Line
 @onready var _choices_box: VBoxContainer = $Window/Margin/VBox/ChoicesVBox
@@ -32,14 +30,9 @@ const CHARACTERS_PATH: String = "res://data/characters.json"
 var _target: Node3D = null
 var _tree: Array = []
 var _current_index: int = 0
-# Character registry: display-name → { portrait, role, short_name }. Loaded
-# once from data/characters.json on first start(). Unknown speakers fall
-# through to a blank portrait (TextureRect.texture = null).
-static var _characters_cache: Dictionary = {}
-# Decoded ImageTexture cache, keyed by res:// path. Portraits are loaded via
-# FileAccess+Image (not load()) so they work without .import sidecar files —
-# this cache avoids re-decoding the PNG on every dialog node.
-static var _portrait_texture_cache: Dictionary = {}
+# Portrait + character-registry loading lives in PortraitLoader (shared with the
+# HUD unit frame) so the .import-sidestep PNG decoder is implemented once.
+const PortraitLoaderScript := preload("res://scripts/portrait_loader.gd")
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -75,62 +68,10 @@ func _render_node() -> void:
 	_lay_out_choices(choices)
 
 # Resolve a speaker display name to the portrait Texture2D defined in
-# data/characters.json. Returns null for unknown speakers so the frame
-# stays empty rather than showing a wrong face.
-#
-# Portraits are read as raw PNG bytes and wrapped in an ImageTexture — this
-# sidesteps Godot's .import pipeline so new portraits can be dropped into
-# sprites/portraits/ without re-opening the editor. Cached per-path.
+# data/characters.json. Delegates to PortraitLoader (shared with the HUD unit
+# frame) which handles the .import-sidestep PNG decode + caching.
 func _portrait_for(speaker: String) -> Texture2D:
-	if _characters_cache.is_empty():
-		_load_characters()
-	var entry: Variant = _characters_cache.get(speaker, null)
-	if not (entry is Dictionary):
-		return null
-	var path: String = String((entry as Dictionary).get("portrait", ""))
-	if path == "":
-		return null
-	if _portrait_texture_cache.has(path):
-		return _portrait_texture_cache[path]
-	var tex: Texture2D = _load_portrait_texture(path)
-	if tex != null:
-		_portrait_texture_cache[path] = tex
-	return tex
-
-
-func _load_portrait_texture(path: String) -> Texture2D:
-	# Try the imported-resource fast path first: if the editor HAS imported the
-	# PNG, load() returns the .ctex which is GPU-uploaded and ideal.
-	if FileAccess.file_exists(path + ".import"):
-		var res: Resource = load(path)
-		if res is Texture2D:
-			return res
-	# Fallback: read PNG bytes and decode in-process. Works for fresh PNGs that
-	# the editor hasn't imported yet, and for headless runs.
-	if not FileAccess.file_exists(path):
-		push_warning("dialog_screen: portrait file not found: %s" % path)
-		return null
-	var bytes: PackedByteArray = FileAccess.get_file_as_bytes(path)
-	if bytes.is_empty():
-		push_warning("dialog_screen: empty portrait file: %s" % path)
-		return null
-	var img: Image = Image.new()
-	var err: int = img.load_png_from_buffer(bytes)
-	if err != OK:
-		push_warning("dialog_screen: failed to decode PNG %s (err %d)" % [path, err])
-		return null
-	return ImageTexture.create_from_image(img)
-
-func _load_characters() -> void:
-	var file: FileAccess = FileAccess.open(CHARACTERS_PATH, FileAccess.READ)
-	if file == null:
-		push_warning("dialog_screen: could not open %s" % CHARACTERS_PATH)
-		return
-	var raw: String = file.get_as_text()
-	file.close()
-	var parsed: Variant = JSON.parse_string(raw)
-	if parsed is Dictionary:
-		_characters_cache = parsed
+	return PortraitLoaderScript.portrait_for(speaker)
 
 # Vertical list of buttons, top-to-bottom. Slot 0 = key 1, slot 1 = key 2, etc.
 func _lay_out_choices(choices: Array) -> void:

@@ -78,13 +78,32 @@ var _footstep_distance: float = 0.0
 # embedded baseColorTexture binding so meshes render pure white. Re-apply the
 # shared StandardMaterial3D to every surface in the character hierarchy.
 const _COLORMAP_MAT: Material = preload("res://models/colormap.tres")
+const _EQUIPMENT_MOUNT_SCRIPT: Script = preload("res://scripts/equipment_mount.gd")
+
+# Renders equipped gear (#72) on the character. Lives under $Character so its
+# BoneAttachment3D sockets can find the Skeleton3D inside $Character/Model.
+var _equipment_mount: Node3D = null
 
 func _ready() -> void:
 	_apply_colormap(_model)
+	_setup_equipment_mount()
 	for path in FOOTSTEP_SOUNDS:
 		var s: AudioStream = load(path)
 		if s != null:
 			_footstep_streams.append(s)
+
+func _setup_equipment_mount() -> void:
+	if _model == null:
+		return
+	var mount: Node3D = _EQUIPMENT_MOUNT_SCRIPT.new()
+	mount.name = "EquipmentMount"
+	var inv: Node = get_tree().root.get_node_or_null("Inventory") if get_tree() != null else null
+	mount.call("setup", _model, inv)
+	# Parent under the model wrapper so fallback offset nodes ride the body and
+	# the mount can locate the skeleton. add_child triggers the mount's _ready,
+	# which does the first reconcile against the current loadout.
+	_model.add_child(mount)
+	_equipment_mount = mount
 
 func _apply_colormap(root: Node) -> void:
 	if root is MeshInstance3D:

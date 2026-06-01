@@ -1,0 +1,43 @@
+{
+	"_comment": "Cause-tagged TJ recovery lines for the no-death knockout loop (issue #92). GameState.knock_out(cause) picks one line semi-randomly from the matching pool and the infirmary spawns TJ to speak it. Every cause MUST resolve to a non-empty pool; unknown causes fall back to 'generic'. Edit these freely — they are data, not hardcoded.",
+
+	"speaker": "TJ",
+
+	"pools": {
+		"trap": [
+			"You tripped something out there. Lucky it only knocked you cold — sit still while I check you over.",
+			"Whatever that was, it dropped you hard. No lasting damage. Don't go poking things you don't understand.",
+			"You set off a trap. I've seen worse, but next time, watch where you step."
+		],
+		"asphyxiation": [
+			"Your O2 was nearly gone — don't do that to me again.",
+			"You stopped breathing for a bit there. We got you back. Keep an eye on your air next time.",
+			"Another minute without air and this would've been a very different conversation. Breathe easy now."
+		],
+		"heat": [
+			"Heat exhaustion. You cooked yourself out there — fluids and rest, that's an order.",
+			"Your core temp was through the roof when they brought you in. You're cooling down fine now.",
+			"You pushed too long in that heat. Sit tight until your temperature's back to normal."
+		],
+		"alarm": [
+			"Something out there didn't want you around. You're safe now — bruised, but safe.",
+			"They carried you back in after the alarm went up. No serious harm done.",
+			"Whatever set off that alarm clipped you good. Rest up, you'll be fine."
+		],
+		"alien_defense": [
+			"Something out there didn't want you around. You're safe now — bruised, but safe.",
+			"They carried you back in after the alarm went up. No serious harm done.",
+			"Whatever set off that alarm clipped you good. Rest up, you'll be fine."
+		],
+		"window_closed": [
+			"Eli? I thought we lost you for a minute there.",
+			"You cut it too close to the jump. They pulled you through just in time — barely.",
+			"That was way too close. Destiny doesn't wait. You're back now, that's what matters."
+		],
+		"generic": [
+			"You're awake. Good. You took a knock out there — nothing that won't mend.",
+			"Easy now. You're back aboard Destiny and you're going to be fine.",
+			"Welcome back. You gave us a scare, but you'll be on your feet soon enough."
+		]
+	}
+}

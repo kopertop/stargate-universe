@@ -300,14 +300,12 @@ func _await_arrival(gate_pos: Vector3) -> void:
 			return
 
 func _recall_to_ship() -> void:
-	# Keep whatever lime was gathered. If it's enough, complete the run; else the
-	# team returns empty-handed and can re-dial. Never strands anyone.
-	if GameState.has_resource(GameState.AIR_LIME_RESOURCE, GameState.AIR_LIME_REQUIRED):
-		GameState.return_from_lime_planet()
-	# The whole away team scrambled back through — bring them into the gate room
-	# with the player and land everyone past the platform (FromPlanet spawn).
-	GameState.pending_planet_return = true
-	SceneRouter.change_to("res://scenes/gate_room.tscn", "FromPlanet")
+	# The window closed with the player still on the surface — that's a "downed"
+	# outcome (issue #92). Route through the single no-death knockout entry point:
+	# the player wakes in the infirmary with a window-closed TJ line, banks only
+	# the minimum-necessary lime, and forfeits the rest of the run. knock_out()
+	# ends the window and routes to the infirmary (instant_mode-aware).
+	GameState.knock_out("window_closed")
 
 func _find_return_gate() -> Node3D:
 	for n in get_tree().get_nodes_in_group("planet_gate"):

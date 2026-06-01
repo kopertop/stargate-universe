@@ -129,8 +129,44 @@ static func _builtin_desert_block() -> Dictionary:
 			"detail_strength": 0.25, "slope_limit_deg": 30.0},
 		"ground_color": [0.66, 0.56, 0.36],
 		"prop_set": "rocks", "prop_density": 0.7,
+		"hazard": {"type": "heat", "temperature_c": 48,
+			"gate_window": DEFAULT_HOT_GATE_WINDOW, "water_drain_per_sec": DEFAULT_HOT_WATER_DRAIN},
 		"walkability": {"max_prop_height": 1.6},
 	}
+
+
+# Departure-window + water-drain defaults. The temperate baseline (180 s, slow
+# drain) is the reference a hot biome must beat: heat SHORTENS the window and
+# RAISES water drain (issue #87). Used when a biome's hazard block omits them.
+const DEFAULT_GATE_WINDOW: float = 180.0
+const DEFAULT_WATER_DRAIN: float = 1.0 / 60.0   # ~1 water per minute (temperate)
+const DEFAULT_HOT_GATE_WINDOW: float = 150.0
+const DEFAULT_HOT_WATER_DRAIN: float = 0.05      # ~1 water per 20 s (heat)
+
+
+# Departure window (seconds) for a spec's biome, sourced from its hazard block.
+# Heat biomes carry a shorter window than the temperate baseline.
+static func gate_window_for(spec: Dictionary) -> float:
+	var hz: Dictionary = _hazard_block(spec)
+	return float(hz.get("gate_window", DEFAULT_GATE_WINDOW))
+
+
+# Water drained per second on the surface for a spec's biome (heat drains faster).
+static func water_drain_for(spec: Dictionary) -> float:
+	var hz: Dictionary = _hazard_block(spec)
+	return float(hz.get("water_drain_per_sec", DEFAULT_WATER_DRAIN))
+
+
+# The biome's hazard block. Prefers the spec's own hazard_params (carried from a
+# dialed biome / legacy planets.json atmosphere) but falls back to the biome
+# definition in biomes.json so window/drain resolve even for a bare spec.
+static func _hazard_block(spec: Dictionary) -> Dictionary:
+	var hp: Variant = spec.get("hazard_params", {})
+	if hp is Dictionary and (hp as Dictionary).has("gate_window"):
+		return hp
+	var bp: Dictionary = biome_params(String(spec.get("biome", DEFAULT_BIOME)))
+	var hz: Variant = bp.get("hazard", {})
+	return hz if hz is Dictionary else {}
 
 
 # Bundle the global height-function inputs (two seeded noise octaves + biome
@@ -152,6 +188,7 @@ static func build_params(spec: Dictionary) -> Dictionary:
 	n2.frequency = float(terrain.get("detail_frequency", 0.040))
 
 	var col: Array = bp.get("ground_color", [0.5, 0.5, 0.5]) if bp.get("ground_color", []) is Array else [0.5, 0.5, 0.5]
+	var hz: Dictionary = bp.get("hazard", {}) if bp.get("hazard", {}) is Dictionary else {}
 	return {
 		"seed": seed,
 		"biome": biome,
@@ -166,6 +203,9 @@ static func build_params(spec: Dictionary) -> Dictionary:
 		"prop_density": float(bp.get("prop_density", 0.7)),
 		"max_prop_height": float((bp.get("walkability", {}) as Dictionary).get("max_prop_height", 1.8)) \
 			if bp.get("walkability", {}) is Dictionary else 1.8,
+		"hazard_type": String(hz.get("type", "none")),
+		"gate_window": float(hz.get("gate_window", DEFAULT_GATE_WINDOW)),
+		"water_drain_per_sec": float(hz.get("water_drain_per_sec", DEFAULT_WATER_DRAIN)),
 	}
 
 

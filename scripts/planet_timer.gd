@@ -12,7 +12,7 @@ extends Node
 # MINE_LIME, never the Kino scout). Skips itself entirely in instant_mode so
 # headless tests don't run a live clock or cinematic.
 
-const DURATION: float = 180.0      # 3 minutes — first-planet starter pressure
+const DURATION: float = 180.0      # temperate baseline — biome heat shortens it (issue #87)
 # Three escalating klaxon thresholds, each fires the alarm + a 3-pulse scale
 # burst on the countdown label. After the 10 s alarm, the label STAYS red and
 # pulses continuously until 0 (when the run-back cutscene takes over).
@@ -60,7 +60,11 @@ func _ready() -> void:
 	# GameState owns the countdown now (so it keeps ticking through Kino piloting
 	# and scene hops). start_gate_window is idempotent — a fresh entry starts it;
 	# re-entering a planet mid-window RESUMES it. Only announce on a fresh start.
-	var started_fresh: bool = GameState.start_gate_window(DURATION)
+	# Duration comes from the active biome (issue #87): a heat biome carries a
+	# SHORTER window than the temperate baseline. DURATION is the fallback when no
+	# spec is set (direct boot).
+	var duration: float = _biome_gate_window()
+	var started_fresh: bool = GameState.start_gate_window(duration)
 	_remaining = GameState.gate_window_remaining
 	# Pre-arm the one-shot alarm/auto-gather flags to the resumed time so a mid-
 	# window resume doesn't replay alarms or re-gather lime already past.
@@ -321,3 +325,13 @@ func _find_return_gate() -> Node3D:
 		if n is Node3D and String(n.get("mode")) == "to_ship":
 			return n
 	return null
+
+
+# Departure-window length for the active biome (issue #87). Heat biomes return a
+# shorter window than the temperate baseline; falls back to DURATION when no spec
+# is set (direct boot / smoke test).
+func _biome_gate_window() -> float:
+	var spec: Dictionary = GameState.active_planet_spec
+	if spec is Dictionary and not spec.is_empty():
+		return PlanetGenerator.gate_window_for(spec)
+	return DURATION

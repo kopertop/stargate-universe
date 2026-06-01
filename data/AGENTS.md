@@ -14,7 +14,14 @@ code.
   Connections are listed in ONE direction; consumers mirror reverse edges (see
   `scripts/room.gd::_setup_doors` and `scripts/ship_layout.gd::_load_connections`).
 - `characters.json` — Per-character static metadata used by NPC scripts.
-- `planets.json` — Off-ship planet definitions (lime planet etc.).
+- `planets.json` — Off-ship planet definitions (lime planet etc.). Legacy rows
+  are normalized into a desert `PlanetSpec` by `scripts/planet_generator.gd`.
+- `biomes.json` — Per-biome parameter blocks (terrain shaping, ground palette,
+  prop set, walkability, hazard) keyed by biome id (`desert`, `jungle`, `toxic`,
+  `urban`, `alien_tech`). Read by `PlanetGenerator.biome_params()`; consumed via
+  a `PlanetSpec` `{ seed, biome, resource_table, hazard_params }`. Authorable
+  without code edits — keep terrain `height`/`frequency` low so generated slopes
+  stay walkable (no jump required).
 
 ## Conventions
 

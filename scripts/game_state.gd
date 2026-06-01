@@ -162,6 +162,15 @@ var kino_pilot_arrival_spawn: String = ""
 # consumed by room.gd on arrival; an auto-explore run is never saved mid-way).
 var kino_autopilot: bool = false  # @collection-ok: one transient pilot-mode flag, not an enumerated set
 
+# Active procedural-planet spec (issue #85). The dial / selection flow produces
+# ONE spec per planet run; PlanetGenerator.build(world, spec) consumes it. Shape:
+#   { "seed": int, "biome": String, "resource_table": Dictionary,
+#     "hazard_params": Dictionary }
+# Empty until a planet is dialed. Persisted (serialize/deserialize) so reloading
+# mid-run rebuilds the IDENTICAL world. Discovery (discovered_pois) is keyed by
+# deterministic node name, so chunk content + discovery survive save/load.
+var active_planet_spec: Dictionary = {}
+
 var health: float = MAX_HEALTH
 var oxygen: float = MAX_OXYGEN
 var current_episode: String = EPISODE_AIR
@@ -460,6 +469,7 @@ func reset() -> void:
 	away_party_briefed = false
 	returned_from_lime_planet = false
 	pending_planet_return = false
+	active_planet_spec = {}
 	gate_window_active = false
 	gate_window_remaining = 0.0
 	# Items live in the Inventory store now — wipe it too (autoload-tolerant).
@@ -1247,6 +1257,9 @@ func serialize() -> Dictionary:
 		"kino_plan_approved": kino_plan_approved,
 		"away_party_briefed": away_party_briefed,
 		"returned_from_lime_planet": returned_from_lime_planet,
+		# Active procedural-planet spec — deep-duplicated so a later reset() can't
+		# mutate the snapshot through the shared resource_table / hazard_params dicts.
+		"active_planet_spec": active_planet_spec.duplicate(true),
 		"gate_window_active": gate_window_active,
 		"gate_window_remaining": gate_window_remaining,
 		"kino_pan_x": kino_pan_x,
@@ -1303,6 +1316,8 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	kino_plan_approved = data.get("kino_plan_approved", false) == true
 	away_party_briefed = data.get("away_party_briefed", false) == true
 	returned_from_lime_planet = data.get("returned_from_lime_planet", false) == true
+	var saved_spec: Variant = data.get("active_planet_spec", {})
+	active_planet_spec = (saved_spec as Dictionary).duplicate(true) if saved_spec is Dictionary else {}
 	gate_window_active = data.get("gate_window_active", false) == true
 	gate_window_remaining = float(data.get("gate_window_remaining", 0.0))
 	# --- legacy item migration ---------------------------------------------

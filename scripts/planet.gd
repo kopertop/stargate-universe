@@ -4,7 +4,10 @@ extends Node3D
 # camera, and HUD nodes; PlanetGenerator owns deterministic world contents.
 
 const PLANETS_PATH: String = "res://data/planets.json"
-const PLANET_ID: String = "air_lime_world"
+# Fallback planets.json row used to SEED a default spec the first time the planet
+# scene loads without one (e.g. direct boot, scene_boot smoke test). The dial /
+# selection flow normally sets GameState.active_planet_spec before transitioning.
+const DEFAULT_PLANET_ID: String = "air_lime_world"
 const PlanetGeneratorRef: Script = preload("res://scripts/planet_generator.gd")
 const KinoDroneScript: Script = preload("res://scripts/kino_drone.gd")
 const PlanetTimerScript: Script = preload("res://scripts/planet_timer.gd")
@@ -14,15 +17,27 @@ const CompanionScript: Script = preload("res://scripts/companion.gd")
 @onready var _player: Node3D = $Player
 @onready var _view: Node3D = $View
 
+# Set by build from the active PlanetSpec — handed the tracked body so terrain
+# streams around it. Held so _start_kino_recon can retarget it onto the drone.
+var _chunk_manager: Node3D = null
+
 func _ready() -> void:
 	GameState.current_scene_path = "res://scenes/planet.tscn"
-	var planet_data: Dictionary = _load_planet(PLANET_ID)
-	PlanetGeneratorRef.build(_world, planet_data)
-	GameState.discover_room("planet_" + PLANET_ID, String(planet_data.get("name", "Lime Planet")))
+	# Build from the active PlanetSpec (issue #85). If none is set (direct boot /
+	# smoke test), seed + persist a default desert spec from planets.json so the
+	# world is deterministic and survives save/load like a dialed planet.
+	var spec: Dictionary = _active_spec()
+	_chunk_manager = PlanetGeneratorRef.build(_world, spec)
+	var planet_name: String = String(spec.get("name", "Lime Planet"))
+	var planet_key: String = "planet_%s_%d" % [String(spec.get("biome", "desert")), int(spec.get("seed", 0))]
+	GameState.discover_room(planet_key, planet_name)
+	# Stream terrain around the player by default; kino recon retargets below.
+	if _chunk_manager != null and _chunk_manager.has_method("configure"):
+		_chunk_manager.set("tracked", _player)
 	# Scout beat: the player launched an unmanned Kino through the gate. Hand
 	# the planet to a pilotable recon drone instead of the third-person player.
 	if GameState.kino_pilot_mode:
-		_start_kino_recon(planet_data)
+		_start_kino_recon(spec)
 		return
 	if GameState.pending_spawn_position != null:
 		_player.global_position = GameState.pending_spawn_position
@@ -119,7 +134,7 @@ func _spawn_away_team(near: Vector3) -> void:
 # Replace the third-person player rig with a pilotable Kino. The drone owns its
 # own camera + overlay; freeing the player/view rig stops their camera and
 # input from competing. Hides the normal HUD so the kino-cam reads clean.
-func _start_kino_recon(planet_data: Dictionary) -> void:
+func _start_kino_recon(spec: Dictionary) -> void:
 	var marker: Node3D = $FromShipGate
 	# Start a few metres up so the orb hovers over the landing zone, not on it.
 	var spawn: Vector3 = marker.global_position + Vector3.UP * 4.0
@@ -154,14 +169,49 @@ func _start_kino_recon(planet_data: Dictionary) -> void:
 	drone.name = "KinoDrone"
 	# Not in group "player": the recon drone is a camera, not the player body.
 	drone.set("launch_in_ship", false)
-	var atmo: Variant = planet_data.get("atmosphere", {})
+	# Atmosphere lives in the spec's hazard_params (carried from the dialed
+	# biome / legacy planets.json "atmosphere" block via _normalize_spec).
+	var atmo: Variant = spec.get("hazard_params", {})
 	drone.set("atmosphere", atmo if atmo is Dictionary else {})
+	# Stream terrain around the DRONE now that the player rig is gone.
+	if _chunk_manager != null and is_instance_valid(_chunk_manager):
+		_chunk_manager.set("tracked", drone)
 	# Set yaw BEFORE add_child: the drone caches its initial heading in _ready,
 	# which fires during add_child. Setting it after would leave the cache at 0
 	# and the first mouse-look would snap the drone back to facing the gate.
 	drone.rotation.y = spawn_yaw
 	add_child(drone)
 	drone.global_position = spawn
+
+# Resolve the PlanetSpec to build. Priority: the active spec set by the dial /
+# selection flow (persisted across save/load); else seed + persist a default
+# desert spec from the planets.json default row so a direct boot is deterministic
+# and survives reload identically (acceptance: spec persists + rebuilds).
+func _active_spec() -> Dictionary:
+	var active: Dictionary = GameState.active_planet_spec
+	if active is Dictionary and not active.is_empty():
+		return active
+	var row: Dictionary = _load_planet(DEFAULT_PLANET_ID)
+	var spec: Dictionary = {
+		"seed": int(row.get("seed", 104729)),
+		"biome": "desert",
+		"resource_table": {
+			"lime_nodes": int(row.get("lime_nodes", 5)),
+			"lime_per_node": int(row.get("lime_per_node", 1)),
+			"lime_min_radius": float(row.get("lime_min_radius", 70.0)),
+			"lime_max_radius": float(row.get("lime_max_radius", 200.0)),
+			"lime_far_count": int(row.get("lime_far_count", 0)),
+			"lime_far_min_radius": float(row.get("lime_far_min_radius", 380.0)),
+			"lime_far_max_radius": float(row.get("lime_far_max_radius", 440.0)),
+			"lime_far_arc": float(row.get("lime_far_arc", 0.7)),
+			"poi_counts": row.get("poi_counts", {}) if row.get("poi_counts", {}) is Dictionary else {},
+		},
+		"hazard_params": row.get("atmosphere", {}) if row.get("atmosphere", {}) is Dictionary else {},
+		"name": String(row.get("name", "Lime World")),
+	}
+	GameState.active_planet_spec = spec
+	return spec
+
 
 func _load_planet(id: String) -> Dictionary:
 	var f: FileAccess = FileAccess.open(PLANETS_PATH, FileAccess.READ)

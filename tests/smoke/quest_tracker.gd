@@ -7,6 +7,8 @@ extends SceneTree
 #   • the QuestTracker node exists with a Title + Objective label
 #   • on _ready it shows the tracked quest's title (QuestLog.title()) and its
 #     active objective (QuestLog.objective())
+#   • the old top-left $Objective label is retired (hidden) so the objective
+#     never renders in two corners at once (regression guard, #66)
 #   • advancing the tracked quest a step (QuestLog.complete_step) refreshes the
 #     objective line WITHOUT a reload — it reflects the new QuestLog.objective()
 #   • the recent-log feed sits BELOW the tracker (no overlap)
@@ -65,6 +67,15 @@ func _run_checks() -> void:
 	if title_label == null or objective_label == null:
 		_finish()
 		return
+
+	# --- old top-left objective label retired (no duplication) ------------
+	# The objective moved to this tracker; the legacy top-left $Objective label
+	# must be hidden so the active objective never renders in two corners.
+	var old_objective: Control = _hud.get_node_or_null("Objective") as Control
+	_expect(old_objective != null, "legacy top-left Objective label still in scene")
+	if old_objective != null:
+		_expect(not old_objective.visible,
+			"legacy top-left Objective label is hidden (objective lives only in the tracker)")
 
 	# --- initial render from QuestLog -------------------------------------
 	var expected_title: String = String(_ql.call("title"))

@@ -2,12 +2,17 @@ extends Control
 
 # SGU HUD. Listens to GameState signals + the active scene's player to render:
 #   • Player unit frame (upper-left): Eli portrait + name + health/oxygen bars
-#   • Current objective (left, below the unit frame — moves to the quest tracker)
 #   • Interact prompt (bottom-center, only when target in range)
 #   • Kino Remote reminder (bottom-right, only after acquisition)
 #   • Quest objective tracker (upper-right): tracked quest title + objective
 #   • Recent log feed (top-right, last 3 entries, stacked below the tracker)
+#
+# The single-line objective used to live in the top-left $Objective label; it
+# moved entirely to the upper-right quest tracker (#66), so that label is hidden
+# in _ready and no longer wired to GameState.objective_changed.
 
+# Retired top-left objective label — kept in the scene but hidden in _ready (see
+# the comment there). Held only so _ready can flip it off.
 @onready var _objective_label: Label = $Objective
 @onready var _interact_label: Label = $InteractPrompt
 @onready var _kino_hint: Label = $KinoHint
@@ -133,11 +138,12 @@ var _discovery_room_id: String = ""
 var _first_discovery_consumed: bool = false
 
 func _ready() -> void:
-	# Wrap the objective within its ~676px box (offset 24→700 in the scene)
-	# instead of overflowing across the full top row into the top-right log
-	# feed. Extra vertical room lets a long objective wrap to 2–3 lines.
-	_objective_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	GameState.objective_changed.connect(_on_objective_changed)
+	# The single-line objective now lives in the upper-right quest tracker
+	# (_build_quest_tracker / _refresh_quest_tracker, #66). The old top-left
+	# $Objective label is retired so the objective never renders in two corners
+	# at once — hidden here rather than deleted from the scene to keep the
+	# hud.tscn diff minimal and any external NodePath references intact.
+	_objective_label.visible = false
 	GameState.health_changed.connect(_on_health_changed)
 	GameState.oxygen_changed.connect(_on_oxygen_changed)
 	GameState.kino_changed.connect(_on_kino_changed)
@@ -150,7 +156,6 @@ func _ready() -> void:
 	# Unit frame builds the relocated health/oxygen bars, so it must exist before
 	# the initial _on_health_changed / _on_oxygen_changed binds below.
 	_build_unit_frame()
-	_on_objective_changed(GameState.current_objective)
 	_on_health_changed(GameState.health)
 	_on_oxygen_changed(GameState.oxygen)
 	_on_kino_changed(Inventory.has("kino_remote"))
@@ -493,9 +498,6 @@ func _on_interact_target_changed(target: Node) -> void:
 	elif "prompt" in target:
 		prompt = String(target.prompt)
 	_interact_label.text = "[E]  %s" % prompt
-
-func _on_objective_changed(text: String) -> void:
-	_objective_label.text = text
 
 func _on_health_changed(v: float) -> void:
 	if _health_bar == null:

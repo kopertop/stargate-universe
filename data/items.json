@@ -99,7 +99,7 @@
     "slot": "back",
     "model": "res://models/equipment/field_backpack.glb",
     "socket": "Spine",
-    "attach_offset": [0.0, -0.1, -0.18],
+    "attach_offset": [0.0, 0.0, 0.0],
     "icon": "res://sprites/ui/items/field_backpack.png",
     "description": "Expedition rucksack for off-world excursions. Increases what the crew can haul back through the gate.",
     "stackable": false,

@@ -53,6 +53,8 @@ var _action_pulse: Tween = null
 # "planet" mode. Preloaded by path (not class_name) so a fresh headless run
 # can't trip the class_name-registration race.
 const PlanetCompassScript := preload("res://scripts/planet_compass.gd")
+# Ancient-text decode component (#61) drives the room-name line of the toast.
+const AncientTextScript := preload("res://scripts/ancient_text.gd")
 # Scene-path → compass mode. Anything not listed (e.g. title) gets no compass.
 const COMPASS_SHIP_SCENES: Array = [
 	"res://scenes/gate_room.tscn",
@@ -62,6 +64,29 @@ const COMPASS_PLANET_SCENES: Array = [
 	"res://scenes/planet.tscn",
 ]
 var _compass: Control = null
+
+# Center-screen room discovery toast (#63). On the FIRST entry into a room, a
+# small letter-spaced "DISCOVERED" header sits above the room name, which starts
+# as obfuscated Ancient glyphs and decodes into English (via #61). The whole
+# stack then fades to transparent over DISCOVERY_FADE_SECS. Changing rooms
+# short-circuits the fade (hidden instantly). Built programmatically so the
+# hud.tscn diff stays empty.
+const DISCOVERY_FADE_SECS: float = 3.0
+const DISCOVERY_DECODE_SECS: float = 1.1
+const DISCOVERY_ACCENT: Color = Color(0.55, 0.85, 1.0, 1.0)
+const DISCOVERY_STING_SOUND: String = "res://sounds/terminal_boot.ogg"
+var _discovery_root: Control = null
+var _discovery_name: Node = null      # AncientText (Label subclass) — duck-typed.
+var _discovery_fade: Tween = null
+# Room the live toast is announcing. discover_room() is followed immediately by
+# set_current_room(SAME id) when entering a room, so the room-change short-circuit
+# must ignore a change INTO the room the toast is already for, and only fire when
+# the player actually moves on to a DIFFERENT room.
+var _discovery_room_id: String = ""
+# Suppress the very first discovery of the run: the Gate Room is auto-discovered
+# on boot before the player has moved, so its toast would fire over the arrival
+# cinematic. Every subsequent (player-driven) discovery shows normally.
+var _first_discovery_consumed: bool = false
 
 func _ready() -> void:
 	# Wrap the objective within its ~676px box (offset 24→700 in the scene)
@@ -77,6 +102,8 @@ func _ready() -> void:
 	GameState.log_added.connect(_on_log_added)
 	GameState.dialogue_shown.connect(_on_dialogue_shown)
 	GameState.dialog_started.connect(_on_dialog_started)
+	GameState.room_discovered.connect(_on_room_discovered)
+	GameState.current_room_changed.connect(_on_current_room_changed)
 	_on_objective_changed(GameState.current_objective)
 	_on_health_changed(GameState.health)
 	_on_oxygen_changed(GameState.oxygen)
@@ -86,7 +113,14 @@ func _ready() -> void:
 	_build_action_bar()
 	_refresh_action_bar()
 	_build_edge_arrow()
+	_build_discovery_toast()
 	_spawn_compass()
+	# If the Gate Room was already auto-discovered before this HUD mounted (it
+	# is discovered in gate_room.gd::_ready, which can fire before/after ours),
+	# treat that boot discovery as already consumed so the first PLAYER-driven
+	# discovery is the first toast shown.
+	if not GameState.rooms_discovered.is_empty():
+		_first_discovery_consumed = true
 	# Defer player lookup so the scene tree is settled.
 	call_deferred("_bind_player")
 
@@ -144,6 +178,109 @@ func _build_edge_arrow() -> void:
 	_edge_arrow.visible = false
 	_edge_arrow.z_index = 100
 	add_child(_edge_arrow)
+
+
+# Center-screen discovery toast: a centred VBox holding the small letter-spaced
+# "DISCOVERED" header above the AncientText room-name line. Starts hidden and
+# fully transparent; _on_room_discovered drives the decode + fade. Anchored to
+# the full rect with a CenterContainer so it sits dead-centre at any resolution.
+func _build_discovery_toast() -> void:
+	var centre: CenterContainer = CenterContainer.new()
+	centre.name = "DiscoveryToast"
+	centre.set_anchors_preset(Control.PRESET_FULL_RECT)
+	centre.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	centre.z_index = 90
+	centre.visible = false
+	centre.modulate = Color(1.0, 1.0, 1.0, 0.0)
+
+	var box: VBoxContainer = VBoxContainer.new()
+	box.name = "Stack"
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 6)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	centre.add_child(box)
+
+	var header: Label = Label.new()
+	header.name = "Header"
+	header.text = "D I S C O V E R E D"
+	header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	header.add_theme_font_size_override("font_size", 16)
+	header.add_theme_color_override("font_color", DISCOVERY_ACCENT)
+	header.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	header.add_theme_constant_override("outline_size", 4)
+	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(header)
+
+	# Room-name line — an AncientText Label subclass so it can run the #61 decode.
+	var name_label: Label = AncientTextScript.new()
+	name_label.name = "RoomName"
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.add_theme_font_size_override("font_size", 34)
+	name_label.add_theme_color_override("font_color", Color.WHITE)
+	name_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	name_label.add_theme_constant_override("outline_size", 6)
+	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(name_label)
+
+	add_child(centre)
+	_discovery_root = centre
+	_discovery_name = name_label
+
+
+# First entry into a never-seen room: resolve its display name, run the decode,
+# play the sting, then fade the whole toast out over DISCOVERY_FADE_SECS. The
+# very first discovery of the run (the auto-discovered Gate Room on boot) is
+# suppressed so the toast never fires before the player has moved.
+func _on_room_discovered(room_id: String) -> void:
+	if not _first_discovery_consumed:
+		_first_discovery_consumed = true
+		return
+	if _discovery_root == null or _discovery_name == null:
+		return
+
+	var display_name: String = String(ShipLayout.room(room_id).get("name", room_id))
+
+	# Cancel a still-running fade from a prior discovery so the new toast shows
+	# at full opacity (same pattern as _dialog_tween).
+	if _discovery_fade != null and _discovery_fade.is_running():
+		_discovery_fade.kill()
+	_discovery_fade = null
+
+	_discovery_room_id = room_id
+	_discovery_root.visible = true
+	_discovery_root.modulate = Color(1.0, 1.0, 1.0, 1.0)
+	_discovery_name.call("play", display_name, DISCOVERY_DECODE_SECS)
+
+	# Decode sting — skipped under instant_mode (headless / fast-travel) so the
+	# playthrough test never queues audio it can't drain.
+	if not SceneRouter.instant_mode and has_node("/root/Audio"):
+		get_node("/root/Audio").call("play", DISCOVERY_STING_SOUND)
+
+	# Under instant_mode the toast resolves + hides immediately (no tween wait).
+	if SceneRouter.instant_mode:
+		_hide_discovery_toast()
+		return
+
+	_discovery_fade = create_tween()
+	_discovery_fade.tween_interval(DISCOVERY_DECODE_SECS)
+	_discovery_fade.tween_property(_discovery_root, "modulate:a", 0.0, DISCOVERY_FADE_SECS)
+	_discovery_fade.tween_callback(Callable(self, "_hide_discovery_toast"))
+
+
+# Changing rooms short-circuits an in-flight toast: hide it instantly so a stale
+# "DISCOVERED <prev room>" never lingers over the new room.
+func _on_current_room_changed(room_id: String) -> void:
+	if _discovery_root != null and _discovery_root.visible and room_id != _discovery_room_id:
+		_hide_discovery_toast()
+
+
+func _hide_discovery_toast() -> void:
+	if _discovery_fade != null and _discovery_fade.is_running():
+		_discovery_fade.kill()
+	_discovery_fade = null
+	if _discovery_root != null:
+		_discovery_root.visible = false
+		_discovery_root.modulate = Color(1.0, 1.0, 1.0, 0.0)
 
 
 func _process(_delta: float) -> void:

@@ -55,7 +55,15 @@ static func build(world: Node3D, spec_or_row: Dictionary) -> Node3D:
 
 	var manager: Node3D = _install_chunk_manager(world, params)
 	_build_return_gate(world, params)
-	_build_lime_nodes(world, spec, rng, params)
+	# Resource-scarcity targeting (issue #86): when the spec's resource_table
+	# carries a `clusters` list (scarcest resource guaranteed + 1-2 extras), place
+	# a generalized deposit cluster per chosen type. Otherwise fall back to the
+	# legacy lime-only placement so a bare planets.json row still renders lime.
+	var rt: Dictionary = spec.get("resource_table", {}) if spec.get("resource_table", {}) is Dictionary else {}
+	if rt.get("clusters", null) is Array and not (rt["clusters"] as Array).is_empty():
+		_build_resource_clusters(world, rt["clusters"], rng, params)
+	else:
+		_build_lime_nodes(world, spec, rng, params)
 	_build_pois(world, spec, rng, params)
 	_build_props(world, rng, params)
 	return manager
@@ -260,7 +268,54 @@ static func _build_return_gate(world: Node3D, params: Dictionary) -> void:
 	world.add_child(portal)
 
 
-# --- Lime deposits ----------------------------------------------------------
+# --- Resource deposits ------------------------------------------------------
+#
+# Per-resource visual identity for generalized deposit nodes (issue #86). Each
+# entry: albedo + emission tint so water/food/parts/lime read distinctly while
+# reusing the SAME deposit geometry + resource_node.gd mineable behaviour.
+const RESOURCE_LOOKS: Dictionary = {
+	"lime":  {"albedo": [0.93, 0.94, 0.91], "emission": [0.86, 0.90, 0.96], "energy": 0.28},
+	"water": {"albedo": [0.42, 0.62, 0.86], "emission": [0.30, 0.55, 0.92], "energy": 0.40},
+	"food":  {"albedo": [0.46, 0.66, 0.38], "emission": [0.40, 0.70, 0.30], "energy": 0.22},
+	"parts": {"albedo": [0.62, 0.60, 0.58], "emission": [0.70, 0.55, 0.30], "energy": 0.18},
+}
+
+
+# Place one mineable deposit cluster per chosen resource type (issue #86). Each
+# cluster entry: { type, nodes, per_node, min_radius, max_radius }. Node names
+# are unique-per-type ("WaterNode1", "FoodNode2", lime stays "LimeNode<n>" for
+# back-compat / existing discovery keys) so discovery survives save/load.
+static func _build_resource_clusters(world: Node3D, clusters: Array,
+		rng: RandomNumberGenerator, params: Dictionary) -> void:
+	for cluster in clusters:
+		if not (cluster is Dictionary):
+			continue
+		var c: Dictionary = cluster
+		var type: String = String(c.get("type", GameState.AIR_LIME_RESOURCE))
+		var count: int = int(c.get("nodes", 4))
+		var amount: int = int(c.get("per_node", 1))
+		var min_r: float = float(c.get("min_radius", 50.0))
+		var max_r: float = float(c.get("max_radius", 120.0))
+		var mat: StandardMaterial3D = _resource_mat(type)
+		for i in count:
+			var angle: float = (TAU / float(max(count, 1))) * float(i) + rng.randf_range(-0.4, 0.4)
+			var dist: float = rng.randf_range(min_r, max_r)
+			_spawn_resource_deposit(world, type, i + 1, angle, dist, amount, mat, params)
+
+
+# Per-type deposit material from RESOURCE_LOOKS (falls back to lime's chalky
+# white for an unknown type so a deposit is never invisible).
+static func _resource_mat(type: String) -> StandardMaterial3D:
+	var look: Dictionary = RESOURCE_LOOKS.get(type, RESOURCE_LOOKS["lime"]) if RESOURCE_LOOKS.has(type) else RESOURCE_LOOKS["lime"]
+	var mat: StandardMaterial3D = StandardMaterial3D.new()
+	mat.albedo_color = _to_color(look.get("albedo", [0.93, 0.94, 0.91]))
+	mat.roughness = 0.9
+	mat.metallic = 0.0
+	mat.emission_enabled = true
+	mat.emission = _to_color(look.get("emission", [0.86, 0.90, 0.96]))
+	mat.emission_energy_multiplier = float(look.get("energy", 0.28))
+	return mat
+
 
 static func _build_lime_nodes(world: Node3D, spec: Dictionary, rng: RandomNumberGenerator, params: Dictionary) -> void:
 	var rt: Dictionary = spec.get("resource_table", {}) if spec.get("resource_table", {}) is Dictionary else {}
@@ -268,22 +323,14 @@ static func _build_lime_nodes(world: Node3D, spec: Dictionary, rng: RandomNumber
 	var amount: int = int(rt.get("lime_per_node", 1))
 	var min_r: float = float(rt.get("lime_min_radius", 40.0))
 	var max_r: float = float(rt.get("lime_max_radius", 95.0))
-	# Lime reads as WHITE rock / sand (a chalky mineral deposit), not crystals.
-	var lime_mat: StandardMaterial3D = StandardMaterial3D.new()
-	lime_mat.albedo_color = Color(0.93, 0.94, 0.91)
-	lime_mat.roughness = 0.9
-	lime_mat.metallic = 0.0
-	lime_mat.emission_enabled = true
-	lime_mat.emission = Color(0.86, 0.90, 0.96)
-	lime_mat.emission_energy_multiplier = 0.28
+	var lime_mat: StandardMaterial3D = _resource_mat(GameState.AIR_LIME_RESOURCE)
 
-	var label: String = String(spec.get("name", "lime planet"))
 	var idx: int = 0
 	for i in count:
 		var angle: float = (TAU / float(max(count, 1))) * float(i) + rng.randf_range(-0.4, 0.4)
 		var dist: float = rng.randf_range(min_r, max_r)
 		idx += 1
-		_spawn_lime_deposit(world, idx, angle, dist, amount, label, lime_mat, params)
+		_spawn_resource_deposit(world, GameState.AIR_LIME_RESOURCE, idx, angle, dist, amount, lime_mat, params)
 
 	var far_count: int = int(rt.get("lime_far_count", 0))
 	if far_count > 0:
@@ -295,21 +342,24 @@ static func _build_lime_nodes(world: Node3D, spec: Dictionary, rng: RandomNumber
 			var angle: float = cluster_center + rng.randf_range(-far_arc * 0.5, far_arc * 0.5)
 			var dist: float = rng.randf_range(far_min, far_max)
 			idx += 1
-			_spawn_lime_deposit(world, idx, angle, dist, amount, label, lime_mat, params)
+			_spawn_resource_deposit(world, GameState.AIR_LIME_RESOURCE, idx, angle, dist, amount, lime_mat, params)
 
 
-static func _spawn_lime_deposit(world: Node3D, idx: int, angle: float, dist: float,
-		amount: int, source_label: String, lime_mat: StandardMaterial3D, params: Dictionary) -> void:
+# Generalized mineable deposit (issue #86). Lime keeps node name "LimeNode<idx>"
+# and group "lime_node" for back-compat; other types use "<Type>Node<idx>" and a
+# per-type group so per-type scans (compass, fog-of-war) can target them.
+static func _spawn_resource_deposit(world: Node3D, type: String, idx: int, angle: float,
+		dist: float, amount: int, mat: StandardMaterial3D, params: Dictionary) -> void:
 	var x: float = cos(angle) * dist
 	var z: float = sin(angle) * dist
 	var node: StaticBody3D = StaticBody3D.new()
 	node.set_script(RESOURCE_NODE_SCRIPT)
-	node.name = "LimeNode%d" % idx
+	node.name = "%sNode%d" % [type.capitalize(), idx]
 	node.position = Vector3(x, height_at(x, z, params), z)
-	node.set("resource_type", GameState.AIR_LIME_RESOURCE)
+	node.set("resource_type", type)
 	node.set("amount", amount)
-	node.set("source_label", source_label)
-	node.add_to_group("lime_node")
+	node.set("source_label", "%s deposit" % type.capitalize())
+	node.add_to_group("%s_node" % type)
 
 	var cs: CollisionShape3D = CollisionShape3D.new()
 	var shape: BoxShape3D = BoxShape3D.new()
@@ -318,10 +368,10 @@ static func _spawn_lime_deposit(world: Node3D, idx: int, angle: float, dist: flo
 	cs.position = Vector3(0.0, 0.65, 0.0)
 	node.add_child(cs)
 
-	_add_box(node, Vector3(0.0, 0.22, 0.0), Vector3(1.15, 0.44, 0.95), lime_mat)
-	_add_box(node, Vector3(-0.34, 0.50, 0.10), Vector3(0.52, 0.46, 0.50), lime_mat)
-	_add_box(node, Vector3(0.30, 0.44, -0.22), Vector3(0.46, 0.40, 0.52), lime_mat)
-	_add_box(node, Vector3(0.10, 0.64, 0.22), Vector3(0.34, 0.32, 0.36), lime_mat)
+	_add_box(node, Vector3(0.0, 0.22, 0.0), Vector3(1.15, 0.44, 0.95), mat)
+	_add_box(node, Vector3(-0.34, 0.50, 0.10), Vector3(0.52, 0.46, 0.50), mat)
+	_add_box(node, Vector3(0.30, 0.44, -0.22), Vector3(0.46, 0.40, 0.52), mat)
+	_add_box(node, Vector3(0.10, 0.64, 0.22), Vector3(0.34, 0.32, 0.36), mat)
 	world.add_child(node)
 
 

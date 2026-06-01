@@ -65,7 +65,17 @@
 			"type": "humidity",
 			"temperature_c": 32,
 			"gate_window": 175.0,
-			"water_drain_per_sec": 0.025
+			"water_drain_per_sec": 0.025,
+			"traps": {
+				"count": 7,
+				"damage_per_second": 14.0,
+				"tick_interval": 0.5,
+				"radius": 2.4,
+				"min_radius": 26.0,
+				"max_radius": 150.0,
+				"cause": "trap",
+				"telegraph": "rustling vines"
+			}
 		},
 		"walkability": {
 			"max_prop_height": 2.0

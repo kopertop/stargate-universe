@@ -23,6 +23,17 @@ func _init() -> void:
 	_run("test_save_store_edit_set_player_pos_parses_vector", _t_edit_player_pos)
 	_run("test_save_manager_headless_session_does_not_touch_player_slots", _t_headless_isolation)
 
+	# ---- profile + checkpoint model (issue #77) ----
+	_run("test_save_store_create_profile_writes_profile_json_and_lists", _t_profile_crud)
+	_run("test_save_store_checkpoint_round_trips_with_kind_meta", _t_checkpoint_round_trip)
+	_run("test_save_store_autosave_ring_keeps_newest_three_evicts_older", _t_autosave_ring)
+	_run("test_save_store_permanent_checkpoints_survive_autosave_pressure", _t_permanent_survive)
+	_run("test_save_store_delete_checkpoint_refuses_permanent_kinds", _t_delete_refuses_permanent)
+	_run("test_save_store_delete_checkpoint_removes_rolling_kinds", _t_delete_allows_rolling)
+	_run("test_save_store_most_recent_checkpoint_picks_newest_timestamp", _t_most_recent_checkpoint)
+	_run("test_save_store_migrate_flat_layout_into_default_profile", _t_migrate_flat)
+	_run("test_save_store_migrate_flat_is_idempotent", _t_migrate_flat_idempotent)
+
 	print("\nsave_store_test: %d passed, %d failed" % [_pass, _fail])
 	quit(0 if _fail == 0 else 1)
 
@@ -246,6 +257,203 @@ func _t_headless_isolation(root: String) -> bool:
 	ok = _assert(_room_of_dict(headless_store.read_snapshot("autosave")) == "capture_room", "sandbox root captured the throwaway") and ok
 	ok = _assert(_room_of_dict(player_store.read_snapshot("autosave")) == "real_room", "player save still holds real state") and ok
 	return ok
+
+
+# ---- profile + checkpoint tests -----------------------------------------
+
+func _t_profile_crud(root: String) -> bool:
+	# Arrange
+	var store: SaveStore = SaveStore.new(root)
+	# Act
+	var pid: String = store.create_profile("My Run")
+	var read: Dictionary = store.read_profile(pid)
+	store.write_profile(pid, {"display_name": "Renamed", "created": read.get("created", 0), "active_checkpoint": ""})
+	var listed: Array[Dictionary] = store.list_profiles()
+	# Assert
+	var ok: bool = _assert(pid == "my_run", "profile id slugified to 'my_run' (got '%s')" % pid)
+	ok = _assert(FileAccess.file_exists(store.profile_meta_path(pid)), "profile.json written") and ok
+	ok = _assert(store.read_profile(pid).get("display_name", "") == "Renamed", "write_profile updated display_name") and ok
+	ok = _assert(listed.size() == 1 and listed[0].get("id", "") == pid, "list_profiles returns the profile") and ok
+	return ok
+
+
+func _t_checkpoint_round_trip(root: String) -> bool:
+	# Arrange
+	var store: SaveStore = SaveStore.new(root)
+	var pid: String = store.create_profile("Default")
+	var snap: Dictionary = _sample_snapshot("gate_room")
+	var meta: Dictionary = store.build_meta_from_snapshot("manual_x", snap)
+	meta["kind"] = "manual"
+	meta["label"] = "Before the leak"
+	# Act
+	var wrote: bool = store.write_checkpoint(pid, "manual_x", snap, meta)
+	var read: Dictionary = store.read_checkpoint(pid, "manual_x")
+	var cmeta: Dictionary = store.read_checkpoint_meta(pid, "manual_x")
+	# Assert
+	var ok: bool = _assert(wrote, "write_checkpoint returned true")
+	ok = _assert(_room_of_dict(read) == "gate_room", "snapshot round-trips") and ok
+	ok = _assert(cmeta.get("kind", "") == "manual", "meta.kind persisted") and ok
+	ok = _assert(cmeta.get("label", "") == "Before the leak", "meta.label persisted") and ok
+	ok = _assert(cmeta.get("permanent", false) == true, "manual checkpoint flagged permanent") and ok
+	return ok
+
+
+func _t_autosave_ring(root: String) -> bool:
+	# Arrange: a profile and four autosave writes with strictly ascending ts.
+	var store: SaveStore = SaveStore.new(root)
+	var pid: String = store.create_profile("Default")
+	# Act: write 4 autosaves; ring must keep the newest 3.
+	for i in range(4):
+		var snap: Dictionary = _sample_snapshot("room_%d" % i)
+		var cid: String = "autosave_%d" % (1000 + i)
+		var meta: Dictionary = store.build_meta_from_snapshot(cid, snap)
+		meta["timestamp"] = 1000 + i
+		meta["kind"] = "autosave"
+		store.write_checkpoint(pid, cid, snap, meta)
+	# Assert: exactly 3 autosave checkpoints, the newest 3 (room_1..room_3),
+	# room_0 evicted, and all 3 are individually readable.
+	var autos: Array[Dictionary] = store.list_checkpoints(pid)
+	var ok: bool = _assert(autos.size() == 3, "ring holds exactly 3 (got %d)" % autos.size())
+	ok = _assert(not store.has_checkpoint(pid, "autosave_1000"), "oldest (room_0) evicted") and ok
+	ok = _assert(store.has_checkpoint(pid, "autosave_1003"), "newest kept") and ok
+	# All three loadable
+	for cid in ["autosave_1001", "autosave_1002", "autosave_1003"]:
+		ok = _assert(not store.read_checkpoint(pid, cid).is_empty(), "%s loadable" % cid) and ok
+	return ok
+
+
+func _t_permanent_survive(root: String) -> bool:
+	# Arrange: two manuals + one episode + then autosave pressure.
+	var store: SaveStore = SaveStore.new(root)
+	var pid: String = store.create_profile("Default")
+	_write_cp(store, pid, "manual_1", "manual", 500, "m1")
+	_write_cp(store, pid, "manual_2", "manual", 501, "m2")
+	_write_cp(store, pid, "episode_air", "episode", 502, "ep")
+	# Act: five autosaves to push the ring well past 3.
+	for i in range(5):
+		_write_cp(store, pid, "autosave_%d" % (2000 + i), "autosave", 2000 + i, "a")
+	# Assert: both manuals + the episode checkpoint are all still present.
+	var ok: bool = _assert(store.has_checkpoint(pid, "manual_1"), "manual_1 survived")
+	ok = _assert(store.has_checkpoint(pid, "manual_2"), "manual_2 survived") and ok
+	ok = _assert(store.has_checkpoint(pid, "episode_air"), "episode survived") and ok
+	# And the autosave ring is still capped at 3.
+	var autos: int = 0
+	for cp in store.list_checkpoints(pid):
+		if cp.get("kind", "") == "autosave":
+			autos += 1
+	ok = _assert(autos == 3, "autosave ring still capped at 3 (got %d)" % autos) and ok
+	return ok
+
+
+func _t_delete_refuses_permanent(root: String) -> bool:
+	# Arrange
+	var store: SaveStore = SaveStore.new(root)
+	var pid: String = store.create_profile("Default")
+	_write_cp(store, pid, "manual_1", "manual", 100, "m")
+	_write_cp(store, pid, "episode_air", "episode", 101, "e")
+	# Act
+	var del_manual: bool = store.delete_checkpoint(pid, "manual_1")
+	var del_episode: bool = store.delete_checkpoint(pid, "episode_air")
+	# Assert: both refused, both still on disk.
+	var ok: bool = _assert(not del_manual, "delete refused for manual")
+	ok = _assert(not del_episode, "delete refused for episode") and ok
+	ok = _assert(store.has_checkpoint(pid, "manual_1"), "manual still on disk") and ok
+	ok = _assert(store.has_checkpoint(pid, "episode_air"), "episode still on disk") and ok
+	return ok
+
+
+func _t_delete_allows_rolling(root: String) -> bool:
+	# Arrange
+	var store: SaveStore = SaveStore.new(root)
+	var pid: String = store.create_profile("Default")
+	_write_cp(store, pid, "autosave_1", "autosave", 100, "a")
+	_write_cp(store, pid, "quicksave", "quicksave", 101, "q")
+	# Act
+	var del_auto: bool = store.delete_checkpoint(pid, "autosave_1")
+	var del_quick: bool = store.delete_checkpoint(pid, "quicksave")
+	# Assert
+	var ok: bool = _assert(del_auto, "autosave deletable")
+	ok = _assert(del_quick, "quicksave deletable") and ok
+	ok = _assert(not store.has_checkpoint(pid, "autosave_1"), "autosave removed") and ok
+	ok = _assert(not store.has_checkpoint(pid, "quicksave"), "quicksave removed") and ok
+	return ok
+
+
+func _t_most_recent_checkpoint(root: String) -> bool:
+	# Arrange
+	var store: SaveStore = SaveStore.new(root)
+	var pid: String = store.create_profile("Default")
+	_write_cp(store, pid, "manual_1", "manual", 100, "m")
+	_write_cp(store, pid, "autosave_x", "autosave", 999, "a")
+	_write_cp(store, pid, "quicksave", "quicksave", 500, "q")
+	# Act / Assert
+	return _assert(store.most_recent_checkpoint(pid) == "autosave_x", "newest ts wins")
+
+
+func _t_migrate_flat(root: String) -> bool:
+	# Arrange: a legacy FLAT layout — an autosave with backups, a quicksave,
+	# and a manual slot.
+	var store: SaveStore = SaveStore.new(root)
+	# autosave: two writes so a backup exists (primary newest = room_b).
+	store.write_snapshot("autosave", _sample_snapshot("room_a"), store.build_meta_from_snapshot("autosave", _sample_snapshot("room_a")))
+	store.write_snapshot("autosave", _sample_snapshot("room_b"), store.build_meta_from_snapshot("autosave", _sample_snapshot("room_b")))
+	store.write_snapshot("quicksave", _sample_snapshot("quick_room"), store.build_meta_from_snapshot("quicksave", _sample_snapshot("quick_room")))
+	store.write_snapshot("manual_1", _sample_snapshot("manual_room"), store.build_meta_from_snapshot("manual_1", _sample_snapshot("manual_room")))
+	# Act
+	var migrated: bool = store.migrate_flat_to_profile()
+	# Assert: a Default profile exists with the right checkpoint set.
+	var ok: bool = _assert(migrated, "migrate reported a move")
+	ok = _assert(store.has_profile("default"), "Default profile created") and ok
+	var checkpoints: Array[Dictionary] = store.list_checkpoints("default")
+	# autosave ring (primary + 1 backup = 2), quicksave (1), manual (1) = 4.
+	ok = _assert(checkpoints.size() == 4, "4 checkpoints migrated (got %d)" % checkpoints.size()) and ok
+	# Autosave ring seeded from primary + backup, newest first = room_b.
+	var autos: Array[Dictionary] = []
+	for cp in checkpoints:
+		if cp.get("kind", "") == "autosave":
+			autos.append(cp)
+	ok = _assert(autos.size() == 2, "autosave ring seeded with 2 (primary+backup)") and ok
+	if autos.size() == 2:
+		var newest: Dictionary = store.read_checkpoint("default", String(autos[0].get("checkpoint_id", "")))
+		ok = _assert(_room_of_dict(newest) == "room_b", "newest autosave = former primary (room_b)") and ok
+	# Manual became a permanent checkpoint.
+	var has_perm_manual: bool = false
+	for cp in checkpoints:
+		if cp.get("kind", "") == "manual" and cp.get("permanent", false) == true:
+			has_perm_manual = true
+	ok = _assert(has_perm_manual, "manual slot folded into a permanent manual checkpoint") and ok
+	# Regression: active_checkpoint must resolve to the real most-recent AUTOSAVE,
+	# not a migrated permanent manual. Manuals were once stamped now+i (future),
+	# which let them outrank the autosave ring in most_recent_checkpoint().
+	var prof: Dictionary = store.read_profile("default")
+	var active: String = String(prof.get("active_checkpoint", ""))
+	ok = _assert(store._kind_from_id(active) == "autosave", "active_checkpoint is an autosave, not a migrated manual (got '%s')" % active) and ok
+	return ok
+
+
+func _t_migrate_flat_idempotent(root: String) -> bool:
+	# Arrange
+	var store: SaveStore = SaveStore.new(root)
+	store.write_snapshot("autosave", _sample_snapshot("room_a"), store.build_meta_from_snapshot("autosave", _sample_snapshot("room_a")))
+	# Act: migrate twice.
+	var first: bool = store.migrate_flat_to_profile()
+	var count_after_first: int = store.list_checkpoints("default").size()
+	var second: bool = store.migrate_flat_to_profile()
+	var count_after_second: int = store.list_checkpoints("default").size()
+	# Assert: second run is a no-op and does not duplicate checkpoints.
+	var ok: bool = _assert(first, "first migrate moved data")
+	ok = _assert(not second, "second migrate is a no-op") and ok
+	ok = _assert(count_after_first == count_after_second, "no duplicate checkpoints on re-run") and ok
+	return ok
+
+
+# Helper: write a classified checkpoint with an explicit timestamp.
+func _write_cp(store: SaveStore, pid: String, cid: String, kind: String, ts: int, room: String) -> void:
+	var snap: Dictionary = _sample_snapshot(room)
+	var meta: Dictionary = store.build_meta_from_snapshot(cid, snap)
+	meta["timestamp"] = ts
+	meta["kind"] = kind
+	store.write_checkpoint(pid, cid, snap, meta)
 
 
 # ---- read helpers -------------------------------------------------------

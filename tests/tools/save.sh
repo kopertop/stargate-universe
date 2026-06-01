@@ -6,6 +6,7 @@
 #
 # Usage:
 #   tests/tools/save.sh list
+#   tests/tools/save.sh profiles                   (profile + checkpoint model)
 #   tests/tools/save.sh dump <slot>
 #   tests/tools/save.sh validate [slot|all]        (default: all)
 #   tests/tools/save.sh set <slot> <dot.path>=<value>
@@ -37,12 +38,13 @@ shift || true
 
 case "$CMD" in
 	list)     run_godot "$INSPECT" --list ;;
+	profiles) run_godot "$INSPECT" --profiles ;;
 	dump)     run_godot "$INSPECT" --dump "${1:?need a slot id}" ;;
 	validate) run_godot "$INSPECT" --validate "${1:-all}" ;;
 	set)      run_godot "$EDIT" --slot "${1:?need a slot id}" --set "${2:?need <path>=<value>}" ;;
 	clone)    run_godot "$EDIT" --from "${1:?need a from slot}" --to "${2:?need a to slot}" ;;
 	scenario) run_godot "$EDIT" --slot "${1:?need a slot id}" --scenario "${2:?need a scenario name}" ;;
 	*)
-		echo "usage: save.sh list | dump <slot> | validate [slot|all] | set <slot> <path>=<val> | clone <from> <to> | scenario <slot> <name>"
+		echo "usage: save.sh list | profiles | dump <slot> | validate [slot|all] | set <slot> <path>=<val> | clone <from> <to> | scenario <slot> <name>"
 		exit 2 ;;
 esac

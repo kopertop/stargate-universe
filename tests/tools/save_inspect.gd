@@ -6,7 +6,8 @@ extends SceneTree
 # --save-root=<path>.
 #
 # Usage (user args after `++`):
-#   --list                 table of every slot + metadata
+#   --list                 table of every flat slot + metadata
+#   --profiles             table of profiles + their checkpoints (new model)
 #   --dump <slot>          pretty-print the full save.json for a slot
 #   --validate <slot|all>  parse + version + required-key check; nonzero exit
 #
@@ -20,14 +21,45 @@ func _init() -> void:
 	var code: int = 0
 	if _has(args, "--list"):
 		_list(store)
+	elif _has(args, "--profiles"):
+		_list_profiles(store)
 	elif _has(args, "--dump"):
 		code = _dump(store, _positional(args, "--dump"))
 	elif _has(args, "--validate"):
 		code = _validate(store, _positional(args, "--validate"))
 	else:
-		print("usage: save_inspect.gd ++ --list | --dump <slot> | --validate <slot|all> [--save-root=<path>]")
+		print("usage: save_inspect.gd ++ --list | --profiles | --dump <slot> | --validate <slot|all> [--save-root=<path>]")
 		code = 2
 	quit(code)
+
+
+# Profile + checkpoint listing for the new save model (issue #77).
+func _list_profiles(store: SaveStore) -> void:
+	var profiles: Array[Dictionary] = store.list_profiles()
+	print("root: %s" % store.saves_root)
+	if profiles.is_empty():
+		print("(no profiles)")
+		return
+	for prof in profiles:
+		var pid: String = String(prof.get("id", "?"))
+		print("profile: %s (%s)  active=%s" % [
+			String(prof.get("display_name", pid)), pid, String(prof.get("active_checkpoint", "")),
+		])
+		var checkpoints: Array[Dictionary] = store.list_checkpoints(pid)
+		if checkpoints.is_empty():
+			print("  (no checkpoints)")
+			continue
+		print("  %-22s | %-9s | %-3s | %-9s | %s" % ["checkpoint", "kind", "perm", "ts", "label / room"])
+		print("  " + "-".repeat(78))
+		for cp in checkpoints:
+			print("  %-22s | %-9s | %-3s | %-9d | %s [%s]" % [
+				String(cp.get("checkpoint_id", "?")),
+				String(cp.get("kind", "?")),
+				"yes" if cp.get("permanent", false) == true else "no",
+				int(cp.get("timestamp", 0)),
+				String(cp.get("label", "")),
+				String(cp.get("room_id", "")),
+			])
 
 
 func _list(store: SaveStore) -> void:

@@ -50,18 +50,17 @@ var _cinematic_dash: bool = false
 var _dash_target: Vector3 = Vector3.ZERO
 var _dash_speed: float = 12.0
 
-# Footsteps — random individual samples (slices of the Ship Footsteps pack)
-# played on a distance-based cadence: one step per ~FOOTSTEP_STRIDE metres of
-# floor travel, so faster speeds produce faster steps without per-frame
-# timing math. Pitch jitters per step so repeats don't sound mechanical.
-const FOOTSTEP_SOUNDS: Array[String] = [
-	"res://sounds/footstep_01.ogg", "res://sounds/footstep_02.ogg",
-	"res://sounds/footstep_03.ogg", "res://sounds/footstep_04.ogg",
-	"res://sounds/footstep_05.ogg", "res://sounds/footstep_06.ogg",
-	"res://sounds/footstep_07.ogg", "res://sounds/footstep_08.ogg",
-	"res://sounds/footstep_09.ogg", "res://sounds/footstep_10.ogg",
-]
+# Footsteps — random individual samples played on a distance-based cadence: one
+# step per ~FOOTSTEP_STRIDE metres of floor travel, so faster speeds produce
+# faster steps without per-frame timing math. Pitch jitters per step so repeats
+# don't sound mechanical. The SAMPLE SET is chosen per-environment by
+# FootstepLibrary from the active planet's biome (issue #33): metal on the ship
+# / alien-tech decks, dirt / desert / water / swamp on planet surfaces. The rig
+# is rebuilt per scene, so resolving the surface once in _ready (from the
+# then-current GameState.active_planet_spec) is enough.
+const _FOOTSTEP_LIBRARY: Script = preload("res://scripts/footstep_library.gd")
 const FOOTSTEP_STRIDE: float = 1.9
+var _footstep_surface: String = "metal"   # FootstepLibrary.DEFAULT_SURFACE
 var _footstep_streams: Array = []
 var _footstep_distance: float = 0.0
 
@@ -87,10 +86,7 @@ var _equipment_mount: Node3D = null
 func _ready() -> void:
 	_apply_colormap(_model)
 	_setup_equipment_mount()
-	for path in FOOTSTEP_SOUNDS:
-		var s: AudioStream = load(path)
-		if s != null:
-			_footstep_streams.append(s)
+	_load_footstep_surface()
 
 func _setup_equipment_mount() -> void:
 	if _model == null:
@@ -214,6 +210,19 @@ func _drive_locomotion_anim() -> void:
 		_play_anim(airborne_anim, 0.1)
 		if _animation != null:
 			_animation.speed_scale = 1.0
+
+
+# Resolve the footstep surface from the active planet spec (ship → metal) and
+# load that surface's sample set. Called once on spawn; the rig is rebuilt per
+# scene so a new planet always gets a freshly-resolved surface. Exposed (no
+# leading guard on the lib) so a test can drive it after stubbing the spec.
+func _load_footstep_surface() -> void:
+	var spec: Variant = {}
+	var gs: Node = get_node_or_null("/root/GameState")
+	if gs != null:
+		spec = gs.active_planet_spec
+	_footstep_surface = _FOOTSTEP_LIBRARY.surface_for_spec(spec)
+	_footstep_streams = _FOOTSTEP_LIBRARY.load_streams(_footstep_surface)
 
 
 # Distance-based footstep cadence: accumulate horizontal travel and emit a

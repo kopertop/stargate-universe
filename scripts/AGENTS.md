@@ -46,6 +46,12 @@ extension. Most have an adjacent `.uid` sidecar (Godot 4.6 resource UID).
 - `quest_waypoint.gd` — Floating diamond Sprite3D (in-world).
 - `dialog_screen.gd` — Full WoW-style dialog window (instanced by HUD).
 
+### Data helpers (`class_name`, no autoload)
+- `footstep_library.gd` (`FootstepLibrary`) — per-environment footstep registry
+  (issue #33): surface id → sample paths + `surface_for_spec(planet_spec)`.
+  `player.gd` resolves its surface from `GameState.active_planet_spec` on spawn.
+  Biome→surface mapping lives in `../data/biomes.json` (`footstep_surface`).
+
 ## Conventions
 
 - GDScript with static typing everywhere (`func foo(x: int) -> void:`).

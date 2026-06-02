@@ -43,6 +43,17 @@ static func render(vbox: VBoxContainer, atmo: Dictionary) -> void:
 		level_color(String(atmo.get("radiation", "LOW"))), 13)
 	_row(vbox, "Toxins", String(atmo.get("toxins", "NONE")),
 		level_color(String(atmo.get("toxins", "NONE"))), 13)
+	# Kino scan profile (issue #93): when planet.gd supplies the upcoming planet's
+	# biome / hazard / resource summary, surface it under the atmospheric readings
+	# so the player can read "what's down there" before/while choosing to cross.
+	if atmo.has("biome_label"):
+		_row(vbox, "Biome", String(atmo.get("biome_label", "")), ACCENT, 13)
+	if atmo.has("hazard") and String(atmo.get("hazard", "NONE")) != "NONE":
+		_row(vbox, "Hazard", String(atmo.get("hazard", "")),
+			level_color(String(atmo.get("hazard", ""))), 13)
+	if atmo.has("resources") and atmo.get("resources", []) is Array \
+			and not (atmo.get("resources", []) as Array).is_empty():
+		_row(vbox, "Resources", ", ".join(atmo.get("resources", [])), GOOD, 13)
 
 
 static func _row(vbox: VBoxContainer, label: String, value: String, color: Color, size: int) -> void:

@@ -3,11 +3,6 @@ extends Node3D
 # Runtime shell for the generated Air lime planet. The scene owns common player,
 # camera, and HUD nodes; PlanetGenerator owns deterministic world contents.
 
-const PLANETS_PATH: String = "res://data/planets.json"
-# Fallback planets.json row used to SEED a default spec the first time the planet
-# scene loads without one (e.g. direct boot, scene_boot smoke test). The dial /
-# selection flow normally sets GameState.active_planet_spec before transitioning.
-const DEFAULT_PLANET_ID: String = "air_lime_world"
 const PlanetGeneratorRef: Script = preload("res://scripts/planet_generator.gd")
 const KinoDroneScript: Script = preload("res://scripts/kino_drone.gd")
 const PlanetTimerScript: Script = preload("res://scripts/planet_timer.gd")
@@ -170,9 +165,25 @@ func _start_kino_recon(spec: Dictionary) -> void:
 	# Not in group "player": the recon drone is a camera, not the player body.
 	drone.set("launch_in_ship", false)
 	# Atmosphere lives in the spec's hazard_params (carried from the dialed
-	# biome / legacy planets.json "atmosphere" block via _normalize_spec).
-	var atmo: Variant = spec.get("hazard_params", {})
-	drone.set("atmosphere", atmo if atmo is Dictionary else {})
+	# biome / legacy planets.json "atmosphere" block via _normalize_spec). The
+	# Kino scan profile (issue #93) layers the upcoming planet's biome label +
+	# hazard + resource summary on top so the recon HUD reads "what's down there"
+	# before/while the player chooses to cross.
+	var atmo: Dictionary = spec.get("hazard_params", {}).duplicate(true) \
+		if spec.get("hazard_params", {}) is Dictionary else {}
+	var profile: Dictionary = GameState.planet_scan_profile(spec)
+	atmo["biome_label"] = String(profile.get("label", ""))
+	atmo["hazard"] = String(profile.get("hazard", "NONE"))
+	atmo["resources"] = profile.get("resources", [])
+	# Surface the derived breathability / readings so the readout colours correctly
+	# even when hazard_params omits them (e.g. a fresh dialed biome).
+	atmo["breathable"] = profile.get("breathable", true)
+	atmo["composition"] = String(profile.get("composition", "BREATHABLE"))
+	atmo["temperature_c"] = int(profile.get("temperature_c", 20))
+	atmo["temperature_note"] = String(profile.get("temperature_note", ""))
+	atmo["radiation"] = String(profile.get("radiation", "LOW"))
+	atmo["toxins"] = String(profile.get("toxins", "NONE"))
+	drone.set("atmosphere", atmo)
 	# Stream terrain around the DRONE now that the player rig is gone.
 	if _chunk_manager != null and is_instance_valid(_chunk_manager):
 		_chunk_manager.set("tracked", drone)
@@ -191,39 +202,7 @@ func _active_spec() -> Dictionary:
 	var active: Dictionary = GameState.active_planet_spec
 	if active is Dictionary and not active.is_empty():
 		return active
-	var row: Dictionary = _load_planet(DEFAULT_PLANET_ID)
-	var spec: Dictionary = {
-		"seed": int(row.get("seed", 104729)),
-		"biome": "desert",
-		"resource_table": {
-			"lime_nodes": int(row.get("lime_nodes", 5)),
-			"lime_per_node": int(row.get("lime_per_node", 1)),
-			"lime_min_radius": float(row.get("lime_min_radius", 70.0)),
-			"lime_max_radius": float(row.get("lime_max_radius", 200.0)),
-			"lime_far_count": int(row.get("lime_far_count", 0)),
-			"lime_far_min_radius": float(row.get("lime_far_min_radius", 380.0)),
-			"lime_far_max_radius": float(row.get("lime_far_max_radius", 440.0)),
-			"lime_far_arc": float(row.get("lime_far_arc", 0.7)),
-			"poi_counts": row.get("poi_counts", {}) if row.get("poi_counts", {}) is Dictionary else {},
-		},
-		"hazard_params": row.get("atmosphere", {}) if row.get("atmosphere", {}) is Dictionary else {},
-		"name": String(row.get("name", "Lime World")),
-	}
-	GameState.active_planet_spec = spec
-	return spec
-
-
-func _load_planet(id: String) -> Dictionary:
-	var f: FileAccess = FileAccess.open(PLANETS_PATH, FileAccess.READ)
-	if f == null:
-		push_error("planet.gd: cannot open %s" % PLANETS_PATH)
-		return {}
-	var parsed: Variant = JSON.parse_string(f.get_as_text())
-	f.close()
-	if not (parsed is Array):
-		push_error("planet.gd: %s did not parse to an array" % PLANETS_PATH)
-		return {}
-	for entry in parsed:
-		if entry is Dictionary and String(entry.get("id", "")) == id:
-			return entry
-	return {}
+	# No spec set (direct boot / scene_boot smoke test): defer to the SINGLE
+	# authored-spec builder in GameState so the layout matches a real dialed lime
+	# run byte-for-byte (no forked copy of the air-lime layout here).
+	return GameState.build_air_lime_spec()

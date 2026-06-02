@@ -16,12 +16,22 @@ code.
 - `characters.json` — Per-character static metadata used by NPC scripts.
 - `planets.json` — Off-ship planet definitions (lime planet etc.). Legacy rows
   are normalized into a desert `PlanetSpec` by `scripts/planet_generator.gd`.
-- `biomes.json` — Per-biome parameter blocks (terrain shaping, ground palette,
-  prop set, walkability, hazard) keyed by biome id (`desert`, `jungle`, `toxic`,
-  `urban`, `alien_tech`). Read by `PlanetGenerator.biome_params()`; consumed via
-  a `PlanetSpec` `{ seed, biome, resource_table, hazard_params }`. Authorable
-  without code edits — keep terrain `height`/`frequency` low so generated slopes
-  stay walkable (no jump required).
+- `biomes.json` — Per-biome parameter blocks (terrain shaping, ground/sky
+  palette, prop set, walkability, hazard) keyed by biome id (`desert`,
+  `temperate`, `jungle`, `toxic`, `urban`, `alien_tech`). Read by
+  `PlanetGenerator.biome_params()`; consumed via a `PlanetSpec`
+  `{ seed, biome, resource_table, hazard_params }`. Authorable without code edits
+  — keep terrain `height`/`frequency` low so generated slopes stay walkable (no
+  jump required). The `hazard` block carries the gate window + water drain plus
+  biome-specific sub-blocks: `traps` (jungle damage zones), `sensors` (alien-tech
+  alarms), `oxygen_drain`/`breathable`/`suit_drain_multiplier` (toxic), and
+  `settlement`/`negotiation` (urban). A biome whose `hazard.requires_flag` is set
+  (toxic → `pressure_suits_found`) is EXCLUDED from the dial-time selection pool
+  until that GameState flag is true. The dial flow that ties it together is
+  `GameState.build_next_planet_spec()` (biome roll + scarcity-targeted resource
+  table + hazard block, persisted + reproducible per `planets_dialed`); the Kino
+  scan summary is `GameState.planet_scan_profile()`. See
+  `../design/gdd/stargate-planetary-runs.md` → Procedural Generation.
 
 ## Conventions
 

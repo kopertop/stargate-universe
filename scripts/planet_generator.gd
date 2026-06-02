@@ -30,6 +30,7 @@ const PLANET_GATE_SCRIPT: Script = preload("res://scripts/planet_gate.gd")
 const POI_NODE_SCRIPT: Script = preload("res://scripts/poi_node.gd")
 const CHUNK_MANAGER_SCRIPT: Script = preload("res://scripts/planet_chunk_manager.gd")
 const HAZARD_ZONE_SCRIPT: Script = preload("res://scripts/hazard_zone.gd")
+const SENSOR_ZONE_SCRIPT: Script = preload("res://scripts/sensor_zone.gd")
 const NPC_SCRIPT: Script = preload("res://scripts/npc.gd")
 
 const BIOMES_PATH: String = "res://data/biomes.json"
@@ -84,6 +85,10 @@ static func build(world: Node3D, spec_or_row: Dictionary) -> Node3D:
 	# biome's `hazard.traps` block (or a spec hazard_params override), so a biome
 	# with no traps block (desert, temperate, …) places none.
 	_build_hazard_zones(world, spec, rng, params)
+	# Alien-tech security sensors (issue #91): scatter trip-beam/sensor-cone Area3D
+	# alarms from the biome's `hazard.sensors` block. A biome with no sensors block
+	# (desert, jungle, …) places none — so this is alien-tech-only.
+	_build_sensor_zones(world, spec, rng, params)
 	return manager
 
 
@@ -301,6 +306,7 @@ static func build_params(spec: Dictionary) -> Dictionary:
 		"gate_window": float(hz.get("gate_window", DEFAULT_GATE_WINDOW)),
 		"water_drain_per_sec": float(hz.get("water_drain_per_sec", DEFAULT_WATER_DRAIN)),
 		"traps": traps_block(spec),
+		"sensors": sensors_block(spec),
 	}
 
 
@@ -316,6 +322,21 @@ static func traps_block(spec: Dictionary) -> Dictionary:
 	var hz: Variant = bp.get("hazard", {})
 	if hz is Dictionary and (hz as Dictionary).get("traps", null) is Dictionary:
 		return (hz as Dictionary)["traps"]
+	return {}
+
+
+# Resolve the security-sensor/alarm block for a spec (issue #91). A spec's own
+# hazard_params.sensors wins (dialed planet / per-run override → density tunable
+# from data), else the biome's hazard.sensors from biomes.json. Empty when the
+# biome defines no sensors (so non-alien-tech biomes scatter none).
+static func sensors_block(spec: Dictionary) -> Dictionary:
+	var hp: Variant = spec.get("hazard_params", {})
+	if hp is Dictionary and (hp as Dictionary).get("sensors", null) is Dictionary:
+		return (hp as Dictionary)["sensors"]
+	var bp: Dictionary = biome_params(String(spec.get("biome", DEFAULT_BIOME)))
+	var hz: Variant = bp.get("hazard", {})
+	if hz is Dictionary and (hz as Dictionary).get("sensors", null) is Dictionary:
+		return (hz as Dictionary)["sensors"]
 	return {}
 
 
@@ -811,6 +832,83 @@ static func _build_hazard_zones(world: Node3D, spec: Dictionary,
 		_add_box(zone, Vector3(0.0, 0.30, 0.0), Vector3(0.9, 0.6, 0.9), flora_mat)
 		_add_box(zone, Vector3(-0.5, 0.55, 0.3), Vector3(0.4, 1.1, 0.4), flora_mat)
 		_add_box(zone, Vector3(0.45, 0.65, -0.25), Vector3(0.4, 1.3, 0.4), flora_mat)
+		world.add_child(zone)
+
+
+# --- Security sensors / alarms (alien-tech biome, issue #91) -----------------
+#
+# Scatter SensorZone Area3D trip-beams from the biome's `hazard.sensors` block.
+# Crossing one raises a persistent alarm whose defense damage ESCALATES while the
+# alarm is up; a flooring tick routes the no-death knockout (cause-tagged
+# "alien_defense"). Telegraphed FAIRLY: each sensor owns a tall, glowing emissive
+# beam pillar + a warning floor strip so a careful player can read it and route
+# AROUND — avoidance is skill, not luck. Deterministic from the shared RNG so
+# placement survives save/load.
+#
+# Density + strength come from `params.sensors` (resolved from biome hazard.sensors
+# or a spec hazard_params override) — hazard density is tunable from data.
+const SENSOR_BEAM_TINT: Color = Color(0.85, 0.30, 0.28)    # alert-red Ancient light-beam
+const SENSOR_STRIP_TINT: Color = Color(0.30, 0.78, 0.85)   # cyan floor warning strip
+static func _build_sensor_zones(world: Node3D, spec: Dictionary,
+		rng: RandomNumberGenerator, params: Dictionary) -> void:
+	var sensors: Dictionary = params.get("sensors", {}) if params.get("sensors", {}) is Dictionary else {}
+	if sensors.is_empty():
+		return
+	var count: int = int(sensors.get("count", 0))
+	if count <= 0:
+		return
+	var base_dps: float = float(sensors.get("base_damage_per_second", 10.0))
+	var escalation: float = float(sensors.get("escalation", 1.5))
+	var max_dps: float = float(sensors.get("max_damage_per_second", 60.0))
+	var tick: float = float(sensors.get("tick_interval", 0.5))
+	var radius: float = float(sensors.get("radius", 2.0))
+	var min_r: float = float(sensors.get("min_radius", 24.0))
+	var max_r: float = float(sensors.get("max_radius", 150.0))
+	var alarm_cause: String = String(sensors.get("cause", "alien_defense"))
+	var tell: String = String(sensors.get("telegraph", "humming light-beam"))
+
+	var beam_mat: StandardMaterial3D = StandardMaterial3D.new()
+	beam_mat.albedo_color = SENSOR_BEAM_TINT
+	beam_mat.roughness = 0.4
+	beam_mat.emission_enabled = true
+	beam_mat.emission = SENSOR_BEAM_TINT
+	beam_mat.emission_energy_multiplier = 1.6
+
+	var strip_mat: StandardMaterial3D = StandardMaterial3D.new()
+	strip_mat.albedo_color = SENSOR_STRIP_TINT
+	strip_mat.roughness = 0.5
+	strip_mat.emission_enabled = true
+	strip_mat.emission = SENSOR_STRIP_TINT
+	strip_mat.emission_energy_multiplier = 0.6
+
+	for i in count:
+		var angle: float = (TAU / float(max(count, 1))) * float(i) + rng.randf_range(-0.4, 0.4)
+		var dist: float = rng.randf_range(min_r, max_r)
+		var x: float = cos(angle) * dist
+		var z: float = sin(angle) * dist
+		var ground_y: float = height_at(x, z, params)
+
+		var zone: Area3D = SENSOR_ZONE_SCRIPT.new()
+		zone.name = "SensorZone%d" % (i + 1)
+		zone.position = Vector3(x, ground_y, z)
+		zone.set("base_damage_per_second", base_dps)
+		zone.set("escalation", escalation)
+		zone.set("max_damage_per_second", max_dps)
+		zone.set("tick_interval", tick)
+		zone.set("cause", alarm_cause)
+		zone.set("telegraph", tell)
+
+		var cs: CollisionShape3D = CollisionShape3D.new()
+		var shape: BoxShape3D = BoxShape3D.new()
+		shape.size = Vector3(radius * 2.0, 4.0, radius * 2.0)
+		cs.shape = shape
+		cs.position = Vector3(0.0, 2.0, 0.0)
+		zone.add_child(cs)
+
+		# The "tell": a tall glowing red beam pillar (the sensor cone) + a cyan
+		# floor warning strip around it — both read as DANGER from a distance.
+		_add_box(zone, Vector3(0.0, 2.2, 0.0), Vector3(0.18, 4.4, 0.18), beam_mat)
+		_add_box(zone, Vector3(0.0, 0.06, 0.0), Vector3(radius * 2.0, 0.12, radius * 2.0), strip_mat)
 		world.add_child(zone)
 
 

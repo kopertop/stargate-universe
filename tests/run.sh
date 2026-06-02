@@ -10,7 +10,7 @@
 #   6. questlog     — data-driven QuestLog autoload (predicate + event advance,
 #                     save round-trip, old-format migration)
 #
-# Usage: tests/run.sh [lint|scene|flow|quest|playthrough|resume|autopilot|questlog|inventory|atmosphere|kino-doors|kino-autoexplore|gamepad|npc-chat|shaders|ancient-text|discovery-toast|door-plaque|unit-frame|quest-tracker|hud-wow|gate-two-way|equip-mount|equip-assets|char-panel|equip-integration|planet-gen|planet-resources|biome-desert|biome-jungle|biome-toxic|biome-urban|knockout|save|save-integration|all]
+# Usage: tests/run.sh [lint|scene|flow|quest|playthrough|resume|autopilot|questlog|inventory|atmosphere|kino-doors|kino-autoexplore|gamepad|npc-chat|shaders|ancient-text|discovery-toast|door-plaque|unit-frame|quest-tracker|hud-wow|gate-two-way|equip-mount|equip-assets|char-panel|equip-integration|planet-gen|planet-resources|biome-desert|biome-jungle|biome-toxic|biome-urban|biome-alien-tech|knockout|save|save-integration|all]
 #                                                                          (default: all)
 #
 # Pre-commit hook: .githooks/pre-commit invokes the lint subset via
@@ -66,6 +66,7 @@ RAN_BIOMEDESERT=0
 RAN_BIOMEJUNGLE=0
 RAN_BIOMETOXIC=0
 RAN_BIOMEURBAN=0
+RAN_BIOMEALIENTECH=0
 RAN_KNOCKOUT=0
 RC_SCENE=0
 RC_FLOW=0
@@ -108,6 +109,7 @@ RC_BIOMEDESERT=0
 RC_BIOMEJUNGLE=0
 RC_BIOMETOXIC=0
 RC_BIOMEURBAN=0
+RC_BIOMEALIENTECH=0
 RC_KNOCKOUT=0
 
 # Run a SceneTree-extending script (synchronous, no autoloads).
@@ -348,6 +350,12 @@ if [[ "$MODE" == "biome-urban" || "$MODE" == "all" ]]; then
 	RAN_BIOMEURBAN=1
 fi
 
+if [[ "$MODE" == "biome-alien-tech" || "$MODE" == "all" ]]; then
+	run_script_test "biome_alien_tech" "res://tests/smoke/biome_alien_tech.gd"
+	RC_BIOMEALIENTECH=$?
+	RAN_BIOMEALIENTECH=1
+fi
+
 if [[ "$MODE" == "knockout" || "$MODE" == "all" ]]; then
 	run_script_test "knockout" "res://tests/smoke/knockout.gd"
 	RC_KNOCKOUT=$?
@@ -447,6 +455,7 @@ echo "==============================="
 [[ $RAN_BIOMEJUNGLE -eq 1 ]] && echo "biome_jungle:        $([[ $RC_BIOMEJUNGLE -eq 0 ]] && echo PASS || echo "FAIL ($RC_BIOMEJUNGLE)")" || echo "biome_jungle:        SKIPPED"
 [[ $RAN_BIOMETOXIC -eq 1 ]] && echo "biome_toxic:         $([[ $RC_BIOMETOXIC -eq 0 ]] && echo PASS || echo "FAIL ($RC_BIOMETOXIC)")" || echo "biome_toxic:         SKIPPED"
 [[ $RAN_BIOMEURBAN -eq 1 ]] && echo "biome_urban:         $([[ $RC_BIOMEURBAN -eq 0 ]] && echo PASS || echo "FAIL ($RC_BIOMEURBAN)")" || echo "biome_urban:         SKIPPED"
+[[ $RAN_BIOMEALIENTECH -eq 1 ]] && echo "biome_alien_tech:    $([[ $RC_BIOMEALIENTECH -eq 0 ]] && echo PASS || echo "FAIL ($RC_BIOMEALIENTECH)")" || echo "biome_alien_tech:    SKIPPED"
 [[ $RAN_KNOCKOUT -eq 1 ]] && echo "knockout:            $([[ $RC_KNOCKOUT -eq 0 ]] && echo PASS || echo "FAIL ($RC_KNOCKOUT)")" || echo "knockout:            SKIPPED"
 [[ $RAN_SAVE -eq 1 ]] && echo "save_store:          $([[ $RC_SAVE_UNIT -eq 0 ]] && echo PASS || echo "FAIL ($RC_SAVE_UNIT)")" || echo "save_store:          SKIPPED"
 [[ $RAN_SAVE -eq 1 ]] && echo "save_slot_resume:    $([[ $RC_SAVE_RESUME -eq 0 ]] && echo PASS || echo "FAIL ($RC_SAVE_RESUME)")" || echo "save_slot_resume:    SKIPPED"

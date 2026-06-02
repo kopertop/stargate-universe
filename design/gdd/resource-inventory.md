@@ -63,6 +63,16 @@ not busywork.
    | Water | Start | Crew hydration (biological need) | Episode 1 |
    | Food | Start | Crew nutrition (morale, health) | Episode 1 |
    | Lime | Early S1 | CO2 scrubbing (life support consumable) | First planet mission |
+
+   > **Godot status (issues #86, #93):** Water, Food, and Ship Parts are now
+   > live **tracked resources** in the build — `GameState.TRACKED_RESOURCES`
+   > registers each with a label + low threshold, backed by `Inventory` counts.
+   > `GameState.resource_scarcity()` ranks them by deficit (deepest first), and
+   > `build_resource_table(seed)` targets that scarcity on every gate run: the
+   > single scarcest tracked resource is **guaranteed** as a planet's primary
+   > deposit cluster, plus 1–2 seeded secondaries. The planetary-runs dial flow
+   > (`build_next_planet_spec`) wires this into each generated planet. See
+   > `design/gdd/stargate-planetary-runs.md` → Procedural Generation.
    | Naquadah | Mid S1 | Power system repairs, high-tier fixes | Story event |
    | Medical Supplies | Early S1 | Crew health events, injury treatment | First aid discovery |
    | Ancient Components | Late S1 | Advanced repairs, unlocking Ancient tech | Ancient section discovered |
@@ -153,7 +163,7 @@ inventory).
 | **Event Bus** | Inbound (subscribe) | Subscribes to `player:interact` (cache looting triggers collection). |
 | **Ship State** | Inbound (consumer) | Ship State requests resources for repairs. Checks availability via `hasResource(type, amount)`. Consumes via `resource:consumed`. |
 | **Ship Exploration** | Inbound (source) | Supply caches provide resources. Exploration system calls `addResource(type, amount)` on cache loot. |
-| **Stargate & Planetary Runs** *(undesigned)* | Inbound (source) | Primary source for Water, Food, Lime, and specialized resources. Planetary scavenging adds to the pool. |
+| **Stargate & Planetary Runs** *(implemented)* | Inbound (source) | Primary source for Water, Food, Lime, and specialized resources. Planetary scavenging adds to the pool. The dial flow reads `resource_scarcity()` to target the scarcest tracked resource on each generated planet (`build_resource_table`). |
 | **Timer & Pressure** *(undesigned)* | Outbound (trigger) | Resource depletion can trigger timed crisis events. |
 | **Crew Dialogue & Choice** *(undesigned)* | Outbound (context) | Dialogue system reads resource levels for contextual crew reactions (rationing complaints, gratitude after resupply). |
 | **Episode Narrative** *(undesigned)* | Bidirectional | Episodes can grant/consume resources and story items. Resource thresholds can trigger episode events. |

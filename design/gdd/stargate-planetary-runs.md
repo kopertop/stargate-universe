@@ -181,6 +181,61 @@ and clues to Destiny's mission — but only if you budget your time well.
    Kino Remote: resources gathered, POIs discovered, time remaining when
    returned. No score screen — just information through the in-world UI.
 
+### Procedural Generation (Godot implementation — issues #85–#93)
+
+The Godot build does not author one ggez scene per planet; it **generates** each
+planet at dial time from a `PlanetSpec` and a per-biome data block, so every gate
+run yields a semi-random, resource-appropriate, walkable world. This replaces the
+hand-authored `PlanetDefinition` catalog above for runtime; the catalog fields
+survive as the data the spec carries.
+
+- **PlanetSpec** (the per-run contract): `{ seed: int, biome: String,
+  resource_table: Dictionary, hazard_params: Dictionary, name: String }`.
+  `PlanetGenerator.build(world, spec)` consumes it: it streams a near-infinite,
+  walkable terrain (a single global `height_at()` height field — gentle enough
+  that worst-case local slope stays well under the CharacterBody3D floor limit, so
+  the player never has to jump), seats the return Stargate at the home anchor,
+  scatters deterministic resource clusters + POIs + walk-around props, and lays
+  the biome's hazards (heat/water drain, toxin oxygen drain, jungle damage traps,
+  alien-tech security sensors) and urban settlement + negotiation residents.
+
+- **Biome data** lives in `data/biomes.json`: `desert`, `temperate`, `jungle`,
+  `toxic`, `urban`, `alien_tech`. Each block carries terrain shaping, ground/sky
+  palette, prop set + density, walkability cap, and a `hazard` block (gate window,
+  water drain, plus biome-specific sub-blocks: `traps`, `sensors`, `oxygen_drain`,
+  `settlement`, `negotiation`). A biome whose hazard block declares
+  `requires_flag` is excluded from selection until that GameState flag is set.
+
+- **Dial / selection flow** (the integration seam, issue #93):
+  `GameState.build_next_planet_spec(name_hint, force_biome, force_seed)` is the
+  single entry point that turns a gate dial into a complete, persisted spec. It
+  (a) increments `planets_dialed` and derives a deterministic run seed from it
+  (`planets_dialed × PLANET_SEED_SALT`, masked to 31 bits), (b) rolls the biome
+  via `PlanetGenerator.select_biome(seed, biome_flags())` — respecting the
+  `pressure_suits_found` gate so **Toxic never appears until the crew has found
+  pressure suits**, (c) targets resource scarcity via `build_resource_table(seed)`
+  (the single scarcest tracked resource is **guaranteed** as the primary cluster,
+  plus 1–2 seeded secondaries), and (d) attaches the biome's hazard block. The
+  assembled spec is stored whole in `active_planet_spec` and persisted, so a
+  reload **rebuilds the identical world** without re-rolling. The E1 first lime
+  run pins `force_biome="desert"` + the authored `air_lime_world` seed so the
+  scripted opener is unchanged.
+
+- **Kino scan profile** (issue #93): `GameState.planet_scan_profile(spec)` returns
+  a render-ready summary of the upcoming planet — biome label, breathability +
+  composition, temperature, radiation/toxins, hazard type, gate window, and the
+  resource labels the run will yield (scarcest first). `planet.gd` layers this
+  onto the Kino recon HUD's atmosphere readout (`AtmoReadout.render`) so the
+  player reads "what's down there" **before/while choosing to cross**, extending
+  the existing Kino recon + compass surfaces.
+
+- **No-death recovery** (issue #92): every biome hazard routes through the single
+  `GameState.knock_out(cause)` entry point instead of any death/stranding path.
+  A downed run banks only the minimum-necessary unit of the run's scarce target
+  resource, forfeits the rest + the remaining window, fully heals the player, and
+  routes them to the **infirmary** to wake to a cause-tagged TJ line. No death,
+  no stranding — the worst outcome on a planet is waking in the med-bay.
+
 ### States and Transitions
 
 | State | Entry Condition | Exit Conditions | Behavior |

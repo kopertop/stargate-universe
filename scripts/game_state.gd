@@ -189,6 +189,17 @@ var kino_autopilot: bool = false  # @collection-ok: one transient pilot-mode fla
 # deterministic node name, so chunk content + discovery survive save/load.
 var active_planet_spec: Dictionary = {}
 
+# Monotonic count of planets the gate has dialed this game (issue #93). The
+# dial / selection flow derives each run's seed deterministically from this
+# counter (PLANET_SEED_SALT-mixed) so build_next_planet_spec() is reproducible:
+# the Nth dial always rolls the same biome + layout. Persisted so a reload that
+# precedes the next dial still rolls the same upcoming planet.
+# @collection-ok: a single monotonic run counter, not an enumerated collection
+var planets_dialed: int = 0
+# Seed salt mixed with planets_dialed so consecutive runs don't share low-bit
+# biome rolls. Chosen as a large odd prime for good spread under FastNoiseLite.
+const PLANET_SEED_SALT: int = 2654435761
+
 var health: float = MAX_HEALTH
 var oxygen: float = MAX_OXYGEN
 var current_episode: String = EPISODE_AIR
@@ -564,6 +575,7 @@ func reset() -> void:
 	returned_from_lime_planet = false
 	pending_planet_return = false
 	active_planet_spec = {}
+	planets_dialed = 0
 	gate_window_active = false
 	gate_window_remaining = 0.0
 	gate_window_water_drain = 0.0
@@ -1123,6 +1135,119 @@ func build_resource_table(seed: int) -> Dictionary:
 	return table
 
 
+# --- Dial / selection flow (issue #93) --------------------------------------
+#
+# THE single entry point that turns a gate dial / FTL drop into a complete,
+# persisted PlanetSpec. Ties together the three planet-epic pieces:
+#   * biome: PlanetGenerator.select_biome(seed, biome_flags()) — respects the
+#     pressure_suits_found gate so Toxic only rolls once suits are found (#89),
+#   * resource_table: build_resource_table(seed) — guarantees the scarcest
+#     tracked resource + 1-2 extras (#86),
+#   * hazard_params: the biome's own hazard block from biomes.json, so on-surface
+#     window / water / oxygen / trap / sensor behaviour resolves for the run.
+# The run seed is derived deterministically from planets_dialed (incremented per
+# dial), so the Nth planet always rolls IDENTICALLY — and because the assembled
+# spec is persisted whole into active_planet_spec, a reload rebuilds the same
+# world without re-rolling. Returns the spec it stored.
+#
+# Pass force_biome to override selection (the E1 first lime run pins "desert" so
+# the authored lime planet is unchanged); pass force_seed to pin the seed (the
+# first run reuses the authored air_lime_world seed for an identical layout).
+func build_next_planet_spec(name_hint: String = "", force_biome: String = "",
+		force_seed: int = -1) -> Dictionary:
+	planets_dialed += 1
+	var run_seed: int = force_seed if force_seed >= 0 else _planet_run_seed(planets_dialed)
+	var biome: String = force_biome
+	if biome == "":
+		biome = PlanetGenerator.select_biome(run_seed, biome_flags())
+	var bp: Dictionary = PlanetGenerator.biome_params(biome)
+	var hz: Variant = bp.get("hazard", {})
+	var hazard_params: Dictionary = (hz as Dictionary).duplicate(true) if hz is Dictionary else {}
+	var label: String = String(bp.get("label", biome.capitalize()))
+	var planet_name: String = name_hint if name_hint != "" else "%s World" % label
+	var spec: Dictionary = {
+		"seed": run_seed,
+		"biome": biome,
+		"resource_table": build_resource_table(run_seed),
+		"hazard_params": hazard_params,
+		"name": planet_name,
+	}
+	active_planet_spec = spec
+	return spec
+
+
+# Deterministic per-run planet seed from the dial counter. Mixed with a large
+# odd salt so consecutive runs don't share low-bit biome rolls. Masked to 31
+# bits so it stays a positive int (FastNoiseLite / RandomNumberGenerator seed).
+func _planet_run_seed(dial_index: int) -> int:
+	return (dial_index * PLANET_SEED_SALT) & 0x7fffffff
+
+
+# Kino scan profile (issue #93). A compact, render-ready summary of the UPCOMING
+# planet a spec describes, surfaced by the Kino recon HUD / compass BEFORE/while
+# the player chooses to cross. Pure read — derives everything from the spec +
+# the biome's data block, no side effects. Shape:
+#   { "biome": String, "label": String, "breathable": bool,
+#     "composition": String, "temperature_c": int, "temperature_note": String,
+#     "radiation": String, "toxins": String, "hazard": String,
+#     "gate_window": float, "resources": [String,...] }
+# `resources` lists the human labels of the resource clusters the run will yield
+# (scarcest first), so the player can read "what's down there" before crossing.
+func planet_scan_profile(spec: Dictionary = {}) -> Dictionary:
+	var s: Dictionary = spec if (spec is Dictionary and not spec.is_empty()) else active_planet_spec
+	var biome: String = String(s.get("biome", "desert"))
+	var bp: Dictionary = PlanetGenerator.biome_params(biome)
+	var hz: Dictionary = bp.get("hazard", {}) if bp.get("hazard", {}) is Dictionary else {}
+	var breathable: bool = PlanetGenerator.breathable_for(s)
+	var hazard_type: String = String(hz.get("type", "none"))
+	# Resource labels (scarcest first) from the spec's clusters; fall back to lime.
+	var resources: Array = []
+	var rt: Variant = s.get("resource_table", {})
+	if rt is Dictionary and (rt as Dictionary).get("clusters", null) is Array:
+		for c in (rt as Dictionary)["clusters"]:
+			if c is Dictionary:
+				resources.append(resource_label(String((c as Dictionary).get("type", ""))))
+	if resources.is_empty():
+		resources.append(resource_label(AIR_LIME_RESOURCE))
+	return {
+		"biome": biome,
+		"label": String(bp.get("label", biome.capitalize())),
+		"breathable": breathable,
+		"composition": "BREATHABLE" if breathable else String(hz.get("toxins", "TOXIC")),
+		"temperature_c": int(hz.get("temperature_c", 20)),
+		"temperature_note": _temp_note(int(hz.get("temperature_c", 20))),
+		"radiation": String(hz.get("radiation", "LOW")),
+		"toxins": String(hz.get("toxins", "NONE")) if not breathable else "NONE",
+		"hazard": hazard_type.to_upper() if hazard_type != "none" else "NONE",
+		"gate_window": PlanetGenerator.gate_window_for(s),
+		"resources": resources,
+	}
+
+
+# Human label for a tracked resource id (Water/Food/Parts/Lime), falling back to
+# a capitalized id so an unknown type still reads cleanly on the scan profile.
+func resource_label(id: String) -> String:
+	for row in TRACKED_RESOURCES:
+		if String(row["id"]) == id:
+			return String(row.get("label", id.capitalize()))
+	if id == AIR_LIME_RESOURCE:
+		return "Lime"
+	return id.capitalize()
+
+
+# Coarse HOT/WARM/TEMPERATE/COLD note for a temperature, matching the atmosphere
+# readout's `temperature_note` so the scan profile reads consistently with the
+# in-room readout.
+func _temp_note(temp_c: int) -> String:
+	if temp_c >= 40:
+		return "HOT"
+	if temp_c >= 28:
+		return "WARM"
+	if temp_c <= 0:
+		return "COLD"
+	return ""
+
+
 func can_start_air_crisis() -> bool:
 	var inv: Node = _inv()
 	var has_kino: bool = inv != null and inv.call("has", "kino_remote")
@@ -1657,6 +1782,7 @@ func serialize() -> Dictionary:
 		# Active procedural-planet spec — deep-duplicated so a later reset() can't
 		# mutate the snapshot through the shared resource_table / hazard_params dicts.
 		"active_planet_spec": active_planet_spec.duplicate(true),
+		"planets_dialed": planets_dialed,
 		"gate_window_active": gate_window_active,
 		"gate_window_remaining": gate_window_remaining,
 		"gate_window_water_drain": gate_window_water_drain,
@@ -1720,6 +1846,7 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	returned_from_lime_planet = data.get("returned_from_lime_planet", false) == true
 	var saved_spec: Variant = data.get("active_planet_spec", {})
 	active_planet_spec = (saved_spec as Dictionary).duplicate(true) if saved_spec is Dictionary else {}
+	planets_dialed = int(data.get("planets_dialed", 0))
 	gate_window_active = data.get("gate_window_active", false) == true
 	gate_window_remaining = float(data.get("gate_window_remaining", 0.0))
 	gate_window_water_drain = float(data.get("gate_window_water_drain", 0.0))

@@ -170,9 +170,25 @@ func _start_kino_recon(spec: Dictionary) -> void:
 	# Not in group "player": the recon drone is a camera, not the player body.
 	drone.set("launch_in_ship", false)
 	# Atmosphere lives in the spec's hazard_params (carried from the dialed
-	# biome / legacy planets.json "atmosphere" block via _normalize_spec).
-	var atmo: Variant = spec.get("hazard_params", {})
-	drone.set("atmosphere", atmo if atmo is Dictionary else {})
+	# biome / legacy planets.json "atmosphere" block via _normalize_spec). The
+	# Kino scan profile (issue #93) layers the upcoming planet's biome label +
+	# hazard + resource summary on top so the recon HUD reads "what's down there"
+	# before/while the player chooses to cross.
+	var atmo: Dictionary = spec.get("hazard_params", {}).duplicate(true) \
+		if spec.get("hazard_params", {}) is Dictionary else {}
+	var profile: Dictionary = GameState.planet_scan_profile(spec)
+	atmo["biome_label"] = String(profile.get("label", ""))
+	atmo["hazard"] = String(profile.get("hazard", "NONE"))
+	atmo["resources"] = profile.get("resources", [])
+	# Surface the derived breathability / readings so the readout colours correctly
+	# even when hazard_params omits them (e.g. a fresh dialed biome).
+	atmo["breathable"] = profile.get("breathable", true)
+	atmo["composition"] = String(profile.get("composition", "BREATHABLE"))
+	atmo["temperature_c"] = int(profile.get("temperature_c", 20))
+	atmo["temperature_note"] = String(profile.get("temperature_note", ""))
+	atmo["radiation"] = String(profile.get("radiation", "LOW"))
+	atmo["toxins"] = String(profile.get("toxins", "NONE"))
+	drone.set("atmosphere", atmo)
 	# Stream terrain around the DRONE now that the player rig is gone.
 	if _chunk_manager != null and is_instance_valid(_chunk_manager):
 		_chunk_manager.set("tracked", drone)

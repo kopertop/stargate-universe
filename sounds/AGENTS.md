@@ -9,10 +9,25 @@ carry-overs; project-specific audio gets added under the same convention.
 - `coin.ogg`, `fall.ogg`, `jump.ogg`, `land.ogg` — Kenney starter-kit SFX.
   (`walking.ogg` is the old looping footstep bed — superseded by the
   `footstep_NN.ogg` set below, kept only as the scene's default stream.)
-- `footstep_01.ogg` … `footstep_10.ogg` — Individual footstep samples sliced
-  from the "ES Ship Footsteps" pack (silence-split, ~0.25–0.4s each).
-  `player.gd` plays a random one every ~1.9 m of floor travel (distance-based
-  cadence, auto-scales with speed) with per-step pitch jitter.
+- **Footsteps — per-environment sets (issue #33).** `player.gd` plays a random
+  sample every ~1.9 m of floor travel (distance-based cadence, auto-scales with
+  speed) with per-step pitch jitter. The SET is chosen on spawn by
+  `scripts/footstep_library.gd` (`FootstepLibrary`) from the active planet's
+  biome — the ship / a bare spec = `metal`. Biome→surface mapping is the
+  `footstep_surface` key in `../data/biomes.json` (fallback table in the lib).
+  Sets:
+  - `footstep_01.ogg` … `footstep_10.ogg` — **metal** (ship + alien-tech decks).
+    Slices of the "ES Ship Footsteps" pack (silence-split, ~0.25–0.4s each).
+  - `footstep_dirt_00.ogg` … `footstep_dirt_09.ogg` — **dirt** (temperate /
+    jungle / urban ground). Kenney "RPG Audio" `footstepNN.ogg` (CC0).
+  - `footstep_desert_00.ogg` … `_03.ogg` — **desert** sand crunch. Generated
+    (CC0, filtered pink-noise transient; ElevenLabs API was unavailable).
+  - `footstep_water_00.ogg` … `_03.ogg` — **water** shallow wade splash.
+    Generated (CC0). Reserved for a future water biome.
+  - `footstep_swamp_00.ogg` … `_03.ogg` — **swamp** mud squelch (toxic biome).
+    Generated (CC0).
+  > Generated samples are placeholders pending an ElevenLabs/foley pass — the
+  > system is data-driven, so a higher-fidelity drop-in is a pure asset swap.
 - `klaxon.ogg` — Heavy bell strike (Kenney Impact Sounds /
   impactBell_heavy_001). Played 3× by `bed.gd` on the post-sleep wake-up.
 - `flicker.ogg` — Electrical glitch (Kenney Interface Sounds / glitch_002).

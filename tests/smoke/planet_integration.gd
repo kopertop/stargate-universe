@@ -51,6 +51,7 @@ func _initialize() -> void:
 		return
 
 	_test_dial_flow_builds_and_persists_spec(gs)
+	_test_gameplay_dial_entry_builds_spec(gs)
 	_test_dial_seed_and_biome_deterministic(gs)
 	_test_every_biome_generates_and_is_walkable()
 	_test_dialed_spec_guarantees_scarcest(gs)
@@ -74,6 +75,28 @@ func _test_dial_flow_builds_and_persists_spec(gs: Node) -> void:
 	var active: Dictionary = gs.get("active_planet_spec")
 	_expect(active == spec, "build_next_planet_spec persists into active_planet_spec")
 	_expect(int(gs.get("planets_dialed")) == 1, "first dial increments planets_dialed to 1")
+
+
+# --- 1b: the REAL gate-dial gameplay entry point builds + persists a spec ----
+# Regression for the integration gap: build_next_planet_spec()/build_air_lime_spec()
+# must be reached from gameplay, not only from this suite calling the builder
+# directly. Drives GameState.dial_lime_planet() (the entry gate_console.gd hits)
+# and asserts a spec was assembled and persisted — so a future refactor that
+# unwires the dial from spec-building fails HERE.
+func _test_gameplay_dial_entry_builds_spec(gs: Node) -> void:
+	gs.call("reset")
+	# Precondition: the gate only dials after Destiny drops from FTL.
+	gs.set("ftl_drop_triggered", true)
+	_expect((gs.get("active_planet_spec") as Dictionary).is_empty(),
+		"no active spec before the gate is dialed")
+	gs.call("dial_lime_planet")
+	_expect(bool(gs.get("lime_planet_dialed")), "dial_lime_planet latches the dial")
+	var active: Dictionary = gs.get("active_planet_spec")
+	_expect(active is Dictionary and not active.is_empty(),
+		"dial_lime_planet builds + persists active_planet_spec (gameplay entry)")
+	_expect(active.has("seed") and active.has("biome") and active.has("resource_table"),
+		"gameplay-dialed spec is well-formed (seed + biome + resource_table)")
+	_expect(int(gs.get("planets_dialed")) >= 1, "gameplay dial advances planets_dialed")
 
 
 # --- 2: Nth dial deterministic in seed + biome ------------------------------

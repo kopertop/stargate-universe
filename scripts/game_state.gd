@@ -90,6 +90,11 @@ const QUEST_COMPLETE: String = "complete"
 const E1_QUEST_ID: String = "e1_air"
 const AIR_LIME_RESOURCE: String = "lime"
 const AIR_LIME_REQUIRED: int = 3
+# The authored E1 lime planet row (rich, hand-tuned layout) lives in this data
+# file; build_air_lime_spec() loads it so the first dialed run is byte-identical
+# to the authored world while still flowing through the dial -> spec pipeline.
+const PLANETS_PATH: String = "res://data/planets.json"
+const AIR_LIME_WORLD_ID: String = "air_lime_world"
 
 # Tracked crew resources (issue #86) — the SINGLE registry of resources whose
 # scarcity the crew cares about and that procedural-planet generation targets.
@@ -1183,6 +1188,56 @@ func _planet_run_seed(dial_index: int) -> int:
 	return (dial_index * PLANET_SEED_SALT) & 0x7fffffff
 
 
+# Build (and persist) the authored E1 lime-planet spec from the planets.json
+# AIR_LIME_WORLD_ID row. This is the SINGLE source of the hand-tuned lime layout
+# (node counts, radii, POI bands) — both the dial flow (dial_lime_planet) and the
+# planet scene's direct-boot fallback (planet.gd::_active_spec) route through it,
+# so the authored world is byte-identical no matter how it is entered. Counts the
+# dial so planets_dialed advances like any other run. Returns the stored spec.
+func build_air_lime_spec() -> Dictionary:
+	planets_dialed += 1
+	var row: Dictionary = _load_planet_row(AIR_LIME_WORLD_ID)
+	var atmo: Variant = row.get("atmosphere", {})
+	var poi: Variant = row.get("poi_counts", {})
+	var spec: Dictionary = {
+		"seed": int(row.get("seed", 104729)),
+		"biome": "desert",
+		"resource_table": {
+			"lime_nodes": int(row.get("lime_nodes", 5)),
+			"lime_per_node": int(row.get("lime_per_node", 1)),
+			"lime_min_radius": float(row.get("lime_min_radius", 70.0)),
+			"lime_max_radius": float(row.get("lime_max_radius", 200.0)),
+			"lime_far_count": int(row.get("lime_far_count", 0)),
+			"lime_far_min_radius": float(row.get("lime_far_min_radius", 380.0)),
+			"lime_far_max_radius": float(row.get("lime_far_max_radius", 440.0)),
+			"lime_far_arc": float(row.get("lime_far_arc", 0.7)),
+			"poi_counts": poi if poi is Dictionary else {},
+		},
+		"hazard_params": atmo if atmo is Dictionary else {},
+		"name": String(row.get("name", "Lime World")),
+	}
+	active_planet_spec = spec
+	return spec
+
+
+# Load a single planets.json row by id. Returns {} if the file/row is missing so
+# callers fall back to inlined defaults.
+func _load_planet_row(id: String) -> Dictionary:
+	var f: FileAccess = FileAccess.open(PLANETS_PATH, FileAccess.READ)
+	if f == null:
+		push_error("game_state.gd: cannot open %s" % PLANETS_PATH)
+		return {}
+	var parsed: Variant = JSON.parse_string(f.get_as_text())
+	f.close()
+	if not (parsed is Array):
+		push_error("game_state.gd: %s did not parse to an array" % PLANETS_PATH)
+		return {}
+	for entry in parsed:
+		if entry is Dictionary and String((entry as Dictionary).get("id", "")) == id:
+			return entry as Dictionary
+	return {}
+
+
 # Kino scan profile (issue #93). A compact, render-ready summary of the UPCOMING
 # planet a spec describes, surfaced by the Kino recon HUD / compass BEFORE/while
 # the player chooses to cross. Pure read — derives everything from the spec +
@@ -1464,6 +1519,14 @@ func dial_lime_planet() -> void:
 		add_log("Lime planet address is already active.")
 		return
 	lime_planet_dialed = true
+	# Dialing a viable address is the moment the destination world is determined:
+	# build + persist the PlanetSpec NOW so the surface (biome, resource clusters,
+	# hazards) is fixed for this run and survives save/load. The E1 lime run uses
+	# the authored air-lime layout; future selectable destinations roll procedurally
+	# via build_next_planet_spec(). Skip if a spec was already assembled for this
+	# dial (e.g. a resumed save restored active_planet_spec).
+	if active_planet_spec.is_empty():
+		build_air_lime_spec()
 	add_log("Gate Control locks a viable address: lime deposits detected near the landing zone.")
 	advance_air_quest()
 

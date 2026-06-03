@@ -64,6 +64,10 @@ static func build(world: Node3D, spec_or_row: Dictionary) -> Node3D:
 	var params: Dictionary = build_params(spec)
 
 	var manager: Node3D = _install_chunk_manager(world, params)
+	# Distant low-res backdrop so the floor renders to the horizon (no visible
+	# streamed-window edge). High-res chunks stream on top near the body; this is
+	# what an aerial Kino sees far out. Visual only (no collision).
+	_build_far_ground(world, params)
 	_build_return_gate(world, params)
 	# Resource-scarcity targeting (issue #86): when the spec's resource_table
 	# carries a `clusters` list (scarcest resource guaranteed + 1-2 extras), place
@@ -426,6 +430,49 @@ static func _install_chunk_manager(world: Node3D, params: Dictionary) -> Node3D:
 	# spawn before the first frame; planet.gd hands the body over for streaming.
 	manager.call("prime_around", Vector3.ZERO)
 	return manager
+
+
+# Far-ground backdrop: ONE large, low-resolution ground mesh sampling the SAME
+# global height function so it stitches with the streamed chunks, sat a touch
+# BELOW them (epsilon) so the high-res chunks always win near the body (no
+# z-fighting). Covers out to the camera far plane so an aerial Kino sees floor to
+# the horizon instead of the streamed-window edge ("edge of the world" fix).
+# Visual only — collision stays with the streamed chunks. Built once; centered at
+# origin, which covers the recon/landing area the Kino patrols.
+const FAR_GROUND_HALF_EXTENT: float = 4000.0   # metres from origin (>= Kino cam far)
+const FAR_GROUND_CELLS: int = 200              # 40 m cells over the 8 km span — coarse
+const FAR_GROUND_DROP: float = 0.5             # sit this far under the streamed chunks
+static func _build_far_ground(world: Node3D, params: Dictionary) -> void:
+	var span: float = FAR_GROUND_HALF_EXTENT * 2.0
+	var step: float = span / float(FAR_GROUND_CELLS)
+	var st: SurfaceTool = SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	const UV_SCALE: float = 0.06
+	for i in FAR_GROUND_CELLS:
+		for j in FAR_GROUND_CELLS:
+			var x0: float = -FAR_GROUND_HALF_EXTENT + float(i) * step
+			var z0: float = -FAR_GROUND_HALF_EXTENT + float(j) * step
+			var x1: float = x0 + step
+			var z1: float = z0 + step
+			var p00: Vector3 = Vector3(x0, height_at(x0, z0, params) - FAR_GROUND_DROP, z0)
+			var p10: Vector3 = Vector3(x1, height_at(x1, z0, params) - FAR_GROUND_DROP, z0)
+			var p11: Vector3 = Vector3(x1, height_at(x1, z1, params) - FAR_GROUND_DROP, z1)
+			var p01: Vector3 = Vector3(x0, height_at(x0, z1, params) - FAR_GROUND_DROP, z1)
+			# Same +Y winding as the streamed chunks (see _build_chunk).
+			st.set_uv(Vector2(p00.x, p00.z) * UV_SCALE); st.add_vertex(p00)
+			st.set_uv(Vector2(p11.x, p11.z) * UV_SCALE); st.add_vertex(p11)
+			st.set_uv(Vector2(p01.x, p01.z) * UV_SCALE); st.add_vertex(p01)
+			st.set_uv(Vector2(p00.x, p00.z) * UV_SCALE); st.add_vertex(p00)
+			st.set_uv(Vector2(p10.x, p10.z) * UV_SCALE); st.add_vertex(p10)
+			st.set_uv(Vector2(p11.x, p11.z) * UV_SCALE); st.add_vertex(p11)
+	st.generate_normals()
+	var mi: MeshInstance3D = MeshInstance3D.new()
+	mi.name = "FarGround"
+	mi.mesh = st.commit()
+	mi.material_override = _ground_mat(params)
+	# Never let the backdrop be frustum-culled away when only its far edge is in view.
+	mi.extra_cull_margin = FAR_GROUND_HALF_EXTENT
+	world.add_child(mi)
 
 
 static func _ground_mat(params: Dictionary) -> StandardMaterial3D:

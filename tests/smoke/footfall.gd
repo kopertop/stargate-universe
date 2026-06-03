@@ -33,6 +33,7 @@ func _initialize() -> void:
 	_test_required_surfaces_registered()
 	_test_every_surface_samples_load()
 	_test_surface_resolution()
+	_test_surface_gain()
 	_test_every_biome_has_registered_surface()
 
 	_report()
@@ -78,6 +79,18 @@ func _test_surface_resolution() -> void:
 	# Unknown biome / unknown explicit surface both degrade to the default.
 	_expect(LIB.surface_for_spec({"biome": "lava_world"}) == "metal", "unknown biome → metal default")
 	_expect(LIB.surface_for_spec({"footstep_surface": "lava"}) == "metal", "unknown surface → metal default")
+
+
+# Per-surface playback gain: metal (ship) is the 0 dB reference; soft ground is
+# quieter (negative), with desert sand the softest. An unknown surface = 0 dB.
+func _test_surface_gain() -> void:
+	_expect(LIB.gain_db_for("metal") == 0.0, "metal gain is the 0 dB reference")
+	_expect(LIB.gain_db_for("desert") < 0.0, "desert is quieter than metal")
+	_expect(LIB.gain_db_for("water") < 0.0, "water is quieter than metal")
+	_expect(LIB.gain_db_for("swamp") < 0.0, "swamp is quieter than metal")
+	_expect(LIB.gain_db_for("dirt") < 0.0, "dirt is quieter than metal")
+	_expect(LIB.gain_db_for("desert") <= LIB.gain_db_for("dirt"), "desert sand is the softest surface")
+	_expect(LIB.gain_db_for("lava_world") == 0.0, "unknown surface → 0 dB (base volume)")
 
 
 # data/biomes.json is the canonical surface source; every biome must declare a

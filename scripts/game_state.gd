@@ -1219,7 +1219,10 @@ func build_air_lime_spec() -> Dictionary:
 	planets_dialed += 1
 	var row: Dictionary = _load_planet_row(AIR_LIME_WORLD_ID)
 	var atmo: Variant = row.get("atmosphere", {})
-	var poi: Variant = row.get("poi_counts", {})
+	# The authored first planet is a DRY lime world: ONLY lime + sand. Force every
+	# non-lime POI category to 0 so the generator scatters no water/ruin/ore/debris
+	# here (water on a dry planet made no sense). Other planets keep their defaults.
+	var poi: Dictionary = {"water": 0, "ruin": 0, "ore": 0, "debris": 0}
 	var spec: Dictionary = {
 		"seed": int(row.get("seed", 104729)),
 		"biome": "desert",

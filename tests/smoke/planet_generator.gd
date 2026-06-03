@@ -46,6 +46,7 @@ func _initialize() -> void:
 		return
 
 	_test_each_biome_builds_and_is_walkable()
+	_test_first_planet_lime_only()
 	_test_seamless_chunk_borders()
 	_test_near_infinite_bounded_no_rim()
 	_test_chunk_count_capped()
@@ -73,6 +74,8 @@ func _test_each_biome_builds_and_is_walkable() -> void:
 		_expect(manager != null, "biome %s build() returns a chunk manager" % biome)
 		_expect(world.get_node_or_null("PlanetGround") != null,
 			"biome %s installs PlanetGround terrain manager" % biome)
+		_expect(world.get_node_or_null("FarGround") != null,
+			"biome %s installs far-ground backdrop (no edge-of-world)" % biome)
 		_expect(world.get_node_or_null("PlanetReturnStargate") != null,
 			"biome %s places return Stargate" % biome)
 		_expect(world.get_node_or_null("PlanetReturnGate") != null,
@@ -86,6 +89,32 @@ func _test_each_biome_builds_and_is_walkable() -> void:
 				props += 1
 		_expect(props > 0, "biome %s seats walk-around props" % biome)
 		world.free()
+
+
+# --- 2b: the authored FIRST planet is lime + sand ONLY (no water/ruin/ore/debris) -
+func _test_first_planet_lime_only() -> void:
+	var gs: Node = root.get_node_or_null("GameState")
+	_expect(gs != null, "GameState autoload attached (first-planet test)")
+	if gs == null:
+		return
+	gs.call("reset")
+	var spec: Dictionary = gs.call("build_air_lime_spec")
+	var rt: Dictionary = spec.get("resource_table", {}) if spec.get("resource_table", {}) is Dictionary else {}
+	var poi: Dictionary = rt.get("poi_counts", {}) if rt.get("poi_counts", {}) is Dictionary else {}
+	for cat in ["water", "ruin", "ore", "debris"]:
+		_expect(int(poi.get(cat, -1)) == 0, "first planet zeroes '%s' POIs" % cat)
+	# Build it: NO Poi_* nodes (lime + sand only), but lime is still placed.
+	var world: Node3D = Node3D.new()
+	root.add_child(world)
+	_gen.build(world, spec)
+	var poi_nodes: int = 0
+	for c in world.get_children():
+		if String(c.name).begins_with("Poi_"):
+			poi_nodes += 1
+	_expect(poi_nodes == 0, "first planet builds no POI nodes (lime + sand only)")
+	_expect(world.get_node_or_null("LimeNode1") != null, "first planet still places lime")
+	world.free()
+	gs.call("reset")
 
 
 # --- 3: chunk borders stitch seamlessly (two adjacent chunks' OWN edge verts) -

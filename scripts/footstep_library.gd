@@ -49,6 +49,25 @@ const SURFACES: Dictionary = {
 	],
 }
 
+# Per-surface playback gain (dB), ADDED to the player's base footstep volume.
+# Metal (the ship) is the 0 dB reference; soft ground reads quieter — desert sand
+# is the softest. Tunable here without touching the trigger. Issue tweak: planets
+# were "clanky and loud" because metal played everywhere; soft surfaces fix that.
+const SURFACE_GAIN_DB: Dictionary = {
+	"metal": 0.0,
+	"dirt": -4.0,
+	"desert": -8.0,
+	"water": -5.0,
+	"swamp": -5.0,
+}
+
+
+# Extra gain (dB) for a surface, relative to the player's base footstep volume.
+# Unknown surfaces play at the base volume (0 dB offset).
+static func gain_db_for(surface_id: String) -> float:
+	return float(SURFACE_GAIN_DB.get(surface_id, 0.0))
+
+
 # Fallback biome → surface map. The canonical source is each biome's
 # "footstep_surface" key in data/biomes.json; this table only covers a spec that
 # predates the key (old saves) or a bare biome string. Keep the ids in sync with

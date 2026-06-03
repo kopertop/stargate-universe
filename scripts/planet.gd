@@ -7,6 +7,7 @@ const PlanetGeneratorRef: Script = preload("res://scripts/planet_generator.gd")
 const KinoDroneScript: Script = preload("res://scripts/kino_drone.gd")
 const PlanetTimerScript: Script = preload("res://scripts/planet_timer.gd")
 const CompanionScript: Script = preload("res://scripts/companion.gd")
+const FootstepLib: Script = preload("res://scripts/footstep_library.gd")
 
 @onready var _world: Node3D = $World
 @onready var _player: Node3D = $Player
@@ -34,6 +35,11 @@ func _ready() -> void:
 	if GameState.kino_pilot_mode:
 		_start_kino_recon(spec)
 		return
+	# On foot: push this planet's biome footstep surface (the ship stays metal).
+	# Done here (parent _ready) AFTER the spec is resolved — the player's own
+	# _ready already ran (child first) and only set the metal default.
+	if is_instance_valid(_player) and _player.has_method("set_footstep_surface"):
+		_player.call("set_footstep_surface", FootstepLib.surface_for_spec(spec))
 	if GameState.pending_spawn_position != null:
 		_player.global_position = GameState.pending_spawn_position
 		_player.rotation.y = GameState.pending_spawn_yaw

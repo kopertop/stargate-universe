@@ -54,15 +54,21 @@ var _dash_speed: float = 12.0
 # step per ~FOOTSTEP_STRIDE metres of floor travel, so faster speeds produce
 # faster steps without per-frame timing math. Pitch jitters per step so repeats
 # don't sound mechanical. The SAMPLE SET is chosen per-environment by
-# FootstepLibrary from the active planet's biome (issue #33): metal on the ship
-# / alien-tech decks, dirt / desert / water / swamp on planet surfaces. The rig
-# is rebuilt per scene, so resolving the surface once in _ready (from the
-# then-current GameState.active_planet_spec) is enough.
+# FootstepLibrary (issue #33): metal on the ship / alien-tech decks, dirt /
+# desert / water / swamp on planet surfaces. LOCATION is authoritative — the
+# player defaults to metal (so EVERY ship scene sounds metal regardless of any
+# lingering active_planet_spec), and the planet scene PUSHES its biome surface
+# via set_footstep_surface() once its spec is finalized. (Reading the persisted
+# spec in _ready was the "clanky metal on the desert planet" bug: the player's
+# _ready runs before the parent planet assigns the spec.) Per-surface gain keeps
+# soft ground quieter than metal.
 const _FOOTSTEP_LIBRARY: Script = preload("res://scripts/footstep_library.gd")
 const FOOTSTEP_STRIDE: float = 1.9
 var _footstep_surface: String = "metal"   # FootstepLibrary.DEFAULT_SURFACE
 var _footstep_streams: Array = []
 var _footstep_distance: float = 0.0
+# The SoundFootsteps node's authored volume_db; the per-surface gain is added to it.
+var _footstep_base_volume_db: float = 0.0
 
 @onready var _particles_trail: GPUParticles3D = $ParticlesTrail
 @onready var _sound_footsteps: AudioStreamPlayer = $SoundFootsteps
@@ -86,7 +92,7 @@ var _equipment_mount: Node3D = null
 func _ready() -> void:
 	_apply_colormap(_model)
 	_setup_equipment_mount()
-	_load_footstep_surface()
+	_init_footsteps()
 
 func _setup_equipment_mount() -> void:
 	if _model == null:
@@ -212,17 +218,23 @@ func _drive_locomotion_anim() -> void:
 			_animation.speed_scale = 1.0
 
 
-# Resolve the footstep surface from the active planet spec (ship → metal) and
-# load that surface's sample set. Called once on spawn; the rig is rebuilt per
-# scene so a new planet always gets a freshly-resolved surface. Exposed (no
-# leading guard on the lib) so a test can drive it after stubbing the spec.
-func _load_footstep_surface() -> void:
-	var spec: Variant = {}
-	var gs: Node = get_node_or_null("/root/GameState")
-	if gs != null:
-		spec = gs.active_planet_spec
-	_footstep_surface = _FOOTSTEP_LIBRARY.surface_for_spec(spec)
+# Capture the authored footstep volume and default to the ship surface (metal).
+# Ship scenes never override, so they always sound metal; the planet scene calls
+# set_footstep_surface() with its biome surface once its spec is resolved.
+func _init_footsteps() -> void:
+	if _sound_footsteps != null:
+		_footstep_base_volume_db = _sound_footsteps.volume_db
+	set_footstep_surface(_FOOTSTEP_LIBRARY.DEFAULT_SURFACE)
+
+
+# Switch the active footstep surface (sample set + per-surface volume). Public so
+# the planet scene can push the biome's surface; falls back to metal for an
+# unknown id. Volume = authored base + the surface's gain (soft ground = quieter).
+func set_footstep_surface(surface_id: String) -> void:
+	_footstep_surface = surface_id if _FOOTSTEP_LIBRARY.has_surface(surface_id) else _FOOTSTEP_LIBRARY.DEFAULT_SURFACE
 	_footstep_streams = _FOOTSTEP_LIBRARY.load_streams(_footstep_surface)
+	if _sound_footsteps != null:
+		_sound_footsteps.volume_db = _footstep_base_volume_db + _FOOTSTEP_LIBRARY.gain_db_for(_footstep_surface)
 
 
 # Distance-based footstep cadence: accumulate horizontal travel and emit a

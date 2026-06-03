@@ -408,6 +408,16 @@ func _spawn_interactables() -> void:
 					_spawn_scrubber_crew(scrubber.position)
 		"north_corridor":
 			_spawn_soldier()
+			# Optional maintenance scrubber (issue: ship-wide scrubbers). West end
+			# of the long corridor, clear of the mid-wall spur/approach doors.
+			_spawn_co2_scrubber("north_corridor", -350.0)
+		"east_corridor_far":
+			# New maintenance spur off the east corridor — houses a scrubber.
+			_spawn_co2_scrubber("east_far", 0.0)
+		"hydroponics":
+			# The upper-deck hydroponics bay (its door plaque already reads
+			# "Hydroponics — CO2 Scrubber").
+			_spawn_co2_scrubber("hydroponics", 0.0)
 		"infirmary":
 			# A downed player wakes here for the no-death recovery beat (issue
 			# #92): TJ at the bedside with a cause-tagged line. Otherwise, post-
@@ -701,18 +711,20 @@ func _spawn_power_console() -> void:
 	add_child(label)
 
 
-func _spawn_co2_scrubber() -> StaticBody3D:
+# Spawn a CO2 scrubber wall panel on the -Z wall at world-x `x`. `unit_id` ""
+# builds the E1 story scrubber (south corridor); a non-empty id builds an
+# optional maintenance unit backed by GameState's scrubber_units registry
+# (discover/open/recharge at leisure). Set scrubber_id BEFORE add_child so the
+# panel's _ready reads it.
+func _spawn_co2_scrubber(unit_id: String = "", x: float = -10.0) -> StaticBody3D:
 	var d_m: float = float(_room_data.get("height", 200)) * ShipLayout.SCALE
 	var half_z: float = d_m * 0.5
-	# Recessed wall panel on the -Z (north) wall, west half of the corridor:
-	# in view as the player arrives from the south_spur door (~x -5) and clear
-	# of the control-approach door (~x +34) and Chloe (~x +12). co2_scrubber.gd
-	# owns the visual (frame + sliding hatch + internals) so it can animate the
-	# hatch open during the Phase D reveal scene.
 	var scrubber: StaticBody3D = StaticBody3D.new()
 	scrubber.set_script(Co2ScrubberScript)
 	scrubber.name = "CO2Scrubber"
-	scrubber.position = Vector3(-10.0, 0.0, -half_z + 0.15)
+	if unit_id != "":
+		scrubber.set("scrubber_id", unit_id)
+	scrubber.position = Vector3(x, 0.0, -half_z + 0.15)
 	add_child(scrubber)
 	return scrubber
 

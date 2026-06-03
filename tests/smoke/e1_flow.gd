@@ -171,7 +171,7 @@ func _initialize() -> void:
 	_expect(gs.resource_count(gs.AIR_LIME_RESOURCE) == 0, "resources: lime starts at zero")
 	gs.add_resource(gs.AIR_LIME_RESOURCE, 2, "test planet")
 	_expect(gs.resource_count(gs.AIR_LIME_RESOURCE) == 2, "resources: add_resource accumulates")
-	_expect(not gs.has_resource(gs.AIR_LIME_RESOURCE, gs.AIR_LIME_REQUIRED), "resources: 2 lime is below repair requirement")
+	_expect(not gs.has_resource(gs.AIR_LIME_RESOURCE, gs.AIR_LIME_REQUIRED), "resources: 2 lime is below the mine/return requirement (3)")
 	_expect(not gs.spend_resource(gs.AIR_LIME_RESOURCE, 3, "overdraft test"), "resources: overspend returns false")
 	_expect(gs.resource_count(gs.AIR_LIME_RESOURCE) == 2, "resources: failed spend leaves lime unchanged")
 	gs.add_resource(gs.AIR_LIME_RESOURCE, 1, "test planet")
@@ -184,9 +184,9 @@ func _initialize() -> void:
 	_expect(not gs.episode_complete, "air: return with lime does not complete before repair")
 
 	_expect(gs.repair_scrubber_with_lime(), "air: repair scrubber spends lime")
-	_expect(gs.resource_count(gs.AIR_LIME_RESOURCE) == 0, "resources: repair spends all required lime")
-	_expect(not gs.spend_resource(gs.AIR_LIME_RESOURCE, 1, "post-repair overdraft"), "resources: lime cannot go negative")
-	_expect(gs.resource_count(gs.AIR_LIME_RESOURCE) == 0, "resources: lime remains zero after failed spend")
+	# One scrubber needs only ONE lime; the other 2 stay banked for the rest.
+	_expect(gs.resource_count(gs.AIR_LIME_RESOURCE) == 3 - gs.SCRUBBER_REPAIR_LIME_COST,
+		"resources: repair spends ONE lime, banking the rest for the other scrubbers")
 	_expect(gs.scrubber_repaired, "air: scrubber repaired flag set")
 	_expect(gs.episode_complete, "air: scrubber repair completes Episode 1")
 	_expect(gs.quest_step == gs.QUEST_COMPLETE, "air: quest step is complete")

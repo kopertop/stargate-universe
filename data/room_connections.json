@@ -23,6 +23,11 @@
 			"dir": "+x",
 			"to": "south_corridor",
 			"plaque": "South Corridor"
+		},
+		{
+			"dir": "-x",
+			"to": "east_corridor_far",
+			"plaque": "Maintenance Spur"
 		}
 	],
 	"north_corridor": [

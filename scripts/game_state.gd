@@ -22,6 +22,8 @@ signal resource_changed(type: String, count: int)
 # Fires whenever scrubber_level changes (decay tick or top-up). Drives the
 # in-world bar gauge + the Kino System Status readout.
 signal scrubber_level_changed(level: float)
+# An optional maintenance scrubber's state changed (discovered / open / repaired).
+signal scrubber_unit_changed(id: String)
 # The gate-window departure countdown hit 0:00 — planet_timer.gd plays the
 # scramble-back-through-the-gate cutscene.
 signal gate_window_expired()
@@ -89,7 +91,13 @@ const QUEST_REPAIR_SCRUBBER: String = "repair_scrubber"
 const QUEST_COMPLETE: String = "complete"
 const E1_QUEST_ID: String = "e1_air"
 const AIR_LIME_RESOURCE: String = "lime"
+# How much lime the away-mission objective asks the crew to bring back — enough
+# to service ALL the scrubbers across the ship, not just the one blocking E1.
 const AIR_LIME_REQUIRED: int = 3
+# A single CO2 scrubber only needs ONE lime to refill to full. The extra lime in
+# AIR_LIME_REQUIRED is banked for the other scrubbers, so even a run that grabbed
+# just one unit (e.g. a timed-out recall) can still complete the E1 repair.
+const SCRUBBER_REPAIR_LIME_COST: int = 1
 # The authored E1 lime planet row (rich, hand-tuned layout) lives in this data
 # file; build_air_lime_spec() loads it so the first dialed run is byte-identical
 # to the authored world while still flowing through the dial -> spec pipeline.
@@ -281,6 +289,18 @@ var scrubber_level: float = 0.0
 # the level rises back above the threshold via a top-up).
 var _scrubber_warned: bool = false
 var _scrubber_critical: bool = false
+# --- Optional maintenance scrubbers (beyond the E1 south unit) --------------
+# A SET of like things → ONE registry (collection-fork policy: never per-unit
+# bools). Keyed by id → { "discovered": bool, "open": bool, "repaired": bool }.
+# The E1 story scrubber keeps its dedicated state above (it has a unique
+# diagnosis/Rush lifecycle); these are the discover/open/repair-at-leisure units
+# the player services with banked lime. See [[project_air_crisis_rules]].
+const AUX_SCRUBBERS: Array = [
+	{"id": "north_corridor", "room": "north_corridor", "name": "North Section Scrubber"},
+	{"id": "east_far", "room": "east_corridor_far", "name": "East Maintenance Scrubber"},
+	{"id": "hydroponics", "room": "hydroponics", "name": "Hydroponics Scrubber"},
+]
+var scrubber_units: Dictionary = {}
 var ftl_drop_triggered: bool = false
 var lime_planet_dialed: bool = false
 # True once the player reaches the Gate Room after Dr Brody's "the gate
@@ -568,6 +588,7 @@ func reset() -> void:
 	scrubber_diagnosed = false
 	scrubber_repaired = false
 	scrubber_level = 0.0
+	scrubber_units.clear()
 	_scrubber_warned = false
 	_scrubber_critical = false
 	ftl_drop_triggered = false
@@ -1566,6 +1587,34 @@ func return_from_lime_planet() -> void:
 	advance_air_quest()
 
 
+# Out of TIME (not health): the departure window closed while the team was still
+# on the surface. They scramble back through the still-open gate and make it
+# aboard, KEEPING whatever lime they gathered — then Destiny jumps to FTL and the
+# gate closes behind them, so this planet can't be re-dialed. This is deliberately
+# NOT knock_out(): running out of time is a near-miss, not a downed outcome — the
+# infirmary/"goes down" beat is reserved for running out of HEALTH. instant_mode /
+# headless flips state without the scene change (so smoke tests don't hang).
+func recall_after_window_close() -> void:
+	gate_window_active = false
+	gate_window_remaining = 0.0
+	gate_window_water_drain = 0.0
+	_water_drain_accum = 0.0
+	# Destiny jumped — the gate is gone. Closing the dial keeps the player from
+	# re-entering a planet they can no longer reach.
+	lime_planet_dialed = false
+	pending_planet_return = true
+	if not returned_from_lime_planet:
+		returned_from_lime_planet = true
+		run_start_resources = {}   # forgiving: keep all gathered lime
+		add_log("Destiny jumped to FTL — the away team scrambled back through the gate just in time.")
+		advance_air_quest()
+	var router: Node = _autoload_node("SceneRouter")
+	var headless: bool = router == null or router.get("instant_mode") == true
+	if headless:
+		return
+	router.call("change_to", "res://scenes/gate_room.tscn", "FromPlanet")
+
+
 # --- No-death knockout → med-bay recovery loop (issue #92) -------------------
 #
 # THE single "downed" entry point. Ship-wide rule: NO DEATH, NO STRANDING — the
@@ -1716,7 +1765,9 @@ func repair_scrubber_with_lime() -> bool:
 	if not scrubber_diagnosed:
 		diagnose_scrubber()
 		return false
-	if not spend_resource(AIR_LIME_RESOURCE, AIR_LIME_REQUIRED, "CO2 scrubber repair"):
+	# One lime fully refills this scrubber; the rest of the haul is for the other
+	# scrubbers (see SCRUBBER_REPAIR_LIME_COST / AIR_LIME_REQUIRED).
+	if not spend_resource(AIR_LIME_RESOURCE, SCRUBBER_REPAIR_LIME_COST, "CO2 scrubber repair"):
 		return false
 	scrubber_repaired = true
 	scrubber_level = 100.0
@@ -1745,6 +1796,70 @@ func top_up_scrubber() -> bool:
 	add_log("Topped up the CO2 scrubber. Charge at %d%%." % int(round(scrubber_level)))
 	scrubber_level_changed.emit(scrubber_level)
 	return true
+
+
+# --- Optional maintenance scrubber registry ---------------------------------
+# One collection, one add/query API (collection-fork policy). State for an unknown
+# id lazily defaults to undiscovered/closed/unrepaired so callers never branch on
+# "does this key exist yet".
+
+func scrubber_unit_state(id: String) -> Dictionary:
+	if not scrubber_units.has(id):
+		scrubber_units[id] = {"discovered": false, "open": false, "repaired": false}
+	return scrubber_units[id]
+
+func is_scrubber_unit_discovered(id: String) -> bool:
+	return scrubber_unit_state(id).get("discovered", false) == true
+
+func is_scrubber_unit_open(id: String) -> bool:
+	return scrubber_unit_state(id).get("open", false) == true
+
+func is_scrubber_unit_repaired(id: String) -> bool:
+	return scrubber_unit_state(id).get("repaired", false) == true
+
+# First sighting: register the panel as a known POI and slide it open. Returns
+# true the first time (so the interactable can play the "found it" beat once).
+func discover_scrubber_unit(id: String, label: String = "CO2 Scrubber") -> bool:
+	var st: Dictionary = scrubber_unit_state(id)
+	if st.get("discovered", false) == true:
+		return false
+	st["discovered"] = true
+	st["open"] = true
+	discover_poi("scrubber_" + id, "life_support", label, true)
+	add_log("Found a CO2 scrubber access panel — it needs lime to recharge.")
+	scrubber_unit_changed.emit(id)
+	return true
+
+# Player toggles the access panel open/closed at will (no repair side effect).
+func set_scrubber_unit_open(id: String, want_open: bool) -> void:
+	var st: Dictionary = scrubber_unit_state(id)
+	if (st.get("open", false) == true) == want_open:
+		return
+	st["open"] = want_open
+	scrubber_unit_changed.emit(id)
+
+# Drop one lime into an aux scrubber. Succeeds only if discovered, not already
+# repaired, and the player has lime. On success the panel auto-slides SHUT.
+func repair_scrubber_unit(id: String) -> bool:
+	var st: Dictionary = scrubber_unit_state(id)
+	if st.get("repaired", false) == true:
+		return false
+	if not spend_resource(AIR_LIME_RESOURCE, SCRUBBER_REPAIR_LIME_COST, "scrubber recharge"):
+		return false
+	st["repaired"] = true
+	st["open"] = false          # the panel slides shut once the cartridge is seated
+	st["discovered"] = true
+	add_log("Recharged a CO2 scrubber. The access panel slides shut.")
+	scrubber_unit_changed.emit(id)
+	return true
+
+# How many of the optional units are repaired (for UI / completion flavor).
+func aux_scrubbers_repaired_count() -> int:
+	var n: int = 0
+	for row in AUX_SCRUBBERS:
+		if is_scrubber_unit_repaired(String((row as Dictionary).get("id", ""))):
+			n += 1
+	return n
 
 
 # Green-bar count (0–3) for the scrubber panel gauge, derived from
@@ -1833,6 +1948,7 @@ func serialize() -> Dictionary:
 		"scrubber_diagnosed": scrubber_diagnosed,
 		"scrubber_repaired": scrubber_repaired,
 		"scrubber_level": scrubber_level,
+		"scrubber_units": scrubber_units.duplicate(true),
 		"ftl_drop_triggered": ftl_drop_triggered,
 		"ftl_drop_game_time": ftl_drop_game_time,
 		"lime_planet_dialed": lime_planet_dialed,
@@ -1888,6 +2004,8 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	scrubber_diagnosed = data.get("scrubber_diagnosed", false) == true
 	scrubber_repaired = data.get("scrubber_repaired", false) == true
 	scrubber_level = float(data.get("scrubber_level", 0.0))
+	var su: Variant = data.get("scrubber_units", {})
+	scrubber_units = (su as Dictionary).duplicate(true) if su is Dictionary else {}
 	ftl_drop_triggered = data.get("ftl_drop_triggered", false) == true
 	ftl_drop_game_time = float(data.get("ftl_drop_game_time", -1.0))
 	lime_planet_dialed = data.get("lime_planet_dialed", false) == true

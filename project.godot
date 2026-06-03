@@ -26,6 +26,7 @@ config/icon="res://icon.png"
 
 Audio="*res://scripts/audio.gd"
 TestCapture="*res://scripts/test_capture.gd"
+TrailerCapture="*res://scripts/trailer_capture.gd"
 SaveManager="*res://scripts/save_manager.gd"
 GameClock="*res://scripts/game_clock.gd"
 GameState="*res://scripts/game_state.gd"
@@ -51,10 +52,6 @@ window/size/viewport_height=720
 window/size/mode=3
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
-
-[editor]
-
-movie_writer/movie_file="C:/Users/Kenney/Desktop/video-footage.avi"
 
 [filesystem]
 

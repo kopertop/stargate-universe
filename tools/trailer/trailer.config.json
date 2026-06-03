@@ -1,0 +1,13 @@
+{
+  "reel": "e1_highlight",
+  "fps": 60,
+  "resolution": "1280x720",
+  "music": "",
+  "music_volume": 0.35,
+  "game_audio_volume": 1.0,
+  "game_name": "STARGATE UNIVERSE",
+  "tagline": "Survive the ship that won't stop running.",
+  "end_card_cta": "Wishlist now",
+  "captions": true,
+  "hashtags": "#indiedev #godot #scifi #stargate #gamedev"
+}

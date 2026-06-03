@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://b1trailerroot0"]
+
+[ext_resource type="Script" path="res://tools/trailer/bootstrap.gd" id="1_bootstrap"]
+
+[node name="TrailerBootstrap" type="Node"]
+script = ExtResource("1_bootstrap")

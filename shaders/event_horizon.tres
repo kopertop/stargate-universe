@@ -5,10 +5,12 @@
 [resource]
 render_priority = 0
 shader = ExtResource("1_ehshader")
-shader_parameter/core_color = Color(0.05, 0.22, 0.55, 1.0)
-shader_parameter/rim_color = Color(0.55, 0.88, 1.0, 1.0)
-shader_parameter/energy = 1.7
-shader_parameter/ripple_freq = 18.0
-shader_parameter/ripple_speed = 3.0
-shader_parameter/swirl_speed = 0.25
-shader_parameter/noise_scale = 3.0
+shader_parameter/core_color = Color(0.78, 0.95, 1.0, 1.0)
+shader_parameter/mid_color = Color(0.18, 0.55, 0.95, 1.0)
+shader_parameter/edge_color = Color(0.02, 0.10, 0.34, 1.0)
+shader_parameter/energy = 1.9
+shader_parameter/swirl = 4.5
+shader_parameter/flow_speed = 0.5
+shader_parameter/warp_amount = 0.55
+shader_parameter/detail = 3.2
+shader_parameter/spin_speed = 0.4

@@ -174,9 +174,9 @@ func _build_event_horizon() -> void:
 	# Soft light spilling from the puddle so the room lights up when active.
 	_horizon_light = OmniLight3D.new()
 	_horizon_light.name = "HorizonLight"
-	_horizon_light.light_color = Color(0.52, 0.78, 1.0, 1.0)
-	_horizon_light.light_energy = 9.0
-	_horizon_light.omni_range = 24.0
-	_horizon_light.position = Vector3(0.0, 0.0, 0.9)
+	_horizon_light.light_color = Color(0.55, 0.80, 1.0, 1.0)
+	_horizon_light.light_energy = 4.6
+	_horizon_light.omni_range = 16.0
+	_horizon_light.position = Vector3(0.0, 0.0, 0.6)
 	_horizon_light.visible = active
 	add_child(_horizon_light)

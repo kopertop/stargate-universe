@@ -56,8 +56,8 @@ const CONSOLE_SCREEN_SIZE: Vector3 = Vector3(0.744, 0.0165, 0.33)
 # Dimly emissive dark blue — workbench-tuned defaults (scenes/console_test.tscn).
 # Bright tech-blue glow now comes from the TextMesh on top of the plate, not
 # the plate itself.
-const CONSOLE_SCREEN_COLOR_DEFAULT: Color = Color(0.04, 0.06, 0.10)
-const CONSOLE_SCREEN_EMISSION: float = 0.4
+const CONSOLE_SCREEN_COLOR_DEFAULT: Color = Color(0.10, 0.26, 0.42)
+const CONSOLE_SCREEN_EMISSION: float = 1.5
 # Albedo texture overlaid on the plate so it reads as a weathered steel
 # display rather than a flat-coloured rectangle. Rusted-metal pattern gives
 # the plate that Ancient-ship "millennia-old wall panel" feel.
@@ -550,7 +550,11 @@ static func attach_console_mesh(parent: Node3D, screen_color: Color = CONSOLE_SC
 		# feedback_gltf_embedded_texture_lost), so we override with brushed
 		# metal. Pop the screen separately via an emissive plate child since
 		# the GLB is a single surface — we can't address the screen sub-region.
-		var body_mat: StandardMaterial3D = _make_mat(CONSOLE_BODY_COLOR, CONSOLE_BODY_METALLIC, CONSOLE_BODY_ROUGHNESS)
+		# Ancient-metal panel rollout (#30 Pass 2): the shared triplanar shader on
+		# the console body so consoles match the Stargate's weathered-steel look.
+		var body_mat: Material = load("res://shaders/ancient_metal_panel.tres")
+		if body_mat == null:
+			body_mat = _make_mat(CONSOLE_BODY_COLOR, CONSOLE_BODY_METALLIC, CONSOLE_BODY_ROUGHNESS)
 		_apply_material_recursive(inst, body_mat)
 
 	var screen_mat: StandardMaterial3D = _emissive_mat(screen_color, CONSOLE_SCREEN_EMISSION)

@@ -1741,8 +1741,10 @@ func _build_lighting_props() -> void:
 		beam.spot_attenuation = 1.2
 		beam.shadow_enabled = true
 		beam.position = Vector3(0.0, ceiling_height - 0.4, bz)
+		# Point straight down. look_at(directly-below) is degenerate (forward ∥ up),
+		# so set the rotation directly: -90° about X aims a SpotLight's -Z down -Y.
+		beam.rotation = Vector3(deg_to_rad(-90.0), 0.0, 0.0)
 		_world.add_child(beam)
-		beam.look_at(Vector3(0.0, 0.0, bz), Vector3.UP)
 
 	# Gate rim fill: subtle COOL side spots so the ring metal catches a cold
 	# highlight — the horizon does most of the work. look_at() needs the node in

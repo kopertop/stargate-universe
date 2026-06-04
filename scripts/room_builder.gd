@@ -620,7 +620,7 @@ static func _spawn_kenney_console(world: Node3D, glb: PackedScene, pos: Vector3,
 # Walk a GLB instance and stamp `mat` onto every surface of every MeshInstance3D.
 # Used to recover Kenney GLBs whose embedded textures were dropped by the
 # Godot glTF importer.
-static func _apply_material_recursive(root: Node, mat: StandardMaterial3D) -> void:
+static func _apply_material_recursive(root: Node, mat: Material) -> void:
 	if root is MeshInstance3D:
 		var mi: MeshInstance3D = root
 		var surf_count: int = mi.mesh.get_surface_count() if mi.mesh != null else 0

@@ -49,25 +49,35 @@ void fragment() {
 	// is the puddle face. Use local xz as the surface coordinate.
 	vec2 uv = v_local.xz;
 	float t = TIME * swirl_speed;
+	// Normalised radius (0 centre, 1 rim) — disc local half-extent ~2.32.
+	float r = clamp(length(uv) / 2.32, 0.0, 1.0);
 
-	// Two counter-rotating noise layers give a churning energy look.
-	float n1 = value_noise(uv * noise_scale + vec2(t, -t * 0.6));
-	float n2 = value_noise(uv * (noise_scale * 1.8) - vec2(t * 0.7, t));
+	// Twist the sample coords by radius+time so the churn spirals into a VORTEX
+	// (the reference puddle swirls toward the centre) instead of flat plasma.
+	float a = t + r * 5.0;
+	mat2 rot = mat2(vec2(cos(a), -sin(a)), vec2(sin(a), cos(a)));
+	vec2 suv = rot * uv;
+	float n1 = value_noise(suv * noise_scale + vec2(t, -t * 0.6));
+	float n2 = value_noise(suv * (noise_scale * 1.9) - vec2(t * 0.7, t));
 	float churn = mix(n1, n2, 0.5);
 
-	// Radial pulse outward from the centre.
-	float r = length(uv);
-	float pulse = 0.5 + 0.5 * sin(TIME * 1.4 - r * 6.0);
+	// Radial profile: a dim hole at the centre, a bright churning body, and a
+	// hot rim that lights the inside of the ring (matches the reference).
+	float body = smoothstep(0.04, 0.36, r);
+	float rim = smoothstep(0.74, 1.0, r);
+	float radial = body * (1.0 - 0.45 * smoothstep(0.88, 1.0, r)) + rim * 0.9;
+	float pulse = 0.5 + 0.5 * sin(TIME * 1.2 - r * 7.0);
 
-	// Fresnel rim — brighter where the surface faces away from the camera.
-	float fres = pow(1.0 - clamp(dot(normalize(v_view_normal), vec3(0.0, 0.0, 1.0)), 0.0, 1.0), fresnel_power);
-
-	vec3 col = mix(core_color.rgb, rim_color.rgb, clamp(churn * 0.7 + fres, 0.0, 1.0));
-	float intensity = (0.55 + churn * 0.45) * (0.7 + pulse * 0.3) + fres * 0.6;
+	// NOTE: a real view-fresnel is useless on this flat disc (the cap normal is
+	// perpendicular to the view dir in local space, so it's constant) — it just
+	// flat-lifts the whole puddle and erases the dark vortex hole. Structure comes
+	// from the radial profile + churn instead.
+	vec3 col = mix(core_color.rgb, rim_color.rgb, clamp(churn * 0.55 + r * 0.5 + rim, 0.0, 1.0));
+	float intensity = (0.22 + churn * 0.62) * radial * (0.82 + pulse * 0.18);
 	// render_mode is `unshaded`, so the final colour is ALBEDO — EMISSION is
 	// ignored. Drive the full HDR brightness through ALBEDO so `energy` actually
 	// scales the glow (and the env glow buffer blooms it).
 	ALBEDO = col * energy * intensity;
 	EMISSION = col * energy * intensity;
-	ALPHA = clamp(0.55 + churn * 0.35 + fres * 0.3, 0.0, 1.0);
+	ALPHA = clamp(0.40 + churn * 0.4 + radial * 0.3, 0.0, 1.0);
 }

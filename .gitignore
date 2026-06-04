@@ -65,3 +65,6 @@ screenshots/result/
 *.swp
 *.swo
 *~
+
+# Test logs
+out_*.log

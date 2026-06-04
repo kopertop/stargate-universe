@@ -104,18 +104,32 @@ if [[ "${SKIP_RECORD:-0}" == "1" ]]; then
 else
 	CAP_DATE="$(date '+%B %-d, %Y' 2>/dev/null || date '+%B %d, %Y')"
 	TITLE_SUB="Real gameplay footage, captured ${CAP_DATE}"
-	SCENE="$SCRIPTED_SCENE"
-	SRC="scripted reel '$REEL'"
+	# Mode selection:
+	#   input-replay  — capture has recorded inputs: launch the REAL game and
+	#                   re-inject them (the game plays itself; interactions fire).
+	#   xform-replay  — capture without inputs (older): deterministic transform
+	#                   playback via replay.tscn (movement only, no interactions).
+	#   scripted      — no capture: the authored reel.
+	MODE="scripted"; SCENE="$SCRIPTED_SCENE"; SRC="scripted reel '$REEL'"
+	REPLAY_ENV=()
 	if [[ "$USE_REPLAY" == "1" ]]; then
-		SCENE="$REPLAY_SCENE"
-		SRC="captured playthrough ($CAPTURE)"
+		HAS_INPUTS="$(jq '.inputs | length' "$CAPTURE" 2>/dev/null || echo 0)"
+		if [[ "${HAS_INPUTS:-0}" -gt 0 ]]; then
+			MODE="input-replay"; SCENE="res://scenes/title.tscn"
+			SRC="captured playthrough — INPUT replay (${HAS_INPUTS} input batches)"
+			REPLAY_ENV=(SGU_TRAILER_REPLAY="$CAPTURE")
+		else
+			MODE="xform-replay"; SCENE="$REPLAY_SCENE"
+			SRC="captured playthrough — transform replay (no inputs in capture)"
+			REPLAY_ENV=(TRAILER_CAPTURE="$CAPTURE")
+		fi
 	fi
 	echo "=== [1/4] recording ${SRC} @ ${RES} ${FPS}fps via Godot Movie Maker ==="
 	echo "    (a game window will open — do not close it; the runner quits itself)"
-	TRAILER_REEL="$REEL" TRAILER_FPS="$FPS" TRAILER_BEATS="$BEATS" \
-	TRAILER_CAPTIONS="$CAP_ENV" TRAILER_GAME_NAME="$GAME_NAME" \
-	TRAILER_TAGLINE="$TAGLINE" TRAILER_TITLE_SUB="$TITLE_SUB" TRAILER_CTA="$CTA" \
-	TRAILER_CAPTURE="$CAPTURE" \
+	env TRAILER_REEL="$REEL" TRAILER_FPS="$FPS" TRAILER_BEATS="$BEATS" \
+		TRAILER_CAPTIONS="$CAP_ENV" TRAILER_GAME_NAME="$GAME_NAME" \
+		TRAILER_TAGLINE="$TAGLINE" TRAILER_TITLE_SUB="$TITLE_SUB" TRAILER_CTA="$CTA" \
+		"${REPLAY_ENV[@]}" \
 		"$GODOT_BIN" \
 			--rendering-driver metal \
 			--resolution "$RES" \

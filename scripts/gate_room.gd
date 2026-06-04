@@ -83,6 +83,7 @@ func _ready() -> void:
 	# Build the room and gate furniture before anything else looks for nodes.
 	_build_floor()
 	_build_walls_and_ceiling()
+	_build_ceiling_dome()
 	_build_mezzanine()
 	_build_staircases()
 	_build_gate_platform()
@@ -865,6 +866,42 @@ func _build_walls_and_ceiling() -> void:
 			_add_decorative_box(Vector3(sx * (half_x - 0.12), vstrip_y, tz),
 				Vector3(0.12, vstrip_h, 0.34), vstrip_mat)
 
+
+# Stepped concentric-ring ceiling dome over the room centre — the reference's
+# signature overhead. Ancient-metal rings recessing upward, with thin cyan accent
+# rings between them, so the central downlight shaft reads as coming through a dome.
+func _build_ceiling_dome() -> void:
+	var panel: Material = load("res://shaders/ancient_metal_panel.tres")
+	var accent: StandardMaterial3D = StandardMaterial3D.new()
+	accent.albedo_color = Color(0.28, 0.56, 1.0, 1.0)
+	accent.emission_enabled = true
+	accent.emission = Color(0.32, 0.62, 1.0, 1.0)
+	accent.emission_energy_multiplier = 2.4
+	var rings: int = 4
+	for i in rings:
+		var rad: float = 7.6 - float(i) * 1.7
+		var y: float = ceiling_height - 0.1 - float(i) * 0.4
+		var ring: MeshInstance3D = MeshInstance3D.new()
+		var tm: TorusMesh = TorusMesh.new()
+		tm.inner_radius = rad - 0.55
+		tm.outer_radius = rad
+		tm.ring_segments = 64
+		tm.rings = 6
+		ring.mesh = tm
+		if panel != null:
+			ring.material_override = panel
+		ring.position = Vector3(0.0, y, 0.0)
+		_world.add_child(ring)
+		var acc: MeshInstance3D = MeshInstance3D.new()
+		var atm: TorusMesh = TorusMesh.new()
+		atm.inner_radius = rad - 0.68
+		atm.outer_radius = rad - 0.58
+		atm.ring_segments = 64
+		atm.rings = 4
+		acc.mesh = atm
+		acc.material_override = accent
+		acc.position = Vector3(0.0, y - 0.05, 0.0)
+		_world.add_child(acc)
 
 func _add_wall_segment(parent: StaticBody3D, mat: StandardMaterial3D, pos: Vector3, size: Vector3) -> void:
 	var cs: CollisionShape3D = CollisionShape3D.new()

@@ -99,7 +99,9 @@ func _test_horizon_shader_parses() -> void:
 	var names: Dictionary = {}
 	for u in shader.get_shader_uniform_list():
 		names[String(u.get("name", ""))] = true
-	for want in ["core_color", "rim_color", "energy", "swirl_speed", "fresnel_power"]:
+	# Vortex rewrite (#30) renamed the controls: rim_color→edge_color,
+	# swirl_speed→swirl, fresnel_power→warp_amount/detail/spin_speed.
+	for want in ["core_color", "edge_color", "energy", "swirl", "spin_speed"]:
 		_expect(names.has(want), "event_horizon exposes uniform '%s'" % want)
 
 

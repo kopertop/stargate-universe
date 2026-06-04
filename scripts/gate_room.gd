@@ -841,7 +841,7 @@ func _build_walls_and_ceiling() -> void:
 	_add_decorative_box(Vector3(0.0, strip_y, -half_z + 0.1), Vector3(room_size.x - 1.0, strip_thickness, strip_thickness), glow_mat)
 
 
-func _add_wall_segment(parent: StaticBody3D, mat: StandardMaterial3D, pos: Vector3, size: Vector3) -> void:
+func _add_wall_segment(parent: StaticBody3D, mat: Material, pos: Vector3, size: Vector3) -> void:
 	var cs: CollisionShape3D = CollisionShape3D.new()
 	var shape: BoxShape3D = BoxShape3D.new()
 	shape.size = size
@@ -856,7 +856,7 @@ func _add_wall_segment(parent: StaticBody3D, mat: StandardMaterial3D, pos: Vecto
 	mi.position = pos
 	parent.add_child(mi)
 
-func _add_decorative_box(pos: Vector3, size: Vector3, mat: StandardMaterial3D) -> void:
+func _add_decorative_box(pos: Vector3, size: Vector3, mat: Material) -> void:
 	var mi: MeshInstance3D = MeshInstance3D.new()
 	var box: BoxMesh = BoxMesh.new()
 	box.size = size
@@ -1071,13 +1071,14 @@ func _build_staircases() -> void:
 	var step_count: int = 10
 	var step_h: float = mezzanine_height / float(step_count)   # 0.5 m
 	var step_run: float = 0.8                                   # 0.8 m
-	var stair_mat: StandardMaterial3D = StandardMaterial3D.new()
-	stair_mat.albedo_color = Color(0.22, 0.18, 0.13, 1.0)
-	stair_mat.metallic = 0.45
-	stair_mat.roughness = 0.45
-	stair_mat.emission_enabled = true
-	stair_mat.emission = Color(1.0, 0.55, 0.18, 1.0)
-	stair_mat.emission_energy_multiplier = 0.18
+	# Shared Ancient-metal panel material on the step treads (was warm emissive).
+	var stair_mat: Material = load("res://shaders/ancient_metal_panel.tres")
+	if stair_mat == null:
+		var fb: StandardMaterial3D = StandardMaterial3D.new()
+		fb.albedo_color = Color(0.22, 0.20, 0.24, 1.0)
+		fb.metallic = 0.45
+		fb.roughness = 0.45
+		stair_mat = fb
 
 	var rise: float = mezzanine_height                          # 5
 	var run: float = float(step_count) * step_run               # 8
@@ -1187,13 +1188,15 @@ func _build_gate_platform() -> void:
 	# in front so the player visibly climbs onto the dais.
 	var half_z: float = room_size.y * 0.5
 	var platform_z: float = half_z - 3.8
-	var dais_mat: StandardMaterial3D = StandardMaterial3D.new()
-	dais_mat.albedo_color = Color(0.24, 0.18, 0.10, 1.0)
-	dais_mat.metallic = 0.65
-	dais_mat.roughness = 0.40
-	dais_mat.emission_enabled = true
-	dais_mat.emission = Color(0.6, 0.34, 0.12, 1.0)
-	dais_mat.emission_energy_multiplier = 0.22
+	# Shared Ancient-metal panel material so the dais + ramp match the Stargate
+	# and consoles (was a warm-brown emissive slab). Fall back if missing.
+	var dais_mat: Material = load("res://shaders/ancient_metal_panel.tres")
+	if dais_mat == null:
+		var fb: StandardMaterial3D = StandardMaterial3D.new()
+		fb.albedo_color = Color(0.22, 0.22, 0.26, 1.0)
+		fb.metallic = 0.65
+		fb.roughness = 0.45
+		dais_mat = fb
 
 	# Main slab — kept as a collider so the player stands on the dais top.
 	var slab: StaticBody3D = StaticBody3D.new()

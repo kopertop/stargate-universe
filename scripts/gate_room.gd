@@ -845,6 +845,26 @@ func _build_walls_and_ceiling() -> void:
 	# -Z strip (split around lintel for visual coherence)
 	_add_decorative_box(Vector3(0.0, strip_y, -half_z + 0.1), Vector3(room_size.x - 1.0, strip_thickness, strip_thickness), glow_mat)
 
+	# Vertical cyan light strips marching down the side walls — the reference's
+	# signature "tall glowing window slots" that give the chamber height + depth.
+	var vstrip_mat: StandardMaterial3D = StandardMaterial3D.new()
+	vstrip_mat.albedo_color = Color(0.26, 0.55, 1.0, 1.0)
+	vstrip_mat.emission_enabled = true
+	vstrip_mat.emission = Color(0.32, 0.62, 1.0, 1.0)
+	vstrip_mat.emission_energy_multiplier = 3.2
+	vstrip_mat.metallic = 0.0
+	vstrip_mat.roughness = 0.4
+	var vstrip_h: float = ceiling_height * 0.5
+	var vstrip_y: float = ceiling_height * 0.52
+	var vcount: int = 6
+	for i in vcount:
+		var tz: float = -half_z + 3.0 + (room_size.y - 6.0) * float(i) / float(vcount - 1)
+		# Pair the strips with darker recessed pilasters so they read as inset
+		# window slots, not floating bars.
+		for sx in [-1.0, 1.0]:
+			_add_decorative_box(Vector3(sx * (half_x - 0.12), vstrip_y, tz),
+				Vector3(0.12, vstrip_h, 0.34), vstrip_mat)
+
 
 func _add_wall_segment(parent: StaticBody3D, mat: StandardMaterial3D, pos: Vector3, size: Vector3) -> void:
 	var cs: CollisionShape3D = CollisionShape3D.new()

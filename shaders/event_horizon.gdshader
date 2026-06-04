@@ -2,25 +2,29 @@ shader_type spatial;
 
 // Event horizon — the active Stargate "puddle".
 //
-// Replaces the flat additive disc with an animated energy surface: two layers
-// of scrolling/swirling noise, a Fresnel rim that brightens at grazing angles,
-// and a slow radial pulse. Additive + unshaded so it glows regardless of scene
-// lighting; the OmniLight3D spill is still driven from stargate.gd.
+// The iconic Stargate surface: a vertical pool of luminous blue water with
+// concentric ripples shimmering outward from the centre. Self-lit (unshaded) so
+// it glows regardless of room lighting; the OmniLight3D spill is driven from
+// stargate.gd.
 //
-// Reference: design/concept-art/materials/ancient-metal-pbr-sheet.png (the cyan
-// puddle in the stargate segment).
+// OPAQUE (not additive): the puddle must COVER the lit wall behind the gate, or
+// additive blending over a bright background washes it out to a flat white disc.
+// Brightness is driven through ALBEDO because `unshaded` outputs ALBEDO and
+// ignores EMISSION (see skill: godot-unshaded-ignores-emission).
+//
+// Reference: design/concept-art/materials/ancient-metal-pbr-sheet.png (cyan puddle).
 
-render_mode blend_add, unshaded, cull_disabled, depth_draw_never;
+render_mode unshaded, cull_disabled;
 
-uniform vec4 core_color : source_color = vec4(0.32, 0.84, 1.0, 1.0);
-uniform vec4 rim_color : source_color = vec4(0.62, 0.95, 1.0, 1.0);
-uniform float energy : hint_range(0.0, 6.0) = 2.6;
-uniform float swirl_speed = 0.35;
-uniform float noise_scale = 3.5;
-uniform float fresnel_power : hint_range(0.5, 6.0) = 2.2;
+uniform vec4 core_color : source_color = vec4(0.05, 0.22, 0.55, 1.0);   // deep blue body
+uniform vec4 rim_color : source_color = vec4(0.55, 0.88, 1.0, 1.0);     // bright cyan crests
+uniform float energy : hint_range(0.0, 6.0) = 1.7;
+uniform float ripple_freq = 26.0;     // concentric ring count across the radius
+uniform float ripple_speed = 3.0;     // outward ripple travel speed
+uniform float swirl_speed = 0.25;     // domain-warp drift (organic, non-circular)
+uniform float noise_scale = 3.0;
 
 varying vec3 v_local;
-varying vec3 v_view_normal;
 
 float hash21(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21));
@@ -41,30 +45,31 @@ float value_noise(vec2 p) {
 
 void vertex() {
 	v_local = VERTEX;
-	v_view_normal = NORMAL;
 }
 
 void fragment() {
-	// The disc is a flat cylinder rotated onto the gate's Z axis: its xz plane
-	// is the puddle face. Use local xz as the surface coordinate.
+	// Disc is a flat cylinder rotated onto the gate's Z axis; xz is the face.
 	vec2 uv = v_local.xz;
-	float t = TIME * swirl_speed;
+	float r = clamp(length(uv) / 2.32, 0.0, 1.0);
+	float t = TIME;
 
-	// Two counter-rotating noise layers give a churning energy look.
-	float n1 = value_noise(uv * noise_scale + vec2(t, -t * 0.6));
-	float n2 = value_noise(uv * (noise_scale * 1.8) - vec2(t * 0.7, t));
-	float churn = mix(n1, n2, 0.5);
+	// Domain-warp the radius with drifting noise so the rings ripple organically
+	// instead of as perfect circles.
+	float warp = value_noise(uv * noise_scale + vec2(t * swirl_speed, -t * swirl_speed * 0.7)) - 0.5;
+	float rr = r + warp * 0.07;
 
-	// Radial pulse outward from the centre.
-	float r = length(uv);
-	float pulse = 0.5 + 0.5 * sin(TIME * 1.4 - r * 6.0);
+	// Concentric ripples travelling outward + a finer surface shimmer. Damped
+	// amplitude + a healthy shimmer mix keep it a watery surface, not a bullseye.
+	float ripple = 0.5 + 0.36 * sin(rr * ripple_freq - t * ripple_speed);
+	float shimmer = value_noise(uv * noise_scale * 2.6 + vec2(-t * 0.6, t * 0.45));
+	float surf = mix(ripple, shimmer, 0.46);
 
-	// Fresnel rim — brighter where the surface faces away from the camera.
-	float fres = pow(1.0 - clamp(dot(normalize(v_view_normal), vec3(0.0, 0.0, 1.0)), 0.0, 1.0), fresnel_power);
-
-	vec3 col = mix(core_color.rgb, rim_color.rgb, clamp(churn * 0.7 + fres, 0.0, 1.0));
-	float intensity = (0.55 + churn * 0.45) * (0.7 + pulse * 0.3) + fres * 0.6;
-	EMISSION = col * energy * intensity;
-	ALBEDO = col;
-	ALPHA = clamp(0.55 + churn * 0.35 + fres * 0.3, 0.0, 1.0);
+	// Deep blue body, brightening toward cyan-white on the ripple crests and
+	// slightly toward the centre.
+	vec3 col = mix(core_color.rgb, rim_color.rgb, clamp(surf * 0.85 + (1.0 - r) * 0.12, 0.0, 1.0));
+	// Luminance: a clear blue base everywhere, crests punch into bloom; a soft
+	// fade at the very rim so the puddle seats inside the ring.
+	float lum = energy * (0.42 + surf * 0.7) * (1.0 - 0.3 * smoothstep(0.9, 1.0, r));
+	ALBEDO = col * lum;
+	EMISSION = col * lum;
 }

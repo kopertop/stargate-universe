@@ -547,10 +547,12 @@ static func attach_console_mesh(parent: Node3D, screen_color: Color = CONSOLE_SC
 		var inst: Node = glb.instantiate()
 		stage.add_child(inst)
 		# Kenney textures are stripped on glTF import (see
-		# feedback_gltf_embedded_texture_lost), so we override with brushed
-		# metal. Pop the screen separately via an emissive plate child since
-		# the GLB is a single surface — we can't address the screen sub-region.
-		var body_mat: StandardMaterial3D = _make_mat(CONSOLE_BODY_COLOR, CONSOLE_BODY_METALLIC, CONSOLE_BODY_ROUGHNESS)
+		# feedback_gltf_embedded_texture_lost). Override with the shared Ancient-
+		# metal panel material so consoles match the Stargate/walls; fall back to
+		# brushed metal if the shader resource is missing.
+		var body_mat: Material = load("res://shaders/ancient_metal_panel.tres")
+		if body_mat == null:
+			body_mat = _make_mat(CONSOLE_BODY_COLOR, CONSOLE_BODY_METALLIC, CONSOLE_BODY_ROUGHNESS)
 		_apply_material_recursive(inst, body_mat)
 
 	var screen_mat: StandardMaterial3D = _emissive_mat(screen_color, CONSOLE_SCREEN_EMISSION)
@@ -616,7 +618,7 @@ static func _spawn_kenney_console(world: Node3D, glb: PackedScene, pos: Vector3,
 # Walk a GLB instance and stamp `mat` onto every surface of every MeshInstance3D.
 # Used to recover Kenney GLBs whose embedded textures were dropped by the
 # Godot glTF importer.
-static func _apply_material_recursive(root: Node, mat: StandardMaterial3D) -> void:
+static func _apply_material_recursive(root: Node, mat: Material) -> void:
 	if root is MeshInstance3D:
 		var mi: MeshInstance3D = root
 		var surf_count: int = mi.mesh.get_surface_count() if mi.mesh != null else 0

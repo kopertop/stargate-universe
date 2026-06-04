@@ -728,7 +728,12 @@ func _build_floor() -> void:
 	# Shared metal-grate floor via RoomBuilder.make_floor_mat — same texture,
 	# tile size, brightness, and PNG-buffer fallback as every procedural room.
 	# Palette kept near the original (0.30, 0.29, 0.32) tint.
-	var mat: StandardMaterial3D = RoomBuilder.make_floor_mat(Color(0.30, 0.29, 0.32, 1.0), room_size.x, room_size.y)
+	var mat: StandardMaterial3D = RoomBuilder.make_floor_mat(Color(0.10, 0.11, 0.14, 1.0), room_size.x, room_size.y)
+	# Wet/reflective dark-metal deck (reference): dark, metallic, low roughness so
+	# SSR (enabled in the env) bounces the gate glow + downlight shafts off it.
+	mat.metallic = 0.85
+	mat.roughness = 0.22
+	mat.metallic_specular = 0.6
 	mi.material_override = mat
 	mi.position = Vector3(0.0, -0.1, 0.0)
 	_world.add_child(mi)
@@ -823,10 +828,10 @@ func _build_walls_and_ceiling() -> void:
 	# Edge glow strips — emissive amber boxes hugging the top of every wall.
 	# Creates the "ring of light at the top of the wall" the reference image shows.
 	var glow_mat: StandardMaterial3D = StandardMaterial3D.new()
-	glow_mat.albedo_color = Color(1.0, 0.55, 0.18, 1.0)
+	glow_mat.albedo_color = Color(0.30, 0.62, 1.0, 1.0)
 	glow_mat.emission_enabled = true
-	glow_mat.emission = Color(1.0, 0.55, 0.18, 1.0)
-	glow_mat.emission_energy_multiplier = 4.0
+	glow_mat.emission = Color(0.34, 0.66, 1.0, 1.0)
+	glow_mat.emission_energy_multiplier = 5.0
 	glow_mat.metallic = 0.0
 	glow_mat.roughness = 0.4
 	var strip_thickness: float = 0.18
@@ -1645,91 +1650,74 @@ func _build_lighting_props() -> void:
 	var half_x: float = room_size.x * 0.5
 	var half_z: float = room_size.y * 0.5
 
-	# Floor uplights around the perimeter (4 corners + 2 mid-walls).
+	# COOL + DARK lighting to match the cinematic reference: the event horizon is
+	# the key light; everything else is low, blue, and dramatic. Ceiling downlight
+	# SPOTS cast volumetric shafts through the fog (volumetric_fog in the env).
+
+	# Faint cool wall-wash uplights — just enough to read panel detail at the room
+	# edges without flattening the dark.
 	var uplight_positions: Array = [
-		Vector3(-half_x + 2.0, 0.5,  half_z - 2.0),
-		Vector3( half_x - 2.0, 0.5,  half_z - 2.0),
-		Vector3(-half_x + 2.0, 0.5, -half_z + 2.0),
-		Vector3( half_x - 2.0, 0.5, -half_z + 2.0),
-		Vector3(-half_x + 2.0, 0.5, 0.0),
-		Vector3( half_x - 2.0, 0.5, 0.0),
+		Vector3(-half_x + 1.5, 0.4,  half_z - 2.0),
+		Vector3( half_x - 1.5, 0.4,  half_z - 2.0),
+		Vector3(-half_x + 1.5, 0.4, -half_z + 2.0),
+		Vector3( half_x - 1.5, 0.4, -half_z + 2.0),
+		Vector3(-half_x + 1.5, 0.4, 0.0),
+		Vector3( half_x - 1.5, 0.4, 0.0),
 	]
 	for p in uplight_positions:
 		var l: OmniLight3D = OmniLight3D.new()
-		l.light_color = Color(1.0, 0.55, 0.20, 1.0)
-		l.light_energy = 2.4
-		l.omni_range = 11.0
-		l.omni_attenuation = 1.6
+		l.light_color = Color(0.34, 0.52, 0.85, 1.0)
+		l.light_energy = 0.7
+		l.omni_range = 7.0
+		l.omni_attenuation = 2.0
 		l.position = p
 		_world.add_child(l)
 
-	# Gate uplighting: 1 spot from directly in front, 2 from the sides.
-	# look_at() requires the node to already be inside the tree, so add_child
-	# before re-orienting; otherwise the call quietly errors and the spotlight
-	# points along its default axis.
+	# Ceiling downlights — cool-white SPOTS straight down the central aisle from
+	# door to gate. With volumetric fog on, these are the shafts in the reference.
+	for bz in [-half_z + 4.0, -half_z + 9.0, 0.0, half_z - 9.0]:
+		var beam: SpotLight3D = SpotLight3D.new()
+		beam.light_color = Color(0.72, 0.82, 1.0, 1.0)
+		beam.light_energy = 10.0
+		beam.spot_range = ceiling_height + 2.0
+		beam.spot_angle = 24.0
+		beam.spot_attenuation = 1.2
+		beam.shadow_enabled = true
+		beam.position = Vector3(0.0, ceiling_height - 0.4, bz)
+		_world.add_child(beam)
+		beam.look_at(Vector3(0.0, 0.0, bz), Vector3.UP)
+
+	# Gate rim fill: subtle COOL side spots so the ring metal catches a cold
+	# highlight — the horizon does most of the work. look_at() needs the node in
+	# the tree first, else it silently errors and points along its default axis.
 	var gate_center: Vector3 = Vector3(0.0, 4.0, half_z - 3.8)
-	# Front spot
-	var front_spot: SpotLight3D = SpotLight3D.new()
-	front_spot.light_color = Color(1.0, 0.65, 0.25, 1.0)
-	front_spot.light_energy = 6.0
-	front_spot.spot_range = 14.0
-	front_spot.spot_angle = 35.0
-	front_spot.position = Vector3(0.0, 1.2, gate_center.z - 5.5)
-	_world.add_child(front_spot)
-	front_spot.look_at(gate_center, Vector3.UP)
-	# Side spots
 	for sx in [-1.0, 1.0]:
 		var side: SpotLight3D = SpotLight3D.new()
-		side.light_color = Color(1.0, 0.55, 0.18, 1.0)
-		side.light_energy = 4.0
+		side.light_color = Color(0.62, 0.78, 1.0, 1.0)
+		side.light_energy = 2.2
 		side.spot_range = 12.0
-		side.spot_angle = 32.0
-		side.position = Vector3(sx * 5.5, 1.2, gate_center.z - 1.5)
+		side.spot_angle = 30.0
+		side.position = Vector3(sx * 5.5, 1.4, gate_center.z - 1.5)
 		_world.add_child(side)
 		side.look_at(gate_center, Vector3.UP)
 
-	# Soft top key light — directional, slightly cool. Establishes the "shafts
-	# from above" feel even without a volumetric pass.
+	# Very soft cool top key — establishes form without lifting the blacks.
 	var key: DirectionalLight3D = DirectionalLight3D.new()
 	key.name = "KeyLight"
-	key.light_color = Color(0.82, 0.88, 1.0, 1.0)
-	key.light_energy = 0.85
+	key.light_color = Color(0.66, 0.76, 1.0, 1.0)
+	key.light_energy = 0.28
 	key.shadow_enabled = true
-	key.shadow_opacity = 0.5
-	# Tilt to come "from above and front" (-Y mostly, slight +Z).
-	key.rotation = Vector3(deg_to_rad(-72.0), deg_to_rad(15.0), 0.0)
+	key.shadow_opacity = 0.7
+	key.rotation = Vector3(deg_to_rad(-68.0), deg_to_rad(12.0), 0.0)
 	_world.add_child(key)
 
-	# Ceiling fill — 6 downward Omnis in a 2×3 grid below the ceiling. Wide range
-	# so each one washes a quadrant. Cool tint so warm uplights still pop on the
-	# walls without the whole room going flat-grey.
-	var ceiling_fill_y: float = ceiling_height - 0.8
-	var fill_positions: Array = [
-		Vector3(-half_x * 0.55, ceiling_fill_y,  half_z * 0.55),
-		Vector3( half_x * 0.55, ceiling_fill_y,  half_z * 0.55),
-		Vector3(-half_x * 0.55, ceiling_fill_y, 0.0),
-		Vector3( half_x * 0.55, ceiling_fill_y, 0.0),
-		Vector3(-half_x * 0.55, ceiling_fill_y, -half_z * 0.55),
-		Vector3( half_x * 0.55, ceiling_fill_y, -half_z * 0.55),
-	]
-	for p in fill_positions:
-		var fill: OmniLight3D = OmniLight3D.new()
-		fill.light_color = Color(0.86, 0.90, 1.0, 1.0)
-		fill.light_energy = 2.2
-		fill.omni_range = 14.0
-		fill.omni_attenuation = 1.4
-		fill.position = p
-		_world.add_child(fill)
-
-	# Door-archway pool — spotlight aimed straight down through the -Z arch so
-	# the exit reads as "lit doorway" instead of black hole. Player sees it from
-	# across the room and walks toward it.
+	# Door-archway pool — cool, dim, just enough to read the exit.
 	var door_spot: SpotLight3D = SpotLight3D.new()
 	door_spot.name = "DoorArchSpot"
-	door_spot.light_color = Color(1.0, 0.78, 0.45, 1.0)
-	door_spot.light_energy = 5.5
+	door_spot.light_color = Color(0.6, 0.74, 1.0, 1.0)
+	door_spot.light_energy = 3.0
 	door_spot.spot_range = 8.0
-	door_spot.spot_angle = 38.0
+	door_spot.spot_angle = 34.0
 	door_spot.position = Vector3(0.0, ceiling_height - 0.6, -half_z + 1.2)
 	_world.add_child(door_spot)
 	door_spot.look_at(Vector3(0.0, 0.0, -half_z + 0.2), Vector3.UP)

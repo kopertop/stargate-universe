@@ -64,7 +64,10 @@ void fragment() {
 
 	vec3 col = mix(core_color.rgb, rim_color.rgb, clamp(churn * 0.7 + fres, 0.0, 1.0));
 	float intensity = (0.55 + churn * 0.45) * (0.7 + pulse * 0.3) + fres * 0.6;
+	// render_mode is `unshaded`, so the final colour is ALBEDO — EMISSION is
+	// ignored. Drive the full HDR brightness through ALBEDO so `energy` actually
+	// scales the glow (and the env glow buffer blooms it).
+	ALBEDO = col * energy * intensity;
 	EMISSION = col * energy * intensity;
-	ALBEDO = col;
 	ALPHA = clamp(0.55 + churn * 0.35 + fres * 0.3, 0.0, 1.0);
 }

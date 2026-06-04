@@ -37,6 +37,12 @@ uniform float detail_normal_strength : hint_range(0.0, 2.0) = 0.6;
 // Triplanar projection blend sharpness (higher = harder seams between axes).
 uniform float triplanar_sharpness : hint_range(1.0, 16.0) = 6.0;
 
+// Rivets (studs at panel corners) + per-panel tone variation — the signature
+// Ancient-metal "riveted plates" read from the concept sheet.
+uniform float rivet_amount : hint_range(0.0, 1.0) = 0.7;
+uniform float rivet_radius : hint_range(0.02, 0.25) = 0.13;
+uniform float panel_variation : hint_range(0.0, 0.5) = 0.16;
+
 // Emission — the glowing seams give the gate its amber/orange rim light.
 uniform vec4 emission_color : source_color = vec4(0.32, 0.20, 0.10, 1.0);
 uniform float emission_energy = 0.0;
@@ -118,40 +124,60 @@ void fragment() {
 	vec3 w = triplanar_weights(v_world_normal);
 	vec3 wpos = v_world_pos;
 
-	// --- Panel grid: pick the dominant projection plane for the cell coords so
-	// the rectangular panels stay axis-aligned on each face. ---
-	vec2 cell_x = wpos.yz / panel_scale;
-	vec2 cell_y = wpos.zx / panel_scale;
-	vec2 cell_z = wpos.xy / panel_scale;
-	float seam = seam_mask(cell_x) * w.x + seam_mask(cell_y) * w.y + seam_mask(cell_z) * w.z;
+	// --- Dominant-plane 2D cell coords: crisp, axis-aligned panels per face.
+	// (Blending the grid across all 3 planes smears the panel id + rivets; a hard
+	// dominant-plane pick keeps plates sharp on hard-surface props.) ---
+	vec2 cell;
+	if (w.x >= w.y && w.x >= w.z) {
+		cell = wpos.yz / panel_scale;
+	} else if (w.y >= w.z) {
+		cell = wpos.zx / panel_scale;
+	} else {
+		cell = wpos.xy / panel_scale;
+	}
+	// Brick stagger: shift alternate rows half a cell so plates aren't a perfect
+	// grid (the concept sheet's varied rectangular panels).
+	cell.x += 0.5 * mod(floor(cell.y), 2.0);
 
-	// --- Edge wear: noise gates where bare metal shows on raised panel edges. ---
+	vec2 pid = floor(cell);
+	float pvar = (hash21(pid) - 0.5) * 2.0;               // -1..1 per-plate
+
+	// Recessed seam between plates.
+	vec2 gv = abs(fract(cell) - 0.5);
+	float seam = smoothstep(0.5 - seam_width, 0.5 - seam_width * 0.4, max(gv.x, gv.y));
+
+	// Rivets: a stud at each plate corner (nearest integer lattice point).
+	float rivet_d = length(cell - round(cell));
+	float rivet = smoothstep(rivet_radius, rivet_radius * 0.55, rivet_d) * rivet_amount;
+
+	// --- Edge wear: bare metal shows along the seams. ---
 	float wear_n = value_noise(wpos.xz * (1.0 / panel_scale) * 2.0 + wpos.y);
-	float panel_edge = smoothstep(0.5 - seam_width * 2.0, 0.5 - seam_width, seam);
-	float wear = wear_amount * panel_edge * smoothstep(0.4, 0.8, wear_n);
+	float wear = wear_amount * seam * smoothstep(0.45, 0.85, wear_n);
 
 	// --- Fine detail (scratch grain) ---
 	float grain = triplanar_scalar(detail_rough, wpos, w, detail_scale);
 
-	// --- Albedo: tint, darken in seams, lighten on worn edges. ---
-	vec3 base = albedo_tint.rgb;
-	base *= mix(1.0, 0.45, seam * seam_depth);          // recessed seams read dark
-	base = mix(base, base * 1.6, wear);                  // worn edges show brighter metal
+	// --- Albedo: tint + per-plate variation, dark seams, worn edges, bright rivets. ---
+	vec3 base = albedo_tint.rgb * (1.0 + pvar * panel_variation);
+	base *= mix(1.0, 0.40, seam * seam_depth);           // recessed seams read dark
+	base = mix(base, base * 1.7, wear);                  // worn edges show brighter metal
+	base = mix(base, base * 1.6, rivet);                 // rivet heads catch light
 	ALBEDO = base;
 
 	// --- Metallic / roughness ---
-	METALLIC = metallic * (1.0 - seam * 0.25);
-	float rough = roughness_base;
-	rough = mix(rough, clamp(rough + 0.25, 0.0, 1.0), seam * seam_depth);  // seams rougher
+	METALLIC = metallic * (1.0 - seam * 0.30);
+	float rough = roughness_base + pvar * 0.06;
+	rough = mix(rough, clamp(rough + 0.28, 0.0, 1.0), seam * seam_depth);   // seams rougher
 	rough = mix(rough, clamp(rough + 0.35, 0.0, 1.0), wear);                // wear rougher
-	rough = mix(rough, grain, 0.25);                                        // scratch grain
+	rough = mix(rough, clamp(rough - 0.20, 0.0, 1.0), rivet);              // rivets glossier
+	rough = mix(rough, grain, 0.22);                                        // scratch grain
 	ROUGHNESS = clamp(rough, 0.04, 1.0);
 
-	// --- Normal: triplanar detail normal + a beveled push out of the seams. ---
+	// --- Normal: triplanar detail normal + a beveled push out of seams + rivets. ---
 	NORMAL_MAP = triplanar_normal(
 		detail_normal, wpos, v_world_normal, w, detail_scale, detail_normal_strength
 	) * 0.5 + 0.5;
-	NORMAL_MAP_DEPTH = 1.0 + seam * seam_depth * 1.5;
+	NORMAL_MAP_DEPTH = 1.0 + seam * seam_depth * 1.6 + rivet * 1.2;
 
 	// --- Emission: constant tint plus glowing seams (gate chevron light). ---
 	vec3 emit = emission_color.rgb * emission_energy;

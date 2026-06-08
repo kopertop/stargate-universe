@@ -53,6 +53,8 @@ out/
 # In-game / debug screenshot dumps (committed reference shots stay tracked,
 # only the per-run output dir is ignored)
 screenshots/result/
+# Self-improvement loop iteration renders (candidate/best beauty-shot frames)
+screenshots/loop/
 
 # Local agent workspaces (per-developer skill/tooling caches — not project state)
 .agents/

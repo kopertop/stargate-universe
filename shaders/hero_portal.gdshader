@@ -74,8 +74,11 @@ void fragment() {
 	float ang = atan(uv.y, uv.x);
 	float t = TIME;
 
-	// Polar swirl + global spin, rebuilt from (cos,sin) to avoid the atan seam.
-	float a = ang + swirl * (1.0 - r) + t * spin_speed;
+	// Polar swirl + global spin, rebuilt from (cos,sin) to avoid the atan seam. The
+	// per-radius twist (swirl) is kept GENTLE so the energy reads as CONCENTRIC churning
+	// shells around the eye, not a single dominant spiral comma sweeping across centre
+	// (the prior look's biggest miss vs the target's "storm ringing a black hole").
+	float a = ang + swirl * (1.0 - r) * 0.18 + t * spin_speed;
 	vec2 swuv = vec2(cos(a), sin(a)) * (r * detail);
 
 	// Domain warp: churning liquid.
@@ -91,34 +94,34 @@ void fragment() {
 	// (a gaussian shell peaked at ring_peak) rather than filling the whole disc, so the
 	// dark unstable centre dominates and the bright churn rings it, exactly as in the
 	// reference (NOT a solid bright disc that blows out to white).
-	float inner = smoothstep(hole_radius, hole_radius + 0.14, r);  // 0 in eye, ramps up outside
+	float inner = smoothstep(hole_radius, hole_radius + 0.10, r);  // 0 in eye, ramps up outside
 	float outer = 1.0 - smoothstep(rim_fade - 0.20, rim_fade, r);  // fall toward rim
 	// Annular shell — the energy lives in a band, decaying both inward (toward the eye)
 	// and outward (toward the rim), so the centre stays a dark hole.
-	float shell = exp(-pow((r - ring_peak) / 0.30, 2.0));
+	float shell = exp(-pow((r - ring_peak) / 0.34, 2.0));
 	float band  = clamp(inner * outer * shell, 0.0, 1.0);
 
-	// Concentric churning rings — bright blue-white shells spiralling OUTWARD from the
-	// hole. Two interfering frequencies + the warp noise give dense overlapping shells
-	// that read as turbulent energy arms, not a single static circle. Higher frequency
-	// near the rim so the spiral tightens toward the dark eye. DENSER (higher base freq)
-	// so the disc reads as many fine concentric shells of churning energy, like the
-	// target's storm — not one smooth bright donut.
-	// Frequency RISES toward the eye (1/r-ish) so the spiral shells tighten into the dark
-	// centre like water draining — the target's churning vortex throat. Three interfering
-	// frequencies + the warp noise give dense overlapping arms rather than smooth circles.
-	float freq = mix(34.0, 13.0, clamp(r, 0.0, 1.0));
-	float ring_phase = (r * freq - t * 2.6) + n * 8.5 + ang * 1.3;
-	float rings = sin(ring_phase) * 0.55
-		+ sin(ring_phase * 1.9 + n * 3.0) * 0.3
-		+ sin(ring_phase * 0.6 - ang * 2.0 + t * 1.1) * 0.25;
-	rings = pow(clamp(rings * 0.5 + 0.5, 0.0, 1.0), 2.0);
+	// CONCENTRIC churning rings — bright blue-white shells encircling the dark eye. The
+	// phase is driven by RADIUS (so the shells are circles centred on the hole), warped
+	// by the fBm noise (so each ring wobbles/churns and breaks into turbulent beads) and
+	// only WEAKLY by angle, so they read as a stack of concentric energy rings turning
+	// around the eye — the target's "rippling pool round a black centre" — NOT a pinwheel
+	// arm crossing the middle. Frequency rises toward the eye so the rings tighten into
+	// the throat like water draining. The noise warp is the dominant character so the
+	// rings never look like clean static circles.
+	float freq = mix(30.0, 16.0, clamp(r, 0.0, 1.0));
+	float warpd = (n - 0.5) * 6.0;                     // radial displacement of each shell
+	float ring_phase = r * freq + warpd - t * 2.4 + ang * 0.45;
+	float rings = sin(ring_phase) * 0.6
+		+ sin(ring_phase * 2.1 + n * 4.0) * 0.28
+		+ sin(ring_phase * 0.55 + t * 0.9) * 0.18;
+	rings = pow(clamp(rings * 0.5 + 0.5, 0.0, 1.0), 2.2);
 
 	// Energy field: the turbulence/rings DOMINATE the value (low constant base) so the
-	// disc reads as carved spiral shells with dark gaps between them — a churning storm,
-	// NOT a flat lit donut. The base is kept low so the gaps between shells crush toward
-	// the body colour, giving the high-contrast churn the target shows.
-	float raw = (0.06 + n * 0.40 + rings * 0.95) * band;
+	// disc reads as carved concentric shells with dark gaps between them — a churning
+	// storm, NOT a flat lit donut. The base is kept low so the gaps between shells crush
+	// toward the body colour, giving the high-contrast churn the target shows.
+	float raw = (0.05 + n * 0.34 + rings * 1.0) * band;
 	float energy_field = pow(clamp(raw, 0.0, 1.0), 1.25);
 
 	// Colour ramp: deep rim → saturated blue body → hot white-blue highlights. The
@@ -134,8 +137,8 @@ void fragment() {
 	// is warped by the noise so the dark centre churns rather than being a perfect disc,
 	// and it ramps across a wide span so there's a soft transition from black eye to the
 	// surrounding storm — exactly the reference's unstable hole.
-	float hole_edge = hole_radius + (n - 0.5) * 0.07;
-	float hole = 1.0 - smoothstep(hole_edge * 0.55, hole_edge * 1.05, r);
+	float hole_edge = hole_radius + (n - 0.5) * 0.10;
+	float hole = 1.0 - smoothstep(hole_edge * 0.70, hole_edge * 1.10, r);
 	col = mix(col, hole_color, hole);
 
 	// Luminance: low floor (deep rim stays dim) with a strong multiplier on the energy

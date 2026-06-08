@@ -500,12 +500,12 @@ func _build_gate() -> void:
 	# the target shows — but the crushed-black centre + steep rim keep it a vortex throat,
 	# not a flat lit disc.
 	sm.set_shader_parameter("energy", 1.7)
-	sm.set_shader_parameter("hole_radius", 0.40)
-	sm.set_shader_parameter("ring_peak", 0.70)
+	sm.set_shader_parameter("hole_radius", 0.34)
+	sm.set_shader_parameter("ring_peak", 0.66)
 	sm.set_shader_parameter("ring_sharp", 0.7)
-	sm.set_shader_parameter("rim_fade", 1.02)
-	sm.set_shader_parameter("swirl", 13.0)
-	sm.set_shader_parameter("flow_speed", 0.7)
+	sm.set_shader_parameter("rim_fade", 1.04)
+	sm.set_shader_parameter("swirl", 9.0)
+	sm.set_shader_parameter("flow_speed", 0.6)
 	# Pull the energy palette toward BLUE so the disc reads as the target's blue-white
 	# churning event horizon, not a blown-out white spiral. Highlights stay cool, the
 	# body stays saturated blue, and the dark hole stays a deep near-black eye.

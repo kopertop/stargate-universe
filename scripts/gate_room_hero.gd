@@ -241,11 +241,18 @@ func _build_floor() -> void:
 # Walls — tall ribbed dark panels both sides + back wall.
 # ---------------------------------------------------------------------------
 func _build_walls() -> void:
-	var mat := _metal()
 	var h: float = CEILING_HEIGHT
 	var hw: float = HALL_HALF_WIDTH
 	var L: float = HALL_LENGTH
 	for sgn: float in [-1.0, 1.0]:
+		# Base wall slab on DETAIL-METAL (faint cold self-emission floor) so the whole side
+		# wall carries a baseline readable luminance from foreground to gate — the target's
+		# #1 cue is dimly-but-clearly-READABLE dark metal, and the grazing wall-washes only
+		# pick out a mid-hall band, leaving the rest a flat black void every prior round. A
+		# self-lit base panel means the wall NEVER crushes to pure black regardless of where
+		# the spots land, lifting the architecture out of void WITHOUT touching global exposure.
+		var mat := _detail_metal(METAL_ROUGHNESS, 0.045)
+		mat.albedo_color = Color(0.11, 0.12, 0.145)
 		_box(Vector3(0.6, h, L), Vector3(sgn * hw, h * 0.5, 0.0), mat)
 		var ribs: int = int(L / 4.0)
 		# HORIZONTAL banding is now the DOMINANT side-wall read (judges' #1 gap: the walls read
@@ -254,11 +261,16 @@ func _build_walls() -> void:
 		# eye reads stacked horizontal bands of dark steel; the vertical pilaster ribs are demoted
 		# to slim, NEAR-BLACK structural dividers (no blue self-emission) so they stop dominating
 		# as a glowing louvre grid.
-		for band_k: int in [0, 1, 2, 3, 4, 5]:
-			var course_y: float = h * 0.12 + float(band_k) * h * 0.16
-			var course := _detail_metal(0.4, 0.05)
-			course.albedo_color = Color(0.13, 0.14, 0.165)
-			_box(Vector3(0.45, h * 0.1, L - 1.0), Vector3(sgn * (hw - 0.35), course_y, 0.0), course)
+		# DENSER stacked horizontal courses — the target's defining side-wall read is many
+		# fine HORIZONTAL banding lines running the full hall depth, dimly cool-lit. The prior
+		# 6 sparse courses left wide flat gaps that crushed to black; 10 proud courses with a
+		# stronger cold self-emission floor + alternating tones read as a stacked banded panel
+		# of dark steel from foreground to gate (LOCAL self-lit detail, not global exposure).
+		for band_k: int in range(10):
+			var course_y: float = h * 0.08 + float(band_k) * h * 0.095
+			var course := _detail_metal(0.4, 0.075)
+			course.albedo_color = Color(0.15, 0.16, 0.19) if band_k % 2 == 0 else Color(0.1, 0.11, 0.135)
+			_box(Vector3(0.5, h * 0.06, L - 1.0), Vector3(sgn * (hw - 0.33), course_y, 0.0), course)
 		for i in ribs:
 			var z: float = -L * 0.5 + 2.0 + float(i) * 4.0
 			# Full-height pilaster rib + several stacked horizontal banding plates per bay,
@@ -284,9 +296,13 @@ func _build_walls() -> void:
 			# ONE sparse recessed glowing window-slit per OTHER bay — the target's selective
 			# blue accent lives ONLY here, not smeared across every rib (which read as a glowing
 			# louvre grid, judges' #1 gap). Small bright area = discrete recessed window.
+			# Dimmed (was energy 1.7): the bright vertical slits read as the DOMINANT wall feature
+			# — a glowing louvre — burying the target's horizontal banding. Pulled to a faint
+			# discrete recessed window so the stacked horizontal courses now read as the wall's
+			# main texture, with the slit just a sparse cold accent (the target's selective blue).
 			if i % 2 == 0:
-				_box(Vector3(0.1, h * 0.24, 0.07), Vector3(sgn * (hw - 0.62), h * 0.52, z + 2.0),
-					_emissive(Color(0.34, 0.52, 0.86), 1.7))
+				_box(Vector3(0.1, h * 0.22, 0.07), Vector3(sgn * (hw - 0.62), h * 0.52, z + 2.0),
+					_emissive(Color(0.32, 0.5, 0.84), 0.8))
 	# Back wall behind the gate — pushed FAR back + near-black + ROUGH so a big pool of
 	# black opens between the gate and the wall (the target frames the gate in open dark
 	# space, NOT jammed into a lit alcove). The lit metal ring reads against the void.

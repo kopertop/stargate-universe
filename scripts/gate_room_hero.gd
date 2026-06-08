@@ -222,25 +222,47 @@ func _build_ceiling() -> void:
 	var h: float = CEILING_HEIGHT
 	_box(Vector3(HALL_HALF_WIDTH * 2.0 + 4.0, 0.6, HALL_LENGTH + 4.0),
 		Vector3(0.0, h + 0.3, 0.0), _metal(0.5))
-	var ring_mat := _metal(0.4)
-	for i in range(4):
-		var rad: float = 3.0 + float(i) * 2.2
+	# Tiered DOME over+behind the gate — the target's defining cathedral ceiling: a deep
+	# nest of concentric stepped metal rings that arch DOWN toward the camera as they grow,
+	# so the back third of the frame reads as a tall cavernous vault, not a flat lid. Each
+	# tier is a thick metal torus + a thin recessed glow seam; the rings step both UP in
+	# radius and DOWN in Y+toward camera in Z, forming a funnel mouth above the portal.
+	var dome_mat := _metal(0.4)
+	dome_mat.albedo_color = Color(0.115, 0.125, 0.15)
+	var rib_mat := _metal(0.55)
+	rib_mat.albedo_color = Color(0.075, 0.082, 0.10)
+	var dome_cz: float = GATE_Z - 1.0
+	var tiers: int = 7
+	for i in range(tiers):
+		var t: float = float(i)
+		var rad: float = 2.6 + t * 1.9
+		# Tier marches down from the ceiling and forward toward the camera, so the dome
+		# opens like a funnel facing the hall (concentric rings receding upward+back).
+		var ty: float = h - 0.4 - t * 1.45
+		var tz: float = dome_cz - t * 1.7
+		var thick: float = 0.55 + t * 0.12
 		var mi := MeshInstance3D.new()
 		var tm := TorusMesh.new()
 		tm.inner_radius = rad
-		tm.outer_radius = rad + 0.5
+		tm.outer_radius = rad + thick
+		tm.rings = 40
 		mi.mesh = tm
-		mi.material_override = ring_mat
+		mi.material_override = dome_mat if i % 2 == 0 else rib_mat
 		add_child(mi)
-		mi.position = Vector3(0.0, h - 0.1 - float(i) * 0.15, GATE_Z * 0.2)
+		mi.position = Vector3(0.0, ty, tz)
+		mi.rotation.x = PI * 0.5
+		# Thin cold glow seam inset on the inner lip of each tier — faint recessed light
+		# tracing the concentric rings (the target's downlit dome rings), not a bright wash.
 		var em := MeshInstance3D.new()
 		var tm2 := TorusMesh.new()
-		tm2.inner_radius = rad + 0.15
-		tm2.outer_radius = rad + 0.35
+		tm2.inner_radius = rad - 0.16
+		tm2.outer_radius = rad - 0.02
+		tm2.rings = 36
 		em.mesh = tm2
-		em.material_override = _emissive(Color(0.2, 0.4, 0.8), 0.6)
+		em.material_override = _emissive(Color(0.24, 0.42, 0.82), 0.4 + t * 0.05)
 		add_child(em)
-		em.position = Vector3(0.0, h - 0.2 - float(i) * 0.15, GATE_Z * 0.2)
+		em.position = Vector3(0.0, ty - 0.05, tz + 0.25)
+		em.rotation.x = PI * 0.5
 
 # ---------------------------------------------------------------------------
 # Console banks — angled desks with glowing screens, foreground both sides.
@@ -496,6 +518,20 @@ func _build_lights() -> void:
 		add_child(bspot)
 		bspot.position = Vector3(sgn * 14.0, 13.5, GATE_Z - 8.0)
 		bspot.look_at(Vector3(sgn * 7.0, 6.0, GATE_Z - 1.0), Vector3.UP)
+	# Dome key: a broad cold spot from the dais looking UP+BACK into the tiered dome so the
+	# nested concentric rings read as a lit cavernous vault arching over the gate (the
+	# target's downlit cathedral dome), instead of vanishing into black above the portal.
+	var dome_key := SpotLight3D.new()
+	dome_key.light_color = Color(0.62, 0.68, 0.82)
+	dome_key.light_energy = 14.0
+	dome_key.spot_range = 30.0
+	dome_key.spot_angle = 46.0
+	dome_key.spot_attenuation = 0.5
+	dome_key.light_specular = 0.35
+	dome_key.shadow_enabled = false
+	add_child(dome_key)
+	dome_key.position = Vector3(0.0, GATE_CENTER_Y + 2.0, GATE_Z - 9.0)
+	dome_key.look_at(Vector3(0.0, CEILING_HEIGHT - 2.0, GATE_Z - 5.0), Vector3.FORWARD)
 	# Broad cool WALL-WASH per side: a wide spot raking down each ribbed side wall along
 	# the full hall length so the stacked panels / window-slits / ribs read as detailed
 	# dark steel from foreground to gate, instead of crushing to a flat black void. Aimed

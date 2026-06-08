@@ -36,16 +36,16 @@ const PORTAL_LIGHT_ENERGY: float = 14.0
 const PORTAL_LIGHT_COLOR: Color = Color(0.45, 0.68, 1.0)
 const SPOT_ENERGY: float = 22.0
 const SPOT_COLOR: Color = Color(0.7, 0.82, 1.0)
-const AMBIENT_ENERGY: float = 0.015
+const AMBIENT_ENERGY: float = 0.006
 # Materials
 const METAL_COLOR: Color = Color(0.05, 0.06, 0.08)
 const METAL_ROUGHNESS: float = 0.42
 const METAL_METALLIC: float = 0.85
-const FLOOR_ROUGHNESS: float = 0.18
-const SCREEN_COLOR: Color = Color(0.25, 0.55, 1.0)
-const SCREEN_ENERGY: float = 2.2
+const FLOOR_ROUGHNESS: float = 0.28
+const SCREEN_COLOR: Color = Color(0.22, 0.45, 0.85)
+const SCREEN_ENERGY: float = 0.85
 # Fog
-const FOG_DENSITY: float = 0.004
+const FOG_DENSITY: float = 0.0018
 
 func _ready() -> void:
 	_build_environment()
@@ -98,7 +98,7 @@ func _build_environment() -> void:
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.004, 0.005, 0.008)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.22, 0.28, 0.42)
+	env.ambient_light_color = Color(0.28, 0.31, 0.38)
 	env.ambient_light_energy = AMBIENT_ENERGY
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_exposure = 0.72
@@ -119,12 +119,12 @@ func _build_environment() -> void:
 	env.glow_hdr_threshold = 0.85
 	env.volumetric_fog_enabled = true
 	env.volumetric_fog_density = FOG_DENSITY
-	env.volumetric_fog_albedo = Color(0.32, 0.4, 0.58)
+	env.volumetric_fog_albedo = Color(0.42, 0.46, 0.55)
 	env.volumetric_fog_emission = Color(0.004, 0.01, 0.03)
 	env.adjustment_enabled = true
-	env.adjustment_contrast = 1.42
-	env.adjustment_saturation = 0.78
-	env.adjustment_brightness = 0.92
+	env.adjustment_contrast = 1.55
+	env.adjustment_saturation = 0.62
+	env.adjustment_brightness = 0.86
 	we.environment = env
 	add_child(we)
 
@@ -165,8 +165,9 @@ func _build_walls() -> void:
 		for i in ribs:
 			var z: float = -L * 0.5 + 2.0 + float(i) * 4.0
 			_box(Vector3(0.9, h, 0.7), Vector3(sgn * (hw - 0.4), h * 0.5, z), _metal(0.35))
-			_box(Vector3(0.3, h * 0.5, 0.12), Vector3(sgn * (hw - 0.85), h * 0.55, z),
-				_emissive(Color(0.15, 0.35, 0.7), 0.9))
+			# Thin recessed window-slit, faint cold glow — NOT a bright blue strip.
+			_box(Vector3(0.12, h * 0.32, 0.1), Vector3(sgn * (hw - 0.85), h * 0.6, z),
+				_emissive(Color(0.22, 0.4, 0.72), 0.32))
 	# Back wall behind the gate
 	_box(Vector3(hw * 2.0, h, 0.6), Vector3(0.0, h * 0.5, GATE_Z + 3.5), mat)
 
@@ -352,8 +353,8 @@ func _build_lights() -> void:
 	var portal_light := OmniLight3D.new()
 	portal_light.light_color = PORTAL_LIGHT_COLOR
 	portal_light.light_energy = PORTAL_LIGHT_ENERGY
-	portal_light.omni_range = 30.0
-	portal_light.light_volumetric_fog_energy = 2.0
+	portal_light.omni_range = 18.0
+	portal_light.light_volumetric_fog_energy = 1.0
 	add_child(portal_light)
 	portal_light.position = center + Vector3(0.0, 0.0, -1.0)
 

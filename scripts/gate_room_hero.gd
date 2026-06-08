@@ -58,7 +58,10 @@ const BUTTRESS_KEY_COLOR: Color = Color(0.7, 0.73, 0.8)
 # Dedicated cold key raking the gate-ring FACE from the camera side so the thick
 # segmented metal + chevron brackets read as a heavy lit industrial ring (the
 # target's hero element) instead of a black silhouette hidden behind the vortex.
-const RING_KEY_ENERGY: float = 26.0
+# Energy cut HARD: at 26 the ring + everything behind it washed to bright white so
+# the gate read as a smooth glowing arch tube (judges' #1 gap). The target's ring is
+# DARK metal caught by a faint cold grazing rim — the only bright thing is the portal.
+const RING_KEY_ENERGY: float = 6.0
 const RING_KEY_COLOR: Color = Color(0.72, 0.78, 0.92)
 # Materials — near-neutral dark gunmetal (barely any blue in the albedo itself so the
 # cold lights tint it rather than the base colour glowing blue).
@@ -479,13 +482,19 @@ func _build_gate() -> void:
 	# that swallowed the segmented ring + chevron brackets entirely (judges' #1 gap). A
 	# calmer churn lets the thick lit metal ring read as a hard silhouette framing the
 	# vortex, like the target — luminous portal that does NOT erase its own ring.
-	sm.set_shader_parameter("energy", 1.55)
-	sm.set_shader_parameter("hole_radius", 0.26)
-	sm.set_shader_parameter("ring_peak", 0.5)
-	sm.set_shader_parameter("ring_sharp", 0.55)
+	sm.set_shader_parameter("energy", 1.05)
+	sm.set_shader_parameter("hole_radius", 0.34)
+	sm.set_shader_parameter("ring_peak", 0.62)
+	sm.set_shader_parameter("ring_sharp", 0.7)
 	sm.set_shader_parameter("rim_fade", 1.05)
 	sm.set_shader_parameter("swirl", 9.0)
 	sm.set_shader_parameter("flow_speed", 0.6)
+	# Pull the energy palette toward BLUE so the disc reads as the target's blue-white
+	# churning event horizon, not a blown-out white spiral. Highlights stay cool, the
+	# body stays saturated blue, and the dark hole stays a deep near-black eye.
+	sm.set_shader_parameter("core_color", Color(0.55, 0.78, 1.0))
+	sm.set_shader_parameter("body_color", Color(0.13, 0.42, 0.92))
+	sm.set_shader_parameter("hole_color", Color(0.0, 0.008, 0.03))
 	puddle.material_override = sm
 	add_child(puddle)
 	# Seat the vortex BEHIND the ring plane (+Z, away from camera) so the thick
@@ -559,7 +568,7 @@ func _build_lights() -> void:
 	# target's downlit cathedral dome), instead of vanishing into black above the portal.
 	var dome_key := SpotLight3D.new()
 	dome_key.light_color = Color(0.66, 0.72, 0.86)
-	dome_key.light_energy = 28.0
+	dome_key.light_energy = 10.0
 	dome_key.spot_range = 34.0
 	dome_key.spot_angle = 54.0
 	dome_key.spot_attenuation = 0.4
@@ -573,7 +582,7 @@ func _build_lights() -> void:
 	# disc. This is what gives the vault its cavernous depth in-frame.
 	var dome_key2 := SpotLight3D.new()
 	dome_key2.light_color = Color(0.6, 0.66, 0.8)
-	dome_key2.light_energy = 22.0
+	dome_key2.light_energy = 8.0
 	dome_key2.spot_range = 32.0
 	dome_key2.spot_angle = 50.0
 	dome_key2.spot_attenuation = 0.5

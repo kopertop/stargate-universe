@@ -101,8 +101,51 @@ Judge similarity-to-target: baseline → **~32 (runs 1–2 plateau)** → **~50 
 - **Relative accept gates oscillate.** "Closer than previous" alone commits lateral
   moves forever. Require a numeric improvement from the *same* panel to climb.
 
+## Running continually on `sparky` via hermes (free, zero Claude-Code credits)
+
+The loop can run unattended on the `sparky` build host driven by the **hermes
+agent** (Nous Research), which uses its own Nous Portal inference — so it slowly
+improves the scene around the clock without spending Claude Code credits.
+
+Pieces (all under `tools/hermes/`):
+- `gate_loop_iteration.md` — the per-tick instructions hermes follows: prep/branch
+  guard → view target + best → 9-point rubric → ONE change → render → judge → commit
+  if closer / revert if not → push `feature/gate-room-hero-portal`. One iteration per run.
+- `skills/gate-hero-loop/SKILL.md` — the hermes-format skill (installed to
+  `~/.hermes/skills/` on the host so hermes "knows" the loop; attached via `--skill`).
+- `install_on_sparky.sh` — idempotent installer (run ON the host).
+
+`tools/gate_hero_render.sh` is OS-aware: on headless Linux it wraps Godot in
+`xvfb-run` (a Vulkan GPU still rasterises) and locates the PNG in the Linux
+userdata dir.
+
+### Install (when sparky is reachable over Tailscale)
+```bash
+ssh sparky 'REPO=~/stargate-universe SCHEDULE=30m bash -s' < tools/hermes/install_on_sparky.sh
+```
+Prereqs on the host: Godot 4.6 on PATH (`godot`/`godot4` or `GODOT_BIN`), a GPU
+(`nvidia-smi`) or `xvfb`, and hermes installed + `hermes login` (Nous Portal).
+The installer refreshes the repo on the branch, smoke-renders `best.png`, sets
+`approvals.cron_mode=allow` (else cron auto-denies the agent's git/terminal calls
+— the key gotcha), installs the skill, registers a `hermes cron` job (`--workdir`
+the repo), and adds a system-crontab line driving `hermes cron tick` every few
+minutes so jobs fire without a long-lived hermes daemon.
+
+### Operate
+```bash
+ssh sparky 'hermes cron list'                              # see the job
+ssh sparky 'cd ~/stargate-universe && hermes cron tick'    # force one iteration now
+ssh sparky 'git -C ~/stargate-universe log --oneline origin/feature/gate-room-hero-portal | head'
+ssh sparky 'hermes cron pause gate-hero-loop'              # pause / resume / remove
+```
+The hermes loop self-judges (single agent, no separate panel) — cheaper but more
+lenient than the Claude `Workflow` panel; the iteration prompt biases it to revert
+when unsure. Pull its commits back with `git fetch && git log origin/<branch>`.
+
 ## Adapting the pattern to another scene
 Copy the four pieces (procedural scene + parametric consts, a fixed-camera render
 harness, a render wrapper writing best/candidate PNGs, the Workflow script), point
 `TARGET` at the new reference, rewrite the `RUBRIC` for that subject, and keep the
-tightened accept gate + `safeAgent` wrappers.
+tightened accept gate + `safeAgent` wrappers. To run it free/continually instead
+of via the Claude Workflow tool, swap the orchestrator for the `tools/hermes/`
+package above (hermes cron + per-tick markdown).

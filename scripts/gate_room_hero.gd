@@ -66,7 +66,7 @@ const FILL_COLOR: Color = Color(0.56, 0.58, 0.62)
 # Dedicated cold key on the flanking buttress masses so they read as lit diagonal
 # masonry framing the gate (the dominant foreground architecture in the concept),
 # not black silhouettes. Aimed inward+down from outboard of each beam.
-const BUTTRESS_KEY_ENERGY: float = 2.6
+const BUTTRESS_KEY_ENERGY: float = 4.2
 const BUTTRESS_KEY_COLOR: Color = Color(0.7, 0.73, 0.8)
 # Dedicated cold key raking the gate-ring FACE from the camera side so the thick
 # segmented metal + chevron brackets read as a heavy lit industrial ring (the
@@ -542,39 +542,48 @@ func _build_buttresses() -> void:
 	# floating in a tall cavern — NOT a smooth funnel/alcove wall hugging the ring
 	# (the judges' repeated #1 gap). Pulled outboard, slimmed, and the inner-face
 	# ribbing removed so the beam reads as a single lean diagonal mass, not a wall.
-	var mat := _metal(0.45)
-	mat.albedo_color = Color(0.16, 0.17, 0.2)
-	var band_mat := _metal(0.55)
-	band_mat.albedo_color = Color(0.1, 0.11, 0.135)
+	# BOLD REBUILD — the diagonal buttresses are the target's MOST prominent framing
+	# element (two large bright-edged angled beams hugging the gate at mid-frame, catching
+	# a strong cold rake), yet in every render they're invisible black silhouettes shoved
+	# outboard into the dark frame edge. This pulls them INBOARD so they visibly flank the
+	# ring, gives their banded faces a faint cold self-emission floor (the proven survive-
+	# the-crush trick — LOCAL, not global exposure), and lets a brighter dedicated key
+	# rake them into clearly-lit diagonal masonry. Distinct dimension, under-attacked.
+	var mat := _detail_metal(0.45, 0.07)
+	mat.albedo_color = Color(0.17, 0.18, 0.21)
+	# Band plates carry a stronger cold self-emission floor so the stacked masonry courses
+	# read as dimly-lit horizontal banding up each beam even where the key grazes past them.
+	var band_mat := _detail_metal(0.55, 0.11)
+	band_mat.albedo_color = Color(0.13, 0.14, 0.17)
 	# Seam dimmed HARD: the bright blue diagonal stripe up each buttress was a glowing blue
 	# bar fighting the portal for dominance (the target's buttresses are DARK masses, not lit
 	# trim). Now a near-black recess line — structural detail, not a light source.
 	var trim := _emissive(Color(0.12, 0.18, 0.32), 0.12)
 	var bz: float = GATE_Z + 0.6
 	for sgn: float in [-1.0, 1.0]:
-		# Primary diagonal strut: foot planted OUTBOARD of the ring near the floor,
-		# leaning further out as it rises so its top reaches the upper wall/ceiling
-		# corner. The OPENING between strut and ring is the cavern read. Slim depth
-		# so it's a beam, not a slab wall.
-		var beam := _box(Vector3(2.4, 24.0, 1.8), Vector3(sgn * 10.6, 10.0, bz), mat)
+		# Primary diagonal strut: foot planted just outboard of the ring near the floor,
+		# leaning OUTWARD as it rises toward the upper wall corner. Pulled INBOARD (was
+		# x=10.6) so the beam visibly flanks the gate at mid-frame — the target's defining
+		# diagonal framing — while still leaving open dark space between strut and ring.
+		var beam := _box(Vector3(2.6, 24.0, 1.8), Vector3(sgn * 8.6, 10.0, bz), mat)
 		beam.rotation.z = sgn * -0.30
 		beam.name = "Buttress%d" % int(sgn)
 		# Horizontal banding plates up the OUTER face of the strut (detail that catches
 		# the cold key) — laid flat across the beam so it reads as built-up masonry, not
-		# a smooth tube. Marched up the leaning beam axis.
+		# a smooth tube. Marched up the leaning beam axis, pulled inboard with the beam.
 		for r in range(9):
 			var t: float = float(r)
 			var ry: float = 2.0 + t * 2.3
-			var rx: float = sgn * (9.6 + t * 0.7)
-			var band := _box(Vector3(2.7, 0.4, 2.0), Vector3(rx, ry, bz), band_mat, 0.0)
+			var rx: float = sgn * (7.6 + t * 0.7)
+			var band := _box(Vector3(2.9, 0.45, 2.0), Vector3(rx, ry, bz), band_mat, 0.0)
 			band.rotation.z = sgn * -0.30
 		# Thin glowing seam running up the inner edge of the strut — a single bright
 		# accent line tracing the diagonal, framing the open space beside the gate.
-		var seam := _box(Vector3(0.2, 22.0, 0.2), Vector3(sgn * 9.4, 10.0, bz - 0.9), trim)
+		var seam := _box(Vector3(0.2, 22.0, 0.2), Vector3(sgn * 7.4, 10.0, bz - 0.9), trim)
 		seam.rotation.z = sgn * -0.30
-		# Heavy base block anchoring the strut foot to the platform, set outboard of the
-		# ring so nothing crowds the portal.
-		_box(Vector3(3.6, 2.8, 3.0), Vector3(sgn * 9.8, 1.4, bz), mat)
+		# Heavy base block anchoring the strut foot to the platform, set just outboard of
+		# the ring so nothing crowds the portal.
+		_box(Vector3(3.6, 2.8, 3.0), Vector3(sgn * 7.8, 1.4, bz), mat)
 
 # ---------------------------------------------------------------------------
 # Dais — railed platform + short staircase leading up to the gate.
@@ -910,8 +919,8 @@ func _build_lights() -> void:
 		bspot.spot_attenuation = 0.6
 		bspot.shadow_enabled = false
 		add_child(bspot)
-		bspot.position = Vector3(sgn * 15.0, 14.0, GATE_Z - 8.0)
-		bspot.look_at(Vector3(sgn * 12.5, 7.0, GATE_Z), Vector3.UP)
+		bspot.position = Vector3(sgn * 13.0, 15.0, GATE_Z - 8.0)
+		bspot.look_at(Vector3(sgn * 9.0, 8.0, GATE_Z), Vector3.UP)
 	# Dome key: a broad cold spot from the dais looking UP+BACK into the tiered dome so the
 	# nested concentric rings read as a lit cavernous vault arching over the gate (the
 	# target's downlit cathedral dome), instead of vanishing into black above the portal.

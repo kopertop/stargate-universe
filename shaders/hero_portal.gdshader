@@ -34,10 +34,10 @@ uniform float detail                                = 3.0;    // base fBm freque
 // Radial annulus profile (in 0..1 disc radius). The bright churning band now
 // spans most of the disc (peak pushed outward) with a clear dark centre, so the
 // vortex reads as a LARGE energy mass filling the ring, not a small hot dot.
-uniform float hole_radius   : hint_range(0.0, 0.7)  = 0.46;   // dark centre extent
-uniform float ring_peak     : hint_range(0.1, 0.95) = 0.72;   // brightest band radius
-uniform float rim_fade      : hint_range(0.6, 1.15) = 1.0;    // outer fade edge
-uniform float ring_sharp    : hint_range(0.3, 4.0)  = 1.4;    // band tightness (low = broad)
+uniform float hole_radius   : hint_range(0.0, 0.7)  = 0.30;   // dark centre extent
+uniform float ring_peak     : hint_range(0.1, 0.95) = 0.66;   // brightest band radius
+uniform float rim_fade      : hint_range(0.6, 1.15) = 1.02;   // outer fade edge
+uniform float ring_sharp    : hint_range(0.3, 4.0)  = 0.7;    // band tightness (low = broad)
 
 float hash21(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21));
@@ -102,8 +102,8 @@ void fragment() {
 	// noise+rings drive a high, churning value across it so the disc reads as a large
 	// bright energy mass — not a thin outline. Bias the base up so the whole disc
 	// inside the rim is lit, then let the turbulence carve bright/dark spiral detail.
-	float raw = (0.12 + n * 0.62 + rings * 0.66) * band;
-	float energy_field = pow(clamp(raw, 0.0, 1.0), 1.25);
+	float raw = (0.32 + n * 0.55 + rings * 0.7) * band;
+	float energy_field = pow(clamp(raw, 0.0, 1.0), 1.05);
 
 	// Colour ramp: deep rim → saturated blue body → hot white-blue highlights. The
 	// hot term keys off both the field and the ring shells so the spiral arms flash

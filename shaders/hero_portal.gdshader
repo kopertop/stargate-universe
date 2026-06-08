@@ -34,10 +34,10 @@ uniform float detail                                = 3.0;    // base fBm freque
 // Radial annulus profile (in 0..1 disc radius). The bright churning band now
 // spans most of the disc (peak pushed outward) with a clear dark centre, so the
 // vortex reads as a LARGE energy mass filling the ring, not a small hot dot.
-uniform float hole_radius   : hint_range(0.0, 0.6)  = 0.18;   // dark centre extent
-uniform float ring_peak     : hint_range(0.1, 0.9)  = 0.52;   // brightest band radius
-uniform float rim_fade      : hint_range(0.6, 1.15) = 1.05;   // outer fade edge
-uniform float ring_sharp    : hint_range(0.3, 4.0)  = 0.5;    // band tightness (low = broad)
+uniform float hole_radius   : hint_range(0.0, 0.6)  = 0.34;   // dark centre extent
+uniform float ring_peak     : hint_range(0.1, 0.9)  = 0.60;   // brightest band radius
+uniform float rim_fade      : hint_range(0.6, 1.15) = 1.02;   // outer fade edge
+uniform float ring_sharp    : hint_range(0.3, 4.0)  = 1.05;   // band tightness (low = broad)
 
 float hash21(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21));
@@ -102,8 +102,8 @@ void fragment() {
 	// noise+rings drive a high, churning value across it so the disc reads as a large
 	// bright energy mass — not a thin outline. Bias the base up so the whole disc
 	// inside the rim is lit, then let the turbulence carve bright/dark spiral detail.
-	float raw = (0.42 + n * 0.55 + rings * 0.55) * band;
-	float energy_field = pow(clamp(raw, 0.0, 1.0), 1.1);
+	float raw = (0.22 + n * 0.6 + rings * 0.62) * band;
+	float energy_field = pow(clamp(raw, 0.0, 1.0), 1.25);
 
 	// Colour ramp: deep rim → saturated blue body → hot white-blue highlights. The
 	// hot term keys off both the field and the ring shells so the spiral arms flash
@@ -112,9 +112,10 @@ void fragment() {
 	float hot = clamp((energy_field - 0.42) * 2.4 + rings * band * 0.7, 0.0, 1.0);
 	col = mix(col, core_color, hot);
 
-	// Dark unstable hole — near-black eye in the dead centre, kept SMALL so the bright
-	// churning energy dominates the disc and the hole is a deep pupil, not a void.
-	float hole = 1.0 - smoothstep(hole_radius * 0.5, hole_radius * 1.3, r);
+	// Dark unstable hole — a LARGE near-black eye in the dead centre (the target's
+	// defining "black hole inside the storm"). Wide + deep so the ring + chevrons read
+	// as a lit silhouette around it, not erased by a solid bright disc.
+	float hole = 1.0 - smoothstep(hole_radius * 0.7, hole_radius * 1.25, r);
 	col = mix(col, hole_color, hole);
 
 	// Soft bloom halo just outside the bright band: a low, broad blue wash that decays
@@ -126,8 +127,8 @@ void fragment() {
 	// Luminance: low floor (deep rim stays dim) with a strong multiplier on the energy
 	// so the bright churn blooms past the glow threshold, plus an extra punch on the
 	// hot spiral arms. Higher overall gain so the disc fills the ring with light.
-	float lum = energy * (0.18 + energy_field * energy_field * 3.0 + hot * 2.0);
-	lum *= (1.0 - hole * 0.92);
+	float lum = energy * (0.12 + energy_field * energy_field * 2.1 + hot * 1.5);
+	lum *= (1.0 - hole * 0.98);
 	ALBEDO = col * lum;
 	ALPHA = 1.0;
 }

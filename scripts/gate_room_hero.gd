@@ -528,7 +528,7 @@ func _build_gate() -> void:
 		# part of the heavy dark ring, not pale spokes.
 		var chev := MeshInstance3D.new()
 		var pm := PrismMesh.new()
-		pm.size = Vector3(2.6, 2.0, 1.1)
+		pm.size = Vector3(3.0, 2.4, 1.2)
 		chev.mesh = pm
 		chev.material_override = chev_metal
 		add_child(chev)
@@ -544,19 +544,19 @@ func _build_gate() -> void:
 		# wedge frames it so the triangular shape survives the vortex bloom.
 		var border := MeshInstance3D.new()
 		var bpm := PrismMesh.new()
-		bpm.size = Vector3(1.5, 1.1, 0.4)
+		bpm.size = Vector3(2.2, 1.7, 0.5)
 		border.mesh = bpm
-		border.material_override = _emissive(Color(0.08, 0.1, 0.16), 0.25)
+		border.material_override = _emissive(Color(0.05, 0.07, 0.12), 0.18)
 		add_child(border)
-		border.position = center + Vector3(px, py, -0.42)
+		border.position = center + Vector3(px, py, -0.62)
 		border.rotation.z = spin
 		var glow := MeshInstance3D.new()
 		var gpm := PrismMesh.new()
-		gpm.size = Vector3(1.25, 1.05, 0.22)
+		gpm.size = Vector3(1.7, 1.35, 0.26)
 		glow.mesh = gpm
-		glow.material_override = _emissive(Color(0.6, 0.78, 1.0), 3.2)
+		glow.material_override = _emissive(Color(0.66, 0.82, 1.0), 5.5)
 		add_child(glow)
-		glow.position = center + Vector3(px, py, -0.6)
+		glow.position = center + Vector3(px, py, -0.86)
 		glow.rotation.z = spin
 
 	# Vortex puddle — sized to nearly FILL the inner aperture of the ring.
@@ -567,7 +567,7 @@ func _build_gate() -> void:
 	# plasma overflowing to the rim. At 1.92 the disc covered the entire aperture and the
 	# bloom swallowed the ring silhouette entirely (judges' #1 gap, hit 3x). Pulled in to
 	# ~1.5x so the heavy chevron-studded ring reads as a complete dark circle framing it.
-	var d: float = (GATE_RADIUS - GATE_TUBE) * 1.5
+	var d: float = (GATE_RADIUS - GATE_TUBE) * 1.4
 	qm.size = Vector2(d, d)
 	puddle.mesh = qm
 	var sm := ShaderMaterial.new()

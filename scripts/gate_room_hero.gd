@@ -416,10 +416,11 @@ func _build_gate() -> void:
 	puddle.mesh = qm
 	var sm := ShaderMaterial.new()
 	sm.shader = HERO_PORTAL_SHADER
-	# Trim the vortex luminance so its energy band sits mostly below the raised glow
-	# HDR threshold — only the hottest churn tips bloom into the tight halo, the rest
-	# reads as a contained spiral disc rather than a room-filling glow cloud.
-	sm.set_shader_parameter("energy", 1.15)
+	# Drive the vortex bright enough to fill the ring aperture with churning blue-white
+	# energy and bloom past the glow HDR threshold (the target's large luminous event
+	# horizon), while the dark central hole + steep rim keep the bloom a halo around the
+	# portal rather than a room-filling cloud.
+	sm.set_shader_parameter("energy", 2.4)
 	puddle.material_override = sm
 	add_child(puddle)
 	# Seat the vortex BEHIND the ring plane (+Z, away from camera) so the thick

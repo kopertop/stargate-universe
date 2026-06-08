@@ -34,10 +34,10 @@ uniform float detail                                = 3.0;    // base fBm freque
 // Radial annulus profile (in 0..1 disc radius). The bright churning band now
 // spans most of the disc (peak pushed outward) with a clear dark centre, so the
 // vortex reads as a LARGE energy mass filling the ring, not a small hot dot.
-uniform float hole_radius   : hint_range(0.0, 0.6)  = 0.30;   // dark centre extent
-uniform float ring_peak     : hint_range(0.1, 0.9)  = 0.70;   // brightest band radius
-uniform float rim_fade      : hint_range(0.6, 1.15) = 1.1;    // outer fade edge
-uniform float ring_sharp    : hint_range(0.3, 4.0)  = 0.7;    // band tightness (low = broad)
+uniform float hole_radius   : hint_range(0.0, 0.6)  = 0.18;   // dark centre extent
+uniform float ring_peak     : hint_range(0.1, 0.9)  = 0.52;   // brightest band radius
+uniform float rim_fade      : hint_range(0.6, 1.15) = 1.05;   // outer fade edge
+uniform float ring_sharp    : hint_range(0.3, 4.0)  = 0.5;    // band tightness (low = broad)
 
 float hash21(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21));
@@ -90,29 +90,44 @@ void fragment() {
 	float outer = 1.0 - smoothstep(ring_peak, rim_fade, r);       // 1 at peak, 0 at rim
 	float band  = pow(clamp(inner * outer, 0.0, 1.0), ring_sharp);
 
-	// Concentric churning rings — bright blue-white shells spiralling outward. The
-	// swirl warps the radius so the rings read as spinning arms, not static circles.
-	float rings = sin((r * 22.0 - t * 2.4) + n * 5.5 + ang * 0.6);
-	rings = pow(clamp(rings * 0.5 + 0.5, 0.0, 1.0), 1.6);
+	// Concentric churning rings — bright blue-white shells spiralling OUTWARD from the
+	// hole. Two interfering frequencies + the warp noise give dense overlapping shells
+	// that read as turbulent energy arms, not a single static circle. Higher frequency
+	// near the rim so the spiral tightens toward the dark eye.
+	float ring_phase = (r * 17.0 - t * 2.2) + n * 6.5 + ang * 0.8;
+	float rings = sin(ring_phase) * 0.6 + sin(ring_phase * 1.9 + n * 3.0) * 0.4;
+	rings = pow(clamp(rings * 0.5 + 0.5, 0.0, 1.0), 1.3);
 
-	// Energy field: high-contrast — crush the lows toward the dark hole, push the
-	// noise+ring peaks toward hot white so the vortex churns instead of washing grey.
-	float raw = (n * 0.62 + 0.18 + rings * 0.45) * band;
-	float energy_field = pow(clamp(raw, 0.0, 1.0), 1.35);
+	// Energy field: the band fills MOST of the aperture (broad ring_sharp), and the
+	// noise+rings drive a high, churning value across it so the disc reads as a large
+	// bright energy mass — not a thin outline. Bias the base up so the whole disc
+	// inside the rim is lit, then let the turbulence carve bright/dark spiral detail.
+	float raw = (0.42 + n * 0.55 + rings * 0.55) * band;
+	float energy_field = pow(clamp(raw, 0.0, 1.0), 1.1);
 
-	// Colour ramp: deep rim → saturated blue body → hot white-blue highlights.
-	vec3 col = mix(rim_color, body_color, clamp(energy_field * 1.8, 0.0, 1.0));
-	float hot = clamp((energy_field - 0.58) * 2.2 + rings * band * 0.5, 0.0, 1.0);
+	// Colour ramp: deep rim → saturated blue body → hot white-blue highlights. The
+	// hot term keys off both the field and the ring shells so the spiral arms flash
+	// near-white, blooming into the soft halo the target shows around the portal.
+	vec3 col = mix(rim_color, body_color, clamp(energy_field * 2.0, 0.0, 1.0));
+	float hot = clamp((energy_field - 0.42) * 2.4 + rings * band * 0.7, 0.0, 1.0);
 	col = mix(col, core_color, hot);
 
-	// Dark unstable hole — hard, near-black eye in the dead centre.
-	float hole = 1.0 - smoothstep(hole_radius * 0.55, hole_radius * 1.25, r);
+	// Dark unstable hole — near-black eye in the dead centre, kept SMALL so the bright
+	// churning energy dominates the disc and the hole is a deep pupil, not a void.
+	float hole = 1.0 - smoothstep(hole_radius * 0.5, hole_radius * 1.3, r);
 	col = mix(col, hole_color, hole);
 
-	// Luminance: low floor (deep rim stays dim) with a strong multiplier on the
-	// energy so the bright churn blooms past the glow threshold.
-	float lum = energy * (0.10 + energy_field * energy_field * 2.0 + hot * 1.2);
-	lum *= (1.0 - hole);
+	// Soft bloom halo just outside the bright band: a low, broad blue wash that decays
+	// past the rim so the portal casts a glowing aura into the surrounding dark — the
+	// target's bloom-ringed event horizon.
+	float halo = (1.0 - smoothstep(ring_peak, rim_fade + 0.25, r)) * smoothstep(hole_radius, ring_peak, r);
+	col += body_color * halo * 0.45;
+
+	// Luminance: low floor (deep rim stays dim) with a strong multiplier on the energy
+	// so the bright churn blooms past the glow threshold, plus an extra punch on the
+	// hot spiral arms. Higher overall gain so the disc fills the ring with light.
+	float lum = energy * (0.18 + energy_field * energy_field * 3.0 + hot * 2.0);
+	lum *= (1.0 - hole * 0.92);
 	ALBEDO = col * lum;
 	ALPHA = 1.0;
 }

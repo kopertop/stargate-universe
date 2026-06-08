@@ -156,7 +156,7 @@ func _detail_metal(rough: float, emit_energy: float) -> StandardMaterial3D:
 	# reads as detailed dimly-lit metal from frame edge to gate WITHOUT touching global exposure
 	# or ambient. Still ~25x below the bloom HDR threshold (4.2) so nothing glows, and the colour
 	# is near-neutral cool so it reads as gunmetal catching cold light, never a blue surface.
-	m.emission_energy_multiplier = emit_energy * 2.4
+	m.emission_energy_multiplier = emit_energy * 2.9
 	return m
 
 func _box(size: Vector3, pos: Vector3, mat: Material, rot_y: float = 0.0) -> MeshInstance3D:
@@ -1129,6 +1129,31 @@ func _build_lights() -> void:
 		add_child(rspot_lo)
 		rspot_lo.position = Vector3(sgn * 8.0, GATE_CENTER_Y - 6.5, GATE_Z - 6.0)
 		rspot_lo.look_at(Vector3(sgn * 2.0, GATE_CENTER_Y - 3.0, GATE_Z - 0.3), Vector3.UP)
+	# Side-wall RAKE directionals — the #1 recurring gap is the side walls (which fill the
+	# left/right frame in this wide 76° shot) crushing to a flat black void between the
+	# spot-cone footprints. SpotLights only light a narrow cone; the vast wall area between
+	# them stays black. A DirectionalLight3D rakes the ENTIRE wall plane uniformly with a
+	# steep grazing angle, so every rib/band/panel from frame-edge to gate catches a dim
+	# cold grazing key (shadowed valleys + lit faces = readable relief) — LOCAL to each
+	# wall via cull-mask layering, NOT global exposure/ambient. This is the directional
+	# equivalent of the cone washes but with no falloff gap, so the wall reads edge-to-edge.
+	for sgn: float in [-1.0, 1.0]:
+		var wall_rake := DirectionalLight3D.new()
+		wall_rake.light_color = Color(0.58, 0.62, 0.72)
+		# Dim: just enough to lift the dark steel relief out of pure black. Far below the
+		# bloom threshold + near-neutral cool so the wall reads as dark gunmetal catching a
+		# cold rim, never a glowing blue surface (blue stays on the portal + screens).
+		wall_rake.light_energy = 0.9
+		wall_rake.light_specular = 0.15
+		wall_rake.shadow_enabled = false
+		add_child(wall_rake)
+		# Aim INWARD (toward room centre) and slightly DOWN+forward so the light grazes the
+		# wall plane at a shallow angle — the relief casts micro-shadows that read as ribbing.
+		# +sgn points the light's -Z toward the wall on the same side: a directional pointing
+		# from room-centre outward toward the wall grazes its full height and length at once.
+		wall_rake.position = Vector3(0.0, CEILING_HEIGHT * 0.5, 0.0)
+		wall_rake.look_at(Vector3(sgn * HALL_HALF_WIDTH * 3.0, CEILING_HEIGHT * 0.35, -2.0), Vector3.UP)
+
 	# Soft frontal FILL from the camera side — lifts the near walls / console banks and
 	# the dais out of pure black without washing the scene into a flat blue field.
 	var fill := DirectionalLight3D.new()

@@ -251,8 +251,13 @@ func _build_ceiling() -> void:
 	# prior placement pushed it behind the gate + near the ceiling where the camera never
 	# saw it (judges: "no dome"). Mouth starts just above the ring and steps UP+BACK to a
 	# small oculus, tilted to face the low camera so we look UP into the stacked bands.
-	var dome_cz: float = GATE_Z + 1.0
-	var dome_base_y: float = GATE_CENTER_Y + GATE_RADIUS - 1.0
+	# Dome pushed UP and BACK above the ceiling line, well clear of the gate ring, so a
+	# pool of open black opens between the top of the gate and the vault mouth (the
+	# target frames the gate against dark space, with the tiered dome reading HIGH and
+	# behind as a separate cathedral element — NOT a halo of concentric arcs jammed
+	# behind the ring that made the gate read as a flat radial fan-disc, judges' #1 gap).
+	var dome_cz: float = GATE_Z + 5.0
+	var dome_base_y: float = GATE_CENTER_Y + GATE_RADIUS + 2.6
 	var tiers: int = 8
 	for i in range(tiers):
 		var t: float = float(i)
@@ -600,30 +605,35 @@ func _build_lights() -> void:
 	# Dome key: a broad cold spot from the dais looking UP+BACK into the tiered dome so the
 	# nested concentric rings read as a lit cavernous vault arching over the gate (the
 	# target's downlit cathedral dome), instead of vanishing into black above the portal.
+	# Dome key cut WAY down + aimed at the new HIGH/BACK dome: the target's vault is nearly
+	# black, just-caught by a faint cold grazing rim on the ring lips. A bright key here was
+	# what flooded the upper frame with a smooth gradient of concentric arcs and made the
+	# gate read as a flat radial fan-disc (judges' #1 gap). Keep it dim so the dome reads as
+	# crushed-black tiered masonry HIGH above the gate, not a glowing tunnel behind it.
 	var dome_key := SpotLight3D.new()
-	dome_key.light_color = Color(0.66, 0.72, 0.86)
-	dome_key.light_energy = 2.2
-	dome_key.spot_range = 34.0
-	dome_key.spot_angle = 54.0
-	dome_key.spot_attenuation = 0.4
-	dome_key.light_specular = 0.4
+	dome_key.light_color = Color(0.62, 0.68, 0.82)
+	dome_key.light_energy = 0.8
+	dome_key.spot_range = 36.0
+	dome_key.spot_angle = 50.0
+	dome_key.spot_attenuation = 0.6
+	dome_key.light_specular = 0.3
 	dome_key.shadow_enabled = false
 	add_child(dome_key)
-	dome_key.position = Vector3(0.0, GATE_CENTER_Y + 1.0, GATE_Z - 11.0)
-	dome_key.look_at(Vector3(0.0, GATE_CENTER_Y + GATE_RADIUS + 4.0, GATE_Z + 4.0), Vector3.UP)
+	dome_key.position = Vector3(0.0, GATE_CENTER_Y + 4.0, GATE_Z - 11.0)
+	dome_key.look_at(Vector3(0.0, GATE_CENTER_Y + GATE_RADIUS + 10.0, GATE_Z + 9.0), Vector3.UP)
 	# Second dome key from camera-side low, raking up the front face of the nested rings
 	# so the stacked concentric bands catch a grazing key and read as 3D tiers, not a flat
 	# disc. This is what gives the vault its cavernous depth in-frame.
 	var dome_key2 := SpotLight3D.new()
-	dome_key2.light_color = Color(0.6, 0.66, 0.8)
-	dome_key2.light_energy = 1.8
-	dome_key2.spot_range = 32.0
-	dome_key2.spot_angle = 50.0
-	dome_key2.spot_attenuation = 0.5
+	dome_key2.light_color = Color(0.58, 0.64, 0.78)
+	dome_key2.light_energy = 0.6
+	dome_key2.spot_range = 34.0
+	dome_key2.spot_angle = 46.0
+	dome_key2.spot_attenuation = 0.7
 	dome_key2.shadow_enabled = false
 	add_child(dome_key2)
-	dome_key2.position = Vector3(0.0, GATE_CENTER_Y + 3.0, GATE_Z - 16.0)
-	dome_key2.look_at(Vector3(0.0, GATE_CENTER_Y + GATE_RADIUS + 6.0, GATE_Z + 5.0), Vector3.UP)
+	dome_key2.position = Vector3(0.0, GATE_CENTER_Y + 5.0, GATE_Z - 16.0)
+	dome_key2.look_at(Vector3(0.0, GATE_CENTER_Y + GATE_RADIUS + 12.0, GATE_Z + 10.0), Vector3.UP)
 	# Broad cool WALL-WASH per side: a wide spot raking down each ribbed side wall along
 	# the full hall length so the stacked panels / window-slits / ribs read as detailed
 	# dark steel from foreground to gate, instead of crushing to a flat black void. Aimed

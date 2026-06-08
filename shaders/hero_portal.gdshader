@@ -34,10 +34,10 @@ uniform float detail                                = 3.0;    // base fBm freque
 // Radial annulus profile (in 0..1 disc radius). The bright churning band now
 // spans most of the disc (peak pushed outward) with a clear dark centre, so the
 // vortex reads as a LARGE energy mass filling the ring, not a small hot dot.
-uniform float hole_radius   : hint_range(0.0, 0.6)  = 0.22;   // dark centre extent
-uniform float ring_peak     : hint_range(0.1, 0.9)  = 0.62;   // brightest band radius
-uniform float rim_fade      : hint_range(0.6, 1.15) = 1.05;   // outer fade edge
-uniform float ring_sharp    : hint_range(0.3, 4.0)  = 0.85;   // band tightness (low = broad)
+uniform float hole_radius   : hint_range(0.0, 0.6)  = 0.30;   // dark centre extent
+uniform float ring_peak     : hint_range(0.1, 0.9)  = 0.70;   // brightest band radius
+uniform float rim_fade      : hint_range(0.6, 1.15) = 1.1;    // outer fade edge
+uniform float ring_sharp    : hint_range(0.3, 4.0)  = 0.7;    // band tightness (low = broad)
 
 float hash21(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21));
@@ -102,7 +102,7 @@ void fragment() {
 
 	// Colour ramp: deep rim → saturated blue body → hot white-blue highlights.
 	vec3 col = mix(rim_color, body_color, clamp(energy_field * 1.8, 0.0, 1.0));
-	float hot = clamp((energy_field - 0.42) * 2.6 + rings * band * 0.8, 0.0, 1.0);
+	float hot = clamp((energy_field - 0.58) * 2.2 + rings * band * 0.5, 0.0, 1.0);
 	col = mix(col, core_color, hot);
 
 	// Dark unstable hole — hard, near-black eye in the dead centre.

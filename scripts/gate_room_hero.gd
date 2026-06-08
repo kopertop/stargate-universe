@@ -33,7 +33,7 @@ const CAM_POS: Vector3 = Vector3(0.0, 2.4, -17.0)
 const CAM_LOOK_Y: float = 6.4
 const CAM_FOV: float = 60.0
 # Lighting
-const PORTAL_LIGHT_ENERGY: float = 5.0
+const PORTAL_LIGHT_ENERGY: float = 3.0
 const PORTAL_LIGHT_COLOR: Color = Color(0.45, 0.68, 1.0)
 const SPOT_ENERGY: float = 60.0
 const SPOT_COLOR: Color = Color(0.74, 0.82, 0.96)
@@ -55,7 +55,7 @@ const BUTTRESS_KEY_COLOR: Color = Color(0.66, 0.72, 0.86)
 # Dedicated cold key raking the gate-ring FACE from the camera side so the thick
 # segmented metal + chevron brackets read as a heavy lit industrial ring (the
 # target's hero element) instead of a black silhouette hidden behind the vortex.
-const RING_KEY_ENERGY: float = 7.0
+const RING_KEY_ENERGY: float = 11.0
 const RING_KEY_COLOR: Color = Color(0.7, 0.76, 0.9)
 # Materials — near-neutral dark gunmetal (barely any blue in the albedo itself so the
 # cold lights tint it rather than the base colour glowing blue).
@@ -136,14 +136,14 @@ func _build_environment() -> void:
 	# intensity/strength so the bloom stays a tight halo around the portal — the rest
 	# of the room crushes to black like the target.
 	env.glow_enabled = true
-	env.glow_intensity = 0.55
-	env.glow_bloom = 0.1
-	env.glow_strength = 0.85
-	env.set("glow_levels/3", 0.4)
-	env.set("glow_levels/4", 0.55)
-	env.set("glow_levels/5", 0.35)
-	env.glow_hdr_threshold = 1.5
-	env.glow_hdr_scale = 2.2
+	env.glow_intensity = 0.5
+	env.glow_bloom = 0.08
+	env.glow_strength = 0.8
+	env.set("glow_levels/3", 0.35)
+	env.set("glow_levels/4", 0.5)
+	env.set("glow_levels/5", 0.3)
+	env.glow_hdr_threshold = 2.2
+	env.glow_hdr_scale = 2.0
 	env.volumetric_fog_enabled = true
 	env.volumetric_fog_density = FOG_DENSITY
 	# Bright cool albedo so the spot cones light the fog into visible god-ray shafts,
@@ -208,8 +208,12 @@ func _build_walls() -> void:
 			# Thin recessed window-slit, faint cold glow — NOT a bright blue strip.
 			_box(Vector3(0.12, h * 0.32, 0.1), Vector3(sgn * (hw - 0.85), h * 0.6, z),
 				_emissive(Color(0.22, 0.4, 0.72), 0.32))
-	# Back wall behind the gate
-	_box(Vector3(hw * 2.0, h, 0.6), Vector3(0.0, h * 0.5, GATE_Z + 3.5), mat)
+	# Back wall behind the gate — kept near-black + ROUGH so it never lights into a
+	# blue recess; the lit metal gate ring must read as a bright structure against it.
+	var back_mat := _metal(0.85)
+	back_mat.albedo_color = Color(0.02, 0.022, 0.026)
+	back_mat.metallic = 0.2
+	_box(Vector3(hw * 2.0, h, 0.6), Vector3(0.0, h * 0.5, GATE_Z + 3.5), back_mat)
 
 # ---------------------------------------------------------------------------
 # Ceiling — flat slab + concentric rings (dome) over the gate.
@@ -329,9 +333,9 @@ func _build_gate() -> void:
 	# key light below reads the segmented plates as a HEAVY lit industrial ring (the
 	# target's hero element) instead of crushing to black behind the vortex bloom.
 	var ring_mat := _metal(0.34)
-	ring_mat.albedo_color = Color(0.20, 0.215, 0.245)
+	ring_mat.albedo_color = Color(0.34, 0.36, 0.40)
 	var seg_mat := _metal(0.28)
-	seg_mat.albedo_color = Color(0.135, 0.145, 0.175)
+	seg_mat.albedo_color = Color(0.24, 0.255, 0.30)
 	var segs: int = 36
 	var ring_mid: float = GATE_RADIUS
 	for i in segs:
@@ -357,7 +361,7 @@ func _build_gate() -> void:
 		ttm.rings = 48
 		trim.mesh = ttm
 		var trim_mat := _metal(0.25)
-		trim_mat.albedo_color = Color(0.26, 0.275, 0.31)
+		trim_mat.albedo_color = Color(0.42, 0.44, 0.48)
 		trim.material_override = trim_mat
 		add_child(trim)
 		trim.position = center
@@ -372,7 +376,7 @@ func _build_gate() -> void:
 	# bright glowing triangular insert pointing toward the centre. Sized LARGE and
 	# clearly lit so the chevron-studded ring reads even against the bright vortex.
 	var chev_metal := _metal(0.28)
-	chev_metal.albedo_color = Color(0.26, 0.275, 0.31)
+	chev_metal.albedo_color = Color(0.40, 0.42, 0.46)
 	var n: int = CHEVRON_COUNT
 	for i in n:
 		# PrismMesh apex is +Y in local space. rotation.z = ang + PI*0.5 flips the apex
@@ -415,10 +419,13 @@ func _build_gate() -> void:
 	# Trim the vortex luminance so its energy band sits mostly below the raised glow
 	# HDR threshold — only the hottest churn tips bloom into the tight halo, the rest
 	# reads as a contained spiral disc rather than a room-filling glow cloud.
-	sm.set_shader_parameter("energy", 2.2)
+	sm.set_shader_parameter("energy", 1.15)
 	puddle.material_override = sm
 	add_child(puddle)
-	puddle.position = center + Vector3(0.0, 0.0, -0.05)
+	# Seat the vortex BEHIND the ring plane (+Z, away from camera) so the thick
+	# segmented ring + chevron brackets occlude its outer edge and FRAME it — the ring
+	# reads as a hard lit silhouette around the churning disc, not a flat front glow.
+	puddle.position = center + Vector3(0.0, 0.0, 0.6)
 	puddle.name = "PortalPuddle"
 
 # ---------------------------------------------------------------------------

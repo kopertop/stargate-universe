@@ -37,15 +37,15 @@ const PORTAL_LIGHT_ENERGY: float = 3.0
 const PORTAL_LIGHT_COLOR: Color = Color(0.45, 0.68, 1.0)
 const SPOT_ENERGY: float = 60.0
 const SPOT_COLOR: Color = Color(0.74, 0.82, 0.96)
-const AMBIENT_ENERGY: float = 0.12
+const AMBIENT_ENERGY: float = 0.34
 # Cold rim/fill so the dark-metal architecture (walls, dome, buttresses) reads as
 # textured detail instead of crushing to a flat black void. Low energy, steep angle.
 # Kept NEAR-NEUTRAL (only faintly cool) so the steel reads as dark gunmetal lit by
 # cold light, NOT as a saturated-blue glowing surface — the target's walls are black
 # metal with a cold RIM, the blue lives only in the portal + screens.
-const RIM_ENERGY: float = 1.3
+const RIM_ENERGY: float = 2.4
 const RIM_COLOR: Color = Color(0.66, 0.69, 0.76)
-const FILL_ENERGY: float = 0.28
+const FILL_ENERGY: float = 0.6
 const FILL_COLOR: Color = Color(0.56, 0.58, 0.62)
 # Dedicated cold key on the flanking buttress masses so they read as lit diagonal
 # masonry framing the gate (the dominant foreground architecture in the concept),
@@ -59,7 +59,7 @@ const RING_KEY_ENERGY: float = 11.0
 const RING_KEY_COLOR: Color = Color(0.7, 0.76, 0.9)
 # Materials — near-neutral dark gunmetal (barely any blue in the albedo itself so the
 # cold lights tint it rather than the base colour glowing blue).
-const METAL_COLOR: Color = Color(0.085, 0.088, 0.095)
+const METAL_COLOR: Color = Color(0.13, 0.135, 0.15)
 const METAL_ROUGHNESS: float = 0.42
 const METAL_METALLIC: float = 0.85
 const FLOOR_ROUGHNESS: float = 0.46
@@ -489,6 +489,22 @@ func _build_lights() -> void:
 		add_child(bspot)
 		bspot.position = Vector3(sgn * 14.0, 13.5, GATE_Z - 8.0)
 		bspot.look_at(Vector3(sgn * 7.0, 6.0, GATE_Z - 1.0), Vector3.UP)
+	# Broad cool WALL-WASH per side: a wide spot raking down each ribbed side wall along
+	# the full hall length so the stacked panels / window-slits / ribs read as detailed
+	# dark steel from foreground to gate, instead of crushing to a flat black void. Aimed
+	# inward and along the wall so the ribs catch a grazing key (depth, not flat fill).
+	for sgn: float in [-1.0, 1.0]:
+		var wwash := SpotLight3D.new()
+		wwash.light_color = Color(0.6, 0.64, 0.74)
+		wwash.light_energy = 8.0
+		wwash.spot_range = 46.0
+		wwash.spot_angle = 52.0
+		wwash.spot_attenuation = 0.5
+		wwash.light_specular = 0.25
+		wwash.shadow_enabled = false
+		add_child(wwash)
+		wwash.position = Vector3(sgn * (HALL_HALF_WIDTH - 1.0), CEILING_HEIGHT - 1.5, -2.0)
+		wwash.look_at(Vector3(sgn * (HALL_HALF_WIDTH - 0.5), 3.0, 6.0), Vector3.UP)
 	# Gate-ring key lights: a pair of cold spots mounted camera-side, above and
 	# outboard of the ring, raking ACROSS the ring face toward its centre. They light
 	# the front faces of the segmented plates and the chevron brackets so the heavy

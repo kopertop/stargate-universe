@@ -491,9 +491,9 @@ func _build_gate() -> void:
 	# Higher energy so the dense shells bloom past the glow threshold into the soft halo
 	# the target shows — but the crushed-black centre + steep rim keep it a vortex throat,
 	# not a flat lit disc.
-	sm.set_shader_parameter("energy", 1.6)
-	sm.set_shader_parameter("hole_radius", 0.26)
-	sm.set_shader_parameter("ring_peak", 0.62)
+	sm.set_shader_parameter("energy", 1.7)
+	sm.set_shader_parameter("hole_radius", 0.40)
+	sm.set_shader_parameter("ring_peak", 0.70)
 	sm.set_shader_parameter("ring_sharp", 0.7)
 	sm.set_shader_parameter("rim_fade", 1.02)
 	sm.set_shader_parameter("swirl", 13.0)

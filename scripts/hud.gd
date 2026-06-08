@@ -169,7 +169,10 @@ func _ready() -> void:
 	GameState.log_added.connect(_on_log_added)
 	GameState.dialogue_shown.connect(_on_dialogue_shown)
 	GameState.dialog_started.connect(_on_dialog_started)
-	GameState.room_discovered.connect(_on_room_discovered)
+	# Toast fires on DECIPHER (the on-foot player walked in), not on remote Kino
+	# discovery — the decode animation celebrates physically reaching a room.
+	# Rooms a drone merely finds stay encrypted on the Kino map until entered.
+	GameState.room_deciphered.connect(_on_room_deciphered)
 	GameState.current_room_changed.connect(_on_current_room_changed)
 	# Unit frame builds the relocated health/oxygen bars, so it must exist before
 	# the initial _on_health_changed / _on_oxygen_changed binds below.
@@ -186,11 +189,11 @@ func _ready() -> void:
 	_build_edge_arrow()
 	_build_discovery_toast()
 	_spawn_compass()
-	# If the Gate Room was already auto-discovered before this HUD mounted (it
-	# is discovered in gate_room.gd::_ready, which can fire before/after ours),
-	# treat that boot discovery as already consumed so the first PLAYER-driven
-	# discovery is the first toast shown.
-	if not GameState.rooms_discovered.is_empty():
+	# If the Gate Room was already deciphered before this HUD mounted (it is
+	# deciphered in gate_room.gd::_ready, which can fire before/after ours),
+	# treat that boot decipher as already consumed so the first PLAYER-driven
+	# room entry is the first toast shown.
+	if not GameState.rooms_deciphered.is_empty():
 		_first_discovery_consumed = true
 	# Defer player lookup so the scene tree is settled.
 	call_deferred("_bind_player")
@@ -401,7 +404,7 @@ func _build_discovery_toast() -> void:
 # play the sting, then fade the whole toast out over DISCOVERY_FADE_SECS. The
 # very first discovery of the run (the auto-discovered Gate Room on boot) is
 # suppressed so the toast never fires before the player has moved.
-func _on_room_discovered(room_id: String) -> void:
+func _on_room_deciphered(room_id: String) -> void:
 	if not _first_discovery_consumed:
 		_first_discovery_consumed = true
 		return

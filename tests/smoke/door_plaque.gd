@@ -1,18 +1,20 @@
 extends SceneTree
 
-# Smoke test for door-plaque Ancient-text obfuscation (issue #64).
+# Smoke test for door-plaque Ancient-text obfuscation (issues #64, decipher-on-entry).
 #
-# A transition door whose destination room is UNDISCOVERED must render its
-# plaque as Ancient glyphs (#61 scramble cipher), not the real room name. Once
-# the destination room is discovered the plaque decodes to the real name. A
-# door to an already-discovered room shows the real name immediately, and the
+# A transition door whose destination room is NOT DECIPHERED (the on-foot player
+# hasn't walked into it — a Kino may have discovered it remotely) renders its
+# plaque in the Ancient glyph FONT: the real room name, upper-cased, drawn in
+# anquietas so it reads as a consistent cipher. Once the destination is
+# DECIPHERED the plaque decodes to the real (readable-font) name. A door to an
+# already-deciphered room shows the real name immediately, and the
 # reverse-stamped two-way doors obey the same rule because they go through the
 # same _add_plaque path keyed on target_room_id.
 #
 # The door is instantiated directly (not the whole room) so the unit under test
-# — _initial_plaque_text / _on_room_discovered driving the held Label3D refs —
-# is exercised deterministically without per-room physics/build timing. The
-# live GameState autoload supplies rooms_discovered + room_discovered.
+# — _apply_plaque_lock_state / _on_room_deciphered driving the held Label3D refs
+# — is exercised deterministically. The live GameState autoload supplies
+# rooms_deciphered + room_deciphered.
 #
 # Run with:
 #   godot --headless --quit-after 600 -s res://tests/smoke/door_plaque.gd
@@ -24,6 +26,7 @@ var _failures: Array[String] = []
 var _passes: int = 0
 var _door_scene: PackedScene
 var _ancient: GDScript
+var _ancient_font: Font = null
 var _gs: Node
 
 
@@ -39,6 +42,11 @@ func _initialize() -> void:
 		_report()
 		return
 
+	# The Ancient glyph font drives the locked state. The asset must be present
+	# (imported) for these tests — set_locked falls back to scramble without it.
+	_ancient_font = _ancient.ancient_font()
+	_expect(_ancient_font != null, "ancient_anquietas font loads (locked plaques use it)")
+
 	_gs.call("reset")
 
 	# Building a door runs its _ready (visual + plaque), which only fires once
@@ -50,9 +58,9 @@ func _initialize() -> void:
 
 func _run_checks() -> void:
 	await process_frame
-	await _test_undiscovered_door_shows_glyphs()
-	await _test_already_discovered_door_shows_real_name()
-	await _test_discovery_decodes_in_place()
+	await _test_undeciphered_door_shows_glyph_font()
+	await _test_already_deciphered_door_shows_real_name()
+	await _test_decipher_decodes_in_place()
 	await _test_reverse_stamped_door_obfuscates()
 	_report()
 
@@ -69,12 +77,12 @@ func _make_door(target: String, plaque: String) -> Node:
 	return door
 
 
-# Collect the text of every plaque Label3D under the door (mirrored pair).
-func _plaque_texts(door: Node) -> Array[String]:
-	var out: Array[String] = []
+# Collect the plaque Label3D nodes under the door (mirrored pair).
+func _plaque_labels(door: Node) -> Array[Label3D]:
+	var out: Array[Label3D] = []
 	for n in _all_descendants(door):
 		if n is Label3D:
-			out.append((n as Label3D).text)
+			out.append(n as Label3D)
 	return out
 
 
@@ -86,36 +94,38 @@ func _all_descendants(n: Node) -> Array[Node]:
 	return out
 
 
-# --- 1. undiscovered destination → glyphs, never the real name --------------
-func _test_undiscovered_door_shows_glyphs() -> void:
+# --- 1. undeciphered destination → real name in the Ancient FONT ------------
+# The cipher is now the FONT, not scrambled text: the label shows the real name
+# (upper-cased) rendered in anquietas. Plain English is never shown.
+func _test_undeciphered_door_shows_glyph_font() -> void:
 	var plaque: String = "Mess Hall"
-	var door: Node = await _make_door("mess_hall_undisc", plaque)
-	var texts: Array[String] = _plaque_texts(door)
-	_expect(texts.size() == 2, "undiscovered door builds a mirrored plaque pair")
-	var fully_scrambled: String = _ancient.scramble(plaque, 0.0)
-	for t in texts:
-		_expect(t != plaque, "undiscovered plaque text != real name ('%s')" % t)
-		_expect(t == fully_scrambled, "undiscovered plaque == fully-obfuscated scramble")
-		_expect(t.length() == plaque.length(), "obfuscated plaque preserves length")
+	var door: Node = await _make_door("mess_hall_undeciph", plaque)
+	var labels: Array[Label3D] = _plaque_labels(door)
+	_expect(labels.size() == 2, "undeciphered door builds a mirrored plaque pair")
+	for lbl in labels:
+		_expect(lbl.font == _ancient_font, "undeciphered plaque is drawn in the Ancient font")
+		_expect(lbl.text == plaque.to_upper(), "undeciphered plaque text is the upper-cased real name")
+		_expect(lbl.text != plaque, "undeciphered plaque is not the readable mixed-case name")
 	door.free()
 
 
-# --- 2. already-discovered destination → real name immediately --------------
-func _test_already_discovered_door_shows_real_name() -> void:
-	_gs.call("discover_room", "mess_hall_disc", "")
+# --- 2. already-deciphered destination → readable name + default font -------
+func _test_already_deciphered_door_shows_real_name() -> void:
+	_gs.call("decipher_room", "mess_hall_deciph")
 	var plaque: String = "Mess Hall"
-	var door: Node = await _make_door("mess_hall_disc", plaque)
-	var texts: Array[String] = _plaque_texts(door)
-	_expect(texts.size() == 2, "discovered door builds a mirrored plaque pair")
-	for t in texts:
-		_expect(t == plaque, "already-discovered plaque shows real name immediately")
+	var door: Node = await _make_door("mess_hall_deciph", plaque)
+	var labels: Array[Label3D] = _plaque_labels(door)
+	_expect(labels.size() == 2, "deciphered door builds a mirrored plaque pair")
+	for lbl in labels:
+		_expect(lbl.text == plaque, "already-deciphered plaque shows the real name immediately")
+		_expect(lbl.font == null, "already-deciphered plaque uses the default (readable) font")
 	door.free()
 
 
-# --- 3. discovering the room decodes the plaque in place --------------------
+# --- 3. deciphering the room decodes the plaque in place --------------------
 # In headless / instant_mode the reveal is synchronous (no tween) and settles on
-# the real name — no timing dependence.
-func _test_discovery_decodes_in_place() -> void:
+# the real name in the readable font — no timing dependence.
+func _test_decipher_decodes_in_place() -> void:
 	var router: Node = root.get_node_or_null("SceneRouter")
 	var prev_instant: bool = false
 	if router != null:
@@ -123,15 +133,15 @@ func _test_discovery_decodes_in_place() -> void:
 		router.set("instant_mode", true)
 	var plaque: String = "Hydroponics"
 	var door: Node = await _make_door("hydroponics_live", plaque)
-	# Pre-condition: starts obfuscated.
-	for t in _plaque_texts(door):
-		_expect(t != plaque, "live door starts obfuscated before discovery")
-	# Act: discover the destination room.
-	_gs.call("discover_room", "hydroponics_live", "")
-	# Assert: decoded in place to the real name.
-	var after: Array[String] = _plaque_texts(door)
-	for t in after:
-		_expect(t == plaque, "discovering destination decodes plaque to real name in place")
+	# Pre-condition: locked in the Ancient font (not yet deciphered).
+	for lbl in _plaque_labels(door):
+		_expect(lbl.font == _ancient_font, "live door starts in the Ancient font before decipher")
+	# Act: decipher the destination room (the player walked in).
+	_gs.call("decipher_room", "hydroponics_live")
+	# Assert: decoded in place to the real name in the readable font.
+	for lbl in _plaque_labels(door):
+		_expect(lbl.text == plaque, "deciphering destination decodes plaque to real name in place")
+		_expect(lbl.font == null, "decoded plaque reverts to the readable font")
 	if router != null:
 		router.set("instant_mode", prev_instant)
 	door.free()
@@ -144,19 +154,19 @@ func _test_discovery_decodes_in_place() -> void:
 func _test_reverse_stamped_door_obfuscates() -> void:
 	var plaque: String = "Control Interface Room"
 	var door: Node = await _make_door("control_interface_room_rev", plaque)
-	var texts: Array[String] = _plaque_texts(door)
-	for t in texts:
-		_expect(t != plaque, "reverse-stamped door to undiscovered room obfuscates")
-		_expect(t == _ancient.scramble(plaque, 0.0), "reverse-stamped door uses same scramble cipher")
-	# Discover it → decodes (instant_mode off here: assert the held-ref reveal).
+	for lbl in _plaque_labels(door):
+		_expect(lbl.font == _ancient_font, "reverse-stamped door to undeciphered room uses the Ancient font")
+		_expect(lbl.text == plaque.to_upper(), "reverse-stamped door shows the upper-cased real name")
+	# Decipher it → decodes.
 	var router: Node = root.get_node_or_null("SceneRouter")
 	var prev_instant: bool = false
 	if router != null:
 		prev_instant = router.get("instant_mode") == true
 		router.set("instant_mode", true)
-	_gs.call("discover_room", "control_interface_room_rev", "")
-	for t in _plaque_texts(door):
-		_expect(t == plaque, "reverse-stamped door decodes to real name on discovery")
+	_gs.call("decipher_room", "control_interface_room_rev")
+	for lbl in _plaque_labels(door):
+		_expect(lbl.text == plaque, "reverse-stamped door decodes to real name on decipher")
+		_expect(lbl.font == null, "reverse-stamped door reverts to the readable font")
 	if router != null:
 		router.set("instant_mode", prev_instant)
 	door.free()

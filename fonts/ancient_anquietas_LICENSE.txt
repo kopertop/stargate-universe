@@ -1,0 +1,32 @@
+Anquietas (Regular) — "the language of the Ancients"
+====================================================
+
+File:      ancient_anquietas.ttf
+Typeface:  Anquietas Regular
+Author:    Joseph Spicer (2004)
+Embedded copyright string: "Copyright (c) Joseph Spicer, 2004. All rights reserved."
+
+Source obtained:
+  https://raw.githubusercontent.com/mouuff/Stargate-Languages-Translator/master/assets/fonts/anquietas.ttf
+  (mirrored in several fan archives, e.g. ffonts.net as "sg_anq.ttf").
+
+What it is:
+  A fan-made glyph font that maps the Latin alphabet (A-Z, a-z, 0-9, and
+  common punctuation) one-to-one onto the on-screen "Ancient"/Lantean glyph
+  set from the Stargate franchise. Because the mapping is 1:1 and
+  deterministic, rendering ordinary English text in this font produces a
+  consistent visual substitution cipher (the same word always yields the
+  same glyphs) — which is exactly what the room "decipher" feature wants.
+
+LICENSING / USAGE NOTE — READ BEFORE ANY DISTRIBUTION:
+  This is an unofficial fan creation. The embedded notice reads
+  "All rights reserved", which is the norm for Stargate fan fonts: they are
+  freely shared for PERSONAL / non-commercial fan use, but carry NO explicit
+  commercial license, and the underlying Ancient glyph designs derive from a
+  trademarked franchise (MGM/Stargate).
+
+  => Acceptable for this personal, non-commercial fan project.
+  => NOT cleared for any commercial release, paid distribution, or store
+     submission. If this project is ever monetized or published, replace this
+     asset with an OFL/CC0-licensed glyph font (or a procedurally generated
+     glyph atlas) before shipping.

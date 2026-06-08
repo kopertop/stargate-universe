@@ -15,6 +15,14 @@ class_name AncientText
 #   - the room discovery toast (#31, 2D Label)
 #   - the door plaque obfuscation (#31, 3D Label3D)
 #
+# The "locked" steady state (a room found but not yet DECIPHERED) is now drawn
+# in a real Ancient/Lantean glyph font (Anquietas) instead of churning ASCII:
+# rendering the plain text in that font yields a CONSISTENT 1:1 substitution
+# cipher (the same name always maps to the same glyphs), which reads as
+# encryption rather than random static. `scramble()` is still used for the
+# brief decode ANIMATION (the cascade into readable English), drawn in the
+# readable font so its ASCII churn never hits a missing-glyph tofu box.
+#
 # @no-save handled at the autoload layer — this is a node script, not an
 # autoload, so the save-registration policy does not apply.
 
@@ -24,6 +32,86 @@ class_name AncientText
 # fonts (see issue notes). These read as terse alien sigils while staying in
 # the safe BMP/Latin range.
 const ANCIENT_GLYPHS: String = "/\\|=+#%&@$*<>~^?!:;-_[]{}()"
+
+# Ancient/Lantean glyph font. load()ed once (NOT preload) so a missing asset
+# degrades gracefully to the ASCII scramble instead of failing to parse this
+# script — see fonts/AGENTS.md for why this font is the documented exception
+# to the "reference fonts through scenes" rule (it's applied procedurally to
+# code-built Label3D / TextMesh / canvas draws, none of them editor scenes).
+const ANCIENT_FONT_PATH: String = "res://fonts/ancient_anquietas.ttf"
+static var _ancient_font: Font = null
+static var _ancient_font_loaded: bool = false
+
+
+# Lazily load + cache the Ancient font. Returns null if the asset is absent,
+# so every caller can fall back to the readable-font scramble.
+static func ancient_font() -> Font:
+	if not _ancient_font_loaded:
+		_ancient_font_loaded = true
+		if ResourceLoader.exists(ANCIENT_FONT_PATH):
+			_ancient_font = load(ANCIENT_FONT_PATH)
+	return _ancient_font
+
+
+# --- Locked-state font API (Label / Label3D / TextMesh) ---------------------
+#
+# `set_locked` puts a text node into the encrypted steady state: the real text,
+# upper-cased, rendered in the Ancient font (consistent cipher). If the font is
+# missing it falls back to a STATIC scramble (seed 0 — stable, not shimmering)
+# in whatever font the node already uses, so the obfuscation still holds.
+#
+# `set_readable_font` reverts the node to its default (readable) font — call it
+# at the START of a decode animation so the resolve cascade is legible Latin.
+#
+# Works across the three text carriers the game uses without a shared base type:
+#   - 2D `Label`   → theme font override
+#   - `Label3D`    → `.font` property
+#   - `TextMesh`   → `.font` property (a Mesh resource, not a Node)
+static func set_locked(node: Object, text: String) -> void:
+	var font: Font = ancient_font()
+	if font == null:
+		_assign_text(node, scramble(text, 0.0, 0))
+		return
+	_assign_font(node, font)
+	_assign_text(node, text.to_upper())
+
+
+static func set_readable_font(node: Object) -> void:
+	_assign_font(node, null)
+
+
+static func _assign_font(node: Object, font: Font) -> void:
+	if node is Label:
+		if font == null:
+			(node as Label).remove_theme_font_override("font")
+		else:
+			(node as Label).add_theme_font_override("font", font)
+	elif node is Label3D or node is TextMesh:
+		# Both expose a `font` property; null reverts to the theme default.
+		node.set("font", font)
+
+
+static func _assign_text(node: Object, value: String) -> void:
+	node.set("text", value)
+
+
+# Animated decode of any text carrier (Label / Label3D / TextMesh) from its
+# locked Ancient state into readable `final_text`. Reverts to the readable font
+# first (so the scramble cascade is legible Latin, not glyphs), then tweens the
+# scramble→resolve. `host` is any Node — used for the tween + the SceneRouter
+# lookup. instant_mode / zero duration settle immediately (no tween), so the
+# headless playthrough and captures never depend on timing.
+static func decode(node: Object, final_text: String, host: Node, duration: float = 1.0) -> void:
+	set_readable_font(node)
+	var router: Node = host.get_node_or_null("/root/SceneRouter")
+	if duration <= 0.0 or (router != null and router.get("instant_mode") == true):
+		_assign_text(node, final_text)
+		return
+	var tw: Tween = host.create_tween()
+	tw.tween_method(
+		func(v: float) -> void: _assign_text(node, scramble(final_text, v, Engine.get_process_frames())),
+		0.0, 1.0, duration)
+	tw.tween_callback(func() -> void: _assign_text(node, final_text))
 
 @export var auto_play_on_ready: bool = false
 @export var play_text: String = ""
@@ -96,6 +184,9 @@ func play(text: String, duration: float = 1.2) -> void:
 	if _tween != null and _tween.is_valid():
 		_tween.kill()
 		_tween = null
+	# If we were showing the locked Ancient-glyph name, drop back to the
+	# readable font so the scramble cascade resolves into legible English.
+	AncientText.set_readable_font(self)
 	var router: Node = get_node_or_null("/root/SceneRouter")
 	if duration <= 0.0 or (router != null and router.get("instant_mode") == true):
 		reveal_instant(text)
@@ -117,4 +208,5 @@ func reveal_instant(text: String) -> void:
 	if _tween != null and _tween.is_valid():
 		_tween.kill()
 		_tween = null
+	AncientText.set_readable_font(self)
 	self.text = text

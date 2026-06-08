@@ -329,40 +329,43 @@ func _build_console_banks() -> void:
 			_box(Vector3(1.6, 0.06, 0.1), Vector3(x_desk, 1.06, z + 1.25), lip, yaw)
 
 func _build_buttresses() -> void:
-	# Large diagonal buttress beams flanking the gate — the dominant foreground
-	# architecture in the concept frame. Two angled beams per side rise from the
-	# dais floor outward toward the ceiling, framing the ring in a chevron of steel.
-	# Buttress metal lifted a touch above base METAL so the rim light reads it as a
-	# solid silhouetted mass (the target's masonry), not a black void.
+	# Large DIAGONAL buttress beams flanking the gate — the dominant foreground
+	# architecture in the concept frame. In the target these are clean angled struts
+	# that lean OUTWARD from a wide base near the gate up toward the ceiling corners,
+	# leaving OPEN DARK SPACE between the strut and the ring so the gate reads as
+	# floating in a tall cavern — NOT a smooth funnel/alcove wall hugging the ring
+	# (the judges' repeated #1 gap). Pulled outboard, slimmed, and the inner-face
+	# ribbing removed so the beam reads as a single lean diagonal mass, not a wall.
 	var mat := _metal(0.45)
 	mat.albedo_color = Color(0.16, 0.18, 0.215)
 	var band_mat := _metal(0.55)
 	band_mat.albedo_color = Color(0.105, 0.12, 0.15)
-	var trim := _emissive(Color(0.18, 0.4, 0.85), 0.6)
-	var bz: float = GATE_Z - 1.0
+	var trim := _emissive(Color(0.18, 0.4, 0.85), 0.55)
+	var bz: float = GATE_Z + 0.6
 	for sgn: float in [-1.0, 1.0]:
-		# Primary heavy buttress: leans inward over the gate shoulders, hugging the
-		# larger ring so it reads as solid masonry framing the portal. Wider + closer
-		# in so the dark mass itself frames the ring, with the glow seam a thin accent.
-		var beam := _box(Vector3(3.6, 20.0, 3.2), Vector3(sgn * 11.0, 9.5, bz), mat)
-		beam.rotation.z = sgn * 0.42
+		# Primary diagonal strut: foot planted OUTBOARD of the ring near the floor,
+		# leaning further out as it rises so its top reaches the upper wall/ceiling
+		# corner. The OPENING between strut and ring is the cavern read. Slim depth
+		# so it's a beam, not a slab wall.
+		var beam := _box(Vector3(2.4, 24.0, 1.8), Vector3(sgn * 12.6, 10.0, bz), mat)
+		beam.rotation.z = sgn * -0.30
 		beam.name = "Buttress%d" % int(sgn)
-		# Stepped ribbing up the inner face so the mass reads as detailed masonry —
-		# alternating lighter step-faces and darker recessed bands for clear horizontal
-		# banding that catches the cold key light.
-		for r in range(8):
-			var ry: float = 2.4 + float(r) * 1.9
-			var rx: float = sgn * (7.6 - float(r) * 0.42)
-			_box(Vector3(2.6, 0.95, 3.45), Vector3(rx, ry, bz), mat, 0.0)
-			_box(Vector3(2.7, 0.35, 3.55), Vector3(rx, ry + 0.65, bz), band_mat, 0.0)
-		# Thin glowing seam running up the inner face of the beam (accent only).
-		var seam := _box(Vector3(0.24, 15.0, 0.24), Vector3(sgn * 7.1, 8.0, bz - 1.35), trim)
-		seam.rotation.z = sgn * 0.48
-		# Secondary outboard buttress, steeper, taller — adds depth layering.
-		var beam2 := _box(Vector3(2.4, 17.0, 2.4), Vector3(sgn * 11.4, 9.0, bz + 0.4), mat)
-		beam2.rotation.z = sgn * 0.24
-		# Base block anchoring the beams to the platform.
-		_box(Vector3(4.4, 2.6, 4.0), Vector3(sgn * 7.8, 1.3, bz), mat)
+		# Horizontal banding plates up the OUTER face of the strut (detail that catches
+		# the cold key) — laid flat across the beam so it reads as built-up masonry, not
+		# a smooth tube. Marched up the leaning beam axis.
+		for r in range(9):
+			var t: float = float(r)
+			var ry: float = 2.0 + t * 2.3
+			var rx: float = sgn * (11.6 + t * 0.7)
+			var band := _box(Vector3(2.7, 0.4, 2.0), Vector3(rx, ry, bz), band_mat, 0.0)
+			band.rotation.z = sgn * -0.30
+		# Thin glowing seam running up the inner edge of the strut — a single bright
+		# accent line tracing the diagonal, framing the open space beside the gate.
+		var seam := _box(Vector3(0.2, 22.0, 0.2), Vector3(sgn * 11.4, 10.0, bz - 0.9), trim)
+		seam.rotation.z = sgn * -0.30
+		# Heavy base block anchoring the strut foot to the platform, set outboard of the
+		# ring so nothing crowds the portal.
+		_box(Vector3(3.6, 2.8, 3.0), Vector3(sgn * 11.8, 1.4, bz), mat)
 
 # ---------------------------------------------------------------------------
 # Dais — railed platform + short staircase leading up to the gate.
@@ -567,8 +570,8 @@ func _build_lights() -> void:
 		bspot.spot_attenuation = 0.6
 		bspot.shadow_enabled = false
 		add_child(bspot)
-		bspot.position = Vector3(sgn * 14.0, 13.5, GATE_Z - 8.0)
-		bspot.look_at(Vector3(sgn * 7.0, 6.0, GATE_Z - 1.0), Vector3.UP)
+		bspot.position = Vector3(sgn * 15.0, 14.0, GATE_Z - 8.0)
+		bspot.look_at(Vector3(sgn * 12.5, 7.0, GATE_Z), Vector3.UP)
 	# Dome key: a broad cold spot from the dais looking UP+BACK into the tiered dome so the
 	# nested concentric rings read as a lit cavernous vault arching over the gate (the
 	# target's downlit cathedral dome), instead of vanishing into black above the portal.

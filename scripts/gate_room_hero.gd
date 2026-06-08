@@ -57,7 +57,7 @@ const BUTTRESS_KEY_COLOR: Color = Color(0.66, 0.72, 0.86)
 const METAL_COLOR: Color = Color(0.085, 0.088, 0.095)
 const METAL_ROUGHNESS: float = 0.42
 const METAL_METALLIC: float = 0.85
-const FLOOR_ROUGHNESS: float = 0.28
+const FLOOR_ROUGHNESS: float = 0.46
 const SCREEN_COLOR: Color = Color(0.22, 0.45, 0.85)
 const SCREEN_ENERGY: float = 0.85
 # Fog
@@ -148,16 +148,24 @@ func _build_environment() -> void:
 # Floor — wet reflective grid plates.
 # ---------------------------------------------------------------------------
 func _build_floor() -> void:
+	# Wet-but-rough dark metal: a HIGHER roughness so the portal reflects as a BROAD
+	# soft column rather than one hard mirror-streak (the target's subtle reflection),
+	# and a slightly anisotropic-feeling spread via reduced metallic. The converging
+	# grid seams do the perspective work, not a specular highlight.
 	var mat := _metal(FLOOR_ROUGHNESS)
-	mat.metallic = 0.7
+	mat.metallic = 0.55
+	mat.metallic_specular = 0.35
 	var floor := _box(
 		Vector3(HALL_HALF_WIDTH * 2.0 + 6.0, 0.4, HALL_LENGTH + 8.0),
 		Vector3(0.0, -0.2, (GATE_Z - CAM_POS.z) * 0.2),
 		mat)
 	floor.name = "Floor"
-	# Grid plate seams — thin recessed lines for the converging-plate look.
-	var seam_mat := _metal(0.6)
-	seam_mat.albedo_color = Color(0.02, 0.025, 0.035)
+	# Grid plate seams — thin recessed lines for the converging-plate look. Made a touch
+	# brighter (faint cold sheen) so the perspective lines reading toward the gate are the
+	# dominant floor cue, replacing the single hot specular streak.
+	var seam_mat := _emissive(Color(0.14, 0.2, 0.34), 0.12)
+	seam_mat.metallic = 0.4
+	seam_mat.roughness = 0.5
 	var span_z: int = int(HALL_LENGTH / 3.0)
 	for i in span_z:
 		var z: float = -HALL_LENGTH * 0.5 + float(i) * 3.0
@@ -384,7 +392,12 @@ func _build_lights() -> void:
 	var portal_light := OmniLight3D.new()
 	portal_light.light_color = PORTAL_LIGHT_COLOR
 	portal_light.light_energy = PORTAL_LIGHT_ENERGY
-	portal_light.omni_range = 18.0
+	# Shorter range + specular trimmed so the portal glows the gate surround and casts a
+	# SOFT broad sheen on the floor near the dais — not a hard specular column streaking
+	# all the way to the camera (the prior single-harsh-streak gap).
+	portal_light.omni_range = 14.0
+	portal_light.omni_attenuation = 1.6
+	portal_light.light_specular = 0.35
 	portal_light.light_volumetric_fog_energy = 1.0
 	add_child(portal_light)
 	portal_light.position = center + Vector3(0.0, 0.0, -1.0)

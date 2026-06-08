@@ -40,20 +40,20 @@ const PORTAL_LIGHT_ENERGY: float = 3.0
 const PORTAL_LIGHT_COLOR: Color = Color(0.45, 0.68, 1.0)
 const SPOT_ENERGY: float = 60.0
 const SPOT_COLOR: Color = Color(0.74, 0.82, 0.96)
-const AMBIENT_ENERGY: float = 0.34
+const AMBIENT_ENERGY: float = 0.10
 # Cold rim/fill so the dark-metal architecture (walls, dome, buttresses) reads as
 # textured detail instead of crushing to a flat black void. Low energy, steep angle.
 # Kept NEAR-NEUTRAL (only faintly cool) so the steel reads as dark gunmetal lit by
 # cold light, NOT as a saturated-blue glowing surface — the target's walls are black
 # metal with a cold RIM, the blue lives only in the portal + screens.
-const RIM_ENERGY: float = 2.4
+const RIM_ENERGY: float = 1.4
 const RIM_COLOR: Color = Color(0.66, 0.69, 0.76)
-const FILL_ENERGY: float = 0.6
+const FILL_ENERGY: float = 0.18
 const FILL_COLOR: Color = Color(0.56, 0.58, 0.62)
 # Dedicated cold key on the flanking buttress masses so they read as lit diagonal
 # masonry framing the gate (the dominant foreground architecture in the concept),
 # not black silhouettes. Aimed inward+down from outboard of each beam.
-const BUTTRESS_KEY_ENERGY: float = 1.8
+const BUTTRESS_KEY_ENERGY: float = 1.0
 const BUTTRESS_KEY_COLOR: Color = Color(0.7, 0.73, 0.8)
 # Dedicated cold key raking the gate-ring FACE from the camera side so the thick
 # segmented metal + chevron brackets read as a heavy lit industrial ring (the
@@ -128,7 +128,7 @@ func _build_environment() -> void:
 	env.ambient_light_color = Color(0.3, 0.31, 0.34)
 	env.ambient_light_energy = AMBIENT_ENERGY
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.tonemap_exposure = 0.72
+	env.tonemap_exposure = 0.52
 	env.tonemap_white = 8.0
 	env.ssr_enabled = true
 	env.ssr_max_steps = 64
@@ -570,7 +570,7 @@ func _build_lights() -> void:
 	# target's downlit cathedral dome), instead of vanishing into black above the portal.
 	var dome_key := SpotLight3D.new()
 	dome_key.light_color = Color(0.66, 0.72, 0.86)
-	dome_key.light_energy = 5.0
+	dome_key.light_energy = 2.2
 	dome_key.spot_range = 34.0
 	dome_key.spot_angle = 54.0
 	dome_key.spot_attenuation = 0.4
@@ -584,7 +584,7 @@ func _build_lights() -> void:
 	# disc. This is what gives the vault its cavernous depth in-frame.
 	var dome_key2 := SpotLight3D.new()
 	dome_key2.light_color = Color(0.6, 0.66, 0.8)
-	dome_key2.light_energy = 4.0
+	dome_key2.light_energy = 1.8
 	dome_key2.spot_range = 32.0
 	dome_key2.spot_angle = 50.0
 	dome_key2.spot_attenuation = 0.5
@@ -599,7 +599,7 @@ func _build_lights() -> void:
 	for sgn: float in [-1.0, 1.0]:
 		var wwash := SpotLight3D.new()
 		wwash.light_color = Color(0.58, 0.6, 0.66)
-		wwash.light_energy = 4.5
+		wwash.light_energy = 2.0
 		wwash.spot_range = 46.0
 		wwash.spot_angle = 52.0
 		wwash.spot_attenuation = 0.5

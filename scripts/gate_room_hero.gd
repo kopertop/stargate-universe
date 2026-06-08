@@ -72,7 +72,7 @@ const FLOOR_ROUGHNESS: float = 0.46
 const SCREEN_COLOR: Color = Color(0.22, 0.45, 0.85)
 const SCREEN_ENERGY: float = 0.85
 # Fog
-const FOG_DENSITY: float = 0.012
+const FOG_DENSITY: float = 0.005
 
 func _ready() -> void:
 	_build_environment()
@@ -145,13 +145,13 @@ func _build_environment() -> void:
 	# intensity/strength so the bloom stays a tight halo around the portal — the rest
 	# of the room crushes to black like the target.
 	env.glow_enabled = true
-	env.glow_intensity = 0.22
+	env.glow_intensity = 0.16
 	env.glow_bloom = 0.0
-	env.glow_strength = 0.45
-	env.set("glow_levels/3", 0.35)
-	env.set("glow_levels/4", 0.5)
-	env.set("glow_levels/5", 0.3)
-	env.glow_hdr_threshold = 3.2
+	env.glow_strength = 0.35
+	env.set("glow_levels/3", 0.3)
+	env.set("glow_levels/4", 0.4)
+	env.set("glow_levels/5", 0.2)
+	env.glow_hdr_threshold = 4.2
 	env.glow_hdr_scale = 1.6
 	env.volumetric_fog_enabled = true
 	env.volumetric_fog_density = FOG_DENSITY
@@ -649,7 +649,7 @@ func _build_gate() -> void:
 	# plasma overflowing to the rim. At 1.92 the disc covered the entire aperture and the
 	# bloom swallowed the ring silhouette entirely (judges' #1 gap, hit 3x). Pulled in to
 	# ~1.5x so the heavy chevron-studded ring reads as a complete dark circle framing it.
-	var d: float = (GATE_RADIUS - GATE_TUBE * 1.25) * 1.5
+	var d: float = (GATE_RADIUS - GATE_TUBE * 1.25) * 1.62
 	qm.size = Vector2(d, d)
 	puddle.mesh = qm
 	var sm := ShaderMaterial.new()
@@ -666,12 +666,12 @@ func _build_gate() -> void:
 	# Higher energy so the dense shells bloom past the glow threshold into the soft halo
 	# the target shows — but the crushed-black centre + steep rim keep it a vortex throat,
 	# not a flat lit disc.
-	sm.set_shader_parameter("energy", 2.0)
-	sm.set_shader_parameter("hole_radius", 0.17)
+	sm.set_shader_parameter("energy", 3.0)
+	sm.set_shader_parameter("hole_radius", 0.16)
 	sm.set_shader_parameter("ring_peak", 0.7)
 	sm.set_shader_parameter("ring_sharp", 0.7)
 	sm.set_shader_parameter("rim_fade", 1.04)
-	sm.set_shader_parameter("swirl", 16.0)
+	sm.set_shader_parameter("swirl", 9.0)
 	sm.set_shader_parameter("flow_speed", 0.6)
 	# Pull the energy palette toward BLUE so the disc reads as the target's blue-white
 	# churning event horizon, not a blown-out white spiral. Highlights stay cool, the
@@ -693,7 +693,7 @@ func _build_gate() -> void:
 	# real reason 44 iters of shader churn never read). It sits behind the bright chevron
 	# glow tips (-0.66) so the chevrons still read proud, and the ring inner edge still
 	# frames it. depth_draw_opaque on the shader keeps it occluding the fog behind.
-	puddle.position = center + Vector3(0.0, 0.0, -0.05)
+	puddle.position = center + Vector3(0.0, 0.0, -0.3)
 	puddle.name = "PortalPuddle"
 
 # ---------------------------------------------------------------------------
@@ -714,7 +714,7 @@ func _build_lights() -> void:
 	# over the gate that veiled the whole churning disc into a flat milky oval. Near-zero
 	# fog energy lets the disc's own texture detail read while the ceiling god-ray spots
 	# still carry the volumetric look elsewhere in the hall.
-	portal_light.light_volumetric_fog_energy = 0.12
+	portal_light.light_volumetric_fog_energy = 0.0
 	add_child(portal_light)
 	portal_light.position = center + Vector3(0.0, 0.0, -1.0)
 
@@ -730,7 +730,7 @@ func _build_lights() -> void:
 		spot.spot_range = 24.0
 		spot.spot_angle = 11.0
 		spot.spot_attenuation = 0.4
-		spot.light_volumetric_fog_energy = 9.0
+		spot.light_volumetric_fog_energy = 4.0
 		spot.shadow_enabled = false
 		add_child(spot)
 		spot.position = Vector3(sx, CEILING_HEIGHT - 1.0, GATE_Z - 3.0)

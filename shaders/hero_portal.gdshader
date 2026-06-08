@@ -77,7 +77,13 @@ float fbm(vec2 p) {
 
 void fragment() {
 	vec2 uv = (UV - 0.5) * 2.0;            // -1..1
-	float r = clamp(length(uv), 0.0, 1.0);
+	// CRITICAL FIX: do NOT clamp r to 1.0. The mesh is a SQUARE QuadMesh, so the corners
+	// reach r≈1.41. Clamping r to 1.0 pinned the outer radial mask at full brightness all
+	// the way into the corners, so the plasma filled the square and read as a flat frosted
+	// rounded-SQUARE with a tiny dot (the persistent gap) — never a disc. Leaving r
+	// unclamped lets the firm circular rim falloff below actually cut a round edge, so the
+	// churning plasma is a true CIRCLE that fills the ring aperture with a soft bloom halo.
+	float r = length(uv);
 	float ang = atan(uv.y, uv.x);
 	float t = TIME;
 
@@ -128,11 +134,15 @@ void fragment() {
 	float d1 = s1 - 0.55;
 	float d2 = s2 - 0.57;
 	float d3 = s3 - 0.60;
-	float n = 0.5 + (d1 * 1.7 + d2 * 0.95 + d3 * 0.4);
-	n = clamp((n - 0.5) * 2.4 + 0.5, 0.0, 1.0);
-	// Soft filament shaping — keeps a continuous luminous body with channels carved
-	// between flowing strands, instead of a high-gamma sparkle field.
-	float fil = pow(n, 1.25);
+	float n = 0.5 + (d1 * 1.9 + d2 * 1.15 + d3 * 0.5);
+	// HIGHER contrast stretch so the turbulent field separates into bright flowing strands
+	// with genuinely DARK channels between them — the persistent gap was a uniform pale disc
+	// with no visible churn (the noise averaged out to flat grey). A steeper stretch + gamma
+	// carves the filaments so the eye reads moving plasma, not frosted glass.
+	n = clamp((n - 0.5) * 3.2 + 0.5, 0.0, 1.0);
+	// Filament shaping — gamma > 1 darkens the mid-grey gaps so only the strand crests stay
+	// bright, giving the dense filamentary churn that fills the disc.
+	float fil = pow(n, 1.7);
 
 	// Radial mask. The target event horizon is a CHURNING BLUE plasma disc with a
 	// clearly DARK unstable eye and a defined circular outer edge that blooms into a
@@ -164,7 +174,10 @@ void fragment() {
 	// Energy field: a strong base fill so the ENTIRE disc glows blue out to the rim, with the
 	// flowing filaments modulating brightness on top. The small eye stays dark; everything
 	// outside it is lit plasma reaching the rim — the target's full-aperture churning horizon.
-	float raw = (0.62 + fil * 0.6) * band * fill_weight;
+	// LOW base floor + strong filament term: the dark channels between strands actually go
+	// dark (no more uniform pale fill), and the bright flowing filaments carry the energy.
+	// This is what turns the flat frosted disc into churning plasma.
+	float raw = (0.55 + fil * 0.7) * band * fill_weight;
 	float energy_field = pow(clamp(raw, 0.0, 1.0), 1.0);
 	float rings = fil;                                 // reused below for hot-arm flashes
 
@@ -192,9 +205,17 @@ void fragment() {
 	// "blown-out snowball" gap). The energy_field term is now LINEAR-ish (gentle square) and
 	// scaled down, so the disc holds its saturated blue; only the sparse hot crests punch
 	// bright enough to bloom into the soft halo. The crushed eye stays black.
-	float body_lum = 0.10 + energy_field * 0.55 + energy_field * energy_field * 0.55;
+	// FILAMENT-DRIVEN luminance: brightness rides mostly on the carved filament term so the
+	// strands clip bright (and bloom into the halo) while the channels between them stay dim
+	// blue — the difference that turns a uniform pale disc into churning plasma. The flat
+	// body floor is small; fil drives the structure.
+	float body_lum = 0.30 + energy_field * 0.7 + fil * fil * 0.8;
 	float lum = energy * (body_lum + hot * 1.3);
 	lum *= (1.0 - hole);
+	// Hard circular cut: zero everything past the disc edge so the square QuadMesh corners
+	// carry NO energy (step replaces the disallowed early-return — `return` is illegal in the
+	// fragment processor in Godot's shading language and silently fails the whole shader).
+	lum *= step(r, 1.05);
 	ALBEDO = col * lum;
 	ALPHA = 1.0;
 }

@@ -81,24 +81,38 @@ void fragment() {
 	float ang = atan(uv.y, uv.x);
 	float t = TIME;
 
-	// POLAR texture sampling. The vortex is mapped into a (angle, radius) rectangle and
-	// the tileable noise texture is read there, so the churn wraps seamlessly around the
-	// disc instead of streaking across the middle. Angle scrolls with spin (the vortex
-	// turns), radius scrolls INWARD with flow (energy drains toward the eye), and a swirl
-	// term shears angle by radius so the filaments spiral gently into the throat. Two
-	// octaves at different scales give dense, broad-to-fine filamentary turbulence that
-	// FILLS the disc — the reference's churning plasma, not a single fBm comma.
-	float swirl_a = ang / TAU + swirl * (1.0 - r) * 0.012 + t * spin_speed * 0.06;
-	float drain_r = r - t * flow_speed * 0.30;
+	// CARTESIAN swirled texture sampling. Polar (angle,radius) sampling — used for 44
+	// prior iterations — inherently stretches the noise into concentric bands (cells tiny
+	// at the centre, huge at the rim) which the eye reads as rings / a spiral comma. The
+	// target plasma is ISOTROPIC churning cells of roughly equal size everywhere, slowly
+	// rotating about a small dark eye. So sample the texture in the FLAT plane instead,
+	// with a gentle radius-dependent angular SWIRL applied to the sample coordinates and
+	// the whole field rotating with spin. Domain-warp by a low-frequency texture read so
+	// the cells boil/churn rather than rigidly rotate. Three octaves of progressively
+	// finer cells give the dense filamentary turbulence that FILLS the disc as a sheet.
+	float spin = t * spin_speed * 0.25;
+	float tw = swirl * (1.0 - r) * 0.10 + spin;            // swirl shear: inner turns faster
+	float cs = cos(tw);
+	float sn = sin(tw);
+	mat2 swrot = mat2(vec2(cs, sn), vec2(-sn, cs));
+	vec2 suv = swrot * uv;                                 // swirled disc coords (-1..1)
 
-	// Octave 1 — broad churn (wraps in angle: x * tex_scale keeps tiling integer-friendly).
-	vec2 puv1 = vec2(swirl_a * tex_scale, drain_r * 4.0);
+	// Domain warp — read a coarse noise field and use it to nudge the sample point so the
+	// cells slosh and reconnect over time (liquid churn, not rigid spin).
+	float drift = t * flow_speed;
+	vec2 w = vec2(
+		texture(noise_tex, suv * (tex_scale * 0.5) + vec2(drift * 0.07, -drift * 0.05)).r,
+		texture(noise_tex, suv * (tex_scale * 0.5) + vec2(-drift * 0.05, drift * 0.06) + 7.3).r) - 0.5;
+	vec2 wuv = suv + w * warp_amount * 0.55;
+
+	// Octave 1 — broad churn cells.
+	vec2 puv1 = wuv * tex_scale + vec2(drift * 0.04, -drift * 0.03);
 	float s1 = texture(noise_tex, puv1).r;
-	// Octave 2 — finer filaments, counter-scrolled so the two layers shear past each other.
-	vec2 puv2 = vec2(swirl_a * tex_scale * 2.7 - t * 0.05, drain_r * 8.0 + t * flow_speed * 0.18);
+	// Octave 2 — mid filaments, counter-drifting so layers shear past each other.
+	vec2 puv2 = wuv * (tex_scale * 2.3) + vec2(-drift * 0.06, drift * 0.05) + 3.1;
 	float s2 = texture(noise_tex, puv2).r;
-	// Octave 3 — fine sparkle, fast, breaks the body into turbulent beads.
-	vec2 puv3 = vec2(swirl_a * tex_scale * 5.9 + t * 0.09, drain_r * 14.0 - t * flow_speed * 0.10);
+	// Octave 3 — fine sparkle breaking the body into turbulent beads.
+	vec2 puv3 = wuv * (tex_scale * 5.1) + vec2(drift * 0.09, drift * 0.07) + 11.7;
 	float s3 = texture(noise_tex, puv3).r;
 
 	// Combined turbulent value, contrast-stretched so filaments separate from dark gaps.
@@ -127,8 +141,8 @@ void fragment() {
 	// gaps between strands still glow faintly blue (a continuous plasma sheet, not bare
 	// black between threads). A faint radial brightening toward ring_peak gives the
 	// reference's slightly hotter mid-band without hollowing the disc.
-	float midboost = 1.0 + 0.5 * exp(-pow((r - ring_peak) / 0.45, 2.0));
-	float raw = (0.06 + fil * 1.15) * band * midboost;
+	float midboost = 1.0 + 0.35 * exp(-pow((r - ring_peak) / 0.6, 2.0));
+	float raw = (0.10 + fil * 1.15) * band * midboost;
 	float energy_field = pow(clamp(raw, 0.0, 1.0), 1.2);
 	float rings = fil;                                 // reused below for hot-arm flashes
 

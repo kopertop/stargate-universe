@@ -555,8 +555,8 @@ func _build_gate() -> void:
 	# Pull the energy palette toward BLUE so the disc reads as the target's blue-white
 	# churning event horizon, not a blown-out white spiral. Highlights stay cool, the
 	# body stays saturated blue, and the dark hole stays a deep near-black eye.
-	sm.set_shader_parameter("core_color", Color(0.62, 0.80, 1.0))
-	sm.set_shader_parameter("body_color", Color(0.16, 0.46, 0.95))
+	sm.set_shader_parameter("core_color", Color(0.55, 0.74, 1.0))
+	sm.set_shader_parameter("body_color", Color(0.12, 0.40, 0.92))
 	sm.set_shader_parameter("hole_color", Color(0.0, 0.008, 0.03))
 	# Texture-sampled churn (Unity RunesAndPortals noise, fully licensed). Polar-sampled
 	# in the shader for dense filamentary plasma that fills the disc instead of an fBm comma.

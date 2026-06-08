@@ -164,7 +164,11 @@ func _build_environment() -> void:
 	env.volumetric_fog_length = 48.0
 	env.adjustment_enabled = true
 	env.adjustment_contrast = 1.28
-	env.adjustment_saturation = 0.55
+	# Saturation lifted from 0.55: the prior heavy desaturation drained the blue out of the
+	# portal plasma, leaving it a near-white disc (the persistent "blown-out snowball" gap).
+	# The architecture albedo is near-neutral dark metal, so a moderate saturation keeps the
+	# walls reading as cold steel while letting the vortex hold its saturated blue-white.
+	env.adjustment_saturation = 0.82
 	env.adjustment_brightness = 0.96
 	we.environment = env
 	add_child(we)
@@ -663,8 +667,8 @@ func _build_gate() -> void:
 	# Higher energy so the dense shells bloom past the glow threshold into the soft halo
 	# the target shows — but the crushed-black centre + steep rim keep it a vortex throat,
 	# not a flat lit disc.
-	sm.set_shader_parameter("energy", 1.7)
-	sm.set_shader_parameter("hole_radius", 0.15)
+	sm.set_shader_parameter("energy", 2.0)
+	sm.set_shader_parameter("hole_radius", 0.17)
 	sm.set_shader_parameter("ring_peak", 0.7)
 	sm.set_shader_parameter("ring_sharp", 0.7)
 	sm.set_shader_parameter("rim_fade", 1.04)

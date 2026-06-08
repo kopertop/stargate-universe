@@ -169,13 +169,17 @@ void fragment() {
 	float rings = fil;                                 // reused below for hot-arm flashes
 
 	// Colour ramp: deep blue rim → saturated blue body → cool white-blue highlights. The
-	// hot (white) term is held BACK so the disc stays predominantly BLUE (the reference is
-	// blue plasma, not a white snowball) — only the brightest churn filaments flash near
-	// white. Raising the hot threshold + lowering its gain keeps saturation high.
-	vec3 col = mix(rim_color, body_color, clamp(energy_field * 2.2, 0.0, 1.0));
-	float hot = clamp((energy_field - 0.62) * 2.0 + rings * band * 0.35, 0.0, 1.0);
-	hot = hot * hot;                                   // bias hot toward the very brightest only
-	col = mix(col, core_color, hot);
+	// hot (white) term is held BACK HARD so the disc stays predominantly BLUE (the reference
+	// is blue plasma, not a white snowball) — only the very brightest, sparsest churn
+	// filaments flash near white. The body fills out as saturated blue first; white is
+	// reserved for the thin crests of the turbulent strands.
+	vec3 col = mix(rim_color, body_color, clamp(energy_field * 2.4, 0.0, 1.0));
+	// Hot crests: gated to ONLY the top fraction of filament brightness AND high energy, then
+	// cubed, so white appears as sparse sparkle on strand peaks rather than washing the body.
+	float crest = smoothstep(0.78, 0.98, fil);
+	float hot = clamp((energy_field - 0.74) * 1.6, 0.0, 1.0) * crest;
+	hot = hot * hot * hot;                             // sharply bias toward the very brightest only
+	col = mix(col, core_color, hot * 0.85);
 
 	// Dark unstable hole — a SMALL near-black eye in the dead centre (the target's
 	// defining "black hole inside the storm"). Compact so the plasma dominates the disc,
@@ -183,10 +187,13 @@ void fragment() {
 	float hole = 1.0 - smoothstep(eye_r * 0.5, eye_r * 1.1, r);
 	col = mix(col, hole_color, hole);
 
-	// Luminance: low floor with a strong multiplier on the energy so the bright inner
-	// churn blooms past the glow threshold (the soft halo), while the firm rim falloff
-	// keeps the bloom a defined disc and the wide eye stays crushed black.
-	float lum = energy * (0.12 + energy_field * energy_field * 1.7 + hot * 0.9);
+	// Luminance: a moderate body brightness so the blue plasma reads as a luminous churning
+	// sheet WITHOUT the whole disc clipping to white past the bloom threshold (the persistent
+	// "blown-out snowball" gap). The energy_field term is now LINEAR-ish (gentle square) and
+	// scaled down, so the disc holds its saturated blue; only the sparse hot crests punch
+	// bright enough to bloom into the soft halo. The crushed eye stays black.
+	float body_lum = 0.10 + energy_field * 0.55 + energy_field * energy_field * 0.55;
+	float lum = energy * (body_lum + hot * 1.3);
 	lum *= (1.0 - hole);
 	ALBEDO = col * lum;
 	ALPHA = 1.0;

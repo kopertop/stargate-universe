@@ -393,9 +393,9 @@ func _build_gate() -> void:
 	# key light below reads the segmented plates as a HEAVY lit industrial ring (the
 	# target's hero element) instead of crushing to black behind the vortex bloom.
 	var ring_mat := _metal(0.34)
-	ring_mat.albedo_color = Color(0.34, 0.36, 0.40)
+	ring_mat.albedo_color = Color(0.52, 0.55, 0.60)
 	var seg_mat := _metal(0.28)
-	seg_mat.albedo_color = Color(0.24, 0.255, 0.30)
+	seg_mat.albedo_color = Color(0.40, 0.42, 0.48)
 	var segs: int = 36
 	var ring_mid: float = GATE_RADIUS
 	for i in segs:
@@ -421,7 +421,7 @@ func _build_gate() -> void:
 		ttm.rings = 48
 		trim.mesh = ttm
 		var trim_mat := _metal(0.25)
-		trim_mat.albedo_color = Color(0.42, 0.44, 0.48)
+		trim_mat.albedo_color = Color(0.60, 0.63, 0.68)
 		trim.material_override = trim_mat
 		add_child(trim)
 		trim.position = center
@@ -436,7 +436,7 @@ func _build_gate() -> void:
 	# bright glowing triangular insert pointing toward the centre. Sized LARGE and
 	# clearly lit so the chevron-studded ring reads even against the bright vortex.
 	var chev_metal := _metal(0.28)
-	chev_metal.albedo_color = Color(0.40, 0.42, 0.46)
+	chev_metal.albedo_color = Color(0.56, 0.58, 0.62)
 	var n: int = CHEVRON_COUNT
 	for i in n:
 		# PrismMesh apex is +Y in local space. rotation.z = ang + PI*0.5 flips the apex
@@ -484,12 +484,12 @@ func _build_gate() -> void:
 	# that swallowed the segmented ring + chevron brackets entirely (judges' #1 gap). A
 	# calmer churn lets the thick lit metal ring read as a hard silhouette framing the
 	# vortex, like the target — luminous portal that does NOT erase its own ring.
-	sm.set_shader_parameter("energy", 0.7)
-	sm.set_shader_parameter("hole_radius", 0.34)
-	sm.set_shader_parameter("ring_peak", 0.62)
-	sm.set_shader_parameter("ring_sharp", 0.7)
-	sm.set_shader_parameter("rim_fade", 1.05)
-	sm.set_shader_parameter("swirl", 9.0)
+	sm.set_shader_parameter("energy", 0.85)
+	sm.set_shader_parameter("hole_radius", 0.42)
+	sm.set_shader_parameter("ring_peak", 0.72)
+	sm.set_shader_parameter("ring_sharp", 0.55)
+	sm.set_shader_parameter("rim_fade", 1.12)
+	sm.set_shader_parameter("swirl", 10.0)
 	sm.set_shader_parameter("flow_speed", 0.6)
 	# Pull the energy palette toward BLUE so the disc reads as the target's blue-white
 	# churning event horizon, not a blown-out white spiral. Highlights stay cool, the

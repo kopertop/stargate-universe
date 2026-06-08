@@ -420,7 +420,7 @@ func _build_gate() -> void:
 	# energy and bloom past the glow HDR threshold (the target's large luminous event
 	# horizon), while the dark central hole + steep rim keep the bloom a halo around the
 	# portal rather than a room-filling cloud.
-	sm.set_shader_parameter("energy", 2.1)
+	sm.set_shader_parameter("energy", 2.6)
 	puddle.material_override = sm
 	add_child(puddle)
 	# Seat the vortex BEHIND the ring plane (+Z, away from camera) so the thick

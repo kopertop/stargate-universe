@@ -34,10 +34,10 @@ uniform float detail                                = 3.0;    // base fBm freque
 // Radial annulus profile (in 0..1 disc radius). The bright churning band now
 // spans most of the disc (peak pushed outward) with a clear dark centre, so the
 // vortex reads as a LARGE energy mass filling the ring, not a small hot dot.
-uniform float hole_radius   : hint_range(0.0, 0.6)  = 0.34;   // dark centre extent
-uniform float ring_peak     : hint_range(0.1, 0.9)  = 0.60;   // brightest band radius
-uniform float rim_fade      : hint_range(0.6, 1.15) = 1.02;   // outer fade edge
-uniform float ring_sharp    : hint_range(0.3, 4.0)  = 1.05;   // band tightness (low = broad)
+uniform float hole_radius   : hint_range(0.0, 0.7)  = 0.46;   // dark centre extent
+uniform float ring_peak     : hint_range(0.1, 0.95) = 0.72;   // brightest band radius
+uniform float rim_fade      : hint_range(0.6, 1.15) = 1.0;    // outer fade edge
+uniform float ring_sharp    : hint_range(0.3, 4.0)  = 1.4;    // band tightness (low = broad)
 
 float hash21(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21));
@@ -102,7 +102,7 @@ void fragment() {
 	// noise+rings drive a high, churning value across it so the disc reads as a large
 	// bright energy mass — not a thin outline. Bias the base up so the whole disc
 	// inside the rim is lit, then let the turbulence carve bright/dark spiral detail.
-	float raw = (0.22 + n * 0.6 + rings * 0.62) * band;
+	float raw = (0.12 + n * 0.62 + rings * 0.66) * band;
 	float energy_field = pow(clamp(raw, 0.0, 1.0), 1.25);
 
 	// Colour ramp: deep rim → saturated blue body → hot white-blue highlights. The
@@ -115,7 +115,10 @@ void fragment() {
 	// Dark unstable hole — a LARGE near-black eye in the dead centre (the target's
 	// defining "black hole inside the storm"). Wide + deep so the ring + chevrons read
 	// as a lit silhouette around it, not erased by a solid bright disc.
-	float hole = 1.0 - smoothstep(hole_radius * 0.7, hole_radius * 1.25, r);
+	// Soft, slightly turbulent eye edge: warp the hole boundary by the noise so the
+	// dark centre churns rather than being a perfect disc.
+	float hole_edge = hole_radius + (n - 0.5) * 0.06;
+	float hole = 1.0 - smoothstep(hole_edge * 0.78, hole_edge * 1.1, r);
 	col = mix(col, hole_color, hole);
 
 	// Soft bloom halo just outside the bright band: a low, broad blue wash that decays

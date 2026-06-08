@@ -53,6 +53,7 @@ func _ready() -> void:
 	_build_walls()
 	_build_ceiling()
 	_build_console_banks()
+	_build_buttresses()
 	_build_dais()
 	_build_gate()
 	_build_lights()
@@ -200,16 +201,48 @@ func _build_ceiling() -> void:
 # Console banks — angled desks with glowing screens, foreground both sides.
 # ---------------------------------------------------------------------------
 func _build_console_banks() -> void:
-	var desk_mat := _metal(0.45)
+	var desk_mat := _metal(0.4)
 	var screen_mat := _emissive(SCREEN_COLOR, SCREEN_ENERGY)
+	# Two angled banks per side, marching from the foreground (near camera) toward
+	# the gate. Pulled close to the camera and toward the room centre so they read
+	# as the target's flanking console rows rather than vanishing into the dark.
 	for sgn: float in [-1.0, 1.0]:
-		for i in range(4):
-			var z: float = -HALL_LENGTH * 0.4 + float(i) * 3.2
-			var x: float = sgn * (HALL_HALF_WIDTH - 2.2)
-			var yaw: float = -sgn * 0.35
-			_box(Vector3(2.4, 1.1, 1.4), Vector3(x, 0.55, z), desk_mat, yaw)
-			var scr := _box(Vector3(2.0, 0.9, 0.08), Vector3(x, 1.5, z), screen_mat, yaw)
-			scr.rotation.x = -0.5
+		for i in range(5):
+			var z: float = CAM_POS.z + 4.0 + float(i) * 3.4
+			var x: float = sgn * (HALL_HALF_WIDTH - 3.6)
+			var yaw: float = -sgn * 0.5
+			# Desk body
+			_box(Vector3(2.8, 1.0, 1.5), Vector3(x, 0.5, z), desk_mat, yaw)
+			# Raked screen panel facing the room centre, lifted to chest height
+			var scr := _box(Vector3(2.4, 1.0, 0.1), Vector3(x, 1.45, z), screen_mat, yaw)
+			scr.rotation.x = -0.45
+			# Side-by-side mini screens to break the panel into many small displays
+			var mini_mat := _emissive(Color(0.3, 0.6, 1.0), SCREEN_ENERGY * 0.7)
+			for k in range(3):
+				var mz: float = z - 0.5 + float(k) * 0.5
+				var ms := _box(Vector3(0.55, 0.45, 0.06), Vector3(x, 1.5, mz), mini_mat, yaw)
+				ms.rotation.x = -0.45
+
+func _build_buttresses() -> void:
+	# Large diagonal buttress beams flanking the gate — the dominant foreground
+	# architecture in the concept frame. Two angled beams per side rise from the
+	# dais floor outward toward the ceiling, framing the ring in a chevron of steel.
+	var mat := _metal(0.38)
+	var trim := _emissive(Color(0.18, 0.4, 0.85), 1.1)
+	var bz: float = GATE_Z - 1.0
+	for sgn: float in [-1.0, 1.0]:
+		# Primary heavy buttress: leans inward over the gate shoulders.
+		var beam := _box(Vector3(2.2, 16.0, 2.6), Vector3(sgn * 7.0, 7.5, bz), mat)
+		beam.rotation.z = sgn * 0.42
+		beam.name = "Buttress%d" % int(sgn)
+		# Glowing seam running up the inner face of the beam.
+		var seam := _box(Vector3(0.25, 14.0, 0.25), Vector3(sgn * 5.6, 7.2, bz - 1.2), trim)
+		seam.rotation.z = sgn * 0.42
+		# Secondary outboard buttress, steeper, taller — adds depth layering.
+		var beam2 := _box(Vector3(1.6, 15.0, 1.8), Vector3(sgn * 9.4, 8.0, bz + 0.4), mat)
+		beam2.rotation.z = sgn * 0.22
+		# Base block anchoring the beams to the platform.
+		_box(Vector3(3.2, 2.0, 3.4), Vector3(sgn * 6.4, 1.0, bz), mat)
 
 # ---------------------------------------------------------------------------
 # Dais — railed platform + short staircase leading up to the gate.

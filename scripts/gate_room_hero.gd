@@ -471,15 +471,22 @@ func _build_ceiling() -> void:
 	# up into. This builds the dome as FULL concentric ring tori (not arched box rows) that
 	# read as unmistakable circles arching over the gate, with brighter band albedo + a real
 	# (but sub-bloom) cold downlight on each tier. Distinct from the recently-reverted swings.
-	var dome_cz: float = GATE_Z + 4.5
-	var dome_base_y: float = GATE_CENTER_Y + GATE_RADIUS + 3.0
+	# DOME SEPARATION REBUILD (iter 33) — the dome HAS been rendering, but as a tight halo
+	# of concentric arcs hugging directly behind the gate (the recurring "fan-arch ringing the
+	# portal" read). The target's dome is a large tiered vault sitting HIGH and CLEARLY ABOVE
+	# the gate, with a wide pool of open black between the gate top and the dome mouth. Lift
+	# the whole stack so its mouth clears the gate top by a full ~3 m of open dark, widen the
+	# mouth, and let the tiers recede UP toward a small apex — so it reads as a separate
+	# cathedral vault crowning the hall, not arcs wrapped around the aperture.
+	var dome_cz: float = GATE_Z + 5.5
+	var dome_base_y: float = GATE_CENTER_Y + GATE_RADIUS + 5.5
 	var bands: int = 6
 	for i in range(bands):
 		var t: float = float(i)
 		# Concentric tiers: radius shrinks, height + depth recede toward a small apex oculus.
-		var arch_r: float = 9.6 - t * 1.35
-		var by: float = dome_base_y + t * 1.55
-		var bz: float = dome_cz + t * 1.7
+		var arch_r: float = 11.2 - t * 1.55
+		var by: float = dome_base_y + t * 1.7
+		var bz: float = dome_cz + t * 1.9
 		# Brighter band tone per tier so the vault reads as DIM-but-clearly-lit steel, a clear
 		# step above the near-black walls — the target's dome is the lightest dark element.
 		var tier_mat := dome_mat if i % 2 == 0 else rib_mat
@@ -596,12 +603,13 @@ func _build_buttresses() -> void:
 	mat.albedo_color = Color(0.17, 0.18, 0.21)
 	# Band plates carry a stronger cold self-emission floor so the stacked masonry courses
 	# read as dimly-lit horizontal banding up each beam even where the key grazes past them.
-	var band_mat := _detail_metal(0.55, 0.11)
-	band_mat.albedo_color = Color(0.13, 0.14, 0.17)
-	# Seam dimmed HARD: the bright blue diagonal stripe up each buttress was a glowing blue
-	# bar fighting the portal for dominance (the target's buttresses are DARK masses, not lit
-	# trim). Now a near-black recess line — structural detail, not a light source.
-	var trim := _emissive(Color(0.12, 0.18, 0.32), 0.12)
+	var band_mat := _detail_metal(0.55, 0.16)
+	band_mat.albedo_color = Color(0.15, 0.16, 0.19)
+	# Inner-edge seam: in the target each diagonal buttress has a CLEARLY lit cold edge tracing
+	# its inner profile (the bright-edged angled struts that frame the gate). Lifted off the
+	# near-black whisper to a faint-but-readable cold accent line so the diagonal framing reads —
+	# small bright area = a lit structural edge, not a wall wash, kept below the bloom threshold.
+	var trim := _emissive(Color(0.30, 0.42, 0.66), 0.7)
 	var bz: float = GATE_Z + 0.6
 	for sgn: float in [-1.0, 1.0]:
 		# Primary diagonal strut: foot planted just outboard of the ring near the floor,
@@ -972,6 +980,7 @@ func _build_lights() -> void:
 	# what flooded the upper frame with a smooth gradient of concentric arcs and made the
 	# gate read as a flat radial fan-disc (judges' #1 gap). Keep it dim so the dome reads as
 	# crushed-black tiered masonry HIGH above the gate, not a glowing tunnel behind it.
+	# (dome-key aim updated below for the lifted/separated dome.)
 	# Dome key raised to actually read the tiered vault: the target's dome is a clearly-lit
 	# cathedral ceiling of concentric rings, not crushed black. Aimed UP+BACK from the dais
 	# into the new lower/closer dome mouth so the stacked metal bands catch a cold grazing
@@ -1001,10 +1010,10 @@ func _build_lights() -> void:
 		dome_key.light_specular = 0.5
 		dome_key.shadow_enabled = false
 		add_child(dome_key)
-		dome_key.position = Vector3(dk_sgn * 5.0, GATE_CENTER_Y + 2.0, GATE_Z - 7.0)
-		# Re-aimed UP+BACK at the dome's new seat so the nested ring tori catch a cold grazing
-		# key and read as a cavernous concentric vault HIGH in frame.
-		dome_key.look_at(Vector3(dk_sgn * 1.5, GATE_CENTER_Y + GATE_RADIUS + 7.0, GATE_Z + 8.0), Vector3.UP)
+		dome_key.position = Vector3(dk_sgn * 5.0, GATE_CENTER_Y + 3.0, GATE_Z - 7.0)
+		# Re-aimed UP+BACK at the dome's new (lifted, separated) seat so the nested ring tori
+		# catch a cold grazing key and read as a cavernous concentric vault HIGH in frame.
+		dome_key.look_at(Vector3(dk_sgn * 1.5, GATE_CENTER_Y + GATE_RADIUS + 10.0, GATE_Z + 10.0), Vector3.UP)
 	# Broad dim DOME up-fill: a single wide soft spot from the dais aimed straight UP+BACK into
 	# the tiered coffered vault so the stacked horizontal beams catch a faint cold grazing key
 	# and read as a nested cathedral ceiling at the TOP of frame — the judges' single most-

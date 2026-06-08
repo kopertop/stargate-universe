@@ -118,19 +118,21 @@ void fragment() {
 	vec2 puv3 = wuv * (tex_scale * 5.1) + vec2(drift * 0.09, drift * 0.07) + 11.7;
 	float s3 = texture(noise_tex, puv3).r;
 
-	// Combined turbulent value, contrast-stretched so filaments separate from dark gaps.
-	// Multiply the octaves (not just sum) so a strand only lights where layers AGREE —
-	// this carves sharp dark channels between bright filaments instead of a milky average.
-	// The source texture is SOFT (luminance ~0.40-0.79), so a plain sum stays a flat grey.
-	// Subtract a per-octave mid and SUM the signed deviations, then stretch hard — this
-	// turns the gentle noise into high-contrast filaments with crushed dark channels.
-	float d1 = s1 - 0.60;
-	float d2 = s2 - 0.60;
+	// Combined turbulent value. Bias toward FLOWING strands rather than sparkly beads:
+	// the broad+mid octaves carry most of the weight (they read as sweeping plasma
+	// filaments curved by the swirl shear), and the fine octave only lightly breaks up
+	// the body so it shimmers without dissolving into snow. The source texture is SOFT
+	// (luminance ~0.40-0.79); subtract a per-octave mid and stretch so strands separate
+	// from the dark gaps, but with a GENTLER stretch + lower gamma than prior iterations
+	// so the disc reads as continuous churning plasma, not isolated white grains.
+	float d1 = s1 - 0.55;
+	float d2 = s2 - 0.57;
 	float d3 = s3 - 0.60;
-	float n = 0.5 + (d1 * 1.4 + d2 * 1.1 + d3 * 0.7);
-	n = clamp((n - 0.5) * 3.4 + 0.5, 0.0, 1.0);
-	// Sharpen into filaments — high contrast churn with crushed gaps between strands.
-	float fil = pow(n, 1.7);
+	float n = 0.5 + (d1 * 1.7 + d2 * 0.95 + d3 * 0.4);
+	n = clamp((n - 0.5) * 2.4 + 0.5, 0.0, 1.0);
+	// Soft filament shaping — keeps a continuous luminous body with channels carved
+	// between flowing strands, instead of a high-gamma sparkle field.
+	float fil = pow(n, 1.25);
 
 	// Radial mask. The target event horizon is a CHURNING BLUE plasma disc with a
 	// clearly DARK unstable eye and a defined circular outer edge that blooms into a
@@ -140,23 +142,26 @@ void fragment() {
 	//      edge — the bloom halo comes from the edge being bright, not from a fuzzy fade.
 	//   2. The eye is wider + the transition out of it is gentle, so a big near-black
 	//      centre dominates the middle of the ring (the reference's defining feature).
-	float inner = smoothstep(hole_radius * 0.55, hole_radius + 0.10, r);  // tight ramp out of a SMALL eye
-	float outer = 1.0 - smoothstep(rim_fade - 0.10, rim_fade, r);        // FIRM circular outer edge
+	// SMALL noise-warped eye — the target's defining dark unstable centre is a compact
+	// churning throat, not a wide hole. A gentle ramp out of it keeps the surrounding
+	// plasma reaching almost to the centre.
+	float eye_r = hole_radius * (0.85 + (n - 0.5) * 0.25);
+	float inner = smoothstep(eye_r * 0.4, eye_r, r);
+	// Soft outer fade — the disc blooms gently toward the rim with NO hard ring edge, so
+	// it reads as luminous plasma filling the aperture with a bloom halo (the target),
+	// not a bright annulus with a crisp circular cut.
+	float outer = 1.0 - smoothstep(rim_fade - 0.32, rim_fade + 0.06, r);
 	float band  = clamp(inner * outer, 0.0, 1.0);
 
-	// Brightness FILLS the whole aperture out to the rim — the target's plasma is a churning
-	// sheet that reaches the inner edge of the ring, NOT a bright annulus hugging a big eye.
-	// A near-flat radial weight (only a gentle lift near the eye) keeps energy high all the
-	// way to the rim so the disc reads as a full luminous event horizon.
-	float coreglow = exp(-pow((r - (hole_radius + 0.10)) / 0.55, 2.0));
-	// Energy field: a HIGH base fill so the entire disc glows blue, with the churn filaments
-	// modulating brightness on top. The small eye stays dark; everything outside it is lit
-	// plasma reaching the rim — the target's full-aperture churning horizon.
-	// LOW flat base + STRONG filament term so the dark channels between strands survive
-	// instead of a milky uniform snowball — the target plasma is bright filaments over
-	// dark gaps, not an even glowing disc.
-	float raw = (0.22 + fil * 0.95) * band * (0.72 + coreglow * 0.55);
-	float energy_field = pow(clamp(raw, 0.0, 1.0), 1.05);
+	// Brightness FILLS the whole aperture evenly — a near-flat radial weight so the plasma
+	// is a continuous churning sheet from just outside the eye to the rim, NOT a hot annulus.
+	// A faint lift toward mid-radius gives body without making a bright ring.
+	float fill_weight = 0.82 + 0.30 * exp(-pow((r - 0.5) / 0.55, 2.0));
+	// Energy field: a healthy base fill so the entire disc glows blue, with the flowing
+	// filaments modulating brightness on top. The small eye stays dark; everything outside
+	// it is lit plasma reaching the rim — the target's full-aperture churning horizon.
+	float raw = (0.46 + fil * 0.72) * band * fill_weight;
+	float energy_field = pow(clamp(raw, 0.0, 1.0), 1.0);
 	float rings = fil;                                 // reused below for hot-arm flashes
 
 	// Colour ramp: deep blue rim → saturated blue body → cool white-blue highlights. The
@@ -168,11 +173,10 @@ void fragment() {
 	hot = hot * hot;                                   // bias hot toward the very brightest only
 	col = mix(col, core_color, hot);
 
-	// Dark unstable hole — a LARGE near-black eye in the dead centre (the target's
-	// defining "black hole inside the storm"). Widened so the dark centre clearly reads
-	// inside the ring. The edge is noise-warped so it churns rather than a perfect disc.
-	float hole_edge = hole_radius + (n - 0.5) * 0.07;
-	float hole = 1.0 - smoothstep(hole_edge * 0.45, hole_edge * 1.05, r);
+	// Dark unstable hole — a SMALL near-black eye in the dead centre (the target's
+	// defining "black hole inside the storm"). Compact so the plasma dominates the disc,
+	// with a noise-warped edge so the throat churns rather than reading as a perfect disc.
+	float hole = 1.0 - smoothstep(eye_r * 0.5, eye_r * 1.1, r);
 	col = mix(col, hole_color, hole);
 
 	// Luminance: low floor with a strong multiplier on the energy so the bright inner

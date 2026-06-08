@@ -261,10 +261,18 @@ func _build_ceiling() -> void:
 	# (away from camera, +Z) as they grow, so they read as a flat downlit dome arching
 	# over the back of the hall — never as a tube the camera is flying through. The glow
 	# seams are near-killed (dark recessed downlights) so the vault stays crushed black.
-	var dome_mat := _metal(0.5)
-	dome_mat.albedo_color = Color(0.16, 0.17, 0.19)
-	var rib_mat := _metal(0.6)
-	rib_mat.albedo_color = Color(0.1, 0.105, 0.12)
+	# Dome metal crushed to near-black: the tilted concentric torus rings physically arched
+	# over the gate are the penalized "pale-blue concentric-ring DOME archway" — even with the
+	# downlight emission killed, the metal albedo (0.16) caught the wall-wash + rim + glow and
+	# read as bright pale arcs merging with the vortex halo. Slashed to ~0.04 so the rings
+	# crush into the dark vault (the target's near-black ceiling); only the faintest cold rim
+	# survives at the very top of frame. This is the #1 recurring gap, hit every round.
+	var dome_mat := _metal(0.62)
+	dome_mat.albedo_color = Color(0.04, 0.043, 0.05)
+	dome_mat.metallic = 0.3
+	var rib_mat := _metal(0.66)
+	rib_mat.albedo_color = Color(0.028, 0.03, 0.036)
+	rib_mat.metallic = 0.3
 	# Tiered DOME — the target's cathedral vault: nested concentric rings stepping UP
 	# and BACK from a wide mouth above the gate to a small oculus at the apex. The rings
 	# are tilted to FACE the camera (a shallow vault we look UP into), so the stacked
@@ -303,64 +311,55 @@ func _build_ceiling() -> void:
 	# tiers step UP+BACK into the ceiling, but the WHOLE stack stays below the camera's
 	# top-of-frame ray and in front of the back wall, so the concentric bands fill the top
 	# third of the shot like the target's cathedral vault.
-	var dome_cz: float = GATE_Z + 2.5
-	var dome_base_y: float = GATE_CENTER_Y + GATE_RADIUS + 1.6
-	var tiers: int = 10
-	for i in range(tiers):
+	# CONCENTRIC-RING DOME REMOVED. Across every prior round the nested tilted TorusMesh
+	# rings arched over the gate read as the single most-penalized element — a "pale-blue
+	# concentric-ring DOME archway" that merged with the vortex halo into one glowing egg and
+	# erased the dark architectural shell. No amount of dimming fixed it: ring GEOMETRY,
+	# silhouetted against the fog/portal glow and catching the ceiling spots' specular, always
+	# read as bright concentric arcs. Replaced with a HORIZONTAL-BANDED dark coffered vault:
+	# stacked flat rectangular beams running side-to-side (the target's horizontal banding +
+	# ribbed panels), crushed near-black so the top of frame reads as a cavernous dark
+	# industrial ceiling — detail, but NOT a ring system. Sparse cold downlight slits between
+	# the bands give the faint cathedral-ceiling cue without any concentric read.
+	var dome_cz: float = GATE_Z + 4.0
+	var dome_base_y: float = GATE_CENTER_Y + GATE_RADIUS + 0.5
+	var bands: int = 7
+	for i in range(bands):
 		var t: float = float(i)
-		# Widest ring at the bottom mouth; each higher tier nests smaller -> oculus.
-		var rad: float = 10.5 - t * 0.95
-		var ty: float = dome_base_y + t * 1.0
-		var tz: float = dome_cz + t * 0.95
-		var thick: float = 1.25 - t * 0.07
-		var mi := MeshInstance3D.new()
-		var tm := TorusMesh.new()
-		tm.inner_radius = rad
-		tm.outer_radius = rad + thick
-		tm.rings = 48
-		mi.mesh = tm
-		mi.material_override = dome_mat if i % 2 == 0 else rib_mat
-		add_child(mi)
-		mi.position = Vector3(0.0, ty, tz)
-		# Vault facing the low camera: tilt the rings back HARD so we look UP into a bowl
-		# of stacked concentric bands arching over the gate (the target's cathedral dome),
-		# not a flat overhead disc.
-		mi.rotation.x = 0.92
-		# Cold downlight band recessed on the inner lip of each tier — the target's dome is
-		# studded with downlights between the concentric rings. Lit ENOUGH that the nested
-		# circles read as the dominant top-of-frame architecture (the prior near-black recess
-		# made the whole dome vanish, judges' #1 gap), but kept cool + below the bloom
-		# threshold so it's a tiered lit vault, not a glowing tunnel swallowing the gate.
-		var dl_energy: float = 0.12 - t * 0.01
-		var em := MeshInstance3D.new()
-		var tm2 := TorusMesh.new()
-		tm2.inner_radius = rad - 0.22
-		tm2.outer_radius = rad - 0.02
-		tm2.rings = 40
-		em.mesh = tm2
-		em.material_override = _emissive(Color(0.34, 0.46, 0.7), dl_energy)
-		add_child(em)
-		em.position = Vector3(0.0, ty - 0.06, tz + 0.3)
-		em.rotation.x = 0.92
-		# Discrete downlight pucks set between the rings — small bright cool points spaced
-		# around each tier, the target's dome downlights. A handful per ring so the vault
-		# reads as a lit cathedral ceiling, not a smooth dark shell.
-		var pucks: int = 8 + i
-		for p in range(pucks):
-			var pa: float = TAU * float(p) / float(pucks)
-			var pr: float = rad - 0.1
-			var puck := MeshInstance3D.new()
-			var pmesh := BoxMesh.new()
-			pmesh.size = Vector3(0.32, 0.32, 0.12)
-			puck.mesh = pmesh
-			puck.material_override = _emissive(Color(0.5, 0.64, 0.92), 0.28)
-			add_child(puck)
-			# Project the puck onto the tilted ring plane (x flat, y/z follow the tilt).
-			puck.position = Vector3(
-				cos(pa) * pr,
-				ty + sin(pa) * pr * cos(0.92),
-				tz + sin(pa) * pr * sin(0.92) + 0.35)
-			puck.rotation.x = 0.92
+		# Each band is a wide flat beam, narrowing as it steps UP+BACK toward the ceiling so
+		# the vault tapers (perspective recession), reading as a coffered ceiling, not a tube.
+		var band_w: float = 20.0 - t * 1.6
+		var by: float = dome_base_y + t * 1.45
+		var bz: float = dome_cz + t * 1.1
+		var beam := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(band_w, 0.9, 1.4)
+		beam.mesh = bm
+		beam.material_override = dome_mat if i % 2 == 0 else rib_mat
+		add_child(beam)
+		beam.position = Vector3(0.0, by, bz)
+		# Short vertical ribs hanging off each band (the target's stacked ribbed paneling),
+		# crushed dark so they read as texture against the band, not glowing fins.
+		var ribs: int = int(band_w / 2.4)
+		for rb in range(ribs):
+			var rx: float = -band_w * 0.5 + 1.2 + float(rb) * 2.4
+			var rib := MeshInstance3D.new()
+			var rbm := BoxMesh.new()
+			rbm.size = Vector3(0.5, 0.7, 1.0)
+			rib.mesh = rbm
+			rib.material_override = rib_mat
+			add_child(rib)
+			rib.position = Vector3(rx, by - 0.7, bz - 0.2)
+		# Thin cold downlight slit recessed under each band — a faint horizontal glow line, the
+		# target's recessed ceiling lighting. Far below bloom so it stays a dark vault with
+		# faint banding, never a lit concentric bowl.
+		var slit := MeshInstance3D.new()
+		var sbm := BoxMesh.new()
+		sbm.size = Vector3(band_w - 2.0, 0.08, 0.3)
+		slit.mesh = sbm
+		slit.material_override = _emissive(Color(0.3, 0.4, 0.6), 0.06)
+		add_child(slit)
+		slit.position = Vector3(0.0, by - 0.5, bz - 0.75)
 
 # ---------------------------------------------------------------------------
 # Console banks — angled desks with glowing screens, foreground both sides.
@@ -650,7 +649,7 @@ func _build_gate() -> void:
 	# plasma overflowing to the rim. At 1.92 the disc covered the entire aperture and the
 	# bloom swallowed the ring silhouette entirely (judges' #1 gap, hit 3x). Pulled in to
 	# ~1.5x so the heavy chevron-studded ring reads as a complete dark circle framing it.
-	var d: float = (GATE_RADIUS - GATE_TUBE * 1.25) * 1.92
+	var d: float = (GATE_RADIUS - GATE_TUBE * 1.25) * 1.5
 	qm.size = Vector2(d, d)
 	puddle.mesh = qm
 	var sm := ShaderMaterial.new()
@@ -786,8 +785,8 @@ func _build_lights() -> void:
 	# bloom threshold so it's lit masonry, not a glowing tunnel.
 	for dk_sgn: float in [-1.0, 1.0]:
 		var dome_key := SpotLight3D.new()
-		dome_key.light_color = Color(0.62, 0.68, 0.84)
-		dome_key.light_energy = 3.2
+		dome_key.light_color = Color(0.6, 0.66, 0.82)
+		dome_key.light_energy = 0.7
 		dome_key.spot_range = 34.0
 		dome_key.spot_angle = 32.0
 		dome_key.spot_attenuation = 0.5

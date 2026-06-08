@@ -24,7 +24,7 @@ uniform vec3  body_color  : source_color = vec3(0.20, 0.52, 0.95);  // main blue
 uniform vec3  rim_color   : source_color = vec3(0.03, 0.10, 0.30);  // deep blue rim
 uniform vec3  hole_color  : source_color = vec3(0.0, 0.01, 0.04);   // dark unstable centre
 
-uniform float energy        : hint_range(0.0, 8.0) = 2.0;
+uniform float energy        : hint_range(0.0, 8.0) = 3.4;
 uniform float swirl         : hint_range(0.0, 16.0) = 7.0;    // angular twist per radius
 uniform float spin_speed                            = 0.35;   // whole-vortex rotation
 uniform float flow_speed                            = 0.55;   // churn / drift rate
@@ -90,17 +90,29 @@ void fragment() {
 	float outer = 1.0 - smoothstep(ring_peak, rim_fade, r);       // 1 at peak, 0 at rim
 	float band  = pow(clamp(inner * outer, 0.0, 1.0), ring_sharp);
 
-	float energy_field = (n * 0.75 + 0.25) * band;
+	// Concentric churning rings — bright blue-white shells spiralling outward. The
+	// swirl warps the radius so the rings read as spinning arms, not static circles.
+	float rings = sin((r * 22.0 - t * 2.4) + n * 5.5 + ang * 0.6);
+	rings = pow(clamp(rings * 0.5 + 0.5, 0.0, 1.0), 1.6);
 
-	// Colour ramp: deep rim → blue body → hot white highlights on noise peaks.
-	vec3 col = mix(rim_color, body_color, clamp(energy_field * 1.4, 0.0, 1.0));
-	col = mix(col, core_color, clamp((n - 0.55) * 2.2 * band, 0.0, 1.0));
+	// Energy field: high-contrast — crush the lows toward the dark hole, push the
+	// noise+ring peaks toward hot white so the vortex churns instead of washing grey.
+	float raw = (n * 0.62 + 0.18 + rings * 0.45) * band;
+	float energy_field = pow(clamp(raw, 0.0, 1.0), 1.35);
 
-	// Dark unstable hole bleeds in toward the centre.
-	float hole = 1.0 - smoothstep(hole_radius * 0.4, hole_radius * 1.3, r);
+	// Colour ramp: deep rim → saturated blue body → hot white-blue highlights.
+	vec3 col = mix(rim_color, body_color, clamp(energy_field * 1.8, 0.0, 1.0));
+	float hot = clamp((energy_field - 0.42) * 2.6 + rings * band * 0.8, 0.0, 1.0);
+	col = mix(col, core_color, hot);
+
+	// Dark unstable hole — hard, near-black eye in the dead centre.
+	float hole = 1.0 - smoothstep(hole_radius * 0.55, hole_radius * 1.25, r);
 	col = mix(col, hole_color, hole);
 
-	float lum = energy * (0.18 + energy_field * 1.15);
+	// Luminance: low floor (deep rim stays dim) with a strong multiplier on the
+	// energy so the bright churn blooms past the glow threshold.
+	float lum = energy * (0.10 + energy_field * energy_field * 2.0 + hot * 1.2);
+	lum *= (1.0 - hole);
 	ALBEDO = col * lum;
 	ALPHA = 1.0;
 }

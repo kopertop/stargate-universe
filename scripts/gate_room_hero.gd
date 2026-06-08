@@ -143,9 +143,9 @@ func _build_environment() -> void:
 	env.volumetric_fog_ambient_inject = 0.0
 	env.volumetric_fog_length = 48.0
 	env.adjustment_enabled = true
-	env.adjustment_contrast = 1.42
-	env.adjustment_saturation = 0.52
-	env.adjustment_brightness = 0.88
+	env.adjustment_contrast = 1.48
+	env.adjustment_saturation = 0.78
+	env.adjustment_brightness = 0.86
 	we.environment = env
 	add_child(we)
 

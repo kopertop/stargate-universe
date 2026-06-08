@@ -37,13 +37,18 @@ const PORTAL_LIGHT_ENERGY: float = 14.0
 const PORTAL_LIGHT_COLOR: Color = Color(0.45, 0.68, 1.0)
 const SPOT_ENERGY: float = 30.0
 const SPOT_COLOR: Color = Color(0.7, 0.82, 1.0)
-const AMBIENT_ENERGY: float = 0.12
+const AMBIENT_ENERGY: float = 0.16
 # Cold rim/fill so the dark-metal architecture (walls, dome, buttresses) reads as
 # textured detail instead of crushing to a flat black void. Low energy, steep angle.
-const RIM_ENERGY: float = 1.35
+const RIM_ENERGY: float = 2.1
 const RIM_COLOR: Color = Color(0.4, 0.55, 0.85)
 const FILL_ENERGY: float = 0.55
 const FILL_COLOR: Color = Color(0.32, 0.42, 0.62)
+# Dedicated cold key on the flanking buttress masses so they read as lit diagonal
+# masonry framing the gate (the dominant foreground architecture in the concept),
+# not black silhouettes. Aimed inward+down from outboard of each beam.
+const BUTTRESS_KEY_ENERGY: float = 9.0
+const BUTTRESS_KEY_COLOR: Color = Color(0.5, 0.64, 0.95)
 # Materials
 const METAL_COLOR: Color = Color(0.08, 0.09, 0.115)
 const METAL_ROUGHNESS: float = 0.42
@@ -237,8 +242,10 @@ func _build_buttresses() -> void:
 	# dais floor outward toward the ceiling, framing the ring in a chevron of steel.
 	# Buttress metal lifted a touch above base METAL so the rim light reads it as a
 	# solid silhouetted mass (the target's masonry), not a black void.
-	var mat := _metal(0.4)
-	mat.albedo_color = Color(0.11, 0.125, 0.155)
+	var mat := _metal(0.45)
+	mat.albedo_color = Color(0.16, 0.18, 0.215)
+	var band_mat := _metal(0.55)
+	band_mat.albedo_color = Color(0.105, 0.12, 0.15)
 	var trim := _emissive(Color(0.18, 0.4, 0.85), 0.6)
 	var bz: float = GATE_Z - 1.0
 	for sgn: float in [-1.0, 1.0]:
@@ -248,11 +255,14 @@ func _build_buttresses() -> void:
 		var beam := _box(Vector3(3.6, 18.0, 3.2), Vector3(sgn * 8.2, 8.5, bz), mat)
 		beam.rotation.z = sgn * 0.48
 		beam.name = "Buttress%d" % int(sgn)
-		# Stepped ribbing up the inner face so the mass reads as detailed masonry.
-		for r in range(6):
-			var ry: float = 3.0 + float(r) * 2.4
-			var rx: float = sgn * (7.4 - float(r) * 0.55)
-			_box(Vector3(2.2, 0.5, 3.3), Vector3(rx, ry, bz), _metal(0.32), 0.0)
+		# Stepped ribbing up the inner face so the mass reads as detailed masonry —
+		# alternating lighter step-faces and darker recessed bands for clear horizontal
+		# banding that catches the cold key light.
+		for r in range(8):
+			var ry: float = 2.4 + float(r) * 1.9
+			var rx: float = sgn * (7.6 - float(r) * 0.42)
+			_box(Vector3(2.6, 0.95, 3.45), Vector3(rx, ry, bz), mat, 0.0)
+			_box(Vector3(2.7, 0.35, 3.55), Vector3(rx, ry + 0.65, bz), band_mat, 0.0)
 		# Thin glowing seam running up the inner face of the beam (accent only).
 		var seam := _box(Vector3(0.24, 15.0, 0.24), Vector3(sgn * 7.1, 8.0, bz - 1.35), trim)
 		seam.rotation.z = sgn * 0.48
@@ -397,6 +407,20 @@ func _build_lights() -> void:
 	add_child(rim)
 	rim.position = Vector3(0.0, CEILING_HEIGHT, GATE_Z)
 	rim.rotation = Vector3(deg_to_rad(-42.0), deg_to_rad(180.0), 0.0)
+	# Dedicated cold spots raking each buttress mass so it reads as lit diagonal masonry
+	# framing the gate, not a black silhouette. Mounted outboard + above, aimed inward
+	# and down across the banded inner face.
+	for sgn: float in [-1.0, 1.0]:
+		var bspot := SpotLight3D.new()
+		bspot.light_color = BUTTRESS_KEY_COLOR
+		bspot.light_energy = BUTTRESS_KEY_ENERGY
+		bspot.spot_range = 26.0
+		bspot.spot_angle = 38.0
+		bspot.spot_attenuation = 0.6
+		bspot.shadow_enabled = false
+		add_child(bspot)
+		bspot.position = Vector3(sgn * 14.0, 13.5, GATE_Z - 8.0)
+		bspot.look_at(Vector3(sgn * 7.0, 6.0, GATE_Z - 1.0), Vector3.UP)
 	# Soft frontal FILL from the camera side — lifts the near walls / console banks and
 	# the dais out of pure black without washing the scene into a flat blue field.
 	var fill := DirectionalLight3D.new()

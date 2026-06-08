@@ -52,6 +52,11 @@ const FILL_COLOR: Color = Color(0.5, 0.55, 0.66)
 # not black silhouettes. Aimed inward+down from outboard of each beam.
 const BUTTRESS_KEY_ENERGY: float = 6.5
 const BUTTRESS_KEY_COLOR: Color = Color(0.66, 0.72, 0.86)
+# Dedicated cold key raking the gate-ring FACE from the camera side so the thick
+# segmented metal + chevron brackets read as a heavy lit industrial ring (the
+# target's hero element) instead of a black silhouette hidden behind the vortex.
+const RING_KEY_ENERGY: float = 7.0
+const RING_KEY_COLOR: Color = Color(0.7, 0.76, 0.9)
 # Materials — near-neutral dark gunmetal (barely any blue in the albedo itself so the
 # cold lights tint it rather than the base colour glowing blue).
 const METAL_COLOR: Color = Color(0.085, 0.088, 0.095)
@@ -320,10 +325,13 @@ func _build_gate() -> void:
 	var center := Vector3(0.0, GATE_CENTER_Y, GATE_Z)
 	# THICK segmented metal ring built from many short trapezoid blocks around the
 	# circle so it reads as a heavy industrial gate, not a thin glowing torus.
+	# Ring albedo lifted well above the near-black wall metal so the dedicated ring
+	# key light below reads the segmented plates as a HEAVY lit industrial ring (the
+	# target's hero element) instead of crushing to black behind the vortex bloom.
 	var ring_mat := _metal(0.34)
-	ring_mat.albedo_color = Color(0.07, 0.08, 0.10)
+	ring_mat.albedo_color = Color(0.20, 0.215, 0.245)
 	var seg_mat := _metal(0.28)
-	seg_mat.albedo_color = Color(0.045, 0.05, 0.065)
+	seg_mat.albedo_color = Color(0.135, 0.145, 0.175)
 	var segs: int = 36
 	var ring_mid: float = GATE_RADIUS
 	for i in segs:
@@ -348,7 +356,9 @@ func _build_gate() -> void:
 		ttm.outer_radius = rr + 0.12
 		ttm.rings = 48
 		trim.mesh = ttm
-		trim.material_override = _metal(0.25)
+		var trim_mat := _metal(0.25)
+		trim_mat.albedo_color = Color(0.26, 0.275, 0.31)
+		trim.material_override = trim_mat
 		add_child(trim)
 		trim.position = center
 		trim.rotation.x = PI * 0.5
@@ -362,7 +372,7 @@ func _build_gate() -> void:
 	# bright glowing triangular insert pointing toward the centre. Sized LARGE and
 	# clearly lit so the chevron-studded ring reads even against the bright vortex.
 	var chev_metal := _metal(0.28)
-	chev_metal.albedo_color = Color(0.14, 0.155, 0.185)
+	chev_metal.albedo_color = Color(0.26, 0.275, 0.31)
 	var n: int = CHEVRON_COUNT
 	for i in n:
 		# PrismMesh apex is +Y in local space. rotation.z = ang + PI*0.5 flips the apex
@@ -471,6 +481,22 @@ func _build_lights() -> void:
 		add_child(bspot)
 		bspot.position = Vector3(sgn * 14.0, 13.5, GATE_Z - 8.0)
 		bspot.look_at(Vector3(sgn * 7.0, 6.0, GATE_Z - 1.0), Vector3.UP)
+	# Gate-ring key lights: a pair of cold spots mounted camera-side, above and
+	# outboard of the ring, raking ACROSS the ring face toward its centre. They light
+	# the front faces of the segmented plates and the chevron brackets so the heavy
+	# metal ring reads in silhouette against the vortex, instead of crushing to black.
+	for sgn: float in [-1.0, 1.0]:
+		var rspot := SpotLight3D.new()
+		rspot.light_color = RING_KEY_COLOR
+		rspot.light_energy = RING_KEY_ENERGY
+		rspot.spot_range = 20.0
+		rspot.spot_angle = 34.0
+		rspot.spot_attenuation = 0.7
+		rspot.light_specular = 0.6
+		rspot.shadow_enabled = false
+		add_child(rspot)
+		rspot.position = Vector3(sgn * 9.0, GATE_CENTER_Y + 4.0, GATE_Z - 6.0)
+		rspot.look_at(Vector3(sgn * 2.0, GATE_CENTER_Y, GATE_Z - 0.3), Vector3.UP)
 	# Soft frontal FILL from the camera side — lifts the near walls / console banks and
 	# the dais out of pure black without washing the scene into a flat blue field.
 	var fill := DirectionalLight3D.new()

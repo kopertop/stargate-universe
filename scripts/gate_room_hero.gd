@@ -40,7 +40,7 @@ const PORTAL_LIGHT_ENERGY: float = 1.8
 const PORTAL_LIGHT_COLOR: Color = Color(0.45, 0.68, 1.0)
 const SPOT_ENERGY: float = 60.0
 const SPOT_COLOR: Color = Color(0.74, 0.82, 0.96)
-const AMBIENT_ENERGY: float = 0.42
+const AMBIENT_ENERGY: float = 0.26
 # Cold rim/fill so the dark-metal architecture (walls, dome, buttresses) reads as
 # textured detail instead of crushing to a flat black void. Low energy, steep angle.
 # Kept NEAR-NEUTRAL (only faintly cool) so the steel reads as dark gunmetal lit by
@@ -70,7 +70,7 @@ const METAL_ROUGHNESS: float = 0.42
 const METAL_METALLIC: float = 0.85
 const FLOOR_ROUGHNESS: float = 0.46
 const SCREEN_COLOR: Color = Color(0.22, 0.45, 0.85)
-const SCREEN_ENERGY: float = 0.85
+const SCREEN_ENERGY: float = 0.55
 # Fog
 const FOG_DENSITY: float = 0.005
 
@@ -125,7 +125,7 @@ func _build_environment() -> void:
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.004, 0.005, 0.008)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.32, 0.36, 0.44)
+	env.ambient_light_color = Color(0.22, 0.25, 0.32)
 	env.ambient_light_energy = AMBIENT_ENERGY
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	# Exposure lifted off the floor (was 0.62): every prior round crushed the whole hall to a
@@ -135,7 +135,7 @@ func _build_environment() -> void:
 	# metal masses READ as a cavernous industrial hall while the high glow threshold keeps the
 	# portal the only blooming element. ACES tonemapping holds the portal highlights from
 	# clipping even at this exposure.
-	env.tonemap_exposure = 0.95
+	env.tonemap_exposure = 0.80
 	env.tonemap_white = 8.0
 	env.ssr_enabled = true
 	env.ssr_max_steps = 64
@@ -227,7 +227,7 @@ func _build_walls() -> void:
 			_box(Vector3(0.5, 0.6, 3.4), Vector3(sgn * (hw - 0.55), h * 0.42, z + 2.0), _metal(0.4))
 			# Thin recessed window-slit, faint cold glow — NOT a bright blue strip.
 			_box(Vector3(0.1, h * 0.3, 0.08), Vector3(sgn * (hw - 0.85), h * 0.6, z),
-				_emissive(Color(0.22, 0.38, 0.66), 0.45))
+				_emissive(Color(0.18, 0.30, 0.52), 0.22))
 	# Back wall behind the gate — pushed FAR back + near-black + ROUGH so a big pool of
 	# black opens between the gate and the wall (the target frames the gate in open dark
 	# space, NOT jammed into a lit alcove). The lit metal ring reads against the void.
@@ -409,7 +409,7 @@ func _build_console_banks() -> void:
 					var ms := _box(Vector3(0.5, 0.42, 0.05), Vector3(sx, sy, sz), scr_mat, yaw)
 					ms.rotation.x = -0.55
 			# Thin lit edge strip along the desk lip — cool console glow grounding it.
-			var lip := _emissive(Color(0.2, 0.42, 0.78), 0.5)
+			var lip := _emissive(Color(0.16, 0.32, 0.58), 0.22)
 			_box(Vector3(1.6, 0.06, 0.1), Vector3(x_desk, 1.06, z + 1.25), lip, yaw)
 
 func _build_buttresses() -> void:
@@ -424,7 +424,10 @@ func _build_buttresses() -> void:
 	mat.albedo_color = Color(0.16, 0.17, 0.2)
 	var band_mat := _metal(0.55)
 	band_mat.albedo_color = Color(0.1, 0.11, 0.135)
-	var trim := _emissive(Color(0.2, 0.42, 0.9), 0.8)
+	# Seam dimmed HARD: the bright blue diagonal stripe up each buttress was a glowing blue
+	# bar fighting the portal for dominance (the target's buttresses are DARK masses, not lit
+	# trim). Now a near-black recess line — structural detail, not a light source.
+	var trim := _emissive(Color(0.12, 0.18, 0.32), 0.12)
 	var bz: float = GATE_Z + 0.6
 	for sgn: float in [-1.0, 1.0]:
 		# Primary diagonal strut: foot planted OUTBOARD of the ring near the floor,
@@ -809,9 +812,9 @@ func _build_lights() -> void:
 	for sgn: float in [-1.0, 1.0]:
 		var wwash := SpotLight3D.new()
 		wwash.light_color = Color(0.6, 0.64, 0.72)
-		wwash.light_energy = 4.5
+		wwash.light_energy = 2.6
 		wwash.spot_range = 50.0
-		wwash.spot_angle = 56.0
+		wwash.spot_angle = 50.0
 		wwash.spot_attenuation = 0.5
 		wwash.light_specular = 0.25
 		wwash.shadow_enabled = false
@@ -823,7 +826,7 @@ func _build_lights() -> void:
 		# manned control room), not dark masses. Aimed at the near-camera desks.
 		var cwash := SpotLight3D.new()
 		cwash.light_color = Color(0.5, 0.56, 0.68)
-		cwash.light_energy = 5.0
+		cwash.light_energy = 3.0
 		cwash.spot_range = 22.0
 		cwash.spot_angle = 44.0
 		cwash.spot_attenuation = 0.7

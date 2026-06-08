@@ -39,6 +39,13 @@ uniform float ring_peak     : hint_range(0.1, 0.95) = 0.66;   // brightest band 
 uniform float rim_fade      : hint_range(0.6, 1.15) = 1.02;   // outer fade edge
 uniform float ring_sharp    : hint_range(0.3, 4.0)  = 0.7;    // band tightness (low = broad)
 
+// TEXTURE-SAMPLED churn (skill hint: pure fBm read as a single comma arm across 44
+// iterations). A tileable greyscale noise texture sampled TWICE in polar coords
+// (radius + scrolled angle) at different scales gives dense filamentary turbulence
+// that FILLS the disc — far closer to the reference plasma than fBm alone.
+uniform sampler2D noise_tex : repeat_enable, filter_linear;
+uniform float tex_scale     : hint_range(0.5, 8.0)  = 2.4;    // angular tiling of the texture
+
 float hash21(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21));
 	p += dot(p, p + 45.32);
@@ -74,55 +81,56 @@ void fragment() {
 	float ang = atan(uv.y, uv.x);
 	float t = TIME;
 
-	// Polar swirl + global spin, rebuilt from (cos,sin) to avoid the atan seam. The
-	// per-radius twist (swirl) is kept GENTLE so the energy reads as CONCENTRIC churning
-	// shells around the eye, not a single dominant spiral comma sweeping across centre
-	// (the prior look's biggest miss vs the target's "storm ringing a black hole").
-	float a = ang + swirl * (1.0 - r) * 0.18 + t * spin_speed;
-	vec2 swuv = vec2(cos(a), sin(a)) * (r * detail);
+	// POLAR texture sampling. The vortex is mapped into a (angle, radius) rectangle and
+	// the tileable noise texture is read there, so the churn wraps seamlessly around the
+	// disc instead of streaking across the middle. Angle scrolls with spin (the vortex
+	// turns), radius scrolls INWARD with flow (energy drains toward the eye), and a swirl
+	// term shears angle by radius so the filaments spiral gently into the throat. Two
+	// octaves at different scales give dense, broad-to-fine filamentary turbulence that
+	// FILLS the disc — the reference's churning plasma, not a single fBm comma.
+	float swirl_a = ang / TAU + swirl * (1.0 - r) * 0.012 + t * spin_speed * 0.06;
+	float drain_r = r - t * flow_speed * 0.30;
 
-	// Domain warp: churning liquid.
-	vec2 q = vec2(
-		fbm(swuv + t * flow_speed),
-		fbm(swuv + vec2(5.2, 1.3) - t * flow_speed)
-	);
-	float n = fbm(swuv + warp_amount * q + vec2(t * flow_speed * 0.6, -t * flow_speed * 0.4));
+	// Octave 1 — broad churn (wraps in angle: x * tex_scale keeps tiling integer-friendly).
+	vec2 puv1 = vec2(swirl_a * tex_scale, drain_r * 4.0);
+	float s1 = texture(noise_tex, puv1).r;
+	// Octave 2 — finer filaments, counter-scrolled so the two layers shear past each other.
+	vec2 puv2 = vec2(swirl_a * tex_scale * 2.7 - t * 0.05, drain_r * 8.0 + t * flow_speed * 0.18);
+	float s2 = texture(noise_tex, puv2).r;
+	// Octave 3 — fine sparkle, fast, breaks the body into turbulent beads.
+	vec2 puv3 = vec2(swirl_a * tex_scale * 5.9 + t * 0.09, drain_r * 14.0 - t * flow_speed * 0.10);
+	float s3 = texture(noise_tex, puv3).r;
 
-	// Radial mask: a LARGE crushed-black EYE at the centre, then a ring of churning
-	// energy AROUND it that fades back to dark toward both the eye and the rim — the
-	// target's "black hole inside a storm". The energy is concentrated in an ANNULUS
-	// (a gaussian shell peaked at ring_peak) rather than filling the whole disc, so the
-	// dark unstable centre dominates and the bright churn rings it, exactly as in the
-	// reference (NOT a solid bright disc that blows out to white).
-	float inner = smoothstep(hole_radius, hole_radius + 0.10, r);  // 0 in eye, ramps up outside
-	float outer = 1.0 - smoothstep(rim_fade - 0.20, rim_fade, r);  // fall toward rim
-	// Annular shell — the energy lives in a band, decaying both inward (toward the eye)
-	// and outward (toward the rim), so the centre stays a dark hole.
-	float shell = exp(-pow((r - ring_peak) / 0.34, 2.0));
-	float band  = clamp(inner * outer * shell, 0.0, 1.0);
+	// Combined turbulent value, contrast-stretched so filaments separate from dark gaps.
+	// Multiply the octaves (not just sum) so a strand only lights where layers AGREE —
+	// this carves sharp dark channels between bright filaments instead of a milky average.
+	// The source texture is SOFT (luminance ~0.40-0.79), so a plain sum stays a flat grey.
+	// Subtract a per-octave mid and SUM the signed deviations, then stretch hard — this
+	// turns the gentle noise into high-contrast filaments with crushed dark channels.
+	float d1 = s1 - 0.60;
+	float d2 = s2 - 0.60;
+	float d3 = s3 - 0.60;
+	float n = 0.5 + (d1 * 1.4 + d2 * 1.1 + d3 * 0.7);
+	n = clamp((n - 0.5) * 3.4 + 0.5, 0.0, 1.0);
+	// Sharpen into filaments — high contrast churn with crushed gaps between strands.
+	float fil = pow(n, 1.7);
 
-	// CONCENTRIC churning rings — bright blue-white shells encircling the dark eye. The
-	// phase is driven by RADIUS (so the shells are circles centred on the hole), warped
-	// by the fBm noise (so each ring wobbles/churns and breaks into turbulent beads) and
-	// only WEAKLY by angle, so they read as a stack of concentric energy rings turning
-	// around the eye — the target's "rippling pool round a black centre" — NOT a pinwheel
-	// arm crossing the middle. Frequency rises toward the eye so the rings tighten into
-	// the throat like water draining. The noise warp is the dominant character so the
-	// rings never look like clean static circles.
-	float freq = mix(30.0, 16.0, clamp(r, 0.0, 1.0));
-	float warpd = (n - 0.5) * 6.0;                     // radial displacement of each shell
-	float ring_phase = r * freq + warpd - t * 2.4 + ang * 0.45;
-	float rings = sin(ring_phase) * 0.6
-		+ sin(ring_phase * 2.1 + n * 4.0) * 0.28
-		+ sin(ring_phase * 0.55 + t * 0.9) * 0.18;
-	rings = pow(clamp(rings * 0.5 + 0.5, 0.0, 1.0), 2.2);
+	// Radial mask: a LARGE crushed-black EYE at the centre, energy filling the rest of
+	// the aperture out to a soft rim. Unlike the old gaussian SHELL (which hollowed the
+	// disc into a thin donut → the comma look), this is a broad PLATEAU so the plasma
+	// fills the whole annulus from just outside the eye to the rim, matching the target.
+	float inner = smoothstep(hole_radius, hole_radius + 0.12, r);  // 0 in eye, ramps up outside
+	float outer = 1.0 - smoothstep(rim_fade - 0.26, rim_fade, r);  // soft fall toward rim
+	float band  = clamp(inner * outer, 0.0, 1.0);
 
-	// Energy field: the turbulence/rings DOMINATE the value (low constant base) so the
-	// disc reads as carved concentric shells with dark gaps between them — a churning
-	// storm, NOT a flat lit donut. The base is kept low so the gaps between shells crush
-	// toward the body colour, giving the high-contrast churn the target shows.
-	float raw = (0.05 + n * 0.34 + rings * 1.0) * band;
-	float energy_field = pow(clamp(raw, 0.0, 1.0), 1.25);
+	// Energy field: texture-driven filaments DOMINATE, with a modest fill base so the
+	// gaps between strands still glow faintly blue (a continuous plasma sheet, not bare
+	// black between threads). A faint radial brightening toward ring_peak gives the
+	// reference's slightly hotter mid-band without hollowing the disc.
+	float midboost = 1.0 + 0.5 * exp(-pow((r - ring_peak) / 0.45, 2.0));
+	float raw = (0.06 + fil * 1.15) * band * midboost;
+	float energy_field = pow(clamp(raw, 0.0, 1.0), 1.2);
+	float rings = fil;                                 // reused below for hot-arm flashes
 
 	// Colour ramp: deep rim → saturated blue body → hot white-blue highlights. The
 	// hot term keys off both the field and the ring shells so the spiral arms flash

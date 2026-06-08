@@ -521,8 +521,8 @@ func _build_gate() -> void:
 	# Higher energy so the dense shells bloom past the glow threshold into the soft halo
 	# the target shows — but the crushed-black centre + steep rim keep it a vortex throat,
 	# not a flat lit disc.
-	sm.set_shader_parameter("energy", 1.7)
-	sm.set_shader_parameter("hole_radius", 0.34)
+	sm.set_shader_parameter("energy", 1.8)
+	sm.set_shader_parameter("hole_radius", 0.24)
 	sm.set_shader_parameter("ring_peak", 0.66)
 	sm.set_shader_parameter("ring_sharp", 0.7)
 	sm.set_shader_parameter("rim_fade", 1.04)
@@ -531,15 +531,23 @@ func _build_gate() -> void:
 	# Pull the energy palette toward BLUE so the disc reads as the target's blue-white
 	# churning event horizon, not a blown-out white spiral. Highlights stay cool, the
 	# body stays saturated blue, and the dark hole stays a deep near-black eye.
-	sm.set_shader_parameter("core_color", Color(0.55, 0.78, 1.0))
-	sm.set_shader_parameter("body_color", Color(0.13, 0.42, 0.92))
+	sm.set_shader_parameter("core_color", Color(0.62, 0.80, 1.0))
+	sm.set_shader_parameter("body_color", Color(0.16, 0.46, 0.95))
 	sm.set_shader_parameter("hole_color", Color(0.0, 0.008, 0.03))
+	# Texture-sampled churn (Unity RunesAndPortals noise, fully licensed). Polar-sampled
+	# in the shader for dense filamentary plasma that fills the disc instead of an fBm comma.
+	var noise_tex: Texture2D = load("res://assets/hero/noise_1024.png")
+	sm.set_shader_parameter("noise_tex", noise_tex)
+	sm.set_shader_parameter("tex_scale", 3.0)
 	puddle.material_override = sm
 	add_child(puddle)
-	# Seat the vortex BEHIND the ring plane (+Z, away from camera) so the thick
-	# segmented ring + chevron brackets occlude its outer edge and FRAME it — the ring
-	# reads as a hard lit silhouette around the churning disc, not a flat front glow.
-	puddle.position = center + Vector3(0.0, 0.0, 0.6)
+	# Seat the vortex just IN FRONT of the ring plane (toward the camera at -Z) so the
+	# texture-churned disc is the front-most lit surface — NOT buried behind the gate's
+	# volumetric-fog haze, which was veiling the whole disc into a flat milky oval (the
+	# real reason 44 iters of shader churn never read). It sits behind the bright chevron
+	# glow tips (-0.66) so the chevrons still read proud, and the ring inner edge still
+	# frames it. depth_draw_opaque on the shader keeps it occluding the fog behind.
+	puddle.position = center + Vector3(0.0, 0.0, -0.05)
 	puddle.name = "PortalPuddle"
 
 # ---------------------------------------------------------------------------
@@ -556,7 +564,11 @@ func _build_lights() -> void:
 	portal_light.omni_range = 9.0
 	portal_light.omni_attenuation = 2.4
 	portal_light.light_specular = 0.3
-	portal_light.light_volumetric_fog_energy = 1.0
+	# Drop the portal light's fog contribution: at 1.0 it lit a dense fog ball directly
+	# over the gate that veiled the whole churning disc into a flat milky oval. Near-zero
+	# fog energy lets the disc's own texture detail read while the ceiling god-ray spots
+	# still carry the volumetric look elsewhere in the hall.
+	portal_light.light_volumetric_fog_energy = 0.12
 	add_child(portal_light)
 	portal_light.position = center + Vector3(0.0, 0.0, -1.0)
 

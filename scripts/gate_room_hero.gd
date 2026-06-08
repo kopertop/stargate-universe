@@ -34,9 +34,15 @@ const CAM_FOV: float = 52.0
 # Lighting
 const PORTAL_LIGHT_ENERGY: float = 14.0
 const PORTAL_LIGHT_COLOR: Color = Color(0.45, 0.68, 1.0)
-const SPOT_ENERGY: float = 22.0
+const SPOT_ENERGY: float = 30.0
 const SPOT_COLOR: Color = Color(0.7, 0.82, 1.0)
-const AMBIENT_ENERGY: float = 0.006
+const AMBIENT_ENERGY: float = 0.05
+# Cold rim/fill so the dark-metal architecture (walls, dome, buttresses) reads as
+# textured detail instead of crushing to a flat black void. Low energy, steep angle.
+const RIM_ENERGY: float = 0.55
+const RIM_COLOR: Color = Color(0.4, 0.55, 0.85)
+const FILL_ENERGY: float = 0.22
+const FILL_COLOR: Color = Color(0.32, 0.42, 0.62)
 # Materials
 const METAL_COLOR: Color = Color(0.05, 0.06, 0.08)
 const METAL_ROUGHNESS: float = 0.42
@@ -101,7 +107,7 @@ func _build_environment() -> void:
 	env.ambient_light_color = Color(0.28, 0.31, 0.38)
 	env.ambient_light_energy = AMBIENT_ENERGY
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.tonemap_exposure = 0.72
+	env.tonemap_exposure = 0.9
 	env.tonemap_white = 8.0
 	env.ssr_enabled = true
 	env.ssr_max_steps = 64
@@ -122,9 +128,9 @@ func _build_environment() -> void:
 	env.volumetric_fog_albedo = Color(0.42, 0.46, 0.55)
 	env.volumetric_fog_emission = Color(0.004, 0.01, 0.03)
 	env.adjustment_enabled = true
-	env.adjustment_contrast = 1.55
-	env.adjustment_saturation = 0.62
-	env.adjustment_brightness = 0.86
+	env.adjustment_contrast = 1.32
+	env.adjustment_saturation = 0.6
+	env.adjustment_brightness = 0.94
 	we.environment = env
 	add_child(we)
 
@@ -369,6 +375,26 @@ func _build_lights() -> void:
 		add_child(spot)
 		spot.position = Vector3(sx, CEILING_HEIGHT - 1.0, -2.0 + float(i % 2) * 4.0)
 		spot.rotation.x = -PI * 0.5
+
+	# Cool RIM light raking down the hall from behind/above the gate — picks out the
+	# top edges of the ribbed walls, the ceiling-dome rings and the buttress beams so
+	# the architecture reads as dark textured metal instead of a black void.
+	var rim := DirectionalLight3D.new()
+	rim.light_color = RIM_COLOR
+	rim.light_energy = RIM_ENERGY
+	rim.shadow_enabled = false
+	add_child(rim)
+	rim.position = Vector3(0.0, CEILING_HEIGHT, GATE_Z)
+	rim.rotation = Vector3(deg_to_rad(-42.0), deg_to_rad(180.0), 0.0)
+	# Soft frontal FILL from the camera side — lifts the near walls / console banks and
+	# the dais out of pure black without washing the scene into a flat blue field.
+	var fill := DirectionalLight3D.new()
+	fill.light_color = FILL_COLOR
+	fill.light_energy = FILL_ENERGY
+	fill.shadow_enabled = false
+	add_child(fill)
+	fill.position = Vector3(0.0, 6.0, CAM_POS.z)
+	fill.rotation = Vector3(deg_to_rad(-18.0), 0.0, 0.0)
 
 func _build_camera() -> void:
 	var cam := Camera3D.new()

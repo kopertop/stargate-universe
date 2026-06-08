@@ -29,23 +29,23 @@ const GATE_Z: float = 13.5
 const CHEVRON_COUNT: int = 9
 # Camera (concept: low, centred, gate large and ~45-50% up the frame). Pulled
 # in closer so the ring + vortex dominate the shot rather than floating small.
-const CAM_POS: Vector3 = Vector3(0.0, 3.0, -11.5)
-const CAM_LOOK_Y: float = 6.2
-const CAM_FOV: float = 54.0
+const CAM_POS: Vector3 = Vector3(0.0, 2.4, -17.0)
+const CAM_LOOK_Y: float = 6.4
+const CAM_FOV: float = 60.0
 # Lighting
 const PORTAL_LIGHT_ENERGY: float = 14.0
 const PORTAL_LIGHT_COLOR: Color = Color(0.45, 0.68, 1.0)
 const SPOT_ENERGY: float = 30.0
 const SPOT_COLOR: Color = Color(0.7, 0.82, 1.0)
-const AMBIENT_ENERGY: float = 0.05
+const AMBIENT_ENERGY: float = 0.12
 # Cold rim/fill so the dark-metal architecture (walls, dome, buttresses) reads as
 # textured detail instead of crushing to a flat black void. Low energy, steep angle.
-const RIM_ENERGY: float = 0.55
+const RIM_ENERGY: float = 1.35
 const RIM_COLOR: Color = Color(0.4, 0.55, 0.85)
-const FILL_ENERGY: float = 0.22
+const FILL_ENERGY: float = 0.55
 const FILL_COLOR: Color = Color(0.32, 0.42, 0.62)
 # Materials
-const METAL_COLOR: Color = Color(0.05, 0.06, 0.08)
+const METAL_COLOR: Color = Color(0.08, 0.09, 0.115)
 const METAL_ROUGHNESS: float = 0.42
 const METAL_METALLIC: float = 0.85
 const FLOOR_ROUGHNESS: float = 0.28
@@ -235,23 +235,32 @@ func _build_buttresses() -> void:
 	# Large diagonal buttress beams flanking the gate — the dominant foreground
 	# architecture in the concept frame. Two angled beams per side rise from the
 	# dais floor outward toward the ceiling, framing the ring in a chevron of steel.
-	var mat := _metal(0.38)
-	var trim := _emissive(Color(0.18, 0.4, 0.85), 1.1)
+	# Buttress metal lifted a touch above base METAL so the rim light reads it as a
+	# solid silhouetted mass (the target's masonry), not a black void.
+	var mat := _metal(0.4)
+	mat.albedo_color = Color(0.11, 0.125, 0.155)
+	var trim := _emissive(Color(0.18, 0.4, 0.85), 0.6)
 	var bz: float = GATE_Z - 1.0
 	for sgn: float in [-1.0, 1.0]:
 		# Primary heavy buttress: leans inward over the gate shoulders, hugging the
-		# larger ring so it reads as solid masonry framing the portal.
-		var beam := _box(Vector3(2.8, 18.0, 3.0), Vector3(sgn * 9.0, 8.5, bz), mat)
-		beam.rotation.z = sgn * 0.46
+		# larger ring so it reads as solid masonry framing the portal. Wider + closer
+		# in so the dark mass itself frames the ring, with the glow seam a thin accent.
+		var beam := _box(Vector3(3.6, 18.0, 3.2), Vector3(sgn * 8.2, 8.5, bz), mat)
+		beam.rotation.z = sgn * 0.48
 		beam.name = "Buttress%d" % int(sgn)
-		# Glowing seam running up the inner face of the beam.
-		var seam := _box(Vector3(0.28, 15.0, 0.28), Vector3(sgn * 7.4, 8.0, bz - 1.3), trim)
-		seam.rotation.z = sgn * 0.46
+		# Stepped ribbing up the inner face so the mass reads as detailed masonry.
+		for r in range(6):
+			var ry: float = 3.0 + float(r) * 2.4
+			var rx: float = sgn * (7.4 - float(r) * 0.55)
+			_box(Vector3(2.2, 0.5, 3.3), Vector3(rx, ry, bz), _metal(0.32), 0.0)
+		# Thin glowing seam running up the inner face of the beam (accent only).
+		var seam := _box(Vector3(0.24, 15.0, 0.24), Vector3(sgn * 7.1, 8.0, bz - 1.35), trim)
+		seam.rotation.z = sgn * 0.48
 		# Secondary outboard buttress, steeper, taller — adds depth layering.
-		var beam2 := _box(Vector3(2.0, 17.0, 2.2), Vector3(sgn * 11.6, 9.0, bz + 0.4), mat)
+		var beam2 := _box(Vector3(2.4, 17.0, 2.4), Vector3(sgn * 11.4, 9.0, bz + 0.4), mat)
 		beam2.rotation.z = sgn * 0.24
 		# Base block anchoring the beams to the platform.
-		_box(Vector3(3.8, 2.4, 3.8), Vector3(sgn * 8.2, 1.2, bz), mat)
+		_box(Vector3(4.4, 2.6, 4.0), Vector3(sgn * 7.8, 1.3, bz), mat)
 
 # ---------------------------------------------------------------------------
 # Dais — railed platform + short staircase leading up to the gate.

@@ -467,10 +467,13 @@ func _build_gate() -> void:
 	# that swallowed the segmented ring + chevron brackets entirely (judges' #1 gap). A
 	# calmer churn lets the thick lit metal ring read as a hard silhouette framing the
 	# vortex, like the target — luminous portal that does NOT erase its own ring.
-	sm.set_shader_parameter("energy", 1.25)
-	sm.set_shader_parameter("hole_radius", 0.52)
-	sm.set_shader_parameter("ring_peak", 0.84)
-	sm.set_shader_parameter("ring_sharp", 1.1)
+	sm.set_shader_parameter("energy", 1.55)
+	sm.set_shader_parameter("hole_radius", 0.26)
+	sm.set_shader_parameter("ring_peak", 0.5)
+	sm.set_shader_parameter("ring_sharp", 0.55)
+	sm.set_shader_parameter("rim_fade", 1.05)
+	sm.set_shader_parameter("swirl", 9.0)
+	sm.set_shader_parameter("flow_speed", 0.6)
 	puddle.material_override = sm
 	add_child(puddle)
 	# Seat the vortex BEHIND the ring plane (+Z, away from camera) so the thick

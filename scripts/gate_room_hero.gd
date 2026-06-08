@@ -36,7 +36,7 @@ const PORTAL_LIGHT_ENERGY: float = 14.0
 const PORTAL_LIGHT_COLOR: Color = Color(0.45, 0.68, 1.0)
 const SPOT_ENERGY: float = 22.0
 const SPOT_COLOR: Color = Color(0.7, 0.82, 1.0)
-const AMBIENT_ENERGY: float = 0.06
+const AMBIENT_ENERGY: float = 0.015
 # Materials
 const METAL_COLOR: Color = Color(0.05, 0.06, 0.08)
 const METAL_ROUGHNESS: float = 0.42
@@ -45,7 +45,7 @@ const FLOOR_ROUGHNESS: float = 0.18
 const SCREEN_COLOR: Color = Color(0.25, 0.55, 1.0)
 const SCREEN_ENERGY: float = 2.2
 # Fog
-const FOG_DENSITY: float = 0.012
+const FOG_DENSITY: float = 0.004
 
 func _ready() -> void:
 	_build_environment()
@@ -95,13 +95,13 @@ func _build_environment() -> void:
 	var we := WorldEnvironment.new()
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.01, 0.012, 0.02)
+	env.background_color = Color(0.004, 0.005, 0.008)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.4, 0.5, 0.7)
+	env.ambient_light_color = Color(0.22, 0.28, 0.42)
 	env.ambient_light_energy = AMBIENT_ENERGY
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.tonemap_exposure = 1.0
-	env.tonemap_white = 6.0
+	env.tonemap_exposure = 0.72
+	env.tonemap_white = 8.0
 	env.ssr_enabled = true
 	env.ssr_max_steps = 64
 	env.ssr_fade_in = 0.15
@@ -118,11 +118,12 @@ func _build_environment() -> void:
 	env.glow_hdr_threshold = 0.85
 	env.volumetric_fog_enabled = true
 	env.volumetric_fog_density = FOG_DENSITY
-	env.volumetric_fog_albedo = Color(0.5, 0.62, 0.85)
-	env.volumetric_fog_emission = Color(0.02, 0.05, 0.12)
+	env.volumetric_fog_albedo = Color(0.32, 0.4, 0.58)
+	env.volumetric_fog_emission = Color(0.004, 0.01, 0.03)
 	env.adjustment_enabled = true
-	env.adjustment_contrast = 1.18
-	env.adjustment_saturation = 1.1
+	env.adjustment_contrast = 1.42
+	env.adjustment_saturation = 0.78
+	env.adjustment_brightness = 0.92
 	we.environment = env
 	add_child(we)
 

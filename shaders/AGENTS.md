@@ -14,6 +14,9 @@ them. These give the game's hero props their look beyond flat `StandardMaterial3
 - `event_horizon.gdshader` + `event_horizon.tres` — animated cyan "puddle" for
   the active gate (scrolling noise + Fresnel rim + radial pulse). Additive,
   unshaded. The `OmniLight3D` spill is still driven from `stargate.gd`.
+- `stargate_portal.gdshader` — free-standing swirling portal surface for use
+  inside the stargate frame. Procedural fBm body with concentric ring + halo.
+  Tuned to SGU’s amber/orange Ancient palette and swirl behaviour.
 
 ## Conventions
 

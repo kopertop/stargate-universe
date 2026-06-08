@@ -1,0 +1,4 @@
+[gd_resource type="QuadMesh" format=3 uid="uid://quad_mesh_01"]
+
+[resource]
+size = Vector2(1, 1)

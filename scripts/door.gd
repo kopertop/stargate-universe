@@ -60,7 +60,6 @@ var _tween: Tween
 # they decode to. Held so GameState.room_deciphered can animate them in place.
 var _plaque_labels: Array[Label3D] = []
 var _plaque_resolved: String = ""
-var _plaque_tween: Tween
 
 func _ready() -> void:
 	super()
@@ -358,35 +357,18 @@ func _destination_deciphered() -> bool:
 
 
 # Live reveal: when the room this door points at is DECIPHERED (entered on
-# foot), decode every mirrored plaque label from glyphs to the real name. The
-# labels first drop back to the readable font so the scramble cascade is legible
-# Latin (not the Ancient glyphs). Honors instant_mode / headless (no tween — set
-# the final text now) so captures and the playthrough never depend on timing.
+# foot), decode every mirrored plaque label. The shared AncientText.decode()
+# churns shuffling Lantean glyphs in the Ancient font and then flips to the
+# readable name — honors instant_mode / headless (settles immediately) so
+# captures and the playthrough never depend on timing.
 func _on_room_deciphered(room_id: String) -> void:
 	if room_id != target_room_id:
 		return
 	if _plaque_resolved == "" or _plaque_labels.is_empty():
 		return
 	for label: Label3D in _plaque_labels:
-		ANCIENT_TEXT.set_readable_font(label)
-	var router: Node = get_node_or_null("/root/SceneRouter")
-	var instant: bool = router != null and router.get("instant_mode") == true
-	if instant or PLAQUE_DECODE_DURATION <= 0.0:
-		for label: Label3D in _plaque_labels:
-			label.text = _plaque_resolved
-		return
-	if _plaque_tween != null and _plaque_tween.is_valid():
-		_plaque_tween.kill()
-	_plaque_tween = create_tween()
-	_plaque_tween.tween_method(_apply_plaque_progress, 0.0, 1.0, PLAQUE_DECODE_DURATION)
-	_plaque_tween.tween_callback(_apply_plaque_progress.bind(1.0))
-
-
-func _apply_plaque_progress(progress: float) -> void:
-	var text: String = ANCIENT_TEXT.scramble(_plaque_resolved, progress, Engine.get_process_frames())
-	for label: Label3D in _plaque_labels:
 		if label != null:
-			label.text = text
+			ANCIENT_TEXT.decode(label, _plaque_resolved, self, PLAQUE_DECODE_DURATION)
 
 
 func _title_case_snake(s: String) -> String:

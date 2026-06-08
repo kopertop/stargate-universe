@@ -33,6 +33,12 @@ class_name AncientText
 # the safe BMP/Latin range.
 const ANCIENT_GLYPHS: String = "/\\|=+#%&@$*<>~^?!:;-_[]{}()"
 
+# Glyph pool used when the churn is drawn IN the Ancient font (the decode
+# animation). A-Z map 1:1 to Lantean glyphs in anquietas, so churning over
+# letters yields shuffling alien glyphs — not punctuation tofu. Distinct from
+# ANCIENT_GLYPHS above, which is the readable-font fallback (printable ASCII).
+const LETTER_GLYPHS: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
 # Ancient/Lantean glyph font. load()ed once (NOT preload) so a missing asset
 # degrades gracefully to the ASCII scramble instead of failing to parse this
 # script — see fonts/AGENTS.md for why this font is the documented exception
@@ -96,22 +102,30 @@ static func _assign_text(node: Object, value: String) -> void:
 
 
 # Animated decode of any text carrier (Label / Label3D / TextMesh) from its
-# locked Ancient state into readable `final_text`. Reverts to the readable font
-# first (so the scramble cascade is legible Latin, not glyphs), then tweens the
-# scramble→resolve. `host` is any Node — used for the tween + the SceneRouter
-# lookup. instant_mode / zero duration settle immediately (no tween), so the
-# headless playthrough and captures never depend on timing.
+# locked Ancient state into readable `final_text`. The churn is drawn IN the
+# Ancient font over the LETTER_GLYPHS pool, so the "decrypting" frames are
+# shuffling Lantean glyphs (not ASCII punctuation) that lock in left→right;
+# the final callback flips the whole line to the readable font + English.
+# `host` is any Node — used for the tween + the SceneRouter lookup. instant_mode
+# / zero duration settle immediately (readable, no tween) so the headless
+# playthrough and captures never depend on timing.
 static func decode(node: Object, final_text: String, host: Node, duration: float = 1.0) -> void:
-	set_readable_font(node)
 	var router: Node = host.get_node_or_null("/root/SceneRouter")
 	if duration <= 0.0 or (router != null and router.get("instant_mode") == true):
+		set_readable_font(node)
 		_assign_text(node, final_text)
 		return
+	# Churn the upper-cased name in the Ancient font (falls back to readable +
+	# letter churn if the font asset is missing — still no punctuation).
+	var glyphs: String = final_text.to_upper()
+	_assign_font(node, ancient_font())
 	var tw: Tween = host.create_tween()
 	tw.tween_method(
-		func(v: float) -> void: _assign_text(node, scramble(final_text, v, Engine.get_process_frames())),
+		func(v: float) -> void: _assign_text(node, scramble(glyphs, v, Engine.get_process_frames(), LETTER_GLYPHS)),
 		0.0, 1.0, duration)
-	tw.tween_callback(func() -> void: _assign_text(node, final_text))
+	tw.tween_callback(func() -> void:
+		set_readable_font(node)
+		_assign_text(node, final_text))
 
 @export var auto_play_on_ready: bool = false
 @export var play_text: String = ""
@@ -132,11 +146,15 @@ var _tween: Tween
 #
 # `seed` keeps the per-call glyph churn stable for a given node: animate it
 # per frame (e.g. seed = frame_index) for a shimmer, or hold it constant for a
-# static obfuscated plaque. Same (text, progress, seed) is deterministic.
-static func scramble(text: String, progress: float, seed: int = 0) -> String:
+# static obfuscated plaque. Same (text, progress, seed, pool) is deterministic.
+#
+# `pool` is the character set drawn for unresolved positions. Defaults to the
+# ASCII ANCIENT_GLYPHS (safe in any font). Pass LETTER_GLYPHS when the node is
+# rendered in the Ancient font so the churn shows shuffling Lantean glyphs.
+static func scramble(text: String, progress: float, seed: int = 0, pool: String = ANCIENT_GLYPHS) -> String:
 	if progress >= 1.0:
 		return text
-	var glyph_count: int = ANCIENT_GLYPHS.length()
+	var glyph_count: int = pool.length()
 	var n: int = text.length()
 	# Frontier = index of the first still-unresolved character. Clamp progress
 	# into [0,1] so callers can't push the frontier past either end.
@@ -156,14 +174,14 @@ static func scramble(text: String, progress: float, seed: int = 0) -> String:
 		# Deterministic glyph for this (seed, position): seeding per char keeps
 		# neighbours independent so the field looks like noise, not a pattern.
 		rng.seed = hash([seed, i])
-		var glyph: String = ANCIENT_GLYPHS[rng.randi_range(0, glyph_count - 1)]
+		var glyph: String = pool[rng.randi_range(0, glyph_count - 1)]
 		# If the source char is itself a glyph (e.g. punctuation input), the draw
 		# can coincide with it and leak the original — re-roll deterministically
 		# until it differs, so an un-resolved position NEVER shows its real char.
 		var guard: int = 0
 		while glyph == ch and guard < glyph_count:
 			rng.seed = hash([seed, i, guard])
-			glyph = ANCIENT_GLYPHS[rng.randi_range(0, glyph_count - 1)]
+			glyph = pool[rng.randi_range(0, glyph_count - 1)]
 			guard += 1
 		out += glyph
 	return out
@@ -176,30 +194,14 @@ func _ready() -> void:
 		play(play_text, play_duration)
 
 
-# Tween this Label's `.text` from fully scrambled to the resolved `text` over
-# `duration` seconds, shimmering the un-resolved glyphs each step. Respects
-# SceneRouter.instant_mode (headless / fast-travel): resolves on the same frame
-# so smoke + playthrough tests never wait on a tween.
+# Decode `text` into this Label: shuffling Ancient glyphs (drawn in the Ancient
+# font) locking in left→right, then a flip to readable English — the shared
+# decode() drives it. Respects SceneRouter.instant_mode (resolves same frame).
 func play(text: String, duration: float = 1.2) -> void:
 	if _tween != null and _tween.is_valid():
 		_tween.kill()
 		_tween = null
-	# If we were showing the locked Ancient-glyph name, drop back to the
-	# readable font so the scramble cascade resolves into legible English.
-	AncientText.set_readable_font(self)
-	var router: Node = get_node_or_null("/root/SceneRouter")
-	if duration <= 0.0 or (router != null and router.get("instant_mode") == true):
-		reveal_instant(text)
-		return
-	# tween_method rewrites .text each tick. A live frame counter feeds `seed` so
-	# the un-resolved field shimmers, not strobes.
-	self.text = scramble(text, 0.0, 0)
-	_tween = create_tween()
-	_tween.tween_method(
-		func(v: float) -> void:
-			self.text = scramble(text, v, Engine.get_process_frames()),
-		0.0, 1.0, duration)
-	_tween.tween_callback(func() -> void: self.text = text)
+	AncientText.decode(self, text, self, duration)
 
 
 # Skip the animation entirely — assign the fully-resolved text now. The

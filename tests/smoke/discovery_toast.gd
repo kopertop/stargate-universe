@@ -105,6 +105,22 @@ func _run_checks() -> void:
 	_expect(String(name_label.get("text")).length() == hydro_name.length(),
 		"RoomName decode preserves the resolved-name length")
 
+	# Mid-decode the churn must be drawn in the Ancient FONT over letter-glyphs
+	# (A-Z) — NOT the old random ASCII punctuation in the readable font. This is
+	# the regression guard for the "Discovered hover still uses random chars" bug.
+	var at: GDScript = load("res://scripts/ancient_text.gd")
+	var ancient_font: Font = at.ancient_font()
+	_expect(ancient_font != null, "ancient font available for the decode churn")
+	_expect(name_label.get("theme_override_fonts/font") == ancient_font,
+		"toast decode churns in the Ancient font, not the readable font")
+	var churn: String = String(name_label.get("text"))
+	var letters_only: bool = true
+	for i in churn.length():
+		var c: String = churn[i]
+		if c != " " and (c < "A" or c > "Z"):
+			letters_only = false
+	_expect(letters_only, "toast decode churn uses Ancient letter-glyphs (A-Z), no ASCII punctuation")
+
 	# --- 4. Entering the SAME room (set_current_room) must NOT hide it. -----
 	_game.set_current_room("hydroponics")
 	await process_frame

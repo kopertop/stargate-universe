@@ -351,30 +351,42 @@ func _build_gate() -> void:
 	add_child(ring_holder)
 	ring_holder.position = center
 
-	# Inward-pointing TRIANGULAR chevrons: dark metal wedges with a faint inner glow
-	# strip, recessed into the inner edge — NOT bright light studs.
+	# Inward-pointing TRIANGULAR chevrons — the DEFINING Stargate feature. Each is a
+	# raised dark-metal wedge bracket seated on the inner edge of the ring with a
+	# bright glowing triangular insert pointing toward the centre. Sized LARGE and
+	# clearly lit so the chevron-studded ring reads even against the bright vortex.
+	var chev_metal := _metal(0.28)
+	chev_metal.albedo_color = Color(0.14, 0.155, 0.185)
 	var n: int = CHEVRON_COUNT
 	for i in n:
+		# PrismMesh apex is +Y in local space. rotation.z = ang + PI*0.5 flips the apex
+		# from radially OUTWARD to radially INWARD so each chevron points at the hub
+		# (the lit point of the real Stargate's chevrons).
 		var ang: float = TAU * float(i) / float(n) + PI * 0.5
-		var px: float = cos(ang) * (GATE_RADIUS - GATE_TUBE - 0.15)
-		var py: float = sin(ang) * (GATE_RADIUS - GATE_TUBE - 0.15)
+		var inner_r: float = GATE_RADIUS - GATE_TUBE + 0.25
+		var px: float = cos(ang) * inner_r
+		var py: float = sin(ang) * inner_r
+		var spin: float = ang + PI * 0.5
+		# Dark metal chevron bracket: wide base hugging the ring, tapering inward.
 		var chev := MeshInstance3D.new()
 		var pm := PrismMesh.new()
-		pm.size = Vector3(1.1, 0.85, 0.4)
+		pm.size = Vector3(2.1, 1.8, 0.7)
 		chev.mesh = pm
-		chev.material_override = _metal(0.3)
+		chev.material_override = chev_metal
 		add_child(chev)
-		chev.position = center + Vector3(px, py, 0.05)
-		chev.rotation.z = ang - PI * 0.5
-		# Thin faint glow strip up the chevron centre (subtle accent only).
+		chev.position = center + Vector3(px, py, 0.18)
+		chev.rotation.z = spin
+		# Bright glowing triangular insert proud of the bracket face — the lit chevron
+		# itself, the strongest read of "this is a Stargate". Energy high enough to
+		# bloom past the glow threshold and survive against the vortex.
 		var glow := MeshInstance3D.new()
 		var gpm := PrismMesh.new()
-		gpm.size = Vector3(0.32, 0.55, 0.12)
+		gpm.size = Vector3(1.25, 1.05, 0.2)
 		glow.mesh = gpm
-		glow.material_override = _emissive(Color(0.45, 0.65, 1.0), 1.4)
+		glow.material_override = _emissive(Color(0.58, 0.76, 1.0), 4.2)
 		add_child(glow)
-		glow.position = center + Vector3(px, py, -0.12)
-		glow.rotation.z = ang - PI * 0.5
+		glow.position = center + Vector3(px, py, -0.16)
+		glow.rotation.z = spin
 
 	# Vortex puddle — sized to nearly FILL the inner aperture of the ring.
 	var puddle := MeshInstance3D.new()

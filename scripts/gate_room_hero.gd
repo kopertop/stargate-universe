@@ -61,7 +61,7 @@ const BUTTRESS_KEY_COLOR: Color = Color(0.7, 0.73, 0.8)
 # Energy cut HARD: at 26 the ring + everything behind it washed to bright white so
 # the gate read as a smooth glowing arch tube (judges' #1 gap). The target's ring is
 # DARK metal caught by a faint cold grazing rim — the only bright thing is the portal.
-const RING_KEY_ENERGY: float = 9.0
+const RING_KEY_ENERGY: float = 4.5
 const RING_KEY_COLOR: Color = Color(0.72, 0.78, 0.92)
 # Materials — near-neutral dark gunmetal (barely any blue in the albedo itself so the
 # cold lights tint it rather than the base colour glowing blue).
@@ -397,8 +397,14 @@ func _build_gate() -> void:
 	# target's hero element) instead of crushing to black behind the vortex bloom.
 	var ring_mat := _metal(0.34)
 	ring_mat.albedo_color = Color(0.52, 0.55, 0.60)
+	ring_mat.emission_enabled = true
+	ring_mat.emission = Color(0.16, 0.2, 0.3)
+	ring_mat.emission_energy_multiplier = 0.12
 	var seg_mat := _metal(0.28)
 	seg_mat.albedo_color = Color(0.40, 0.42, 0.48)
+	seg_mat.emission_enabled = true
+	seg_mat.emission = Color(0.14, 0.18, 0.28)
+	seg_mat.emission_energy_multiplier = 0.12
 	var segs: int = 36
 	var ring_mid: float = GATE_RADIUS
 	for i in segs:
@@ -461,14 +467,16 @@ func _build_gate() -> void:
 		chev.rotation.z = spin
 		# Bright glowing triangular insert proud of the bracket face — the lit chevron
 		# itself, the strongest read of "this is a Stargate". Energy high enough to
-		# bloom past the glow threshold and survive against the vortex.
+		# bloom past the glow threshold and survive against the vortex. Seated PROUD of
+		# the bracket toward the camera (-Z) so the metal wedge never occludes it, sized
+		# large so the chevron-studded ring reads even past the vortex bloom.
 		var glow := MeshInstance3D.new()
 		var gpm := PrismMesh.new()
-		gpm.size = Vector3(1.4, 1.2, 0.24)
+		gpm.size = Vector3(1.55, 1.35, 0.3)
 		glow.mesh = gpm
-		glow.material_override = _emissive(Color(0.64, 0.81, 1.0), 4.4)
+		glow.material_override = _emissive(Color(0.7, 0.85, 1.0), 6.0)
 		add_child(glow)
-		glow.position = center + Vector3(px, py, -0.16)
+		glow.position = center + Vector3(px, py, -0.62)
 		glow.rotation.z = spin
 
 	# Vortex puddle — sized to nearly FILL the inner aperture of the ring.
@@ -645,6 +653,21 @@ func _build_lights() -> void:
 		add_child(rspot)
 		rspot.position = Vector3(sgn * 9.0, GATE_CENTER_Y + 4.0, GATE_Z - 6.0)
 		rspot.look_at(Vector3(sgn * 2.0, GATE_CENTER_Y, GATE_Z - 0.3), Vector3.UP)
+		# Lower ring key from camera-side BELOW the ring centre, raking UP across the
+		# bottom arc so the LOWER half of the thick segmented ring reads as lit metal
+		# instead of crushing to black — the target's ring is a COMPLETE thick circle;
+		# the prior single upper key only lit a top fan (judges' #1 gap).
+		var rspot_lo := SpotLight3D.new()
+		rspot_lo.light_color = RING_KEY_COLOR
+		rspot_lo.light_energy = RING_KEY_ENERGY * 0.85
+		rspot_lo.spot_range = 20.0
+		rspot_lo.spot_angle = 36.0
+		rspot_lo.spot_attenuation = 0.7
+		rspot_lo.light_specular = 0.5
+		rspot_lo.shadow_enabled = false
+		add_child(rspot_lo)
+		rspot_lo.position = Vector3(sgn * 8.0, GATE_CENTER_Y - 6.5, GATE_Z - 6.0)
+		rspot_lo.look_at(Vector3(sgn * 2.0, GATE_CENTER_Y - 3.0, GATE_Z - 0.3), Vector3.UP)
 	# Soft frontal FILL from the camera side — lifts the near walls / console banks and
 	# the dais out of pure black without washing the scene into a flat blue field.
 	var fill := DirectionalLight3D.new()

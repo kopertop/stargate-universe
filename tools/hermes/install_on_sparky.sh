@@ -76,6 +76,17 @@ if ! hermes status 2>/dev/null | grep -qiE "Nous Portal.*logged in"; then
 fi
 echo "  hermes: $(hermes --version 2>/dev/null | head -1) · Nous Portal ✓"
 
+# --- 2c. reviewer: jq + Ollama Cloud vision -------------------------------
+say "Checking reviewer panel deps (jq + Ollama Cloud qwen3-vl)"
+command -v jq >/dev/null 2>&1 || { command -v apt-get >/dev/null 2>&1 && sudo apt-get install -y jq || die "install jq"; }
+OLLAMA_HOST="${OLLAMA_HOST:-https://ollama.com}"
+[[ -n "${OLLAMA_API_KEY:-}" ]] || die "OLLAMA_API_KEY not set in this shell. Export your Ollama Cloud key (and OLLAMA_HOST=https://ollama.com) before running."
+if curl -fsS --max-time 20 -H "Authorization: Bearer ${OLLAMA_API_KEY}" "$OLLAMA_HOST/api/tags" >/dev/null 2>&1; then
+	echo "  Ollama Cloud reachable ✓ (model: ${OLLAMA_VL_MODEL:-qwen3-vl:235b-instruct})"
+else
+	warn "Could not reach $OLLAMA_HOST/api/tags with the given key — verify OLLAMA_HOST/OLLAMA_API_KEY. The reviewer will fail without it."
+fi
+
 # --- 3. auto-approve in cron context --------------------------------------
 say "Setting hermes cron approvals to auto-allow (else loop git/terminal calls get denied)"
 hermes config set approvals.cron_mode allow || warn "Could not set approvals.cron_mode — set it manually (hermes config edit)."
@@ -87,9 +98,23 @@ mkdir -p "$SKILLS_DIR"
 cp tools/hermes/skills/gate-hero-loop/SKILL.md "$SKILLS_DIR/SKILL.md"
 hermes skills list 2>/dev/null | grep -i "gate-hero-loop" && echo "  skill registered" || warn "skill copied to $SKILLS_DIR (verify with: hermes skills list)"
 
+# --- 3c. stash reviewer creds in a chmod-600 env file (NOT in git/crontab) -
+say "Writing reviewer env file ~/.config/gate-hero-loop.env (chmod 600)"
+mkdir -p "$HOME/.config"
+ENVF="$HOME/.config/gate-hero-loop.env"
+umask 077
+{
+	echo "export OLLAMA_HOST='${OLLAMA_HOST}'"
+	echo "export OLLAMA_API_KEY='${OLLAMA_API_KEY}'"
+	echo "export OLLAMA_VL_MODEL='${OLLAMA_VL_MODEL:-qwen3-vl:235b-instruct}'"
+	[[ -n "${GODOT_BIN:-}" ]] && echo "export GODOT_BIN='${GODOT_BIN}'"
+} > "$ENVF"
+chmod 600 "$ENVF"; umask 022
+echo "  wrote $ENVF (ollama_review.sh self-sources it)"
+
 # --- 4. register the hermes cron job --------------------------------------
 say "Registering hermes cron job '$JOB_NAME' (schedule: $SCHEDULE)"
-PROMPT="Run EXACTLY ONE iteration of the gate-room hero self-improvement loop. Follow the instructions in tools/hermes/gate_loop_iteration.md in this repo precisely, then stop. Do not loop; the scheduler will call you again."
+PROMPT="You are the PM for the gate-room hero studio. Run EXACTLY ONE improvement cycle by following tools/hermes/roles/project_manager.md in this repo precisely (developer makes one change → render → independent Ollama reviewer panel → obey its verdict → commit/push or revert → journal), then STOP. Do not loop; the scheduler will call you again."
 # Remove any prior job of the same name so re-runs don't stack duplicates.
 hermes cron remove "$JOB_NAME" >/dev/null 2>&1 || true
 hermes cron create "$SCHEDULE" \
@@ -102,7 +127,7 @@ hermes cron list 2>/dev/null | grep -i "$JOB_NAME" || warn "Job not visible in '
 
 # --- 5. drive ticks from system cron (no long-lived hermes daemon) --------
 say "Installing system-cron tick every ${TICK_EVERY_MIN}m so jobs actually fire"
-TICK_LINE="*/${TICK_EVERY_MIN} * * * * cd $REPO && HERMES_ACCEPT_HOOKS=1 $(command -v hermes) cron tick >> $HOME/.hermes/logs/gate-loop-tick.log 2>&1"
+TICK_LINE="*/${TICK_EVERY_MIN} * * * * . $HOME/.config/gate-hero-loop.env 2>/dev/null; cd $REPO && HERMES_ACCEPT_HOOKS=1 $(command -v hermes) cron tick >> $HOME/.hermes/logs/gate-loop-tick.log 2>&1"
 mkdir -p "$HOME/.hermes/logs"
 # Idempotent: drop any existing gate-loop tick line, then add the current one.
 ( crontab -l 2>/dev/null | grep -v "hermes cron tick.*gate-loop\|gate-loop-tick.log" ; echo "$TICK_LINE" ) | crontab -

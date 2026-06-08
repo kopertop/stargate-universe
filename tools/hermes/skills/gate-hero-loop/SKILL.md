@@ -1,50 +1,52 @@
 ---
 name: gate-hero-loop
-description: "Run one iteration of the Stargate gate-room hero visual self-improvement loop: mutate the Godot scene, render, judge vs the concept image, commit if closer / revert if not. For the autonomous hermes cron loop on the sparky build host."
-version: 1.0.0
+description: "Run one cycle of the Stargate gate-room hero self-improvement studio on the sparky host: a hermes PM delegates a Godot-developer change, renders it, then an INDEPENDENT Ollama-Cloud vision reviewer panel (qwen3-vl ×3) votes closer/not — commit if closer, revert if not. For the autonomous hermes cron loop."
+version: 2.0.0
 platforms: [linux, macos]
 metadata:
   hermes:
-    tags: [godot, stargate, gate-room, render, self-improvement, karpathy, loop, vortex, shader, beauty-shot, cron, sparky]
+    tags: [godot, stargate, gate-room, render, self-improvement, karpathy, loop, vortex, shader, beauty-shot, cron, sparky, ollama, qwen3-vl, reviewer, project-manager]
     related_skills: [godot-game-development]
 ---
 
-# Gate-room hero self-improvement loop
+# Gate-room hero studio — one cycle (PM ▸ Godot dev ▸ Ollama reviewer panel)
 
-A Karpathy-style "commit if closer, revert if not" loop that rebuilds a Godot
-gate-room scene to match a concept image. You run ONE iteration per invocation
-(a scheduler calls you repeatedly). Inference is your own (Nous Portal) — this
-loop is designed to run unattended and cost nothing on the user's coding-tool
-budget.
+A Karpathy "commit if closer, revert if not" loop, run as a tiny autonomous studio
+on the `sparky` build host. You are invoked once per cycle by the scheduler.
+Inference for the PM + developer is hermes/Nous (free); the reviewer is Ollama
+Cloud vision (qwen3-vl) — an INDEPENDENT judge so the developer never grades its
+own homework.
+
+## Roles (briefs live in the repo under `tools/hermes/`)
+- **PM** — `roles/project_manager.md`. THIS is your playbook. Run its one-cycle
+  sequence: prep/guard → developer makes ONE change → render → reviewer panel →
+  obey the verdict (commit+push / revert) → journal. You do not judge.
+- **Godot developer** — `roles/godot_developer.md`. Makes exactly one focused change
+  toward `design/concept-art/gate-room/target/gateroom-hero-target.png`. Delegate it
+  or perform it inline following that brief.
+- **Reviewer panel** — `ollama_review.sh <target> <best> <candidate>`. 3× qwen3-vl
+  (Ollama Cloud). Emits `VERDICT=ACCEPT|REJECT` (exit 0/10). AUTHORITATIVE.
 
 ## Where
-Repo: the `--workdir` you were given (a checkout of `kopertop/stargate-universe`
-on branch **feature/gate-room-hero-portal**). Everything is relative to it.
+The `--workdir` you were given: a checkout of `kopertop/stargate-universe` on branch
+**feature/gate-room-hero-portal**. Everything is relative to it.
 
-## The single source of truth
-Read and follow **`tools/hermes/gate_loop_iteration.md`** in the repo EXACTLY,
-top to bottom. It defines: prep/branch guard → view target + best images →
-the 9-point art rubric → make ONE focused change → `bash tools/gate_hero_render.sh
-candidate 220` → judge honestly → `cp candidate best` + commit + push (accept)
-OR `git checkout --`/`git clean` (reject). Do exactly one iteration, then stop.
+## Do exactly this
+Follow `tools/hermes/roles/project_manager.md` top to bottom, once, then stop.
 
 ## Non-negotiables
-- Branch must be `feature/gate-room-hero-portal`. NEVER touch `main`/`develop`.
-- Exactly ONE change per run; keep it surgical; finish in one pass (don't loop).
-- `screenshots/loop/` is gitignored — never commit PNGs; `best.png` is the memory.
-- Accept ONLY a clearly-better render; when in doubt, REVERT.
+- NEVER touch `main`/`develop`; only `feature/gate-room-hero-portal`.
+- Exactly ONE change per cycle; finish in one pass (don't loop).
+- `screenshots/loop/` is gitignored — never commit PNGs/journal; `best.png` is the memory.
+- The Ollama reviewer panel is ground truth for "closer or not" — never overrule it.
 
-## Render notes (sparky / headless Linux)
-- `tools/gate_hero_render.sh` auto-wraps Godot in `xvfb-run` when there's no
-  `$DISPLAY`; a Vulkan GPU still does the rasterising. It writes
-  `screenshots/loop/candidate.png` (or `best.png`).
-- A render is only valid if the output has `(save err=0)`, a non-null camera, and
-  NO `SHADER ERROR` / `Parse Error` / `SCRIPT ERROR`. Otherwise the edit is broken
-  → revert and report.
+## Render / env notes (sparky)
+- `tools/gate_hero_render.sh` wraps Godot in `xvfb-run` headless (GB10 Vulkan does the
+  rasterising) and writes `screenshots/loop/{candidate,best}.png`.
+- The reviewer needs `OLLAMA_HOST` (https://ollama.com) + `OLLAMA_API_KEY` in the
+  environment, plus `jq` and `curl`.
 
-## Known traps (don't repeat them)
-- Don't redefine shader built-ins (`TAU`/`PI`) in `hero_portal.gdshader` — it
-  silently fails compile and the portal renders INVISIBLE.
-- Don't thrash global `tonemap_exposure` (it oscillated ~90 prior iterations).
-  Fix darkness with LOCAL emissive detail (ribbing, window-slits, dome downlights).
+## Known traps
+- Don't redefine shader built-ins (`TAU`/`PI`) — silent compile fail → invisible portal.
+- Don't thrash global `tonemap_exposure`; fix darkness with LOCAL emissive detail.
 - Keep GDScript statically typed (no `:=` on Dictionary/Variant values).

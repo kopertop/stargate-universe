@@ -85,10 +85,17 @@ void fragment() {
 	);
 	float n = fbm(swuv + warp_amount * q + vec2(t * flow_speed * 0.6, -t * flow_speed * 0.4));
 
-	// Annular radial mask: dark hole → bright band at ring_peak → soft rim fade.
-	float inner = smoothstep(hole_radius, ring_peak, r);          // 0 in hole, 1 at peak
-	float outer = 1.0 - smoothstep(ring_peak, rim_fade, r);       // 1 at peak, 0 at rim
-	float band  = pow(clamp(inner * outer, 0.0, 1.0), ring_sharp);
+	// Radial mask: a crushed-black EYE at the centre, then bright churning energy that
+	// fills the WHOLE remaining disc (not a thin band) and only fades at the very rim.
+	// Rises fast off the hole edge so the storm starts immediately around the eye, and
+	// stays near-full all the way out to rim_fade — the target's dense churning mass
+	// occupying the aperture, with a dark hole, NOT a thin bright loop.
+	float inner = smoothstep(hole_radius, hole_radius + 0.10, r);  // 0 in eye, 1 just outside
+	float outer = 1.0 - smoothstep(rim_fade - 0.18, rim_fade, r);  // hold full, fall only at rim
+	float band  = clamp(inner * outer, 0.0, 1.0);
+	// Faint extra brightness in a mid shell so the storm has a luminous core ring without
+	// becoming a thin loop — broad, low-amplitude.
+	band *= 1.0 + 0.35 * exp(-pow((r - ring_peak) / 0.28, 2.0));
 
 	// Concentric churning rings — bright blue-white shells spiralling OUTWARD from the
 	// hole. Two interfering frequencies + the warp noise give dense overlapping shells
@@ -96,9 +103,15 @@ void fragment() {
 	// near the rim so the spiral tightens toward the dark eye. DENSER (higher base freq)
 	// so the disc reads as many fine concentric shells of churning energy, like the
 	// target's storm — not one smooth bright donut.
-	float ring_phase = (r * 26.0 - t * 2.2) + n * 7.5 + ang * 0.8;
-	float rings = sin(ring_phase) * 0.6 + sin(ring_phase * 1.9 + n * 3.0) * 0.4;
-	rings = pow(clamp(rings * 0.5 + 0.5, 0.0, 1.0), 1.6);
+	// Frequency RISES toward the eye (1/r-ish) so the spiral shells tighten into the dark
+	// centre like water draining — the target's churning vortex throat. Three interfering
+	// frequencies + the warp noise give dense overlapping arms rather than smooth circles.
+	float freq = mix(34.0, 13.0, clamp(r, 0.0, 1.0));
+	float ring_phase = (r * freq - t * 2.6) + n * 8.5 + ang * 1.3;
+	float rings = sin(ring_phase) * 0.55
+		+ sin(ring_phase * 1.9 + n * 3.0) * 0.3
+		+ sin(ring_phase * 0.6 - ang * 2.0 + t * 1.1) * 0.25;
+	rings = pow(clamp(rings * 0.5 + 0.5, 0.0, 1.0), 2.0);
 
 	// Energy field: the turbulence/rings DOMINATE the value (low constant base) so the
 	// disc reads as carved spiral shells with dark gaps between them — a churning storm,

@@ -484,13 +484,17 @@ func _build_gate() -> void:
 	# that swallowed the segmented ring + chevron brackets entirely (judges' #1 gap). A
 	# calmer churn lets the thick lit metal ring read as a hard silhouette framing the
 	# vortex, like the target — luminous portal that does NOT erase its own ring.
-	sm.set_shader_parameter("energy", 0.7)
-	sm.set_shader_parameter("hole_radius", 0.5)
-	sm.set_shader_parameter("ring_peak", 0.8)
+	# Small dark EYE, churning energy filling the rest of the aperture out to the rim.
+	# Higher energy so the dense shells bloom past the glow threshold into the soft halo
+	# the target shows — but the crushed-black centre + steep rim keep it a vortex throat,
+	# not a flat lit disc.
+	sm.set_shader_parameter("energy", 1.6)
+	sm.set_shader_parameter("hole_radius", 0.26)
+	sm.set_shader_parameter("ring_peak", 0.62)
 	sm.set_shader_parameter("ring_sharp", 0.7)
-	sm.set_shader_parameter("rim_fade", 1.1)
-	sm.set_shader_parameter("swirl", 11.0)
-	sm.set_shader_parameter("flow_speed", 0.6)
+	sm.set_shader_parameter("rim_fade", 1.02)
+	sm.set_shader_parameter("swirl", 13.0)
+	sm.set_shader_parameter("flow_speed", 0.7)
 	# Pull the energy palette toward BLUE so the disc reads as the target's blue-white
 	# churning event horizon, not a blown-out white spiral. Highlights stay cool, the
 	# body stays saturated blue, and the dark hole stays a deep near-black eye.

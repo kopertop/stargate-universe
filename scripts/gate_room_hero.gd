@@ -33,7 +33,7 @@ const CAM_POS: Vector3 = Vector3(0.0, 2.4, -17.0)
 const CAM_LOOK_Y: float = 6.4
 const CAM_FOV: float = 60.0
 # Lighting
-const PORTAL_LIGHT_ENERGY: float = 14.0
+const PORTAL_LIGHT_ENERGY: float = 5.0
 const PORTAL_LIGHT_COLOR: Color = Color(0.45, 0.68, 1.0)
 const SPOT_ENERGY: float = 60.0
 const SPOT_COLOR: Color = Color(0.74, 0.82, 0.96)
@@ -125,14 +125,20 @@ func _build_environment() -> void:
 	env.ssr_fade_out = 2.0
 	env.ssao_enabled = true
 	env.ssao_intensity = 1.4
+	# Glow is the wash culprit: a low HDR threshold + high intensity let the whole
+	# bright back wall bloom into a uniform cloud. Raise the threshold so ONLY the
+	# super-bright vortex core (and the brightest chevron/screen tips) bloom, and trim
+	# intensity/strength so the bloom stays a tight halo around the portal — the rest
+	# of the room crushes to black like the target.
 	env.glow_enabled = true
-	env.glow_intensity = 0.9
-	env.glow_bloom = 0.25
-	env.glow_strength = 1.0
-	env.set("glow_levels/3", 0.6)
-	env.set("glow_levels/4", 0.8)
-	env.set("glow_levels/5", 0.5)
-	env.glow_hdr_threshold = 0.85
+	env.glow_intensity = 0.55
+	env.glow_bloom = 0.1
+	env.glow_strength = 0.85
+	env.set("glow_levels/3", 0.4)
+	env.set("glow_levels/4", 0.55)
+	env.set("glow_levels/5", 0.35)
+	env.glow_hdr_threshold = 1.5
+	env.glow_hdr_scale = 2.2
 	env.volumetric_fog_enabled = true
 	env.volumetric_fog_density = FOG_DENSITY
 	# Bright cool albedo so the spot cones light the fog into visible god-ray shafts,
@@ -396,6 +402,10 @@ func _build_gate() -> void:
 	puddle.mesh = qm
 	var sm := ShaderMaterial.new()
 	sm.shader = HERO_PORTAL_SHADER
+	# Trim the vortex luminance so its energy band sits mostly below the raised glow
+	# HDR threshold — only the hottest churn tips bloom into the tight halo, the rest
+	# reads as a contained spiral disc rather than a room-filling glow cloud.
+	sm.set_shader_parameter("energy", 2.2)
 	puddle.material_override = sm
 	add_child(puddle)
 	puddle.position = center + Vector3(0.0, 0.0, -0.05)
@@ -412,9 +422,9 @@ func _build_lights() -> void:
 	# Shorter range + specular trimmed so the portal glows the gate surround and casts a
 	# SOFT broad sheen on the floor near the dais — not a hard specular column streaking
 	# all the way to the camera (the prior single-harsh-streak gap).
-	portal_light.omni_range = 14.0
-	portal_light.omni_attenuation = 1.6
-	portal_light.light_specular = 0.35
+	portal_light.omni_range = 9.0
+	portal_light.omni_attenuation = 2.4
+	portal_light.light_specular = 0.3
 	portal_light.light_volumetric_fog_energy = 1.0
 	add_child(portal_light)
 	portal_light.position = center + Vector3(0.0, 0.0, -1.0)

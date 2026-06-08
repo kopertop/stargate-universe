@@ -21,16 +21,17 @@ const HERO_PORTAL_SHADER: Shader = preload("res://shaders/hero_portal.gdshader")
 const HALL_HALF_WIDTH: float = 11.0
 const HALL_LENGTH: float = 38.0
 const CEILING_HEIGHT: float = 15.0
-# Gate
-const GATE_RADIUS: float = 4.2
-const GATE_TUBE: float = 0.9
-const GATE_CENTER_Y: float = 5.6
+# Gate — large THICK ring that nearly fills the frame in the concept.
+const GATE_RADIUS: float = 6.4
+const GATE_TUBE: float = 1.25
+const GATE_CENTER_Y: float = 6.6
 const GATE_Z: float = 13.5
 const CHEVRON_COUNT: int = 9
-# Camera (concept: low, centred, gate ~45% up the frame)
-const CAM_POS: Vector3 = Vector3(0.0, 2.4, -17.5)
-const CAM_LOOK_Y: float = 5.2
-const CAM_FOV: float = 52.0
+# Camera (concept: low, centred, gate large and ~45-50% up the frame). Pulled
+# in closer so the ring + vortex dominate the shot rather than floating small.
+const CAM_POS: Vector3 = Vector3(0.0, 3.0, -11.5)
+const CAM_LOOK_Y: float = 6.2
+const CAM_FOV: float = 54.0
 # Lighting
 const PORTAL_LIGHT_ENERGY: float = 14.0
 const PORTAL_LIGHT_COLOR: Color = Color(0.45, 0.68, 1.0)
@@ -238,18 +239,19 @@ func _build_buttresses() -> void:
 	var trim := _emissive(Color(0.18, 0.4, 0.85), 1.1)
 	var bz: float = GATE_Z - 1.0
 	for sgn: float in [-1.0, 1.0]:
-		# Primary heavy buttress: leans inward over the gate shoulders.
-		var beam := _box(Vector3(2.2, 16.0, 2.6), Vector3(sgn * 7.0, 7.5, bz), mat)
-		beam.rotation.z = sgn * 0.42
+		# Primary heavy buttress: leans inward over the gate shoulders, hugging the
+		# larger ring so it reads as solid masonry framing the portal.
+		var beam := _box(Vector3(2.8, 18.0, 3.0), Vector3(sgn * 9.0, 8.5, bz), mat)
+		beam.rotation.z = sgn * 0.46
 		beam.name = "Buttress%d" % int(sgn)
 		# Glowing seam running up the inner face of the beam.
-		var seam := _box(Vector3(0.25, 14.0, 0.25), Vector3(sgn * 5.6, 7.2, bz - 1.2), trim)
-		seam.rotation.z = sgn * 0.42
+		var seam := _box(Vector3(0.28, 15.0, 0.28), Vector3(sgn * 7.4, 8.0, bz - 1.3), trim)
+		seam.rotation.z = sgn * 0.46
 		# Secondary outboard buttress, steeper, taller — adds depth layering.
-		var beam2 := _box(Vector3(1.6, 15.0, 1.8), Vector3(sgn * 9.4, 8.0, bz + 0.4), mat)
-		beam2.rotation.z = sgn * 0.22
+		var beam2 := _box(Vector3(2.0, 17.0, 2.2), Vector3(sgn * 11.6, 9.0, bz + 0.4), mat)
+		beam2.rotation.z = sgn * 0.24
 		# Base block anchoring the beams to the platform.
-		_box(Vector3(3.2, 2.0, 3.4), Vector3(sgn * 6.4, 1.0, bz), mat)
+		_box(Vector3(3.8, 2.4, 3.8), Vector3(sgn * 8.2, 1.2, bz), mat)
 
 # ---------------------------------------------------------------------------
 # Dais — railed platform + short staircase leading up to the gate.

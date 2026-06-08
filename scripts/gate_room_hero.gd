@@ -549,7 +549,7 @@ func _build_gate() -> void:
 		var gpm := PrismMesh.new()
 		gpm.size = Vector3(1.1, 0.95, 0.22)
 		glow.mesh = gpm
-		glow.material_override = _emissive(Color(0.6, 0.78, 1.0), 4.6)
+		glow.material_override = _emissive(Color(0.6, 0.78, 1.0), 2.6)
 		add_child(glow)
 		glow.position = center + Vector3(px, py, -0.6)
 		glow.rotation.z = spin
@@ -574,11 +574,11 @@ func _build_gate() -> void:
 	# Higher energy so the dense shells bloom past the glow threshold into the soft halo
 	# the target shows — but the crushed-black centre + steep rim keep it a vortex throat,
 	# not a flat lit disc.
-	sm.set_shader_parameter("energy", 1.9)
-	sm.set_shader_parameter("hole_radius", 0.24)
+	sm.set_shader_parameter("energy", 1.7)
+	sm.set_shader_parameter("hole_radius", 0.14)
 	sm.set_shader_parameter("ring_peak", 0.66)
 	sm.set_shader_parameter("ring_sharp", 0.7)
-	sm.set_shader_parameter("rim_fade", 1.04)
+	sm.set_shader_parameter("rim_fade", 1.06)
 	sm.set_shader_parameter("swirl", 9.0)
 	sm.set_shader_parameter("flow_speed", 0.6)
 	# Pull the energy palette toward BLUE so the disc reads as the target's blue-white

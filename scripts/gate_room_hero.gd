@@ -35,8 +35,8 @@ const CAM_FOV: float = 60.0
 # Lighting
 const PORTAL_LIGHT_ENERGY: float = 14.0
 const PORTAL_LIGHT_COLOR: Color = Color(0.45, 0.68, 1.0)
-const SPOT_ENERGY: float = 26.0
-const SPOT_COLOR: Color = Color(0.78, 0.84, 0.95)
+const SPOT_ENERGY: float = 60.0
+const SPOT_COLOR: Color = Color(0.74, 0.82, 0.96)
 const AMBIENT_ENERGY: float = 0.16
 # Cold rim/fill so the dark-metal architecture (walls, dome, buttresses) reads as
 # textured detail instead of crushing to a flat black void. Low energy, steep angle.
@@ -61,7 +61,7 @@ const FLOOR_ROUGHNESS: float = 0.46
 const SCREEN_COLOR: Color = Color(0.22, 0.45, 0.85)
 const SCREEN_ENERGY: float = 0.85
 # Fog
-const FOG_DENSITY: float = 0.0018
+const FOG_DENSITY: float = 0.012
 
 func _ready() -> void:
 	_build_environment()
@@ -135,8 +135,13 @@ func _build_environment() -> void:
 	env.glow_hdr_threshold = 0.85
 	env.volumetric_fog_enabled = true
 	env.volumetric_fog_density = FOG_DENSITY
-	env.volumetric_fog_albedo = Color(0.42, 0.46, 0.55)
-	env.volumetric_fog_emission = Color(0.004, 0.01, 0.03)
+	# Bright cool albedo so the spot cones light the fog into visible god-ray shafts,
+	# but ZERO emission + a low ambient-injection so the UNLIT fog stays crushed black
+	# (the shafts read as discrete bright beams against a dark hall, not a grey wash).
+	env.volumetric_fog_albedo = Color(0.6, 0.66, 0.8)
+	env.volumetric_fog_emission = Color(0.0, 0.0, 0.0)
+	env.volumetric_fog_ambient_inject = 0.0
+	env.volumetric_fog_length = 48.0
 	env.adjustment_enabled = true
 	env.adjustment_contrast = 1.42
 	env.adjustment_saturation = 0.52
@@ -402,17 +407,23 @@ func _build_lights() -> void:
 	add_child(portal_light)
 	portal_light.position = center + Vector3(0.0, 0.0, -1.0)
 
-	for i in range(5):
-		var sx: float = -8.0 + float(i) * 4.0
+	# Volumetric god-ray shafts: a symmetric fan of narrow spots mounted high near the
+	# ceiling dome, raking DOWN and INWARD toward the dais in front of the gate so each
+	# cone reads as a discrete bright shaft cutting through the fog — the target's
+	# defining "cathedral light" cue. Aimed targets converge on the gate base.
+	var shaft_x: Array[float] = [-7.0, -3.4, 3.4, 7.0]
+	for sx: float in shaft_x:
 		var spot := SpotLight3D.new()
 		spot.light_color = SPOT_COLOR
 		spot.light_energy = SPOT_ENERGY
-		spot.spot_range = 20.0
-		spot.spot_angle = 22.0
-		spot.light_volumetric_fog_energy = 3.0
+		spot.spot_range = 24.0
+		spot.spot_angle = 11.0
+		spot.spot_attenuation = 0.4
+		spot.light_volumetric_fog_energy = 9.0
+		spot.shadow_enabled = false
 		add_child(spot)
-		spot.position = Vector3(sx, CEILING_HEIGHT - 1.0, -2.0 + float(i % 2) * 4.0)
-		spot.rotation.x = -PI * 0.5
+		spot.position = Vector3(sx, CEILING_HEIGHT - 1.0, GATE_Z - 3.0)
+		spot.look_at(Vector3(sx * 0.45, 1.0, GATE_Z - 5.0), Vector3.UP)
 
 	# Cool RIM light raking down the hall from behind/above the gate — picks out the
 	# top edges of the ribbed walls, the ceiling-dome rings and the buttress beams so

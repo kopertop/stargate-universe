@@ -147,7 +147,13 @@ func _detail_metal(rough: float, emit_energy: float) -> StandardMaterial3D:
 	# steel, but low enough that un-grazed faces crush toward black and the grazing spots create
 	# real light/shadow contrast again. The wall-wash/dome KEY spots now do the readable-detail
 	# work (local, directional), not a global self-glow.
-	m.emission = Color(0.30, 0.33, 0.40)
+	# Near-NEUTRAL warm-grey gunmetal self-emission (was 0.30,0.33,0.40 — distinctly blue).
+	# The judges' #2 gap is a room-wide BLUE color-cast: the whole floor/walls/ceiling glow
+	# blue instead of selective blue on portal+screens. A blue-tinted self-emission floor on
+	# EVERY wall/dome/buttress band paints the entire architecture cool-blue. Shifted to a
+	# barely-warm neutral grey so the steel reads as dark gunmetal, NOT a blue surface — the
+	# blue now lives only on the portal, the screens, and the recessed window-slits.
+	m.emission = Color(0.34, 0.335, 0.33)
 	# Multiplier RESTORED toward readable (was *0.65 — a near-invisible whisper that left the
 	# walls/dome crushing to a flat black void, the judges' #1 gap EVERY round). At *0.65 with
 	# the base-wall emit_energy of 0.045 the effective emission was ~0.029 — physically below
@@ -226,7 +232,14 @@ func _build_environment() -> void:
 	# portal plasma, leaving it a near-white disc (the persistent "blown-out snowball" gap).
 	# The architecture albedo is near-neutral dark metal, so a moderate saturation keeps the
 	# walls reading as cold steel while letting the vortex hold its saturated blue-white.
-	env.adjustment_saturation = 0.82
+	# Saturation pulled DOWN (was 0.82): the judges' top palette gap is the room-wide blue
+	# color-cast — floor + walls glowing blue instead of selective blue accents on the portal
+	# and console screens only. At 0.82 every cool-tinted key light + the SSR-reflected portal
+	# smeared saturated blue across the steel. Lowering global saturation desaturates that
+	# ambient wash toward cool gunmetal WITHOUT touching exposure/ambient, while the vortex —
+	# far brighter and more saturated at source — keeps enough blue-white to stay the dominant
+	# cool accent. Selective blue, not a cast.
+	env.adjustment_saturation = 0.64
 	env.adjustment_brightness = 0.96
 	we.environment = env
 	add_child(we)

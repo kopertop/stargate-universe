@@ -40,15 +40,15 @@ const PORTAL_LIGHT_ENERGY: float = 3.0
 const PORTAL_LIGHT_COLOR: Color = Color(0.45, 0.68, 1.0)
 const SPOT_ENERGY: float = 60.0
 const SPOT_COLOR: Color = Color(0.74, 0.82, 0.96)
-const AMBIENT_ENERGY: float = 0.10
+const AMBIENT_ENERGY: float = 0.26
 # Cold rim/fill so the dark-metal architecture (walls, dome, buttresses) reads as
 # textured detail instead of crushing to a flat black void. Low energy, steep angle.
 # Kept NEAR-NEUTRAL (only faintly cool) so the steel reads as dark gunmetal lit by
 # cold light, NOT as a saturated-blue glowing surface — the target's walls are black
 # metal with a cold RIM, the blue lives only in the portal + screens.
-const RIM_ENERGY: float = 1.4
+const RIM_ENERGY: float = 2.0
 const RIM_COLOR: Color = Color(0.66, 0.69, 0.76)
-const FILL_ENERGY: float = 0.18
+const FILL_ENERGY: float = 0.32
 const FILL_COLOR: Color = Color(0.56, 0.58, 0.62)
 # Dedicated cold key on the flanking buttress masses so they read as lit diagonal
 # masonry framing the gate (the dominant foreground architecture in the concept),
@@ -128,7 +128,7 @@ func _build_environment() -> void:
 	env.ambient_light_color = Color(0.3, 0.31, 0.34)
 	env.ambient_light_energy = AMBIENT_ENERGY
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.tonemap_exposure = 0.52
+	env.tonemap_exposure = 0.78
 	env.tonemap_white = 8.0
 	env.ssr_enabled = true
 	env.ssr_max_steps = 64
@@ -160,9 +160,9 @@ func _build_environment() -> void:
 	env.volumetric_fog_ambient_inject = 0.0
 	env.volumetric_fog_length = 48.0
 	env.adjustment_enabled = true
-	env.adjustment_contrast = 1.58
-	env.adjustment_saturation = 0.5
-	env.adjustment_brightness = 0.8
+	env.adjustment_contrast = 1.28
+	env.adjustment_saturation = 0.55
+	env.adjustment_brightness = 0.96
 	we.environment = env
 	add_child(we)
 

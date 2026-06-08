@@ -37,21 +37,21 @@ const PORTAL_LIGHT_ENERGY: float = 3.0
 const PORTAL_LIGHT_COLOR: Color = Color(0.45, 0.68, 1.0)
 const SPOT_ENERGY: float = 60.0
 const SPOT_COLOR: Color = Color(0.74, 0.82, 0.96)
-const AMBIENT_ENERGY: float = 0.34
+const AMBIENT_ENERGY: float = 0.12
 # Cold rim/fill so the dark-metal architecture (walls, dome, buttresses) reads as
 # textured detail instead of crushing to a flat black void. Low energy, steep angle.
 # Kept NEAR-NEUTRAL (only faintly cool) so the steel reads as dark gunmetal lit by
 # cold light, NOT as a saturated-blue glowing surface — the target's walls are black
 # metal with a cold RIM, the blue lives only in the portal + screens.
-const RIM_ENERGY: float = 2.6
-const RIM_COLOR: Color = Color(0.62, 0.68, 0.82)
-const FILL_ENERGY: float = 0.7
-const FILL_COLOR: Color = Color(0.5, 0.55, 0.66)
+const RIM_ENERGY: float = 1.3
+const RIM_COLOR: Color = Color(0.66, 0.69, 0.76)
+const FILL_ENERGY: float = 0.28
+const FILL_COLOR: Color = Color(0.56, 0.58, 0.62)
 # Dedicated cold key on the flanking buttress masses so they read as lit diagonal
 # masonry framing the gate (the dominant foreground architecture in the concept),
 # not black silhouettes. Aimed inward+down from outboard of each beam.
-const BUTTRESS_KEY_ENERGY: float = 6.5
-const BUTTRESS_KEY_COLOR: Color = Color(0.66, 0.72, 0.86)
+const BUTTRESS_KEY_ENERGY: float = 3.4
+const BUTTRESS_KEY_COLOR: Color = Color(0.7, 0.73, 0.8)
 # Dedicated cold key raking the gate-ring FACE from the camera side so the thick
 # segmented metal + chevron brackets read as a heavy lit industrial ring (the
 # target's hero element) instead of a black silhouette hidden behind the vortex.
@@ -59,7 +59,7 @@ const RING_KEY_ENERGY: float = 11.0
 const RING_KEY_COLOR: Color = Color(0.7, 0.76, 0.9)
 # Materials — near-neutral dark gunmetal (barely any blue in the albedo itself so the
 # cold lights tint it rather than the base colour glowing blue).
-const METAL_COLOR: Color = Color(0.13, 0.135, 0.145)
+const METAL_COLOR: Color = Color(0.085, 0.088, 0.095)
 const METAL_ROUGHNESS: float = 0.42
 const METAL_METALLIC: float = 0.85
 const FLOOR_ROUGHNESS: float = 0.46
@@ -119,7 +119,7 @@ func _build_environment() -> void:
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.004, 0.005, 0.008)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.34, 0.35, 0.4)
+	env.ambient_light_color = Color(0.3, 0.31, 0.34)
 	env.ambient_light_energy = AMBIENT_ENERGY
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_exposure = 0.9
@@ -154,9 +154,9 @@ func _build_environment() -> void:
 	env.volumetric_fog_ambient_inject = 0.0
 	env.volumetric_fog_length = 48.0
 	env.adjustment_enabled = true
-	env.adjustment_contrast = 1.32
-	env.adjustment_saturation = 0.78
-	env.adjustment_brightness = 0.94
+	env.adjustment_contrast = 1.46
+	env.adjustment_saturation = 0.66
+	env.adjustment_brightness = 0.84
 	we.environment = env
 	add_child(we)
 
@@ -179,7 +179,7 @@ func _build_floor() -> void:
 	# Grid plate seams — thin recessed lines for the converging-plate look. Made a touch
 	# brighter (faint cold sheen) so the perspective lines reading toward the gate are the
 	# dominant floor cue, replacing the single hot specular streak.
-	var seam_mat := _emissive(Color(0.14, 0.2, 0.34), 0.12)
+	var seam_mat := _emissive(Color(0.11, 0.15, 0.24), 0.06)
 	seam_mat.metallic = 0.4
 	seam_mat.roughness = 0.5
 	var span_z: int = int(HALL_LENGTH / 3.0)

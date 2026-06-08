@@ -91,7 +91,10 @@ void fragment() {
 	// the cells boil/churn rather than rigidly rotate. Three octaves of progressively
 	// finer cells give the dense filamentary turbulence that FILLS the disc as a sheet.
 	float spin = t * spin_speed * 0.25;
-	float tw = swirl * (1.0 - r) * 0.10 + spin;            // swirl shear: inner turns faster
+	// STRONG radial swirl shear so the cells streak into visible spiral filaments curving
+	// around the eye (the target's churning vortex), not a static isotropic sparkle-ball.
+	// Inner radii twist far more than the rim, sweeping the texture into flowing arcs.
+	float tw = swirl * (1.0 - r) * 0.42 + spin;            // swirl shear: inner turns faster
 	float cs = cos(tw);
 	float sn = sin(tw);
 	mat2 swrot = mat2(vec2(cs, sn), vec2(-sn, cs));
@@ -149,7 +152,10 @@ void fragment() {
 	// Energy field: a HIGH base fill so the entire disc glows blue, with the churn filaments
 	// modulating brightness on top. The small eye stays dark; everything outside it is lit
 	// plasma reaching the rim — the target's full-aperture churning horizon.
-	float raw = (0.50 + fil * 0.65) * band * (0.72 + coreglow * 0.55);
+	// LOW flat base + STRONG filament term so the dark channels between strands survive
+	// instead of a milky uniform snowball — the target plasma is bright filaments over
+	// dark gaps, not an even glowing disc.
+	float raw = (0.22 + fil * 0.95) * band * (0.72 + coreglow * 0.55);
 	float energy_field = pow(clamp(raw, 0.0, 1.0), 1.05);
 	float rings = fil;                                 // reused below for hot-arm flashes
 

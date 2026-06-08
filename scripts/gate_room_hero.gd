@@ -574,19 +574,20 @@ func _build_gate() -> void:
 	# Higher energy so the dense shells bloom past the glow threshold into the soft halo
 	# the target shows — but the crushed-black centre + steep rim keep it a vortex throat,
 	# not a flat lit disc.
-	sm.set_shader_parameter("energy", 1.7)
-	sm.set_shader_parameter("hole_radius", 0.14)
+	sm.set_shader_parameter("energy", 1.5)
+	sm.set_shader_parameter("hole_radius", 0.26)
 	sm.set_shader_parameter("ring_peak", 0.66)
 	sm.set_shader_parameter("ring_sharp", 0.7)
-	sm.set_shader_parameter("rim_fade", 1.06)
+	sm.set_shader_parameter("rim_fade", 0.98)
 	sm.set_shader_parameter("swirl", 9.0)
 	sm.set_shader_parameter("flow_speed", 0.6)
 	# Pull the energy palette toward BLUE so the disc reads as the target's blue-white
 	# churning event horizon, not a blown-out white spiral. Highlights stay cool, the
 	# body stays saturated blue, and the dark hole stays a deep near-black eye.
-	sm.set_shader_parameter("core_color", Color(0.55, 0.74, 1.0))
-	sm.set_shader_parameter("body_color", Color(0.12, 0.40, 0.92))
-	sm.set_shader_parameter("hole_color", Color(0.0, 0.008, 0.03))
+	sm.set_shader_parameter("core_color", Color(0.62, 0.80, 1.0))
+	sm.set_shader_parameter("body_color", Color(0.10, 0.38, 0.95))
+	sm.set_shader_parameter("rim_color", Color(0.02, 0.08, 0.28))
+	sm.set_shader_parameter("hole_color", Color(0.0, 0.006, 0.025))
 	# Texture-sampled churn (Unity RunesAndPortals noise, fully licensed). Polar-sampled
 	# in the shader for dense filamentary plasma that fills the disc instead of an fBm comma.
 	var noise_tex: Texture2D = load("res://assets/hero/noise_1024.png")

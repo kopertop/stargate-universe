@@ -129,49 +129,48 @@ void fragment() {
 	// Sharpen into filaments — high contrast churn with crushed gaps between strands.
 	float fil = pow(n, 1.7);
 
-	// Radial mask: a SMALL crushed-black EYE at the centre, energy FILLING the entire
-	// aperture out to a soft rim. The target plasma is a near-solid luminous disc that is
-	// HOTTEST just around the small dark eye and fades gently to the rim — NOT a donut
-	// with a fat mid-band ring. So drop the outward midboost donut entirely: brightness
-	// is highest near the eye (a CENTRE-WEIGHTED falloff) and the filaments ride on top
-	// of a continuous fill base so the gaps glow blue instead of reading as black spokes.
-	float inner = smoothstep(hole_radius * 0.5, hole_radius + 0.06, r);  // tight ramp out of the eye
-	float outer = 1.0 - smoothstep(rim_fade - 0.30, rim_fade, r);        // soft fall toward rim
+	// Radial mask. The target event horizon is a CHURNING BLUE plasma disc with a
+	// clearly DARK unstable eye and a defined circular outer edge that blooms into a
+	// soft halo — NOT a diffuse white sparkle-ball that fills the frame edge-to-edge.
+	// Two changes vs. prior iterations that made it read as a "snowball":
+	//   1. A FIRM circular rim falloff (steep outer smoothstep) so the disc has a real
+	//      edge — the bloom halo comes from the edge being bright, not from a fuzzy fade.
+	//   2. The eye is wider + the transition out of it is gentle, so a big near-black
+	//      centre dominates the middle of the ring (the reference's defining feature).
+	float inner = smoothstep(hole_radius * 0.7, hole_radius + 0.12, r);  // gentle ramp out of a WIDE eye
+	float outer = 1.0 - smoothstep(rim_fade - 0.12, rim_fade, r);        // FIRM circular outer edge
 	float band  = clamp(inner * outer, 0.0, 1.0);
 
-	// Centre-weighted brightness: hottest just outside the eye, decaying to the rim. This
-	// is the target's "bright storm packed around a small dark eye, dimming outward" — the
-	// opposite of the prior mid-radius donut that read as a glowing ring with a black hole.
-	float coreglow = exp(-pow((r - (hole_radius + 0.04)) / 0.42, 2.0));
-	// Energy field: a STRONG continuous fill (so the whole disc is a luminous plasma sheet,
-	// no black gaps reading as radial spokes) with the texture filaments adding churn on
-	// top. Centre-weighting concentrates the heat around the eye.
-	float raw = (0.42 + fil * 0.85) * band * (0.55 + coreglow * 1.0);
-	float energy_field = pow(clamp(raw, 0.0, 1.0), 1.1);
+	// Brightness is concentrated in an annulus just OUTSIDE the dark eye and decays
+	// outward — the reference's hottest churn hugs the eye, dimming toward the rim.
+	float coreglow = exp(-pow((r - (hole_radius + 0.10)) / 0.34, 2.0));
+	// Energy field: a moderate fill so the disc is a luminous plasma sheet with churn on
+	// top, but NOT so bright everywhere that it whites out into a sparkle-ball. Lower base
+	// fill + stronger centre-weighting = a dark-eyed disc with a bright inner storm.
+	float raw = (0.22 + fil * 0.80) * band * (0.40 + coreglow * 1.15);
+	float energy_field = pow(clamp(raw, 0.0, 1.0), 1.25);
 	float rings = fil;                                 // reused below for hot-arm flashes
 
-	// Colour ramp: deep rim → saturated blue body → hot white-blue highlights. The
-	// hot term keys off both the field and the ring shells so the spiral arms flash
-	// near-white, blooming into the soft halo the target shows around the portal.
-	vec3 col = mix(rim_color, body_color, clamp(energy_field * 2.0, 0.0, 1.0));
-	float hot = clamp((energy_field - 0.42) * 2.4 + rings * band * 0.7, 0.0, 1.0);
+	// Colour ramp: deep blue rim → saturated blue body → cool white-blue highlights. The
+	// hot (white) term is held BACK so the disc stays predominantly BLUE (the reference is
+	// blue plasma, not a white snowball) — only the brightest churn filaments flash near
+	// white. Raising the hot threshold + lowering its gain keeps saturation high.
+	vec3 col = mix(rim_color, body_color, clamp(energy_field * 2.2, 0.0, 1.0));
+	float hot = clamp((energy_field - 0.62) * 2.0 + rings * band * 0.35, 0.0, 1.0);
+	hot = hot * hot;                                   // bias hot toward the very brightest only
 	col = mix(col, core_color, hot);
 
 	// Dark unstable hole — a LARGE near-black eye in the dead centre (the target's
-	// defining "black hole inside the storm"). Wide + deep so the ring + chevrons read
-	// as a lit silhouette around it, not erased by a solid bright disc. The eye boundary
-	// is warped by the noise so the dark centre churns rather than being a perfect disc,
-	// and it ramps across a wide span so there's a soft transition from black eye to the
-	// surrounding storm — exactly the reference's unstable hole.
-	float hole_edge = hole_radius + (n - 0.5) * 0.06;
-	float hole = 1.0 - smoothstep(hole_edge * 0.55, hole_edge * 1.0, r);
+	// defining "black hole inside the storm"). Widened so the dark centre clearly reads
+	// inside the ring. The edge is noise-warped so it churns rather than a perfect disc.
+	float hole_edge = hole_radius + (n - 0.5) * 0.07;
+	float hole = 1.0 - smoothstep(hole_edge * 0.45, hole_edge * 1.05, r);
 	col = mix(col, hole_color, hole);
 
-	// Luminance: low floor (deep rim stays dim) with a strong multiplier on the energy
-	// so the bright churn blooms past the glow threshold, plus an extra punch on the
-	// hot spiral arms. The gain is tempered so the churning RING blooms while the dark
-	// eye stays crushed — no solid white core. The hole mask hard-darkens the centre.
-	float lum = energy * (0.18 + energy_field * energy_field * 1.5 + hot * 1.1);
+	// Luminance: low floor with a strong multiplier on the energy so the bright inner
+	// churn blooms past the glow threshold (the soft halo), while the firm rim falloff
+	// keeps the bloom a defined disc and the wide eye stays crushed black.
+	float lum = energy * (0.12 + energy_field * energy_field * 1.7 + hot * 0.9);
 	lum *= (1.0 - hole);
 	ALBEDO = col * lum;
 	ALPHA = 1.0;

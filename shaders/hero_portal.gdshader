@@ -147,20 +147,24 @@ void fragment() {
 	// plasma reaching almost to the centre.
 	float eye_r = hole_radius * (0.85 + (n - 0.5) * 0.25);
 	float inner = smoothstep(eye_r * 0.4, eye_r, r);
-	// Soft outer fade — the disc blooms gently toward the rim with NO hard ring edge, so
-	// it reads as luminous plasma filling the aperture with a bloom halo (the target),
-	// not a bright annulus with a crisp circular cut.
-	float outer = 1.0 - smoothstep(rim_fade - 0.32, rim_fade + 0.06, r);
+	// Outer fade — plasma stays at FULL brightness across the disc then drops at a defined
+	// circular edge near the rim, so the churning blue sheet fills the aperture right up to
+	// the ring's inner lip (the target) and the bloom comes from that bright edge — NOT a
+	// soft early fade that hollows the disc into a dim halo well inside the ring.
+	float outer = 1.0 - smoothstep(rim_fade - 0.12, rim_fade + 0.04, r);
 	float band  = clamp(inner * outer, 0.0, 1.0);
 
 	// Brightness FILLS the whole aperture evenly — a near-flat radial weight so the plasma
 	// is a continuous churning sheet from just outside the eye to the rim, NOT a hot annulus.
-	// A faint lift toward mid-radius gives body without making a bright ring.
-	float fill_weight = 0.82 + 0.30 * exp(-pow((r - 0.5) / 0.55, 2.0));
-	// Energy field: a healthy base fill so the entire disc glows blue, with the flowing
-	// filaments modulating brightness on top. The small eye stays dark; everything outside
-	// it is lit plasma reaching the rim — the target's full-aperture churning horizon.
-	float raw = (0.46 + fil * 0.72) * band * fill_weight;
+	// Lifted to a true flat fill (no mid-radius hump) and biased UP toward the rim so the
+	// blue plasma reaches all the way to the ring's inner edge — the prior weight let the
+	// disc fall off well inside the aperture, leaving a hollow grey gap between the bright
+	// core and the ring (the render's persistent "small ball in a big grey hole" read).
+	float fill_weight = 1.0 + 0.18 * smoothstep(0.2, 0.95, r);
+	// Energy field: a strong base fill so the ENTIRE disc glows blue out to the rim, with the
+	// flowing filaments modulating brightness on top. The small eye stays dark; everything
+	// outside it is lit plasma reaching the rim — the target's full-aperture churning horizon.
+	float raw = (0.62 + fil * 0.6) * band * fill_weight;
 	float energy_field = pow(clamp(raw, 0.0, 1.0), 1.0);
 	float rings = fil;                                 // reused below for hot-arm flashes
 

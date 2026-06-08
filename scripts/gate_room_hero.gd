@@ -621,7 +621,7 @@ func _build_gate() -> void:
 	# plasma overflowing to the rim. At 1.92 the disc covered the entire aperture and the
 	# bloom swallowed the ring silhouette entirely (judges' #1 gap, hit 3x). Pulled in to
 	# ~1.5x so the heavy chevron-studded ring reads as a complete dark circle framing it.
-	var d: float = (GATE_RADIUS - GATE_TUBE * 1.25) * 1.62
+	var d: float = (GATE_RADIUS - GATE_TUBE * 1.25) * 1.92
 	qm.size = Vector2(d, d)
 	puddle.mesh = qm
 	var sm := ShaderMaterial.new()
@@ -638,11 +638,11 @@ func _build_gate() -> void:
 	# Higher energy so the dense shells bloom past the glow threshold into the soft halo
 	# the target shows — but the crushed-black centre + steep rim keep it a vortex throat,
 	# not a flat lit disc.
-	sm.set_shader_parameter("energy", 1.5)
-	sm.set_shader_parameter("hole_radius", 0.16)
+	sm.set_shader_parameter("energy", 1.7)
+	sm.set_shader_parameter("hole_radius", 0.15)
 	sm.set_shader_parameter("ring_peak", 0.7)
 	sm.set_shader_parameter("ring_sharp", 0.7)
-	sm.set_shader_parameter("rim_fade", 0.98)
+	sm.set_shader_parameter("rim_fade", 1.04)
 	sm.set_shader_parameter("swirl", 16.0)
 	sm.set_shader_parameter("flow_speed", 0.6)
 	# Pull the energy palette toward BLUE so the disc reads as the target's blue-white

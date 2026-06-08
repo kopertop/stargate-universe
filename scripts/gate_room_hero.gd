@@ -267,36 +267,74 @@ func _build_dais() -> void:
 # ---------------------------------------------------------------------------
 func _build_gate() -> void:
 	var center := Vector3(0.0, GATE_CENTER_Y, GATE_Z)
-	var ring := MeshInstance3D.new()
-	var tm := TorusMesh.new()
-	tm.inner_radius = GATE_RADIUS - GATE_TUBE
-	tm.outer_radius = GATE_RADIUS + GATE_TUBE
-	tm.rings = 48
-	ring.mesh = tm
-	ring.material_override = _metal(0.3)
-	add_child(ring)
-	ring.position = center
-	ring.rotation.x = PI * 0.5
-	ring.name = "GateRing"
+	# THICK segmented metal ring built from many short trapezoid blocks around the
+	# circle so it reads as a heavy industrial gate, not a thin glowing torus.
+	var ring_mat := _metal(0.34)
+	ring_mat.albedo_color = Color(0.07, 0.08, 0.10)
+	var seg_mat := _metal(0.28)
+	seg_mat.albedo_color = Color(0.045, 0.05, 0.065)
+	var segs: int = 36
+	var ring_mid: float = GATE_RADIUS
+	for i in segs:
+		var ang: float = TAU * float(i) / float(segs)
+		var px: float = cos(ang) * ring_mid
+		var py: float = sin(ang) * ring_mid
+		# Block spanning the tube depth; alternate slightly darker for plate banding.
+		var blk := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		var seg_w: float = (TAU * ring_mid / float(segs)) * 1.08
+		bm.size = Vector3(seg_w, GATE_TUBE * 2.0, GATE_TUBE * 1.6)
+		blk.mesh = bm
+		blk.material_override = seg_mat if i % 2 == 0 else ring_mat
+		add_child(blk)
+		blk.position = center + Vector3(px, py, 0.0)
+		blk.rotation.z = ang + PI * 0.5
+	# Outer + inner trim rings frame the segments.
+	for rr: float in [GATE_RADIUS - GATE_TUBE, GATE_RADIUS + GATE_TUBE]:
+		var trim := MeshInstance3D.new()
+		var ttm := TorusMesh.new()
+		ttm.inner_radius = rr - 0.12
+		ttm.outer_radius = rr + 0.12
+		ttm.rings = 48
+		trim.mesh = ttm
+		trim.material_override = _metal(0.25)
+		add_child(trim)
+		trim.position = center
+		trim.rotation.x = PI * 0.5
+	var ring_holder := Node3D.new()
+	ring_holder.name = "GateRing"
+	add_child(ring_holder)
+	ring_holder.position = center
 
-	var chev_mat := _emissive(Color(0.7, 0.85, 1.0), 3.0)
+	# Inward-pointing TRIANGULAR chevrons: dark metal wedges with a faint inner glow
+	# strip, recessed into the inner edge — NOT bright light studs.
 	var n: int = CHEVRON_COUNT
 	for i in n:
 		var ang: float = TAU * float(i) / float(n) + PI * 0.5
-		var px: float = cos(ang) * (GATE_RADIUS - GATE_TUBE - 0.3)
-		var py: float = sin(ang) * (GATE_RADIUS - GATE_TUBE - 0.3)
+		var px: float = cos(ang) * (GATE_RADIUS - GATE_TUBE - 0.15)
+		var py: float = sin(ang) * (GATE_RADIUS - GATE_TUBE - 0.15)
 		var chev := MeshInstance3D.new()
 		var pm := PrismMesh.new()
-		pm.size = Vector3(0.9, 0.7, 0.25)
+		pm.size = Vector3(1.1, 0.85, 0.4)
 		chev.mesh = pm
-		chev.material_override = chev_mat
+		chev.material_override = _metal(0.3)
 		add_child(chev)
-		chev.position = center + Vector3(px, py, 0.0)
+		chev.position = center + Vector3(px, py, 0.05)
 		chev.rotation.z = ang - PI * 0.5
+		# Thin faint glow strip up the chevron centre (subtle accent only).
+		var glow := MeshInstance3D.new()
+		var gpm := PrismMesh.new()
+		gpm.size = Vector3(0.32, 0.55, 0.12)
+		glow.mesh = gpm
+		glow.material_override = _emissive(Color(0.45, 0.65, 1.0), 1.4)
+		add_child(glow)
+		glow.position = center + Vector3(px, py, -0.12)
+		glow.rotation.z = ang - PI * 0.5
 
+	# Vortex puddle — sized to nearly FILL the inner aperture of the ring.
 	var puddle := MeshInstance3D.new()
 	var qm := QuadMesh.new()
-	var d: float = (GATE_RADIUS - GATE_TUBE) * 2.0
+	var d: float = (GATE_RADIUS - GATE_TUBE) * 2.05
 	qm.size = Vector2(d, d)
 	puddle.mesh = qm
 	var sm := ShaderMaterial.new()

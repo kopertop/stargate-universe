@@ -484,12 +484,12 @@ func _build_gate() -> void:
 	# that swallowed the segmented ring + chevron brackets entirely (judges' #1 gap). A
 	# calmer churn lets the thick lit metal ring read as a hard silhouette framing the
 	# vortex, like the target — luminous portal that does NOT erase its own ring.
-	sm.set_shader_parameter("energy", 0.85)
-	sm.set_shader_parameter("hole_radius", 0.42)
-	sm.set_shader_parameter("ring_peak", 0.72)
-	sm.set_shader_parameter("ring_sharp", 0.55)
-	sm.set_shader_parameter("rim_fade", 1.12)
-	sm.set_shader_parameter("swirl", 10.0)
+	sm.set_shader_parameter("energy", 0.7)
+	sm.set_shader_parameter("hole_radius", 0.5)
+	sm.set_shader_parameter("ring_peak", 0.8)
+	sm.set_shader_parameter("ring_sharp", 0.7)
+	sm.set_shader_parameter("rim_fade", 1.1)
+	sm.set_shader_parameter("swirl", 11.0)
 	sm.set_shader_parameter("flow_speed", 0.6)
 	# Pull the energy palette toward BLUE so the disc reads as the target's blue-white
 	# churning event horizon, not a blown-out white spiral. Highlights stay cool, the

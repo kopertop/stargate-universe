@@ -93,17 +93,19 @@ void fragment() {
 	// Concentric churning rings — bright blue-white shells spiralling OUTWARD from the
 	// hole. Two interfering frequencies + the warp noise give dense overlapping shells
 	// that read as turbulent energy arms, not a single static circle. Higher frequency
-	// near the rim so the spiral tightens toward the dark eye.
-	float ring_phase = (r * 17.0 - t * 2.2) + n * 6.5 + ang * 0.8;
+	// near the rim so the spiral tightens toward the dark eye. DENSER (higher base freq)
+	// so the disc reads as many fine concentric shells of churning energy, like the
+	// target's storm — not one smooth bright donut.
+	float ring_phase = (r * 26.0 - t * 2.2) + n * 7.5 + ang * 0.8;
 	float rings = sin(ring_phase) * 0.6 + sin(ring_phase * 1.9 + n * 3.0) * 0.4;
-	rings = pow(clamp(rings * 0.5 + 0.5, 0.0, 1.0), 1.3);
+	rings = pow(clamp(rings * 0.5 + 0.5, 0.0, 1.0), 1.6);
 
-	// Energy field: the band fills MOST of the aperture (broad ring_sharp), and the
-	// noise+rings drive a high, churning value across it so the disc reads as a large
-	// bright energy mass — not a thin outline. Bias the base up so the whole disc
-	// inside the rim is lit, then let the turbulence carve bright/dark spiral detail.
-	float raw = (0.32 + n * 0.55 + rings * 0.7) * band;
-	float energy_field = pow(clamp(raw, 0.0, 1.0), 1.05);
+	// Energy field: the turbulence/rings DOMINATE the value (low constant base) so the
+	// disc reads as carved spiral shells with dark gaps between them — a churning storm,
+	// NOT a flat lit donut. The base is kept low so the gaps between shells crush toward
+	// the body colour, giving the high-contrast churn the target shows.
+	float raw = (0.10 + n * 0.42 + rings * 0.95) * band;
+	float energy_field = pow(clamp(raw, 0.0, 1.0), 1.25);
 
 	// Colour ramp: deep rim → saturated blue body → hot white-blue highlights. The
 	// hot term keys off both the field and the ring shells so the spiral arms flash

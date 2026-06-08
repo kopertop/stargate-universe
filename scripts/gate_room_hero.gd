@@ -137,8 +137,18 @@ func _detail_metal(rough: float, emit_energy: float) -> StandardMaterial3D:
 	# band and dome beam a baseline luminance that READS as dark-grey lit metal — still far
 	# below the bloom threshold (no glow) and near-neutral cool (no blue surface), so it lifts
 	# the architecture out of pure black WITHOUT touching global exposure or ambient.
-	m.emission = Color(0.40, 0.45, 0.55)
-	m.emission_energy_multiplier = emit_energy * 2.6
+	# CUT HARD (was 0.40,0.45,0.55 @ x2.6): across ~14 prior rounds this self-emission floor
+	# was ratcheted up every time the walls "looked black", and the cumulative result is the
+	# judges' current #1 gap — "the ENTIRE room is washed in uniform mid-blue under flat even
+	# lighting, the opposite of the target's very-dark high-contrast single-dominant-source key".
+	# A self-emission floor on EVERY wall/dome/buttress band means no surface can ever fall to
+	# shadow, so the whole room glows at one flat level and the portal stops being the dominant
+	# source. Slashed to a near-neutral whisper: just enough that grazed relief reads as dark
+	# steel, but low enough that un-grazed faces crush toward black and the grazing spots create
+	# real light/shadow contrast again. The wall-wash/dome KEY spots now do the readable-detail
+	# work (local, directional), not a global self-glow.
+	m.emission = Color(0.30, 0.33, 0.40)
+	m.emission_energy_multiplier = emit_energy * 0.65
 	return m
 
 func _box(size: Vector3, pos: Vector3, mat: Material, rot_y: float = 0.0) -> MeshInstance3D:

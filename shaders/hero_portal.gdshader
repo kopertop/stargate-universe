@@ -137,18 +137,20 @@ void fragment() {
 	//      edge — the bloom halo comes from the edge being bright, not from a fuzzy fade.
 	//   2. The eye is wider + the transition out of it is gentle, so a big near-black
 	//      centre dominates the middle of the ring (the reference's defining feature).
-	float inner = smoothstep(hole_radius * 0.7, hole_radius + 0.12, r);  // gentle ramp out of a WIDE eye
-	float outer = 1.0 - smoothstep(rim_fade - 0.12, rim_fade, r);        // FIRM circular outer edge
+	float inner = smoothstep(hole_radius * 0.55, hole_radius + 0.10, r);  // tight ramp out of a SMALL eye
+	float outer = 1.0 - smoothstep(rim_fade - 0.10, rim_fade, r);        // FIRM circular outer edge
 	float band  = clamp(inner * outer, 0.0, 1.0);
 
-	// Brightness is concentrated in an annulus just OUTSIDE the dark eye and decays
-	// outward — the reference's hottest churn hugs the eye, dimming toward the rim.
-	float coreglow = exp(-pow((r - (hole_radius + 0.10)) / 0.34, 2.0));
-	// Energy field: a moderate fill so the disc is a luminous plasma sheet with churn on
-	// top, but NOT so bright everywhere that it whites out into a sparkle-ball. Lower base
-	// fill + stronger centre-weighting = a dark-eyed disc with a bright inner storm.
-	float raw = (0.22 + fil * 0.80) * band * (0.40 + coreglow * 1.15);
-	float energy_field = pow(clamp(raw, 0.0, 1.0), 1.25);
+	// Brightness FILLS the whole aperture out to the rim — the target's plasma is a churning
+	// sheet that reaches the inner edge of the ring, NOT a bright annulus hugging a big eye.
+	// A near-flat radial weight (only a gentle lift near the eye) keeps energy high all the
+	// way to the rim so the disc reads as a full luminous event horizon.
+	float coreglow = exp(-pow((r - (hole_radius + 0.10)) / 0.55, 2.0));
+	// Energy field: a HIGH base fill so the entire disc glows blue, with the churn filaments
+	// modulating brightness on top. The small eye stays dark; everything outside it is lit
+	// plasma reaching the rim — the target's full-aperture churning horizon.
+	float raw = (0.50 + fil * 0.65) * band * (0.72 + coreglow * 0.55);
+	float energy_field = pow(clamp(raw, 0.0, 1.0), 1.05);
 	float rings = fil;                                 // reused below for hot-arm flashes
 
 	// Colour ramp: deep blue rim → saturated blue body → cool white-blue highlights. The

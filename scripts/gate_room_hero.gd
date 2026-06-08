@@ -55,8 +55,8 @@ const BUTTRESS_KEY_COLOR: Color = Color(0.7, 0.73, 0.8)
 # Dedicated cold key raking the gate-ring FACE from the camera side so the thick
 # segmented metal + chevron brackets read as a heavy lit industrial ring (the
 # target's hero element) instead of a black silhouette hidden behind the vortex.
-const RING_KEY_ENERGY: float = 16.0
-const RING_KEY_COLOR: Color = Color(0.7, 0.76, 0.9)
+const RING_KEY_ENERGY: float = 26.0
+const RING_KEY_COLOR: Color = Color(0.72, 0.78, 0.92)
 # Materials — near-neutral dark gunmetal (barely any blue in the albedo itself so the
 # cold lights tint it rather than the base colour glowing blue).
 const METAL_COLOR: Color = Color(0.13, 0.135, 0.15)
@@ -401,9 +401,9 @@ func _build_gate() -> void:
 		# bloom past the glow threshold and survive against the vortex.
 		var glow := MeshInstance3D.new()
 		var gpm := PrismMesh.new()
-		gpm.size = Vector3(1.25, 1.05, 0.2)
+		gpm.size = Vector3(1.4, 1.2, 0.24)
 		glow.mesh = gpm
-		glow.material_override = _emissive(Color(0.58, 0.76, 1.0), 2.4)
+		glow.material_override = _emissive(Color(0.64, 0.81, 1.0), 4.4)
 		add_child(glow)
 		glow.position = center + Vector3(px, py, -0.16)
 		glow.rotation.z = spin
@@ -424,10 +424,10 @@ func _build_gate() -> void:
 	# that swallowed the segmented ring + chevron brackets entirely (judges' #1 gap). A
 	# calmer churn lets the thick lit metal ring read as a hard silhouette framing the
 	# vortex, like the target — luminous portal that does NOT erase its own ring.
-	sm.set_shader_parameter("energy", 1.5)
-	sm.set_shader_parameter("hole_radius", 0.34)
-	sm.set_shader_parameter("ring_peak", 0.74)
-	sm.set_shader_parameter("ring_sharp", 1.05)
+	sm.set_shader_parameter("energy", 1.7)
+	sm.set_shader_parameter("hole_radius", 0.46)
+	sm.set_shader_parameter("ring_peak", 0.82)
+	sm.set_shader_parameter("ring_sharp", 1.0)
 	puddle.material_override = sm
 	add_child(puddle)
 	# Seat the vortex BEHIND the ring plane (+Z, away from camera) so the thick

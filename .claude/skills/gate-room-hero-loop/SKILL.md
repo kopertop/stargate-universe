@@ -101,46 +101,58 @@ Judge similarity-to-target: baseline → **~32 (runs 1–2 plateau)** → **~50 
 - **Relative accept gates oscillate.** "Closer than previous" alone commits lateral
   moves forever. Require a numeric improvement from the *same* panel to climb.
 
-## Running continually on `sparky` via hermes (free, zero Claude-Code credits)
+## Autonomous studio on `sparky` (free, continual, zero Claude-Code credits)
 
-The loop can run unattended on the `sparky` build host driven by the **hermes
-agent** (Nous Research), which uses its own Nous Portal inference — so it slowly
-improves the scene around the clock without spending Claude Code credits.
+LIVE on the `sparky` host (NVIDIA GB10, ARM64). A small multi-agent studio driven
+by **hermes** (PM + developer, free Nous inference) and **Ollama Cloud** vision
+(reviewers) improves the scene around the clock. Three roles:
 
-Pieces (all under `tools/hermes/`):
-- `gate_loop_iteration.md` — the per-tick instructions hermes follows: prep/branch
-  guard → view target + best → 9-point rubric → ONE change → render → judge → commit
-  if closer / revert if not → push `feature/gate-room-hero-portal`. One iteration per run.
-- `skills/gate-hero-loop/SKILL.md` — the hermes-format skill (installed to
-  `~/.hermes/skills/` on the host so hermes "knows" the loop; attached via `--skill`).
-- `install_on_sparky.sh` — idempotent installer (run ON the host).
+- **PM** = hermes agent following `tools/hermes/roles/project_manager.md`: guard
+  (discard Godot import churn) → developer → render → reviewer → OBEY verdict →
+  commit/push or revert → journal. One cycle per invocation; never self-judges;
+  never touches main/develop.
+- **Godot developer** = hermes following `tools/hermes/roles/godot_developer.md` —
+  exactly ONE focused change per cycle.
+- **Reviewer panel** = `tools/hermes/hermes_review.sh` runs THREE hermes agents
+  under profiles **gd-qa-1** (qwen3-vl:235b-instruct), **gd-qa-2** (qwen3-vl:235b),
+  **gd-qa-3** (glm-5.1) — different models + lenses, IN PARALLEL → majority "closer"
+  AND avg-score gain → `VERDICT=ACCEPT|REJECT`. Independent + authoritative.
+  `tools/hermes/setup_reviewer_profiles.sh` (idempotent) creates the profiles.
 
-`tools/gate_hero_render.sh` is OS-aware: on headless Linux it wraps Godot in
-`xvfb-run` (a Vulkan GPU still rasterises) and locates the PNG in the Linux
-userdata dir.
+`tools/gate_hero_render.sh` is OS-aware: headless Linux → `xvfb-run` (GB10 Vulkan
+rasterises), per-OS userdata path, self-sources `~/.config/gate-hero-loop.env` for
+`GODOT_BIN` under bare cron.
 
-### Install (when sparky is reachable over Tailscale)
+### Install / re-provision
 ```bash
-ssh sparky 'REPO=~/stargate-universe SCHEDULE=30m bash -s' < tools/hermes/install_on_sparky.sh
+ssh sparky 'REPO=~/stargate-universe bash -s' < tools/hermes/install_on_sparky.sh
 ```
-Prereqs on the host: Godot 4.6 on PATH (`godot`/`godot4` or `GODOT_BIN`), a GPU
-(`nvidia-smi`) or `xvfb`, and hermes installed + `hermes login` (Nous Portal).
-The installer refreshes the repo on the branch, smoke-renders `best.png`, sets
-`approvals.cron_mode=allow` (else cron auto-denies the agent's git/terminal calls
-— the key gotcha), installs the skill, registers a `hermes cron` job (`--workdir`
-the repo), and adds a system-crontab line driving `hermes cron tick` every few
-minutes so jobs fire without a long-lived hermes daemon.
+Prereqs on the host: Godot 4.6 (`GODOT_BIN`/`godot`), a GPU (`nvidia-smi`) or `xvfb`,
+`jq`, hermes installed + a working model/provider, and the `ollama.com` provider key
+present in `~/.hermes/config.yaml` (the reviewer profiles clone it). The installer
+smoke-renders `best.png`, sets `approvals.cron_mode=allow` + `terminal.timeout=600`,
+creates the gd-qa profiles, installs the skill, registers a RECURRING `hermes cron`
+job (`every 30m`), and adds a flock-guarded system-cron line driving `hermes cron
+tick` every 5m (no long-lived daemon needed).
 
 ### Operate
 ```bash
 ssh sparky 'hermes cron list'                              # see the job
-ssh sparky 'cd ~/stargate-universe && hermes cron tick'    # force one iteration now
+ssh sparky 'cd ~/stargate-universe && hermes cron tick'    # force one cycle now
 ssh sparky 'git -C ~/stargate-universe log --oneline origin/feature/gate-room-hero-portal | head'
+ssh sparky 'tail -f ~/.hermes/logs/gate-loop-tick.log'     # scheduler log
 ssh sparky 'hermes cron pause gate-hero-loop'              # pause / resume / remove
 ```
-The hermes loop self-judges (single agent, no separate panel) — cheaper but more
-lenient than the Claude `Workflow` panel; the iteration prompt biases it to revert
-when unsure. Pull its commits back with `git fetch && git log origin/<branch>`.
+Per-iteration journal: `screenshots/loop/journal.ndjson` (gitignored). Pull accepted
+commits with `git fetch && git log origin/feature/gate-room-hero-portal`.
+
+### sparky gotchas (hard-won)
+- `approvals.cron_mode` defaults to **deny** → cron auto-denies the agent's git/terminal
+  calls; must be `allow`. Reviewer panel exceeds the 180s `terminal.timeout` → raise to 600.
+- `hermes cron create` schedule `30m` alone = ONE-SHOT; use `every 30m`. Prompt is the
+  2nd POSITIONAL (right after schedule, before options).
+- Committed `*.import`/`*.res` re-bake on every `godot --import` on a different machine —
+  the PM guard discards them rather than blocking.
 
 ## Adapting the pattern to another scene
 Copy the four pieces (procedural scene + parametric consts, a fixed-camera render

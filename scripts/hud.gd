@@ -145,6 +145,10 @@ const DISCOVERY_DECODE_SECS_PER_CHAR: float = 0.08
 # frame / action-bar borders.
 const DISCOVERY_ACCENT: Color = Color(SKIN_ACCENT.r, SKIN_ACCENT.g, SKIN_ACCENT.b, 1.0)
 const DISCOVERY_STING_SOUND: String = "res://sounds/discovery_stinger.ogg"
+# Special "magical discovery" cue for KEY rooms (Control Interface Room, Kino
+# Room, …). Which rooms count as "key" is owned by a separate work stream and
+# read ONLY via ShipLayout.is_key_room() — see the big coordination note there.
+const DISCOVERY_STING_KEY_SOUND: String = "res://sounds/discovery_stinger_key.ogg"
 var _discovery_root: Control = null
 var _discovery_name: Node = null      # RichTextLabel (per-char decode) — duck-typed.
 var _discovery_fade: Tween = null
@@ -435,9 +439,12 @@ func _on_room_deciphered(room_id: String) -> void:
 	AncientTextScript.decode_richtext(_discovery_name, display_name, self, DISCOVERY_DECODE_SECS_PER_CHAR)
 
 	# Decode sting — skipped under instant_mode (headless / fast-travel) so the
-	# playthrough test never queues audio it can't drain.
+	# playthrough test never queues audio it can't drain. KEY rooms (defined via
+	# ShipLayout.is_key_room — owned by a separate work stream) get the special
+	# "magical discovery" cue; everything else gets the standard stinger.
 	if not SceneRouter.instant_mode and has_node("/root/Audio"):
-		get_node("/root/Audio").call("play", DISCOVERY_STING_SOUND)
+		var sting: String = DISCOVERY_STING_KEY_SOUND if ShipLayout.is_key_room(room_id) else DISCOVERY_STING_SOUND
+		get_node("/root/Audio").call("play", sting)
 
 	# Under instant_mode the toast resolves + hides immediately (no tween wait).
 	if SceneRouter.instant_mode:

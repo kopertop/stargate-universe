@@ -147,6 +147,17 @@ func _run_checks() -> void:
 	await process_frame
 	_expect(not toast.visible, "re-deciphering an already-deciphered room shows nothing")
 
+	# --- 7. KEY-ROOM audio routing (ShipLayout.is_key_room — owned by a -------
+	# separate work stream; the toast picks discovery_stinger_key.ogg for these).
+	_expect(_layout.is_key_room("control_interface_room"),
+		"Control Interface Room is a key room (special discovery sting)")
+	_expect(_layout.is_key_room("eli_quarters"),
+		"Kino Room (eli_quarters) is a key room")
+	_expect(not _layout.is_key_room("east_corridor"),
+		"a normal corridor is NOT a key room")
+	_expect(ResourceLoader.exists("res://sounds/discovery_stinger_key.ogg"),
+		"key-room discovery sting asset exists + imported")
+
 	_finish()
 
 

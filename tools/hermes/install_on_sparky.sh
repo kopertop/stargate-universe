@@ -70,11 +70,9 @@ echo "  best.png OK"
 
 # --- 2b. agent: hermes + Nous auth ----------------------------------------
 say "Checking hermes agent"
-command -v hermes >/dev/null 2>&1 || die "hermes not installed on this host. Install it, then 'hermes login' (Nous Portal)."
-if ! hermes status 2>/dev/null | grep -qiE "Nous Portal.*logged in"; then
-	die "hermes is not authenticated to Nous Portal on this host. Run 'hermes login' (or 'hermes model') first."
-fi
-echo "  hermes: $(hermes --version 2>/dev/null | head -1) · Nous Portal ✓"
+command -v hermes >/dev/null 2>&1 || die "hermes not installed on this host. Install it and configure a model/provider first."
+hermes status >/dev/null 2>&1 || die "'hermes status' failed — fix the hermes install/auth first."
+echo "  hermes: $(hermes --version 2>/dev/null | head -1) — using its configured default model/provider"
 
 # --- 2c. reviewer: hermes QA profiles (gd-qa-1/2/3, different models) ------
 say "Setting up the reviewer panel (3 hermes profiles on different models)"
@@ -121,7 +119,9 @@ hermes cron list 2>/dev/null | grep -i "$JOB_NAME" || warn "Job not visible in '
 
 # --- 5. drive ticks from system cron (no long-lived hermes daemon) --------
 say "Installing system-cron tick every ${TICK_EVERY_MIN}m so jobs actually fire"
-TICK_LINE="*/${TICK_EVERY_MIN} * * * * . $HOME/.config/gate-hero-loop.env 2>/dev/null; cd $REPO && HERMES_ACCEPT_HOOKS=1 $(command -v hermes) cron tick >> $HOME/.hermes/logs/gate-loop-tick.log 2>&1"
+# flock -n prevents a new tick from starting while a long (~10 min) cycle is still
+# running — overlapping PM cycles would race on the git tree.
+TICK_LINE="*/${TICK_EVERY_MIN} * * * * . $HOME/.config/gate-hero-loop.env 2>/dev/null; cd $REPO && HERMES_ACCEPT_HOOKS=1 flock -n $HOME/.hermes/gate-loop.lock $(command -v hermes) cron tick >> $HOME/.hermes/logs/gate-loop-tick.log 2>&1"
 mkdir -p "$HOME/.hermes/logs"
 # Idempotent: drop any existing gate-loop tick line, then add the current one.
 ( crontab -l 2>/dev/null | grep -v "hermes cron tick.*gate-loop\|gate-loop-tick.log" ; echo "$TICK_LINE" ) | crontab -

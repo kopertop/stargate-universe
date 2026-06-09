@@ -39,12 +39,9 @@ carry-overs; project-specific audio gets added under the same convention.
 - `menu_click.ogg` — UI tab click (Kenney Interface Sounds / click_001).
 - `terminal_boot.ogg` — Computer power-on tone (Kenney Sci-Fi Sounds /
   computerNoise_001). Plays diegetically when E-ing a control console.
-- `discovery_stinger.ogg` — Triumphant brass fanfare "ta-daaa" played on the
-  room-discovery toast (`hud.gd` DISCOVERY_STING_SOUND). Freesound CC0:
-  "Success Fanfare Trumpets" by FunWithSound (sound #456966), HQ preview
-  transcoded to Ogg Vorbis. Placeholder for the requested epic orchestral/choral
-  swell — a pure asset swap once an ElevenLabs (or higher-fidelity) version is
-  generated.
+- `discovery_stinger.ogg` — Epic deep-string swell "Daaahhhh" played on the
+  room-discovery toast (`hud.gd` DISCOVERY_STING_SOUND). ElevenLabs-generated
+  (prompt: a short deep string chord), ~4s, transcoded to Ogg Vorbis.
 - `radio_click.ogg` — CB-radio static squelch (CbRadioStatic_S08TE.400,
   converted from MP3). Plays when a radio connection OPENS — Scott's
   wake-up order (bed.gd), the Rush-absent exchange (room.gd), and the

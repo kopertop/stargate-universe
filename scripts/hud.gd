@@ -136,14 +136,21 @@ var _compass: Control = null
 # short-circuits the fade (hidden instantly). Built programmatically so the
 # hud.tscn diff stays empty.
 const DISCOVERY_FADE_SECS: float = 3.0
-const DISCOVERY_DECODE_SECS: float = 1.1
+# Per-letter decode rate for the room-name reveal: each character flips from its
+# Ancient glyph to readable Latin one at a time (left→right) at this cadence, so
+# the total decode time scales with the name length.
+const DISCOVERY_DECODE_SECS_PER_CHAR: float = 0.08
 # Discovery header shares the cool-blue skin accent at full opacity (the header
 # must read crisply over the world), keeping the hue identical to the unit
 # frame / action-bar borders.
 const DISCOVERY_ACCENT: Color = Color(SKIN_ACCENT.r, SKIN_ACCENT.g, SKIN_ACCENT.b, 1.0)
-const DISCOVERY_STING_SOUND: String = "res://sounds/terminal_boot.ogg"
+const DISCOVERY_STING_SOUND: String = "res://sounds/discovery_stinger.ogg"
+# Special "magical discovery" cue for KEY rooms (Control Interface Room, Kino
+# Room, …). Which rooms count as "key" is owned by a separate work stream and
+# read ONLY via ShipLayout.is_key_room() — see the big coordination note there.
+const DISCOVERY_STING_KEY_SOUND: String = "res://sounds/discovery_stinger_key.ogg"
 var _discovery_root: Control = null
-var _discovery_name: Node = null      # AncientText (Label subclass) — duck-typed.
+var _discovery_name: Node = null      # RichTextLabel (per-char decode) — duck-typed.
 var _discovery_fade: Tween = null
 # Room the live toast is announcing. discover_room() is followed immediately by
 # set_current_room(SAME id) when entering a room, so the room-change short-circuit
@@ -169,7 +176,10 @@ func _ready() -> void:
 	GameState.log_added.connect(_on_log_added)
 	GameState.dialogue_shown.connect(_on_dialogue_shown)
 	GameState.dialog_started.connect(_on_dialog_started)
-	GameState.room_discovered.connect(_on_room_discovered)
+	# Toast fires on DECIPHER (the on-foot player walked in), not on remote Kino
+	# discovery — the decode animation celebrates physically reaching a room.
+	# Rooms a drone merely finds stay encrypted on the Kino map until entered.
+	GameState.room_deciphered.connect(_on_room_deciphered)
 	GameState.current_room_changed.connect(_on_current_room_changed)
 	# Unit frame builds the relocated health/oxygen bars, so it must exist before
 	# the initial _on_health_changed / _on_oxygen_changed binds below.
@@ -186,11 +196,11 @@ func _ready() -> void:
 	_build_edge_arrow()
 	_build_discovery_toast()
 	_spawn_compass()
-	# If the Gate Room was already auto-discovered before this HUD mounted (it
-	# is discovered in gate_room.gd::_ready, which can fire before/after ours),
-	# treat that boot discovery as already consumed so the first PLAYER-driven
-	# discovery is the first toast shown.
-	if not GameState.rooms_discovered.is_empty():
+	# If the Gate Room was already deciphered before this HUD mounted (it is
+	# deciphered in gate_room.gd::_ready, which can fire before/after ours),
+	# treat that boot decipher as already consumed so the first PLAYER-driven
+	# room entry is the first toast shown.
+	if not GameState.rooms_deciphered.is_empty():
 		_first_discovery_consumed = true
 	# Defer player lookup so the scene tree is settled.
 	call_deferred("_bind_player")
@@ -381,12 +391,18 @@ func _build_discovery_toast() -> void:
 	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.add_child(header)
 
-	# Room-name line — an AncientText Label subclass so it can run the #61 decode.
-	var name_label: Label = AncientTextScript.new()
+	# Room-name line — a RichTextLabel so the decode can render a readable prefix
+	# and an Ancient-glyph suffix simultaneously (per-character glyph→Latin
+	# reveal, driven by AncientText.decode_richtext). fit_content sizes it to the
+	# text so the parent VBox keeps it centred.
+	var name_label: RichTextLabel = RichTextLabel.new()
 	name_label.name = "RoomName"
-	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_label.add_theme_font_size_override("font_size", 34)
-	name_label.add_theme_color_override("font_color", Color.WHITE)
+	name_label.bbcode_enabled = true
+	name_label.fit_content = true
+	name_label.scroll_active = false
+	name_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	name_label.add_theme_font_size_override("normal_font_size", 34)
+	name_label.add_theme_color_override("default_color", Color.WHITE)
 	name_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 	name_label.add_theme_constant_override("outline_size", 6)
 	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -401,7 +417,7 @@ func _build_discovery_toast() -> void:
 # play the sting, then fade the whole toast out over DISCOVERY_FADE_SECS. The
 # very first discovery of the run (the auto-discovered Gate Room on boot) is
 # suppressed so the toast never fires before the player has moved.
-func _on_room_discovered(room_id: String) -> void:
+func _on_room_deciphered(room_id: String) -> void:
 	if not _first_discovery_consumed:
 		_first_discovery_consumed = true
 		return
@@ -419,20 +435,26 @@ func _on_room_discovered(room_id: String) -> void:
 	_discovery_room_id = room_id
 	_discovery_root.visible = true
 	_discovery_root.modulate = Color(1.0, 1.0, 1.0, 1.0)
-	_discovery_name.call("play", display_name, DISCOVERY_DECODE_SECS)
+	# Per-letter glyph→Latin decode (left→right, DISCOVERY_DECODE_SECS_PER_CHAR each).
+	AncientTextScript.decode_richtext(_discovery_name, display_name, self, DISCOVERY_DECODE_SECS_PER_CHAR)
 
 	# Decode sting — skipped under instant_mode (headless / fast-travel) so the
-	# playthrough test never queues audio it can't drain.
+	# playthrough test never queues audio it can't drain. KEY rooms (defined via
+	# ShipLayout.is_key_room — owned by a separate work stream) get the special
+	# "magical discovery" cue; everything else gets the standard stinger.
 	if not SceneRouter.instant_mode and has_node("/root/Audio"):
-		get_node("/root/Audio").call("play", DISCOVERY_STING_SOUND)
+		var sting: String = DISCOVERY_STING_KEY_SOUND if ShipLayout.is_key_room(room_id) else DISCOVERY_STING_SOUND
+		get_node("/root/Audio").call("play", sting)
 
 	# Under instant_mode the toast resolves + hides immediately (no tween wait).
 	if SceneRouter.instant_mode:
 		_hide_discovery_toast()
 		return
 
+	# Hold until the per-letter decode finishes (scales with name length), then fade.
+	var decode_total: float = float(display_name.length()) * DISCOVERY_DECODE_SECS_PER_CHAR
 	_discovery_fade = create_tween()
-	_discovery_fade.tween_interval(DISCOVERY_DECODE_SECS)
+	_discovery_fade.tween_interval(decode_total)
 	_discovery_fade.tween_property(_discovery_root, "modulate:a", 0.0, DISCOVERY_FADE_SECS)
 	_discovery_fade.tween_callback(Callable(self, "_hide_discovery_toast"))
 

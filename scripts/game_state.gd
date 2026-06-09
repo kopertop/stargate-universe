@@ -12,6 +12,10 @@ signal objective_changed(text: String)
 # fire for custom NPC objectives that don't move the quest forward.
 signal quest_step_changed(step: String)
 signal room_discovered(room_id: String)
+# Fired when the ON-FOOT player physically enters a room for the first time
+# (NOT when the Kino finds it remotely). Drives the Ancient-glyph "decipher"
+# decode on the discovery toast, door plaques, Kino map, and consoles.
+signal room_deciphered(room_id: String)
 # Fires whenever a discoverable point-of-interest (lime deposit, ruin, ore vein,
 # water source, debris, …) is found — drives a live compass refresh.
 signal pois_discovered_changed()
@@ -232,6 +236,13 @@ var eli_quarters_visited: bool = false
 # without power so the Kino Remote is still findable first.
 var elevator_repaired: bool = false
 var rooms_discovered: Array[String] = []
+# Rooms the on-foot player has physically ENTERED (a strict subset of
+# rooms_discovered: the Kino can discover a room remotely without the player
+# ever setting foot in it). Until a room is deciphered its name/plaque/console
+# text renders in the Ancient glyph font; walking in decodes it to English.
+# One collection behind decipher_room()/is_deciphered() — NOT per-room bools
+# (that would trip check_collection_forks.sh, the bug-#36/#41 guard).
+var rooms_deciphered: Array[String] = []
 # Stable keys ("min_room_id|max_room_id") of doors the player has walked
 # through. Both directions resolve to the same key via door_key(). Drives the
 # Kino map's bright-vs-dim pip styling and survives save/load.
@@ -571,6 +582,7 @@ func reset() -> void:
 	eli_quarters_visited = false
 	elevator_repaired = false
 	rooms_discovered.clear()
+	rooms_deciphered.clear()
 	doors_traversed.clear()
 	discovered_pois.clear()
 	breaches_sealed.clear()
@@ -705,6 +717,21 @@ func discover_room(room_id: String, display_name: String = "") -> void:
 	room_discovered.emit(room_id)
 	if display_name != "":
 		add_log("Discovered: " + display_name)
+
+
+# Mark a room as DECIPHERED — the on-foot player has physically entered it, so
+# its Ancient-glyph name resolves to readable English. Idempotent. Called only
+# from room.gd's on-foot _ready path (after the Kino-pilot early-return), so a
+# remote Kino flyby discovers but never deciphers.
+func decipher_room(room_id: String) -> void:
+	if rooms_deciphered.has(room_id):
+		return
+	rooms_deciphered.append(room_id)
+	room_deciphered.emit(room_id)
+
+
+func is_deciphered(room_id: String) -> bool:
+	return rooms_deciphered.has(room_id)
 
 # Mark a discoverable point-of-interest as found. Idempotent; emits
 # pois_discovered_changed so an open compass refreshes live. `announce` is set
@@ -1932,6 +1959,7 @@ func serialize() -> Dictionary:
 		# the snapshot through a shared reference (caught by the e1_flow
 		# round-trip test before it became a save-corruption bug).
 		"rooms_discovered": rooms_discovered.duplicate(),
+		"rooms_deciphered": rooms_deciphered.duplicate(),
 		"doors_traversed": doors_traversed.duplicate(),
 		"discovered_pois": discovered_pois.duplicate(true),
 		"breaches_sealed": breaches_sealed.duplicate(),
@@ -2066,6 +2094,9 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	rooms_discovered.clear()
 	for r in data.get("rooms_discovered", []):
 		rooms_discovered.append(String(r))
+	rooms_deciphered.clear()
+	for r in data.get("rooms_deciphered", []):
+		rooms_deciphered.append(String(r))
 	doors_traversed.clear()
 	for d in data.get("doors_traversed", []):
 		doors_traversed.append(String(d))

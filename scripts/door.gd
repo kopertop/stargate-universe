@@ -57,10 +57,9 @@ var _status_mat: StandardMaterial3D
 var _tween: Tween
 
 # Plaque Label3D nodes (mirrored on both sides) + the resolved destination name
-# they decode to. Held so GameState.room_discovered can animate them in place.
+# they decode to. Held so GameState.room_deciphered can animate them in place.
 var _plaque_labels: Array[Label3D] = []
 var _plaque_resolved: String = ""
-var _plaque_tween: Tween
 
 func _ready() -> void:
 	super()
@@ -72,10 +71,11 @@ func _ready() -> void:
 	_build_visual()
 	_refresh_prompt()
 	_refresh_status_light()
-	# Decode the plaque in place when the destination room becomes discovered.
-	# Only meaningful for room-id transition doors (target_room_id obfuscation).
+	# Decode the plaque in place when the destination room is DECIPHERED (the
+	# on-foot player has walked into it) — NOT merely discovered remotely by a
+	# Kino. Only meaningful for room-id transition doors (the obfuscated ones).
 	if target_room_id != "" and not _plaque_labels.is_empty():
-		GameState.room_discovered.connect(_on_room_discovered)
+		GameState.room_deciphered.connect(_on_room_deciphered)
 
 func _refresh_prompt() -> void:
 	if locked:
@@ -83,7 +83,13 @@ func _refresh_prompt() -> void:
 	elif requires_kino and not Inventory.has("kino_remote"):
 		prompt = requires_kino_message
 	elif _is_transition_door():
-		prompt = transition_prompt
+		# Don't leak an un-deciphered room's name in the interact prompt (the
+		# plaque above already shows it as glyphs). Generic until the player has
+		# physically entered the destination; the real name returns afterward.
+		if target_room_id != "" and not GameState.is_deciphered(target_room_id):
+			prompt = "to Enter Room"
+		else:
+			prompt = transition_prompt
 	elif _is_open:
 		prompt = "Close"
 	else:
@@ -275,10 +281,11 @@ func _add_plaque(visual: Node3D, frame_mat: StandardMaterial3D) -> void:
 	if _plaque_resolved == "":
 		return
 	# Obfuscation only applies to data-driven room destinations: a room-id door
-	# to an undiscovered neighbour shows Ancient glyphs until that room is found.
-	# Hand-authored target_scene doors (gate_room) have no room-id to gate on, so
-	# they always show their resolved sign.
-	var label_text: String = _initial_plaque_text()
+	# to an un-DECIPHERED neighbour shows the name in the Ancient glyph font (a
+	# consistent cipher) until the player walks into that room. Hand-authored
+	# target_scene doors (gate_room) have no room-id to gate on, so they always
+	# read plainly. The per-label locked/readable state is applied after both
+	# mirrored labels exist (see _apply_plaque_lock_state below).
 	var plaque_w: float = FRAME_WIDTH - 0.1
 	var plaque_h: float = 0.30
 	var plaque_y: float = FRAME_HEIGHT + plaque_h * 0.5 + 0.08
@@ -291,7 +298,7 @@ func _add_plaque(visual: Node3D, frame_mat: StandardMaterial3D) -> void:
 			Vector3(0.0, plaque_y, z),
 			Vector3(plaque_w, plaque_h, plate_depth), plate_mat)
 		var label: Label3D = Label3D.new()
-		label.text = label_text
+		label.text = _plaque_resolved
 		label.font_size = 64
 		label.outline_size = 8
 		label.modulate = Color(0.92, 0.94, 0.98, 1.0)
@@ -311,6 +318,9 @@ func _add_plaque(visual: Node3D, frame_mat: StandardMaterial3D) -> void:
 			label.rotation_degrees = Vector3(0.0, 180.0, 0.0)
 		visual.add_child(label)
 		_plaque_labels.append(label)
+	# Now that both mirrored labels exist, set each to its locked (Ancient
+	# glyph) or readable state based on whether the destination is deciphered.
+	_apply_plaque_lock_state()
 
 
 # Priority: explicit plaque_label → ShipLayout row name → title-cased id/scene.
@@ -327,51 +337,46 @@ func _resolve_plaque_text() -> String:
 	return ""
 
 
-# Initial text the plaque is built with: the real (resolved) name if the
-# destination room is already discovered OR this isn't a room-id door, else a
-# fully-obfuscated Ancient string of the same shape. In instant_mode/headless
-# this still settles on the deterministic correct value with no tween.
-func _initial_plaque_text() -> String:
-	if _destination_discovered():
-		return _plaque_resolved
-	return ANCIENT_TEXT.scramble(_plaque_resolved, 0.0)
+# Put every mirrored plaque label into its locked (Ancient glyph) or readable
+# state. Locked = the real name rendered in the Ancient font (a consistent
+# cipher) for an un-deciphered destination; readable = plain English for a
+# deciphered destination or a non-room-id door. Deterministic, no tween — safe
+# for instant_mode/headless and for re-entering an already-deciphered room.
+func _apply_plaque_lock_state() -> void:
+	var readable: bool = _destination_deciphered()
+	for label: Label3D in _plaque_labels:
+		if label == null:
+			continue
+		if readable:
+			ANCIENT_TEXT.set_readable_font(label)
+			label.text = _plaque_resolved
+		else:
+			ANCIENT_TEXT.set_locked(label, _plaque_resolved)
 
 
-# True when the plaque should read in plain English: non-room-id doors (no
-# discovery to gate on) and room-id doors whose target room is discovered.
-func _destination_discovered() -> bool:
+# True when the plaque should read in plain English: non-room-id doors (no room
+# to decipher) and room-id doors whose target room has been entered on foot.
+func _destination_deciphered() -> bool:
 	if target_room_id == "":
 		return true
-	return GameState.rooms_discovered.has(target_room_id)
+	return GameState.is_deciphered(target_room_id)
 
 
-# Live reveal: when the room this door points at is discovered, decode every
-# mirrored plaque label from glyphs to the real name. Honors instant_mode /
-# headless (no tween — set the final text now) so captures and the playthrough
-# never depend on timing.
-func _on_room_discovered(room_id: String) -> void:
+# Live reveal: when the room this door points at is DECIPHERED (entered on
+# foot), decode every mirrored plaque label. The shared AncientText.decode()
+# churns shuffling Lantean glyphs in the Ancient font and then flips to the
+# readable name — honors instant_mode / headless (settles immediately) so
+# captures and the playthrough never depend on timing.
+func _on_room_deciphered(room_id: String) -> void:
 	if room_id != target_room_id:
 		return
 	if _plaque_resolved == "" or _plaque_labels.is_empty():
 		return
-	var router: Node = get_node_or_null("/root/SceneRouter")
-	var instant: bool = router != null and router.get("instant_mode") == true
-	if instant or PLAQUE_DECODE_DURATION <= 0.0:
-		for label: Label3D in _plaque_labels:
-			label.text = _plaque_resolved
-		return
-	if _plaque_tween != null and _plaque_tween.is_valid():
-		_plaque_tween.kill()
-	_plaque_tween = create_tween()
-	_plaque_tween.tween_method(_apply_plaque_progress, 0.0, 1.0, PLAQUE_DECODE_DURATION)
-	_plaque_tween.tween_callback(_apply_plaque_progress.bind(1.0))
-
-
-func _apply_plaque_progress(progress: float) -> void:
-	var text: String = ANCIENT_TEXT.scramble(_plaque_resolved, progress, Engine.get_process_frames())
 	for label: Label3D in _plaque_labels:
 		if label != null:
-			label.text = text
+			ANCIENT_TEXT.decode(label, _plaque_resolved, self, PLAQUE_DECODE_DURATION)
+	# Destination now known — let the interact prompt name it too.
+	_refresh_prompt()
 
 
 func _title_case_snake(s: String) -> String:

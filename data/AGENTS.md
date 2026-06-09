@@ -10,6 +10,23 @@ code.
   (autoload `ShipLayout`). Each row: `id`, `name`, `floor` (0 or 1), `width`,
   `height`, `startX`, `endX`, `startY`, `endY`, `template_id`, `type`, plus
   state booleans (`found`, `locked`, `explored`, `discovered`).
+
+  > ### ⚠️ KEY ROOMS — coordination note (read if you own key-room definitions)
+  > A "key room" (Control Interface Room, Kino Room, …) plays a special
+  > **magical** discovery cue (`sounds/discovery_stinger_key.ogg`) instead of
+  > the normal one. The room-discovery audio reads this through ONE function:
+  > **`ShipLayout.is_key_room(room_id)`** (`scripts/ship_layout.gd`).
+  >
+  > **The intended canonical definition is a per-room flag here:**
+  > `{ "id": "...", ..., "key_room": true }`. `is_key_room()` already reads it,
+  > so adding the flag is all that's needed — no audio/code change.
+  >
+  > Until those flags exist, `is_key_room()` falls back to a TEMPORARY hardcoded
+  > list (`_KEY_ROOMS_FALLBACK` in `ship_layout.gd`: `control_interface_room`,
+  > `eli_quarters`). When you land the `key_room` flags, **delete that fallback
+  > list** so this JSON is the single source of truth (no duplicate key-room
+  > lists — project anti-pattern). If your definitions live elsewhere instead,
+  > point `is_key_room()` at them and keep it the only key-room query.
 - `room_connections.json` — Dictionary of `room_id -> Array[{dir, to, plaque}]`.
   Connections are listed in ONE direction; consumers mirror reverse edges (see
   `scripts/room.gd::_setup_doors` and `scripts/ship_layout.gd::_load_connections`).

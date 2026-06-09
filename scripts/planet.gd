@@ -35,6 +35,10 @@ func _ready() -> void:
 	if GameState.kino_pilot_mode:
 		_start_kino_recon(spec)
 		return
+	# On-foot landing (past the Kino-recon early-return): decipher the planet so
+	# its name reads plainly and the arrival toast fires. A Kino recon scout only
+	# discovers it (above), leaving it encrypted until the away team lands.
+	GameState.decipher_room(planet_key)
 	# On foot: push this planet's biome footstep surface (the ship stays metal).
 	# Done here (parent _ready) AFTER the spec is resolved — the player's own
 	# _ready already ran (child first) and only set the metal default.

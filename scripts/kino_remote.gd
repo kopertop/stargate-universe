@@ -175,6 +175,9 @@ func _ready() -> void:
 	# loop while the remote is open — without this, the readout staled the
 	# moment the panel was opened mid-decay.
 	GameState.scrubber_level_changed.connect(_on_scrubber_level_changed)
+	# Live-refresh the STATUS page when a tracked resource changes (consumption
+	# tick, planet loot, spend). Mirrors the oxygen_changed connection above.
+	GameState.resource_changed.connect(_on_resource_changed)
 	# Live-refresh the inventory page when any carried item changes while the
 	# remote is open (picked up a fuse, spent lime, …).
 	if Inventory.has_signal("changed"):
@@ -184,6 +187,13 @@ func _ready() -> void:
 func _on_inventory_changed() -> void:
 	if _open:
 		_refresh_inventory()
+
+
+# Refresh the STATUS page whenever a tracked resource count changes (consumption
+# drain, planet loot, manual spend). Mirrors the scrubber_level handler above.
+func _on_resource_changed(_type: String, _count: int) -> void:
+	if _open:
+		_refresh_status()
 
 
 func _on_room_discovered(_room_id: String) -> void:
@@ -425,6 +435,22 @@ func _build_status_page(parent: Control) -> void:
 	r.name = "LimeLabel"
 	var scan: Label = _label(page, "  Planet scan: —", 14, Color(0.82, 0.92, 1.0, 0.9))
 	scan.name = "PlanetScanLabel"
+	# Scarcity block (issue #134): one row per tracked resource, scarcest first.
+	# Rows are built once and updated by _refresh_status via node names
+	# "Scarcity_<id>" so the list never names a resource in code.
+	page.add_child(HSeparator.new())
+	_label(page, "RESOURCES", 16, Color(0.55, 0.85, 1.0, 1.0))
+	var gs: Node = _scarcity_autoload()
+	var ids: Array = gs.call("tracked_resource_ids") if gs != null else []
+	for id in ids:
+		var row_label: Label = _label(page, "  %s: —" % id.capitalize(), 14, Color.WHITE)
+		row_label.name = "Scarcity_%s" % id
+
+func _scarcity_autoload() -> Node:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	if tree == null or tree.root == null:
+		return null
+	return tree.root.get_node_or_null("GameState")
 
 func _build_quest_page(parent: Control) -> void:
 	var page: VBoxContainer = VBoxContainer.new()
@@ -1935,6 +1961,25 @@ func _refresh_status() -> void:
 			scan.text = "  Planet scan: viable address pending gate dial"
 		else:
 			scan.text = "  Planet scan: no active offworld scan"
+	# Scarcity rows (issue #134): iterate registry order from resource_scarcity()
+	# so the scarcest resource floats to the top. Tag LOW when deficit > 0.
+	var scarcity: Array = GameState.resource_scarcity()
+	for row in scarcity:
+		var id: String = String((row as Dictionary).get("id", ""))
+		var node_name: String = "Scarcity_%s" % id
+		var lbl: Label = page.get_node_or_null(node_name) as Label
+		if lbl == null:
+			continue
+		var amount: int = int((row as Dictionary).get("amount", 0))
+		var threshold: int = int((row as Dictionary).get("threshold", 0))
+		var deficit: int = int((row as Dictionary).get("deficit", 0))
+		var label_text: String = String((row as Dictionary).get("label", id.capitalize()))
+		if deficit > 0:
+			lbl.text = "  %s: %d  [LOW]" % [label_text, amount]
+			lbl.add_theme_color_override("font_color", Color(1.0, 0.45, 0.35, 1.0))
+		else:
+			lbl.text = "  %s: %d / %d" % [label_text, amount, threshold]
+			lbl.add_theme_color_override("font_color", Color.WHITE)
 
 func _refresh_ship_systems() -> void:
 	var page: Node = _pages[PAGE_SHIP_SYSTEMS]

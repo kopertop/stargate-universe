@@ -160,6 +160,15 @@ const PLANET_WINDOW_BASE: float = 600.0
 var ship_phase_override: float = -1.0  # @collection-ok: one tunable scalar, not an enumerated set
 var planet_window_override: float = -1.0  # @collection-ok: one tunable scalar, not an enumerated set
 
+# Crew / section scalars for consumption scaling (issue #134). Backed by
+# simple integers; a future crew-roster system can forward its count here
+# without touching ConsumptionManager. Annotated so the collection-fork
+# lint knows these are SCALARS, not forked per-member bools.
+# @collection-ok: scalar, not an enumerated set
+var crew_count: int = 6
+# @collection-ok: scalar, not an enumerated set
+var active_sections: int = 3
+
 # Return the effective ship-phase base (seconds). #133 writes ship_phase_override
 # when the Bridge is found; until then returns the authored constant.
 func ship_phase_base_seconds() -> float:
@@ -170,6 +179,14 @@ func ship_phase_base_seconds() -> float:
 # DURATION for the E1 run.
 func planet_window_base_seconds() -> float:
 	return planet_window_override if planet_window_override >= 0.0 else PLANET_WINDOW_BASE
+
+# Consumption scaling accessors (issue #134).
+func crew_size() -> int:
+	return crew_count
+
+# TODO: derive from a real powered-sections registry when that system ships.
+func active_section_count() -> int:
+	return active_sections
 
 # QUEST_LABELS and QUEST_TARGETS used to live here as Dictionary lookups.
 # Both moved into data/quests.json and are now served by QuestLog. Code that
@@ -694,6 +711,9 @@ func reset() -> void:
 	# FTL loop tuning overrides back to "use base const" on a fresh game.
 	ship_phase_override = -1.0
 	planet_window_override = -1.0
+	# Consumption scaling scalars — default crew of 6, 3 active sections.
+	crew_count = 6
+	active_sections = 3
 	health_changed.emit(health)
 	oxygen_changed.emit(oxygen)
 	kino_changed.emit(false)   # Inventory was just reset → no kino remote held
@@ -2068,6 +2088,9 @@ func serialize() -> Dictionary:
 		# FTL loop duration overrides (#130 / #133). -1 means "use base const".
 		"ship_phase_override": ship_phase_override,
 		"planet_window_override": planet_window_override,
+		# Consumption scaling scalars (issue #134).
+		"crew_count": crew_count,
+		"active_sections": active_sections,
 	}
 
 
@@ -2193,6 +2216,9 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	# FTL loop duration overrides (#130 / #133).
 	ship_phase_override = float(data.get("ship_phase_override", -1.0))
 	planet_window_override = float(data.get("planet_window_override", -1.0))
+	# Consumption scaling scalars (issue #134).
+	crew_count = int(data.get("crew_count", 6))
+	active_sections = int(data.get("active_sections", 3))
 	advance_air_quest()
 	# Republish so the HUD, Kino, and quest waypoint pick up loaded values.
 	health_changed.emit(health)

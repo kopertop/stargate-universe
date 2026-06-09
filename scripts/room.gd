@@ -884,55 +884,69 @@ func _spawn_dr_rush() -> void:
 	rush.rotation.y = PI * 0.5  # Forward = -X (toward console + pillar at room centre).
 	rush.set("character_name", "Dr Rush")
 	rush.set("prompt", "Talk to Dr Rush")
-	# Choice-tree dialog — Rush brushes Eli off. The only useful instruction is
-	# the closer: "nothing for now, get some rest." That advances the player's
-	# quest to FIND_REST (eli_quarters).
+	# Cold-open standoff. Speakers in order: Eli → Greer → Scott → Rush (pushes
+	# button, no-op) → dismissal. The standoff plays via the standard WoW-style
+	# dialog path (GameState.dialog_started), which is instant_mode-safe.
+	# met_rush flips synchronously in Npc._handle_first_meet BEFORE dialog emits,
+	# so the playthrough can assert immediately after interact() without awaiting.
+	# GDD ref: issue #136 "E1 opening beat: the 'don't push the button' standoff".
 	rush.set("dialogue_tree", [
 		{
-			"speaker": "Dr Rush",
-			"text": "Eli. I'm in the middle of something. What do you need?",
+			"speaker": "Eli",
+			"text": "Rush, don't push that — it could blow up the ship!",
 			"choices": [
-				{"text": "Scott sent me. What should I do?", "next": 1},
-				{"text": "Where are we?", "next": 2},
-				{"text": "What is this ship?", "next": 3},
-				{"text": "I'll leave you to it.", "next": "exit"},
+				{"text": "Step forward.", "next": 1},
+			],
+		},
+		{
+			"speaker": "Sgt Greer",
+			"text": "Doctor. Step away from the console. Now. I am not asking.",
+			"choices": [
+				{"text": "Watch Greer's hand drift to his sidearm.", "next": 2},
+			],
+		},
+		{
+			"speaker": "Lt Scott",
+			"text": "Greer — stand down. Nobody's shooting anyone. Rush, we just need a moment.",
+			"choices": [
+				{"text": "Wait for Rush's response.", "next": 3},
 			],
 		},
 		{
 			"speaker": "Dr Rush",
-			"text": "Nothing for now. Honestly. You look exhausted — go get some rest. I'll send for you when I have something.",
+			"text": "I've run the numbers. It won't blow up the ship.",
 			"choices": [
-				{"text": "Where would I even go?", "next": 4},
-				{"text": "Understood.", "next": "exit"},
+				{"text": "Watch as Rush presses the button anyway.", "next": 4},
 			],
 		},
 		{
 			"speaker": "Dr Rush",
-			"text": "Several billion light years from Earth, if my early readings are right. The ship doesn't know we're aboard — that's the only reason we're still breathing. Now: rest. Go.",
+			"text": "Nothing. There — nothing happened. Now: everyone get some rest. I have work to do.",
 			"choices": [
-				{"text": "Where would I even go?", "next": 4},
-				{"text": "Right. Carrying on.", "next": "exit"},
-			],
-		},
-		{
-			"speaker": "Dr Rush",
-			"text": "An Ancient seed ship. Launched long before Atlantis, on a fixed FTL sequence. We're along for the ride. There — that's your briefing. Nothing for you to do right now except sleep.",
-			"choices": [
-				{"text": "Where would I even go?", "next": 4},
-				{"text": "Back to the start.", "next": 0},
-				{"text": "Got it.", "next": "exit"},
-			],
-		},
-		{
-			"speaker": "Dr Rush",
-			"text": "Your quarters, Eli. Down the corridor, past Control. Find them. Lay down. Stop hovering over my shoulder.",
-			"choices": [
-				{"text": "On my way.", "next": "exit"},
+				{"text": "I suppose we all do.", "next": "exit"},
 			],
 		},
 	])
 	rush.set("met_flag", "met_rush")
 	rush.set("first_meet_recompute_objective", true)
+	# Short repeat tree so re-talking doesn't replay the standoff.
+	rush.set("repeat_dialogue_tree", [
+		{
+			"speaker": "Dr Rush",
+			"text": "I already told you — get some rest. There is nothing for you to do here right now.",
+			"choices": [
+				{"text": "Understood.", "next": "exit"},
+				{"text": "Where should I go?", "next": 1},
+			],
+		},
+		{
+			"speaker": "Dr Rush",
+			"text": "Your quarters, Eli. Down the corridor, past Control. Find them. Lay down. Stop hovering.",
+			"choices": [
+				{"text": "On my way.", "next": "exit"},
+			],
+		},
+	])
 
 	var cs: CollisionShape3D = CollisionShape3D.new()
 	var cap: CapsuleShape3D = CapsuleShape3D.new()

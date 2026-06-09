@@ -17,7 +17,7 @@ var _naming: bool = false
 const KINO_DIALOG_TREE: Array = [
 	{
 		"speaker": "Eli Wallace",
-		"text": "Hey — what's that over there? On the desk. I don't remember putting that down. Looks Ancient.",
+		"text": "Oh, what's that? Looks portable.",
 		"choices": [
 			{"text": "Pick it up.", "next": 1},
 			{"text": "Leave it for now.", "next": "exit"},

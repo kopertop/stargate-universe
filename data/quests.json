@@ -15,7 +15,7 @@
 			{
 				"id": "find_rush",
 				"label": "Find Rush",
-				"objective": "Find Dr Rush in the Control Interface Room.",
+				"objective": "Head to the Control Interface Room — before Rush does something reckless.",
 				"target": { "room": "control_interface_room", "anchor": "DrRush" },
 				"complete_when": "met_rush"
 			},

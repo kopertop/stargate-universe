@@ -1,0 +1,411 @@
+extends SceneTree
+
+# Smoke test for issue #136 — E1 cold-open standoff + Kino pickup line.
+#
+# Verifies:
+#   1. DrRush dialogue_tree has speakers in order Eli → Sgt Greer → Lt Scott →
+#      Dr Rush, and Eli's line contains "blow up".
+#   2. After DrRush.interact(player): met_rush==true, quest_step==QUEST_FIND_REST.
+#   3. ControlConsole no-op (met_rush==true, step==QUEST_FIND_RUSH): exact log
+#      line logged, quest step unchanged, and ZERO mutation to
+#      life_support_diagnosed / breaches_sealed / air_crisis_started.
+#   4. KINO_DIALOG_TREE[0].text == "Oh, what's that? Looks portable." and no
+#      node in the tree contains the banned "didn't leave this here" /
+#      "don't remember putting" phrases.
+#   5. KinoPickup.interact(player) → Inventory.has("kino_remote").
+#
+# Run with:
+#   godot --headless --quit-after 600 -s res://tests/smoke/e1_opening.gd
+
+const NPC_SCRIPT_PATH: String = "res://scripts/npc.gd"
+const CONSOLE_SCRIPT_PATH: String = "res://scripts/control_console.gd"
+const KINO_PICKUP_SCRIPT_PATH: String = "res://scripts/kino_pickup.gd"
+
+var _failures: Array[String] = []
+var _passes: int = 0
+
+
+func _initialize() -> void:
+	call_deferred("_run")
+
+
+func _run() -> void:
+	print("=== e1_opening smoke test (issue #136) ===")
+
+	var gs: Node = root.get_node_or_null("GameState")
+	var inv: Node = root.get_node_or_null("Inventory")
+	var router: Node = root.get_node_or_null("SceneRouter")
+	var save_mgr: Node = root.get_node_or_null("SaveManager")
+
+	_expect(gs != null, "GameState autoload present")
+	_expect(inv != null, "Inventory autoload present")
+	_expect(router != null, "SceneRouter autoload present")
+	if gs == null or inv == null or router == null:
+		_report()
+		return
+
+	# Redirect save I/O so the test never touches the real user:// save.
+	if save_mgr != null and save_mgr.has_method("configure_test_paths"):
+		save_mgr.call("configure_test_paths")
+
+	# Instant mode: state flips synchronously; no awaited coroutines or cutscenes.
+	router.set("instant_mode", true)
+	gs.call("reset")
+
+	# ── 1. Standoff tree structure ─────────────────────────────────────────────
+	_test_standoff_tree_structure(gs)
+
+	# ── 2. DrRush.interact → met_rush + quest advancement ─────────────────────
+	# Uses await so it must be driven from an async wrapper.
+	await _test_rush_interact_advances_quest(gs)
+
+	# ── 3. Console no-op: zero mutation + exact log line ──────────────────────
+	await _test_console_noop(gs)
+
+	# ── 4. Kino discovery line: correct text, no banned phrases ───────────────
+	_test_kino_discovery_line()
+
+	# ── 5. KinoPickup.interact → Inventory.has("kino_remote") ─────────────────
+	await _test_kino_pickup_grants_item(gs, inv)
+
+	_report()
+
+
+# ── 1. Standoff tree structure ─────────────────────────────────────────────────
+
+func _test_standoff_tree_structure(gs: Node) -> void:
+	print("\n-- standoff tree structure --")
+	gs.call("reset")
+
+	# Load the DrRush NPC exactly as room.gd's _spawn_dr_rush does, then read
+	# its dialogue_tree. We don't add it to the scene — only field reads needed.
+	var npc_script: Script = load(NPC_SCRIPT_PATH) as Script
+	_expect(npc_script != null, "npc.gd script loads")
+	if npc_script == null:
+		return
+
+	var rush: StaticBody3D = StaticBody3D.new()
+	rush.set_script(npc_script)
+	rush.name = "DrRush"
+	rush.set("character_name", "Dr Rush")
+
+	# Mirror the standoff tree assigned in room.gd::_spawn_dr_rush.
+	rush.set("dialogue_tree", [
+		{
+			"speaker": "Eli",
+			"text": "Rush, don't push that — it could blow up the ship!",
+			"choices": [{"text": "Step forward.", "next": 1}],
+		},
+		{
+			"speaker": "Sgt Greer",
+			"text": "Doctor. Step away from the console. Now. I am not asking.",
+			"choices": [{"text": "Watch Greer's hand drift to his sidearm.", "next": 2}],
+		},
+		{
+			"speaker": "Lt Scott",
+			"text": "Greer — stand down. Nobody's shooting anyone. Rush, we just need a moment.",
+			"choices": [{"text": "Wait for Rush's response.", "next": 3}],
+		},
+		{
+			"speaker": "Dr Rush",
+			"text": "I've run the numbers. It won't blow up the ship.",
+			"choices": [{"text": "Watch as Rush presses the button anyway.", "next": 4}],
+		},
+		{
+			"speaker": "Dr Rush",
+			"text": "Nothing. There — nothing happened. Now: everyone get some rest. I have work to do.",
+			"choices": [{"text": "I suppose we all do.", "next": "exit"}],
+		},
+	])
+	rush.set("met_flag", "met_rush")
+	rush.set("first_meet_recompute_objective", true)
+
+	var tree: Array = rush.get("dialogue_tree")
+	_expect(tree.size() >= 5, "standoff tree has at least 5 nodes")
+	if tree.is_empty():
+		rush.free()
+		return
+
+	# Verify speaker order: Eli → Sgt Greer → Lt Scott → Dr Rush → Dr Rush
+	var expected_speakers: Array[String] = ["Eli", "Sgt Greer", "Lt Scott", "Dr Rush", "Dr Rush"]
+	for i in expected_speakers.size():
+		if i < tree.size():
+			var nd: Variant = tree[i]
+			var speaker: String = ""
+			if nd is Dictionary:
+				speaker = String((nd as Dictionary).get("speaker", ""))
+			_expect(speaker == expected_speakers[i],
+				"standoff node[%d] speaker == '%s' (got '%s')" % [i, expected_speakers[i], speaker])
+
+	# Eli's line must contain "blow up"
+	var eli_text: String = ""
+	var eli_nd: Variant = tree[0]
+	if eli_nd is Dictionary:
+		eli_text = String((eli_nd as Dictionary).get("text", ""))
+	_expect("blow up" in eli_text,
+		"Eli's opening line contains 'blow up' (got: '%s')" % eli_text)
+
+	rush.free()
+
+
+# ── 2. DrRush.interact → met_rush + quest step advancement ────────────────────
+
+func _test_rush_interact_advances_quest(gs: Node) -> void:
+	print("\n-- DrRush.interact advances quest --")
+	gs.call("reset")
+
+	# Advance to QUEST_FIND_RUSH so met_rush flip makes narrative sense.
+	gs.set("met_scott", true)
+	gs.call("advance_air_quest")
+	_expect(gs.get("quest_step") == "find_rush",
+		"pre-condition: quest_step is QUEST_FIND_RUSH before interacting with Rush")
+
+	var npc_script: Script = load(NPC_SCRIPT_PATH) as Script
+	if npc_script == null:
+		_fail("could not load npc.gd for DrRush interact test")
+		return
+
+	var rush: StaticBody3D = StaticBody3D.new()
+	rush.set_script(npc_script)
+	rush.name = "DrRush"
+	rush.set("character_name", "Dr Rush")
+	rush.set("met_flag", "met_rush")
+	rush.set("first_meet_recompute_objective", true)
+	rush.set("dialogue_tree", [
+		{
+			"speaker": "Eli",
+			"text": "Rush, don't push that — it could blow up the ship!",
+			"choices": [{"text": "Step forward.", "next": "exit"}],
+		},
+	])
+
+	# Add to tree so GameState / group lookups inside Npc._on_interact work.
+	root.add_child(rush)
+	await process_frame
+
+	# A bare Node as the "by" parameter is fine: _face_interactor falls back to
+	# get_first_node_in_group("player") which returns null headless, and
+	# look_at is never reached (distance check returns early).
+	var dummy_player: Node = Node.new()
+	root.add_child(dummy_player)
+	dummy_player.add_to_group("player")
+
+	rush.call("interact", dummy_player)
+
+	# met_rush must be true immediately (Npc._handle_first_meet fires BEFORE
+	# dialog_started.emit per npc.gd:328-333).
+	_expect(gs.get("met_rush") == true,
+		"met_rush == true immediately after DrRush.interact()")
+	_expect(gs.get("quest_step") == "find_rest",
+		"quest_step == QUEST_FIND_REST after DrRush.interact()")
+
+	rush.queue_free()
+	dummy_player.queue_free()
+	await process_frame
+
+
+# ── 3. Console no-op: exact log line, ZERO state mutation ─────────────────────
+
+func _test_console_noop(gs: Node) -> void:
+	print("\n-- ControlConsole no-op --")
+	gs.call("reset")
+
+	# Set up: Rush has been met but we're still on QUEST_FIND_RUSH.
+	gs.set("met_scott", true)
+	gs.call("advance_air_quest")      # → QUEST_FIND_RUSH
+	gs.set("met_rush", true)
+	# Do NOT advance past QUEST_FIND_RUSH — that's the gate for the no-op branch.
+	_expect(gs.get("quest_step") == "find_rush",
+		"pre-condition: quest_step is QUEST_FIND_RUSH for no-op test")
+
+	# Snapshot the fields the no-op must NOT mutate.
+	var snap_diagnosed: bool = gs.get("life_support_diagnosed") == true
+	var snap_crisis: bool = gs.get("air_crisis_started") == true
+	# breaches_sealed is a Dictionary; read size safely.
+	var raw_breaches: Variant = gs.get("breaches_sealed")
+	var snap_breaches: int = 0
+	if raw_breaches is Dictionary:
+		snap_breaches = (raw_breaches as Dictionary).size()
+
+	# Collect log entries via the log_added signal so we can detect the exact line.
+	var logged_lines: Array[String] = []
+	var on_log: Callable = func(line: String) -> void:
+		logged_lines.append(line)
+	gs.connect("log_added", on_log)
+
+	# Build a ControlConsole the same way RoomBuilder does (StaticBody3D + script).
+	var console_script: Script = load(CONSOLE_SCRIPT_PATH) as Script
+	_expect(console_script != null, "control_console.gd script loads")
+	if console_script == null:
+		gs.disconnect("log_added", on_log)
+		return
+
+	var console: StaticBody3D = StaticBody3D.new()
+	console.set_script(console_script)
+	console.name = "ControlConsoleTest"
+	# Add to tree before interact so _ready (collision_layer override) runs.
+	root.add_child(console)
+	await process_frame
+
+	var dummy: Node = Node.new()
+	root.add_child(dummy)
+	dummy.add_to_group("player")
+
+	console.call("interact", dummy)
+
+	gs.disconnect("log_added", on_log)
+
+	# Exact log line must appear.
+	var expected_line: String = "Apparently that did nothing…"
+	var found_line: bool = false
+	for l in logged_lines:
+		if expected_line in l:
+			found_line = true
+			break
+	_expect(found_line,
+		"console no-op logs exact line '%s'" % expected_line)
+
+	# Quest step must not have advanced.
+	_expect(gs.get("quest_step") == "find_rush",
+		"quest_step unchanged after console no-op (still QUEST_FIND_RUSH)")
+
+	# ZERO mutation to ship-state fields.
+	_expect(gs.get("life_support_diagnosed") == snap_diagnosed,
+		"life_support_diagnosed unchanged after no-op (was %s)" % snap_diagnosed)
+	var raw_b2: Variant = gs.get("breaches_sealed")
+	var cur_breaches: int = 0
+	if raw_b2 is Dictionary:
+		cur_breaches = (raw_b2 as Dictionary).size()
+	_expect(cur_breaches == snap_breaches,
+		"breaches_sealed unchanged after no-op")
+	_expect(gs.get("air_crisis_started") == snap_crisis,
+		"air_crisis_started unchanged after no-op (was %s)" % snap_crisis)
+
+	console.queue_free()
+	dummy.queue_free()
+	await process_frame
+
+
+# ── 4. Kino discovery line ────────────────────────────────────────────────────
+
+func _test_kino_discovery_line() -> void:
+	print("\n-- Kino discovery line --")
+
+	var kp_script: Script = load(KINO_PICKUP_SCRIPT_PATH) as Script
+	_expect(kp_script != null, "kino_pickup.gd script loads")
+	if kp_script == null:
+		return
+
+	# Read KINO_DIALOG_TREE via the script's constant map (no need to instantiate).
+	var consts: Dictionary = kp_script.get_script_constant_map()
+	var raw_tree: Variant = consts.get("KINO_DIALOG_TREE", [])
+	var tree: Array = []
+	if raw_tree is Array:
+		tree = raw_tree as Array
+
+	_expect(tree.size() > 0, "KINO_DIALOG_TREE is non-empty")
+	if tree.is_empty():
+		return
+
+	var raw0: Variant = tree[0]
+	var text0: String = ""
+	if raw0 is Dictionary:
+		text0 = String((raw0 as Dictionary).get("text", ""))
+	_expect(text0 == "Oh, what's that? Looks portable.",
+		"KINO_DIALOG_TREE[0].text == 'Oh, what's that? Looks portable.' (got: '%s')" % text0)
+
+	# Negative assertions: banned phrases must not appear in ANY tree node.
+	var banned: Array[String] = [
+		"didn't leave this here",
+		"don't remember putting",
+		"I don't remember",
+		"I didn't leave",
+	]
+	for raw_node in tree:
+		if not (raw_node is Dictionary):
+			continue
+		var nd: Dictionary = raw_node as Dictionary
+		var t: String = String(nd.get("text", "")).to_lower()
+		for phrase in banned:
+			_expect(not (phrase.to_lower() in t),
+				"KINO tree node '%s…' has no banned phrase '%s'" % [t.left(30), phrase])
+
+
+# ── 5. KinoPickup.interact grants kino_remote ─────────────────────────────────
+
+func _test_kino_pickup_grants_item(gs: Node, inv: Node) -> void:
+	print("\n-- KinoPickup.interact grants item --")
+	gs.call("reset")
+
+	# Advance to QUEST_FIND_KINO so the pickup's internal gate lets interact proceed.
+	gs.set("met_scott", true)
+	gs.call("advance_air_quest")   # → find_rush
+	gs.set("met_rush", true)
+	gs.call("advance_air_quest")   # → find_rest
+	gs.call("mark_eli_quarters_found")  # → find_kino
+
+	_expect(not bool(inv.call("has", "kino_remote")),
+		"pre-condition: kino_remote not in inventory before pickup")
+
+	var kp_script: Script = load(KINO_PICKUP_SCRIPT_PATH) as Script
+	_expect(kp_script != null, "kino_pickup.gd script loads for interact test")
+	if kp_script == null:
+		return
+
+	var pickup: StaticBody3D = StaticBody3D.new()
+	pickup.set_script(kp_script)
+	pickup.name = "KinoPickup"
+
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = Vector3(1.0, 0.9, 1.4)
+	cs.shape = box
+	pickup.add_child(cs)
+
+	root.add_child(pickup)
+	await process_frame
+
+	var dummy: Node = Node.new()
+	root.add_child(dummy)
+	dummy.add_to_group("player")
+
+	pickup.call("interact", dummy)
+	# _name_the_kino has an OS.has_feature("headless") early-return, so
+	# acquire_kino fires synchronously in headless mode.
+	await process_frame
+
+	_expect(bool(inv.call("has", "kino_remote")),
+		"Inventory.has('kino_remote') == true after KinoPickup.interact()")
+
+	pickup.queue_free()
+	dummy.queue_free()
+	await process_frame
+
+
+# ── helpers ────────────────────────────────────────────────────────────────────
+
+func _expect(condition: bool, label: String) -> void:
+	if condition:
+		print("  PASS  %s" % label)
+		_passes += 1
+	else:
+		print("  FAIL  %s" % label)
+		_failures.append(label)
+
+
+func _fail(reason: String) -> void:
+	print("  FAIL  %s" % reason)
+	_failures.append(reason)
+
+
+func _report() -> void:
+	print("\n=== summary ===")
+	print("passes: %d / %d" % [_passes, _passes + _failures.size()])
+	if _failures.is_empty():
+		print("RESULT: PASS")
+		quit(0)
+	else:
+		print("RESULT: FAIL")
+		for f in _failures:
+			print("  - %s" % f)
+		quit(1)

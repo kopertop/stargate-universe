@@ -74,7 +74,8 @@ func _run_checks() -> void:
 	var name_label: Node = null
 	if toast != null:
 		name_label = toast.get_node_or_null("Stack/RoomName")
-	_expect(name_label != null, "DiscoveryToast has an AncientText RoomName line")
+	_expect(name_label != null, "DiscoveryToast has a RoomName line")
+	_expect(name_label is RichTextLabel, "RoomName is a RichTextLabel (per-char decode)")
 	if toast == null or name_label == null:
 		_finish()
 		return
@@ -90,8 +91,9 @@ func _run_checks() -> void:
 	var expected: String = String(_layout.room("engineering_bay").get("name", "engineering_bay"))
 	_expect(expected == "Engineering Bay", "ShipLayout resolves engineering_bay → 'Engineering Bay'")
 	# Under instant_mode the toast resolves + hides on the same frame, but the
-	# RoomName label must have been assigned the resolved name during play().
-	_expect(String(name_label.get("text")) == expected,
+	# RoomName label must have been assigned the resolved name (parsed = visible
+	# text without bbcode tags).
+	_expect(name_label.call("get_parsed_text") == expected,
 		"RoomName line shows the resolved ShipLayout name")
 	# instant_mode hides immediately (no 3s tween wait headless).
 	_expect(not toast.visible, "under instant_mode the toast resolves + hides same frame")
@@ -102,24 +104,26 @@ func _run_checks() -> void:
 	await process_frame
 	_expect(toast.visible, "animated path: a new decipher shows the toast")
 	var hydro_name: String = String(_layout.room("hydroponics").get("name", "hydroponics"))
-	_expect(String(name_label.get("text")).length() == hydro_name.length(),
+	# Parsed (visible) text length is preserved at every frame: resolved prefix +
+	# upper-cased glyph suffix == same character count as the real name.
+	_expect(name_label.call("get_parsed_text").length() == hydro_name.length(),
 		"RoomName decode preserves the resolved-name length")
 
-	# Mid-decode the churn must be drawn in the Ancient FONT over letter-glyphs
-	# (A-Z) — NOT the old random ASCII punctuation in the readable font. This is
-	# the regression guard for the "Discovered hover still uses random chars" bug.
-	var at: GDScript = load("res://scripts/ancient_text.gd")
-	var ancient_font: Font = at.ancient_font()
-	_expect(ancient_font != null, "ancient font available for the decode churn")
-	_expect(name_label.get("theme_override_fonts/font") == ancient_font,
-		"toast decode churns in the Ancient font, not the readable font")
-	var churn: String = String(name_label.get("text"))
+	# Mid-decode the UNRESOLVED suffix must be wrapped in the Ancient font tag
+	# (per-character glyph→Latin reveal), NOT random ASCII punctuation. Regression
+	# guard for "the blip shows random chars / decodes in one jump".
+	var raw: String = String(name_label.get("text"))
+	_expect(raw.contains("[font=") and raw.contains("anquietas"),
+		"toast decode wraps unresolved letters in the Ancient font tag")
+	var visible: String = name_label.call("get_parsed_text")
 	var letters_only: bool = true
-	for i in churn.length():
-		var c: String = churn[i]
+	for i in visible.length():
+		var c: String = visible[i].to_upper()
 		if c != " " and (c < "A" or c > "Z"):
 			letters_only = false
-	_expect(letters_only, "toast decode churn uses Ancient letter-glyphs (A-Z), no ASCII punctuation")
+	_expect(letters_only, "toast decode visible text is letters/spaces only, no ASCII punctuation")
+	# One letter in, the reveal has NOT jumped to the full readable name.
+	_expect(raw.contains("[font="), "decode is mid-reveal (still has glyphs), not a single jump to English")
 
 	# --- 4. Entering the SAME room (set_current_room) must NOT hide it. -----
 	_game.set_current_room("hydroponics")

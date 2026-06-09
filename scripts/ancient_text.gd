@@ -127,6 +127,48 @@ static func decode(node: Object, final_text: String, host: Node, duration: float
 		set_readable_font(node)
 		_assign_text(node, final_text))
 
+
+# Per-CHARACTER decode for a RichTextLabel (the discovery toast): each letter
+# starts as an Ancient glyph and flips to its readable Latin form one at a time,
+# left→right, at `secs_per_char` (the resolved prefix renders in the readable
+# font, the unresolved suffix in the Ancient font via a `[font]` tag — something
+# a single-font Label can't do). instant_mode / zero rate settle immediately.
+static func decode_richtext(rtl: RichTextLabel, text: String, host: Node, secs_per_char: float = 0.25) -> void:
+	rtl.bbcode_enabled = true
+	var n: int = text.length()
+	if n == 0:
+		rtl.text = ""
+		return
+	var router: Node = host.get_node_or_null("/root/SceneRouter")
+	if secs_per_char <= 0.0 or (router != null and router.get("instant_mode") == true):
+		rtl.text = _escape_bbcode(text)
+		return
+	var dur: float = float(n) * secs_per_char
+	var tw: Tween = host.create_tween()
+	tw.tween_method(
+		func(v: float) -> void:
+			rtl.text = _richtext_decode_frame(text, int(floor(clampf(v, 0.0, 1.0) * float(n)))),
+		0.0, 1.0, dur)
+	tw.tween_callback(func() -> void: rtl.text = _escape_bbcode(text))
+
+
+# BBCode for one frame: `frontier` readable chars, then the rest as upper-cased
+# glyphs wrapped in the Ancient font tag. A contiguous prefix/suffix split — the
+# reveal only ever moves the frontier rightward.
+static func _richtext_decode_frame(text: String, frontier: int) -> String:
+	var prefix: String = text.substr(0, frontier)
+	var suffix: String = text.substr(frontier)
+	var out: String = _escape_bbcode(prefix)
+	if suffix != "":
+		out += "[font=%s]%s[/font]" % [ANCIENT_FONT_PATH, _escape_bbcode(suffix.to_upper())]
+	return out
+
+
+# RichTextLabel reads `[` as a tag opener; room names never contain one, but
+# escape defensively so a stray bracket can't swallow the rest of the line.
+static func _escape_bbcode(s: String) -> String:
+	return s.replace("[", "[lb]")
+
 @export var auto_play_on_ready: bool = false
 @export var play_text: String = ""
 @export var play_duration: float = 1.2

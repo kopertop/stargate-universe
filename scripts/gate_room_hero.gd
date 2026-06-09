@@ -81,7 +81,7 @@ const RING_KEY_COLOR: Color = Color(0.72, 0.78, 0.92)
 const METAL_COLOR: Color = Color(0.17, 0.18, 0.205)
 const METAL_ROUGHNESS: float = 0.42
 const METAL_METALLIC: float = 0.85
-const FLOOR_ROUGHNESS: float = 0.46
+const FLOOR_ROUGHNESS: float = 0.28
 const SCREEN_COLOR: Color = Color(0.22, 0.45, 0.85)
 const SCREEN_ENERGY: float = 0.55
 # Fog
@@ -248,24 +248,26 @@ func _build_environment() -> void:
 # Floor — wet reflective grid plates.
 # ---------------------------------------------------------------------------
 func _build_floor() -> void:
-	# Wet-but-rough dark metal: a HIGHER roughness so the portal reflects as a BROAD
-	# soft column rather than one hard mirror-streak (the target's subtle reflection),
-	# and a slightly anisotropic-feeling spread via reduced metallic. The converging
-	# grid seams do the perspective work, not a specular highlight.
+	# Wet glossy dark metal: LOWER roughness so the portal + god-rays reflect as clear
+	# glossy puddle sheens across the plate faces (the target's subtle-but-visible wet
+	# metal floor), not a single broad soft smear. Higher metallic + specular so the
+	# SSR picks up the vortex glow as a broad specular reflection spreading across the
+	# grid, and each plate face catches the overhead god-rays as wet highlights. The
+	# converging grid seams + brightened seam emissive do the perspective work.
 	var mat := _metal(FLOOR_ROUGHNESS)
-	mat.metallic = 0.55
-	mat.metallic_specular = 0.35
+	mat.metallic = 0.75
+	mat.metallic_specular = 0.55
 	var floor := _box(
 		Vector3(HALL_HALF_WIDTH * 2.0 + 6.0, 0.4, HALL_LENGTH + 8.0),
 		Vector3(0.0, -0.2, (GATE_Z - CAM_POS.z) * 0.2),
 		mat)
 	floor.name = "Floor"
-	# Grid plate seams — thin recessed lines for the converging-plate look. Made a touch
-	# brighter (faint cold sheen) so the perspective lines reading toward the gate are the
-	# dominant floor cue, replacing the single hot specular streak.
-	var seam_mat := _emissive(Color(0.11, 0.15, 0.24), 0.06)
-	seam_mat.metallic = 0.4
-	seam_mat.roughness = 0.5
+	# Grid plate seams — thin recessed lines for the converging-plate look. Brighter
+	# cold sheen so the perspective grid lines converging toward the gate are the
+	# dominant floor cue, with a faint emissive to catch the grazing rim light.
+	var seam_mat := _emissive(Color(0.15, 0.22, 0.32), 0.12)
+	seam_mat.metallic = 0.6
+	seam_mat.roughness = 0.35
 	var span_z: int = int(HALL_LENGTH / 3.0)
 	for i in span_z:
 		var z: float = -HALL_LENGTH * 0.5 + float(i) * 3.0

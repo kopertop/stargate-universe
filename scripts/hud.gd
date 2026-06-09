@@ -129,19 +129,6 @@ const COMPASS_PLANET_SCENES: Array = [
 ]
 var _compass: Control = null
 
-# Resource strip (issue #134, ship mode only). One pip per tracked resource,
-# red when resource_deficit(id) > 0. Built in code, anchored bottom-left so it
-# sits above the ground without fighting the unit frame. Shown only when the
-# active scene is a ship scene; hidden otherwise. Rebuilt on _build_resource_strip
-# and refreshed on GameState.resource_changed.
-const STRIP_POS: Vector2 = Vector2(24.0, -110.0)   # offset from bottom-left
-const STRIP_PIP_SIZE: Vector2 = Vector2(80.0, 24.0)
-const STRIP_OK_COLOR: Color = Color(0.45, 0.85, 0.55, 0.9)
-const STRIP_LOW_COLOR: Color = Color(0.95, 0.35, 0.35, 1.0)
-var _resource_strip: Control = null
-# Labels keyed by resource id for refresh without rebuild.
-var _strip_labels: Dictionary = {}   # id → Label
-
 # Center-screen room discovery toast (#63). On the FIRST entry into a room, a
 # small letter-spaced "DISCOVERED" header sits above the room name, which starts
 # as obfuscated Ancient glyphs and decodes into English (via #61). The whole
@@ -196,8 +183,6 @@ func _ready() -> void:
 	# Rooms a drone merely finds stay encrypted on the Kino map until entered.
 	GameState.room_deciphered.connect(_on_room_deciphered)
 	GameState.current_room_changed.connect(_on_current_room_changed)
-	# Resource strip (issue #134): refresh pips whenever any tracked resource changes.
-	GameState.resource_changed.connect(_on_resource_strip_changed)
 	# Unit frame builds the relocated health/oxygen bars, so it must exist before
 	# the initial _on_health_changed / _on_oxygen_changed binds below.
 	_build_unit_frame()
@@ -212,7 +197,6 @@ func _ready() -> void:
 	_refresh_quest_tracker()
 	_build_edge_arrow()
 	_build_discovery_toast()
-	_build_resource_strip()
 	_spawn_compass()
 	# If the Gate Room was already deciphered before this HUD mounted (it is
 	# deciphered in gate_room.gd::_ready, which can fire before/after ours),
@@ -844,85 +828,6 @@ func _on_dialog_started(npc: Node3D, tree: Array) -> void:
 	# DialogScreen.start() shares world_3d + frames the portrait camera.
 	screen.call("start", npc, tree)
 
-# --- Resource strip (issue #134) ---------------------------------------------
-
-# Build a row of resource pips anchored bottom-left. One pip per tracked resource
-# (data-driven via tracked_resource_ids — never hardcodes a name). Show only in
-# ship scenes (gate_room.tscn / room.tscn); hidden in planet + title.
-func _build_resource_strip() -> void:
-	if _resource_strip != null and is_instance_valid(_resource_strip):
-		return
-	# Determine ship mode from the current scene.
-	var scene_path: String = ""
-	var current: Node = get_tree().current_scene if get_tree() != null else null
-	if current != null:
-		scene_path = current.scene_file_path
-	var is_ship: bool = COMPASS_SHIP_SCENES.has(scene_path)
-
-	var strip: HBoxContainer = HBoxContainer.new()
-	strip.name = "ResourceStrip"
-	strip.anchor_left = 0.0
-	strip.anchor_top = 1.0
-	strip.anchor_right = 0.0
-	strip.anchor_bottom = 1.0
-	strip.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	strip.offset_left = STRIP_POS.x
-	strip.offset_bottom = STRIP_POS.y
-	strip.add_theme_constant_override("separation", 6)
-	strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	strip.visible = is_ship
-	add_child(strip)
-	_resource_strip = strip
-	_strip_labels.clear()
-
-	for id in GameState.tracked_resource_ids():
-		var pip: Panel = Panel.new()
-		pip.custom_minimum_size = STRIP_PIP_SIZE
-		pip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var sb: StyleBoxFlat = _make_wow_stylebox(SKIN_ACCENT, 1, SKIN_PANEL_BG)
-		pip.add_theme_stylebox_override("panel", sb)
-		strip.add_child(pip)
-
-		var lbl: Label = Label.new()
-		lbl.name = "Lbl_%s" % id
-		lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
-		lbl.offset_left = 4.0
-		lbl.offset_right = -4.0
-		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		lbl.add_theme_font_size_override("font_size", 11)
-		lbl.add_theme_color_override("font_color", STRIP_OK_COLOR)
-		lbl.add_theme_color_override("font_outline_color", SKIN_TEXT_OUTLINE)
-		lbl.add_theme_constant_override("outline_size", 4)
-		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		lbl.text = id.capitalize()
-		pip.add_child(lbl)
-		_strip_labels[id] = lbl
-
-	_refresh_resource_strip()
-
-
-func _refresh_resource_strip() -> void:
-	if _resource_strip == null or not is_instance_valid(_resource_strip):
-		return
-	for id in _strip_labels.keys():
-		var lbl: Label = _strip_labels[id] as Label
-		if lbl == null or not is_instance_valid(lbl):
-			continue
-		var amount: int = GameState.resource_count(id)
-		var deficit: int = GameState.resource_deficit(id)
-		lbl.text = "%s\n%d" % [id.capitalize(), amount]
-		if deficit > 0:
-			lbl.add_theme_color_override("font_color", STRIP_LOW_COLOR)
-		else:
-			lbl.add_theme_color_override("font_color", STRIP_OK_COLOR)
-
-
-func _on_resource_strip_changed(_type: String, _count: int) -> void:
-	_refresh_resource_strip()
-
-
-# --- end resource strip -------------------------------------------------------
 
 func _on_log_added(line: String) -> void:
 	var lbl: Label = Label.new()

@@ -185,6 +185,21 @@ func all_known_rooms() -> Array:
 	return out
 
 
+# THE single key-room query (drives the special discovery sting in hud.gd). Base
+# ids delegate to ShipLayout.is_key_room (its JSON key_room flag + fallback list);
+# generated ids read the catalog key_room flag for their EFFECTIVE type — so a
+# storage room converted to e.g. an armory becomes a key room too.
+func is_key_room(id: String) -> bool:
+	if is_generated(id):
+		_load_catalog()
+		var t: String = String(room(id).get("type", ""))
+		return _catalog.get(t, {}).get("key_room", false) == true
+	var sl: Node = _ship_layout()
+	if sl != null and sl.has_method("is_key_room"):
+		return sl.call("is_key_room", id)
+	return false
+
+
 # Direction-tagged outgoing edges (ShipLayout-compatible: forward + reverse mirrored).
 # Both forward edges (with plaque) and reverse edges (with plaque from ShipLayout
 # mirror logic, plaque key present for ShipLayout consistency) are returned here.

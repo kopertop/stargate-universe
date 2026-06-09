@@ -49,6 +49,7 @@ func _run() -> void:
 	await _test_floor_unlock(ps)
 	await _test_assign_function(ps)
 	await _test_floor_code_poi(ps)
+	await _test_key_rooms(ps)
 
 	_report()
 
@@ -495,6 +496,56 @@ func _test_floor_code_poi(ps: Node) -> void:
 	await process_frame
 	_expect(ps.call("is_floor_code_known", 2), "floor 2 code_known restored after deserialize")
 	_expect(ps.call("is_floor_code_known", 3), "floor 3 code_known restored after deserialize")
+
+
+# ── (h) is_key_room — base delegation + generated catalog flag ────────────────
+
+func _test_key_rooms(ps: Node) -> void:
+	print("\n-- is_key_room --")
+	ps.call("reset")
+	await process_frame
+
+	# Base rooms delegate to ShipLayout.is_key_room (JSON key_room flag + fallback).
+	_expect(ps.call("is_key_room", "control_interface_room") == true,
+		"is_key_room(control_interface_room) true (base key room)")
+	_expect(ps.call("is_key_room", "gate_room") == true,
+		"is_key_room(gate_room) true (base key room)")
+	_expect(ps.call("is_key_room", "east_corridor") == false,
+		"is_key_room(east_corridor) false (base non-key room)")
+
+	# Generated rooms read the catalog key_room flag for their effective type.
+	ps.call("ensure_floor_generated", 2)
+	await process_frame
+	var floors: Dictionary = ps.get("_floors")
+	var f2_rooms: Array = (floors.get(2, {}) as Dictionary).get("rooms", [])
+	var rooms_dict: Dictionary = ps.get("_rooms")
+
+	# Generic filler storage is NOT key; once converted to armory it IS.
+	var storage_id: String = ""
+	for rid in f2_rooms:
+		if String((rooms_dict.get(String(rid), {}) as Dictionary).get("type", "")) == "storage":
+			storage_id = String(rid)
+			break
+	_expect(storage_id != "", "floor 2 has a storage room for key-room test")
+	if storage_id != "":
+		_expect(ps.call("is_key_room", storage_id) == false,
+			"is_key_room(generated storage) false before assignment")
+		var inv: Node = root.get_node_or_null("Inventory")
+		if inv != null:
+			inv.call("set_count", "parts", ps.get("ROOM_ASSIGN_COST"))
+			var ok: bool = ps.call("assign_function", storage_id, "armory")
+			_expect(ok, "assigned generated storage room to armory")
+			_expect(ps.call("is_key_room", storage_id) == true,
+				"is_key_room(generated room) true after armory assignment")
+
+	# Any generated special room on this floor must read as key.
+	for rid in f2_rooms:
+		var t: String = String((rooms_dict.get(String(rid), {}) as Dictionary).get("type", ""))
+		var cat: String = String((ps.call("room_type", t) as Dictionary).get("category", ""))
+		if cat == "special_once" or cat == "special_limited":
+			_expect(ps.call("is_key_room", String(rid)) == true,
+				"is_key_room(generated special '%s') true" % t)
+			break
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

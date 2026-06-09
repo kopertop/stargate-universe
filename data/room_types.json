@@ -7,7 +7,8 @@
     "max_count": 1,
     "floor_weight": 0,
     "assignable": false,
-    "authored_setdressing": false
+    "authored_setdressing": false,
+    "key_room": true
   },
   {
     "id": "bridge",
@@ -17,7 +18,8 @@
     "max_count": 1,
     "floor_weight": 0,
     "assignable": false,
-    "authored_setdressing": false
+    "authored_setdressing": false,
+    "key_room": true
   },
   {
     "id": "water_storage",
@@ -27,7 +29,8 @@
     "max_count": 1,
     "floor_weight": 0,
     "assignable": false,
-    "authored_setdressing": false
+    "authored_setdressing": false,
+    "key_room": true
   },
   {
     "id": "observation_deck",
@@ -37,7 +40,8 @@
     "max_count": 1,
     "floor_weight": 0,
     "assignable": false,
-    "authored_setdressing": false
+    "authored_setdressing": false,
+    "key_room": true
   },
   {
     "id": "interface_chair",
@@ -47,7 +51,8 @@
     "max_count": 1,
     "floor_weight": 0,
     "assignable": false,
-    "authored_setdressing": false
+    "authored_setdressing": false,
+    "key_room": true
   },
   {
     "id": "astrometrics",
@@ -57,7 +62,8 @@
     "max_count": 1,
     "floor_weight": 0,
     "assignable": false,
-    "authored_setdressing": false
+    "authored_setdressing": false,
+    "key_room": true
   },
   {
     "id": "weapons_control",
@@ -67,7 +73,8 @@
     "max_count": 1,
     "floor_weight": 0,
     "assignable": false,
-    "authored_setdressing": false
+    "authored_setdressing": false,
+    "key_room": true
   },
   {
     "id": "mess_hall",
@@ -77,7 +84,8 @@
     "max_count": 2,
     "floor_weight": 0,
     "assignable": false,
-    "authored_setdressing": false
+    "authored_setdressing": false,
+    "key_room": true
   },
   {
     "id": "engineering",
@@ -87,7 +95,8 @@
     "max_count": 2,
     "floor_weight": 0,
     "assignable": false,
-    "authored_setdressing": false
+    "authored_setdressing": false,
+    "key_room": true
   },
   {
     "id": "shuttle_bay",
@@ -97,7 +106,8 @@
     "max_count": 2,
     "floor_weight": 0,
     "assignable": false,
-    "authored_setdressing": false
+    "authored_setdressing": false,
+    "key_room": true
   },
   {
     "id": "ground_vehicle_bay",
@@ -107,7 +117,8 @@
     "max_count": 2,
     "floor_weight": 0,
     "assignable": false,
-    "authored_setdressing": false
+    "authored_setdressing": false,
+    "key_room": true
   },
   {
     "id": "manufacturing_shop",
@@ -117,7 +128,8 @@
     "max_count": 2,
     "floor_weight": 0,
     "assignable": false,
-    "authored_setdressing": false
+    "authored_setdressing": false,
+    "key_room": true
   },
   {
     "id": "stasis_pods",
@@ -127,7 +139,8 @@
     "max_count": 2,
     "floor_weight": 0,
     "assignable": false,
-    "authored_setdressing": false
+    "authored_setdressing": false,
+    "key_room": true
   },
   {
     "id": "research_lab",
@@ -137,7 +150,8 @@
     "max_count": 2,
     "floor_weight": 0,
     "assignable": false,
-    "authored_setdressing": false
+    "authored_setdressing": false,
+    "key_room": true
   },
   {
     "id": "armory",
@@ -147,7 +161,8 @@
     "max_count": -1,
     "floor_weight": 0,
     "assignable": true,
-    "authored_setdressing": false
+    "authored_setdressing": false,
+    "key_room": true
   },
   {
     "id": "machine_shop",
@@ -157,7 +172,8 @@
     "max_count": -1,
     "floor_weight": 0,
     "assignable": true,
-    "authored_setdressing": false
+    "authored_setdressing": false,
+    "key_room": true
   },
   {
     "id": "recreation",
@@ -167,7 +183,8 @@
     "max_count": -1,
     "floor_weight": 0,
     "assignable": true,
-    "authored_setdressing": false
+    "authored_setdressing": false,
+    "key_room": true
   },
   {
     "id": "hydroponics_bay",
@@ -177,7 +194,8 @@
     "max_count": -1,
     "floor_weight": 0,
     "assignable": true,
-    "authored_setdressing": false
+    "authored_setdressing": false,
+    "key_room": true
   },
   {
     "id": "medical_annex",
@@ -187,7 +205,8 @@
     "max_count": -1,
     "floor_weight": 0,
     "assignable": true,
-    "authored_setdressing": false
+    "authored_setdressing": false,
+    "key_room": true
   },
   {
     "id": "corridor",
@@ -197,7 +216,8 @@
     "max_count": -1,
     "floor_weight": 5,
     "assignable": false,
-    "authored_setdressing": false
+    "authored_setdressing": false,
+    "key_room": false
   },
   {
     "id": "storage",
@@ -207,7 +227,8 @@
     "max_count": -1,
     "floor_weight": 3,
     "assignable": false,
-    "authored_setdressing": false
+    "authored_setdressing": false,
+    "key_room": false
   },
   {
     "id": "power_node",
@@ -217,7 +238,8 @@
     "max_count": -1,
     "floor_weight": 2,
     "assignable": false,
-    "authored_setdressing": false
+    "authored_setdressing": false,
+    "key_room": false
   },
   {
     "id": "recycling",
@@ -227,7 +249,8 @@
     "max_count": -1,
     "floor_weight": 2,
     "assignable": false,
-    "authored_setdressing": false
+    "authored_setdressing": false,
+    "key_room": false
   },
   {
     "id": "crew_quarters",
@@ -237,7 +260,8 @@
     "max_count": -1,
     "floor_weight": 2,
     "assignable": false,
-    "authored_setdressing": false
+    "authored_setdressing": false,
+    "key_room": false
   },
   {
     "id": "gate_room",
@@ -247,7 +271,8 @@
     "max_count": 1,
     "floor_weight": 0,
     "assignable": false,
-    "authored_setdressing": true
+    "authored_setdressing": true,
+    "key_room": true
   },
   {
     "id": "kino_room",
@@ -257,7 +282,8 @@
     "max_count": 1,
     "floor_weight": 0,
     "assignable": false,
-    "authored_setdressing": true
+    "authored_setdressing": true,
+    "key_room": true
   },
   {
     "id": "control_interface_room",
@@ -267,6 +293,7 @@
     "max_count": 1,
     "floor_weight": 0,
     "assignable": false,
-    "authored_setdressing": true
+    "authored_setdressing": true,
+    "key_room": true
   }
 ]

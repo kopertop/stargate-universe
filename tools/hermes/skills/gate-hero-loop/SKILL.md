@@ -24,8 +24,9 @@ own homework.
 - **Godot developer** — `roles/godot_developer.md`. Makes exactly one focused change
   toward `design/concept-art/gate-room/target/gateroom-hero-target.png`. Delegate it
   or perform it inline following that brief.
-- **Reviewer panel** — `ollama_review.sh <target> <best> <candidate>`. 3× qwen3-vl
-  (Ollama Cloud). Emits `VERDICT=ACCEPT|REJECT` (exit 0/10). AUTHORITATIVE.
+- **Reviewer panel** — `hermes_review.sh <target> <best> <candidate>`. THREE hermes
+  agents under profiles gd-qa-1/2/3, each on a DIFFERENT model + lens. Emits
+  `VERDICT=ACCEPT|REJECT` (exit 0/10). AUTHORITATIVE — never overrule it.
 
 ## Where
 The `--workdir` you were given: a checkout of `kopertop/stargate-universe` on branch
@@ -43,8 +44,9 @@ Follow `tools/hermes/roles/project_manager.md` top to bottom, once, then stop.
 ## Render / env notes (sparky)
 - `tools/gate_hero_render.sh` wraps Godot in `xvfb-run` headless (GB10 Vulkan does the
   rasterising) and writes `screenshots/loop/{candidate,best}.png`.
-- The reviewer needs `OLLAMA_HOST` (https://ollama.com) + `OLLAMA_API_KEY` in the
-  environment, plus `jq` and `curl`.
+- The reviewer profiles (gd-qa-1/2/3) carry the ollama.com provider + key in their own
+  hermes config (cloned from default) — no extra env needed. `jq` must be installed.
+  Recreate them with `tools/hermes/setup_reviewer_profiles.sh`.
 
 ## Known traps
 - Don't redefine shader built-ins (`TAU`/`PI`) — silent compile fail → invisible portal.

@@ -17,6 +17,14 @@
 set -u
 cd "$(dirname "$0")/.."
 
+# Pick up GODOT_BIN from the loop env file when invoked under a bare cron PATH
+# (the hermes PM's terminal sources bashrc, but `hermes cron tick` under system
+# cron may not have ~/.local/bin on PATH).
+if [[ -z "${GODOT_BIN:-}" && -f "$HOME/.config/gate-hero-loop.env" ]]; then
+	# shellcheck disable=SC1091
+	. "$HOME/.config/gate-hero-loop.env"
+fi
+
 # --- resolve Godot binary -------------------------------------------------
 GODOT_BIN="${GODOT_BIN:-}"
 if [[ -z "$GODOT_BIN" || ! -x "$GODOT_BIN" ]]; then

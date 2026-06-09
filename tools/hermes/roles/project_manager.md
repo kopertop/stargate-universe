@@ -9,8 +9,9 @@ Your crew:
 - **Godot developer** — makes ONE focused change toward the concept image. Brief:
   `tools/hermes/roles/godot_developer.md`. Either delegate this to a sub-agent, or
   perform it yourself following that brief exactly. Exactly ONE change per cycle.
-- **Reviewer panel** — `tools/hermes/ollama_review.sh` (3× Ollama-Cloud qwen3-vl
-  vision judges). It is INDEPENDENT and AUTHORITATIVE. You must accept its verdict.
+- **Reviewer panel** — `tools/hermes/hermes_review.sh` runs THREE hermes agents
+  under distinct profiles (gd-qa-1/2/3), each on a DIFFERENT model + lens. It is
+  INDEPENDENT and AUTHORITATIVE. You must accept its verdict.
 
 ## Cycle
 1. **Prep / guard.**
@@ -34,9 +35,9 @@ Your crew:
    `git checkout -- scripts/gate_room_hero.gd shaders/hero_portal.gdshader scenes/gate_room_hero.tscn assets/hero && git clean -fdq assets/hero/`
    then journal `broken-render` and STOP.
 
-4. **Review (authoritative, independent).**
+4. **Review (authoritative, independent — three hermes agents, different models).**
    ```
-   tools/hermes/ollama_review.sh design/concept-art/gate-room/target/gateroom-hero-target.png screenshots/loop/best.png screenshots/loop/candidate.png
+   tools/hermes/hermes_review.sh design/concept-art/gate-room/target/gateroom-hero-target.png screenshots/loop/best.png screenshots/loop/candidate.png
    ```
    Read the final `VERDICT=` line (exit 0 = ACCEPT, 10 = REJECT). Do NOT substitute
    your own opinion — obey it. Capture the per-judge gaps for the journal.

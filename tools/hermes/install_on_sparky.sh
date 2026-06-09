@@ -76,16 +76,11 @@ if ! hermes status 2>/dev/null | grep -qiE "Nous Portal.*logged in"; then
 fi
 echo "  hermes: $(hermes --version 2>/dev/null | head -1) · Nous Portal ✓"
 
-# --- 2c. reviewer: jq + Ollama Cloud vision -------------------------------
-say "Checking reviewer panel deps (jq + Ollama Cloud qwen3-vl)"
+# --- 2c. reviewer: hermes QA profiles (gd-qa-1/2/3, different models) ------
+say "Setting up the reviewer panel (3 hermes profiles on different models)"
 command -v jq >/dev/null 2>&1 || { command -v apt-get >/dev/null 2>&1 && sudo apt-get install -y jq || die "install jq"; }
-OLLAMA_HOST="${OLLAMA_HOST:-https://ollama.com}"
-[[ -n "${OLLAMA_API_KEY:-}" ]] || die "OLLAMA_API_KEY not set in this shell. Export your Ollama Cloud key (and OLLAMA_HOST=https://ollama.com) before running."
-if curl -fsS --max-time 20 -H "Authorization: Bearer ${OLLAMA_API_KEY}" "$OLLAMA_HOST/api/tags" >/dev/null 2>&1; then
-	echo "  Ollama Cloud reachable ✓ (model: ${OLLAMA_VL_MODEL:-qwen3-vl:235b-instruct})"
-else
-	warn "Could not reach $OLLAMA_HOST/api/tags with the given key — verify OLLAMA_HOST/OLLAMA_API_KEY. The reviewer will fail without it."
-fi
+bash tools/hermes/setup_reviewer_profiles.sh
+echo "  reviewers use the ollama.com provider already configured in the cloned profiles"
 
 # --- 3. auto-approve in cron context --------------------------------------
 say "Setting hermes cron approvals to auto-allow (else loop git/terminal calls get denied)"
@@ -98,19 +93,15 @@ mkdir -p "$SKILLS_DIR"
 cp tools/hermes/skills/gate-hero-loop/SKILL.md "$SKILLS_DIR/SKILL.md"
 hermes skills list 2>/dev/null | grep -i "gate-hero-loop" && echo "  skill registered" || warn "skill copied to $SKILLS_DIR (verify with: hermes skills list)"
 
-# --- 3c. stash reviewer creds in a chmod-600 env file (NOT in git/crontab) -
-say "Writing reviewer env file ~/.config/gate-hero-loop.env (chmod 600)"
+# --- 3c. env file for GODOT_BIN (so the render finds Godot under bare cron PATH).
+# No secrets here — the reviewer profiles carry the ollama.com key in their own config.
+say "Writing ~/.config/gate-hero-loop.env (GODOT_BIN for cron PATH)"
 mkdir -p "$HOME/.config"
 ENVF="$HOME/.config/gate-hero-loop.env"
-umask 077
-{
-	echo "export OLLAMA_HOST='${OLLAMA_HOST}'"
-	echo "export OLLAMA_API_KEY='${OLLAMA_API_KEY}'"
-	echo "export OLLAMA_VL_MODEL='${OLLAMA_VL_MODEL:-qwen3-vl:235b-instruct}'"
-	[[ -n "${GODOT_BIN:-}" ]] && echo "export GODOT_BIN='${GODOT_BIN}'"
-} > "$ENVF"
-chmod 600 "$ENVF"; umask 022
-echo "  wrote $ENVF (ollama_review.sh self-sources it)"
+GB="${GODOT_BIN:-$(command -v godot 2>/dev/null || command -v godot4 2>/dev/null || true)}"
+{ [[ -n "$GB" ]] && echo "export GODOT_BIN='$GB'"; } > "$ENVF"
+chmod 600 "$ENVF"
+echo "  wrote $ENVF (gate_hero_render.sh self-sources it)"
 
 # --- 4. register the hermes cron job --------------------------------------
 say "Registering hermes cron job '$JOB_NAME' (schedule: $SCHEDULE)"

@@ -34,6 +34,7 @@ const ElevatorPanelScript: Script = preload("res://scripts/elevator_panel.gd")
 const FloorCodeTerminalScript: Script = preload("res://scripts/floor_code_terminal.gd")
 const AssignmentConsoleScript: Script = preload("res://scripts/assignment_console.gd")
 const SalvagePanelScript: Script = preload("res://scripts/salvage_panel.gd")
+const BridgeConsoleScript: Script = preload("res://scripts/bridge_console.gd")
 # Ancient/Lantean glyph cipher + font for in-room console signage. Procedural
 # console labels (door-control panel, power console) render in Ancient glyphs
 # while the room is un-deciphered — so a Kino scouting the room sees the
@@ -1755,6 +1756,10 @@ func _spawn_generated_room_interactables() -> void:
 	if type_id == "storage":
 		_spawn_assignment_console()
 
+	# Bridge rooms get the Core-Loop config console (issue #133).
+	if type_id == "bridge":
+		_spawn_bridge_console()
+
 	# D4 parts economy: place salvage panels in control/power/storage rooms so
 	# the player can gather parts toward the next-floor unlock cost.
 	# One panel per power_node room; one per storage room (alongside the console);
@@ -1783,6 +1788,26 @@ func _spawn_salvage_panel(side_offset: int = 0) -> void:
 	cs.position = Vector3(0.0, 0.9, 0.0)
 	panel.add_child(cs)
 	add_child(panel)
+
+
+# Bridge Core-Loop config console on the -X wall (issue #133).
+# Mirrors _spawn_assignment_console layout; console_room_id passed so the
+# console can look up the room's position in the ship layout if needed.
+func _spawn_bridge_console() -> void:
+	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
+	var half_x: float = w_m * 0.5
+	var console: StaticBody3D = StaticBody3D.new()
+	console.set_script(BridgeConsoleScript)
+	console.name = "BridgeConsole"
+	console.set("console_room_id", room_id)
+	console.position = Vector3(-half_x + 0.08, 0.0, 0.0)
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = Vector3(0.3, 1.8, 0.6)
+	cs.shape = box
+	cs.position = Vector3(0.0, 0.9, 0.0)
+	console.add_child(cs)
+	add_child(console)
 
 
 # Assignment console on the -X wall (left side when facing into the room).

@@ -263,6 +263,29 @@ func is_key_room(id: String) -> bool:
 	return false
 
 
+# Returns true when any room the player has discovered has effective type "bridge".
+# Used by BridgeConsole to gate the loop-config UI (issue #133).
+# Reads GameState.rooms_discovered directly — no new bool, no acquisition vocab.
+func is_bridge_discovered() -> bool:
+	var gs: Node = get_node_or_null("/root/GameState")
+	if gs == null:
+		return false
+	var discovered: Array = gs.get("rooms_discovered") as Array
+	_load_catalog()
+	for rid in discovered:
+		var r: Dictionary = room(String(rid)) as Dictionary
+		# Base rooms: type field is set directly.
+		var t: String = String(r.get("type", ""))
+		if t == "bridge":
+			return true
+		# Generated rooms: effective type from catalog.
+		if is_generated(String(rid)):
+			var cat_entry: Dictionary = _catalog.get(t, {}) as Dictionary
+			if String(cat_entry.get("id", "")) == "bridge":
+				return true
+	return false
+
+
 # Direction-tagged outgoing edges (ShipLayout-compatible: forward + reverse mirrored).
 # Both forward edges (with plaque) and reverse edges (with plaque from ShipLayout
 # mirror logic, plaque key present for ShipLayout consistency) are returned here.

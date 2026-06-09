@@ -81,6 +81,14 @@ var _alert_applied: bool = false
 # deciphered). Each entry is {"node": Label3D, "text": String}; decoded to the
 # stored readable text when room_deciphered fires for this room.
 var _ancient_console_labels: Array = []
+# Cold-open standoff actors (#136 staging). Greer + Scott bodies that physically
+# enter and choreograph against Dr Rush during the find_rush dialogue, driven by
+# per-node "action" cues on GameState.dialog_action. Both run PROCESS_MODE_ALWAYS
+# so they keep moving while the open dialog window has the SceneTree paused.
+var _standoff_greer: Node3D = null
+var _standoff_scott: Node3D = null
+var _standoff_sidearm: Node3D = null
+var _standoff_rush_pos: Vector3 = Vector3.ZERO
 
 
 func _ready() -> void:
@@ -109,6 +117,9 @@ func _ready() -> void:
 	_setup_doors()
 	_spawn_interactables()
 	_place_player()
+	# Cold-open standoff staging — needs the player already placed so Greer can be
+	# positioned "right behind" them. No-op outside the control-room first-meet.
+	_maybe_spawn_standoff()
 	# Red-alert tint applies to lights + WorldEnvironment if the air crisis
 	# is active. Runs after RoomBuilder.build so it catches every light the
 	# accent functions just spawned. Idempotent on re-entry.
@@ -900,6 +911,10 @@ func _spawn_dr_rush() -> void:
 		},
 		{
 			"speaker": "Sgt Greer",
+			# action: Greer charges in behind-right of Rush and levels his sidearm.
+			# hold: the player can't continue until he's arrived and aimed.
+			"action": "standoff_greer",
+			"hold": true,
 			"text": "Doctor. Step away from the console. Now. I am not asking.",
 			"choices": [
 				{"text": "Watch Greer's hand drift to his sidearm.", "next": 2},
@@ -907,6 +922,8 @@ func _spawn_dr_rush() -> void:
 		},
 		{
 			"speaker": "Lt Scott",
+			# action: Scott walks in through the door, calling Greer off.
+			"action": "standoff_scott",
 			"text": "Greer — stand down. Nobody's shooting anyone. Rush, we just need a moment.",
 			"choices": [
 				{"text": "Wait for Rush's response.", "next": 3},
@@ -921,9 +938,11 @@ func _spawn_dr_rush() -> void:
 		},
 		{
 			"speaker": "Dr Rush",
-			"text": "Nothing. There — nothing happened. Now: everyone get some rest. I have work to do.",
+			# action: standoff resolves — Greer lowers the weapon and both walk out.
+			"action": "standoff_clear",
+			"text": "Nothing. There — nothing happened. Now stop hovering, Wallace. I don't care where you go — just go be useful somewhere else. I have work to do.",
 			"choices": [
-				{"text": "I suppose we all do.", "next": "exit"},
+				{"text": "Fine.", "next": "exit"},
 			],
 		},
 	])
@@ -933,17 +952,17 @@ func _spawn_dr_rush() -> void:
 	rush.set("repeat_dialogue_tree", [
 		{
 			"speaker": "Dr Rush",
-			"text": "I already told you — get some rest. There is nothing for you to do here right now.",
+			"text": "I already told you — there is nothing for you to do here. Go.",
 			"choices": [
 				{"text": "Understood.", "next": "exit"},
-				{"text": "Where should I go?", "next": 1},
+				{"text": "Go where?", "next": 1},
 			],
 		},
 		{
 			"speaker": "Dr Rush",
-			"text": "Your quarters, Eli. Down the corridor, past Control. Find them. Lay down. Stop hovering.",
+			"text": "I don't care, Eli. Anywhere but here. Go be useful somewhere else and let me work.",
 			"choices": [
-				{"text": "On my way.", "next": "exit"},
+				{"text": "Right.", "next": "exit"},
 			],
 		},
 	])
@@ -987,6 +1006,263 @@ func _spawn_dr_rush() -> void:
 	rush.add_child(tag)
 
 	add_child(rush)
+
+
+# --- Cold-open standoff choreography (#136) ----------------------------------
+
+# Stage the standoff actors when the player first walks into the control room to
+# find Rush (pre-crisis, not yet met). Greer waits behind the player; Scott waits
+# further back by the entry. Both choreograph against Rush on dialogue cues. No-op
+# during a Kino flyby, after the meet, or once the air crisis has begun.
+func _maybe_spawn_standoff() -> void:
+	if room_id != "control_interface_room":
+		return
+	if GameState.kino_pilot_mode or GameState.air_crisis_started or GameState.met_rush:
+		return
+	_spawn_standoff_actors()
+
+
+# Build Greer + Scott bodies positioned relative to the player (so Greer is
+# literally "right behind us"). They are silent military actors in fatigues
+# (soldier.glb), each ALWAYS carrying a sidearm — interaction disabled and off the
+# interact layer so the player can only talk to Rush. PROCESS_MODE_ALWAYS lets them
+# keep moving while the open dialog window has the tree paused.
+func _spawn_standoff_actors() -> void:
+	var rush_node: Node3D = get_node_or_null("DrRush") as Node3D
+	_standoff_rush_pos = rush_node.position if rush_node != null else Vector3(5.0, 0.0, 0.0)
+
+	# Player frame: forward = -basis.z (see memory: Godot Y-rotation → forward).
+	var p_pos: Vector3 = player.position
+	var fwd: Vector3 = Vector3(-sin(player.rotation.y), 0.0, -cos(player.rotation.y))
+	var behind: Vector3 = -fwd
+	var face_fwd: float = atan2(-fwd.x, -fwd.z)   # face the confrontation (toward Rush)
+
+	# Greer just behind the player (offset to one side so he doesn't clip us);
+	# Scott further back by the entry so he reads as "arriving" when he walks in.
+	_standoff_greer = _spawn_standoff_soldier(
+		"StandoffGreer", "Sgt Greer",
+		p_pos + behind * 2.4 + fwd.cross(Vector3.UP) * 0.6, face_fwd)
+	_standoff_scott = _spawn_standoff_soldier(
+		"StandoffScott", "Lt Scott", p_pos + behind * 6.0, face_fwd)
+
+	# Greer's sidearm is the one he raises to aim; keep a handle. Scott's is just
+	# holstered set-dressing (he's de-escalating). Both are always equipped.
+	_standoff_sidearm = _standoff_greer.get_node_or_null("Sidearm")
+
+	if not GameState.dialog_action.is_connected(_on_standoff_cue):
+		GameState.dialog_action.connect(_on_standoff_cue)
+
+
+# A silent armed soldier actor for the standoff: soldier.glb in fatigues (Mini
+# Arena colormap), capsule collider, nametag, a holstered sidearm, and the
+# silent-actor flags (non-interactable, off the interact layer, ALWAYS process).
+func _spawn_standoff_soldier(npc_name: String, char_name: String, pos: Vector3, yaw: float) -> StaticBody3D:
+	var body: StaticBody3D = StaticBody3D.new()
+	body.set_script(NpcScript)
+	body.name = npc_name
+	body.position = pos
+	body.rotation.y = yaw
+	body.set("character_name", char_name)
+
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var cap: CapsuleShape3D = CapsuleShape3D.new()
+	cap.radius = 0.32
+	cap.height = 1.75
+	cs.shape = cap
+	cs.position = Vector3(0.0, 0.88, 0.0)
+	body.add_child(cs)
+
+	var model_holder: Node3D = Node3D.new()
+	model_holder.name = "Model"
+	model_holder.scale = Vector3(2.6, 2.6, 2.6)
+	model_holder.rotation.y = PI   # Kenney +Z forward → face parent -Z
+	# Art-consistent crew mini-char, dressed military: olive-drab fatigues tint +
+	# a combat helmet (the Mini-Arena "soldier" model is a gladiator — wrong era).
+	var glb: PackedScene = load("res://models/characters/scott.glb")
+	if glb != null:
+		var inst: Node = glb.instantiate()
+		model_holder.add_child(inst)
+		_apply_fatigues(inst, load("res://models/characters/Textures/colormap.png"))
+		Npc.play_idle_animation(inst)
+	body.add_child(model_holder)
+	body.add_child(_build_helmet())
+
+	var tag: Label3D = Label3D.new()
+	tag.name = "Nametag"
+	tag.text = char_name
+	tag.pixel_size = 0.0042
+	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	tag.outline_size = 6
+	tag.shaded = false
+	tag.modulate = Color(0.95, 0.92, 0.78, 1.0)
+	tag.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
+	tag.position = Vector3(0.0, 2.00, 0.0)
+	body.add_child(tag)
+
+	body.add_child(_build_sidearm())
+	add_child(body)
+	# Flags AFTER add_child so Interactable._ready doesn't clobber collision_layer
+	# back to 4. enabled=false + layer 0 = the interact ray never targets them.
+	body.process_mode = Node.PROCESS_MODE_ALWAYS
+	body.set("enabled", false)
+	body.collision_layer = 0
+	return body
+
+
+# Tint a Kenney mini-char into olive-drab fatigues: the colormap texture stays
+# (so the face/skin still reads) but albedo is multiplied toward army green.
+func _apply_fatigues(root: Node, tex: Texture2D) -> void:
+	var mat: StandardMaterial3D = StandardMaterial3D.new()
+	mat.albedo_texture = tex
+	mat.albedo_color = Color(0.45, 0.52, 0.32)   # olive-drab multiply
+	mat.roughness = 0.85
+	mat.metallic = 0.0
+	var stack: Array = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is MeshInstance3D:
+			(n as MeshInstance3D).material_override = mat
+		for c in n.get_children():
+			stack.append(c)
+
+
+# Dark-olive combat helmet — a squashed dome on the crown. Unambiguously reads
+# "soldier" on the stylized mini-char without touching the face.
+func _build_helmet() -> MeshInstance3D:
+	var helmet: MeshInstance3D = MeshInstance3D.new()
+	helmet.name = "Helmet"
+	var dome: SphereMesh = SphereMesh.new()
+	dome.radius = 0.34
+	dome.height = 0.46
+	dome.is_hemisphere = true
+	helmet.mesh = dome
+	helmet.position = Vector3(0.0, 1.62, 0.0)
+	var mat: StandardMaterial3D = StandardMaterial3D.new()
+	mat.albedo_color = Color(0.20, 0.24, 0.16)   # dark olive
+	mat.roughness = 0.7
+	mat.metallic = 0.0
+	helmet.material_override = mat
+	return helmet
+
+
+# Procedural sidearm on a pivot at the right hand. Starts barrel-down (holstered);
+# raised level (barrel along body-forward) on the standoff_greer cue. Sized to be
+# clearly readable at gameplay camera distance.
+func _build_sidearm() -> Node3D:
+	var pivot: Node3D = Node3D.new()
+	pivot.name = "Sidearm"
+	pivot.position = Vector3(0.48, 1.10, 0.20)   # right hand, hip height
+	pivot.rotation.x = -PI * 0.5                  # barrel points down (holstered)
+	var mat: StandardMaterial3D = StandardMaterial3D.new()
+	mat.albedo_color = Color(0.05, 0.05, 0.06)
+	mat.metallic = 0.6
+	mat.roughness = 0.45
+	var slide: MeshInstance3D = MeshInstance3D.new()
+	var smesh: BoxMesh = BoxMesh.new()
+	smesh.size = Vector3(0.10, 0.13, 0.44)        # barrel/slide along -Z (body-forward)
+	slide.mesh = smesh
+	slide.material_override = mat
+	slide.position = Vector3(0.0, 0.0, -0.16)
+	pivot.add_child(slide)
+	var grip: MeshInstance3D = MeshInstance3D.new()
+	var gmesh: BoxMesh = BoxMesh.new()
+	gmesh.size = Vector3(0.08, 0.24, 0.11)
+	grip.mesh = gmesh
+	grip.material_override = mat
+	grip.position = Vector3(0.0, -0.16, 0.06)
+	pivot.add_child(grip)
+	return pivot
+
+
+# Per-node dialogue cue dispatcher. Each standoff node carries an "action" that
+# DialogScreen fires on GameState.dialog_action the instant it renders. Under
+# instant_mode (headless playthrough) we snap end-states instead of animating so
+# the sacred e1_playthrough never has to pump frames.
+func _on_standoff_cue(action_id: String) -> void:
+	if _standoff_greer == null or not is_instance_valid(_standoff_greer):
+		return
+	var instant: bool = false
+	var sr: Node = get_node_or_null("/root/SceneRouter")
+	if sr != null and sr.get("instant_mode"):
+		instant = true
+	match action_id:
+		"standoff_greer":
+			_standoff_advance_greer(instant)
+		"standoff_scott":
+			_standoff_enter_scott(instant)
+		"standoff_clear":
+			_standoff_clear(instant)
+
+
+# Greer's cue: CHARGE in to the right of Rush (behind him), square off, and level
+# the sidearm to aim at him. The dialogue node is held (player can't continue)
+# until GameState.dialog_release fires here — i.e. until Greer has actually
+# arrived and aimed.
+func _standoff_advance_greer(instant: bool) -> void:
+	# Behind-right of Rush: +X is behind his back (he faces -X); -Z is his right.
+	var anchor: Vector3 = Vector3(_standoff_rush_pos.x + 1.4, 0.0, _standoff_rush_pos.z - 1.2)
+	var face: float = atan2(-(_standoff_rush_pos.x - anchor.x), -(_standoff_rush_pos.z - anchor.z))
+	if instant:
+		_standoff_greer.position = anchor
+		_standoff_greer.rotation.y = face
+		if _standoff_sidearm != null and is_instance_valid(_standoff_sidearm):
+			_standoff_sidearm.rotation.x = 0.0
+		GameState.dialog_release.emit()
+		return
+	_standoff_greer.call("walk_to", anchor, 6.0, 0.0)   # charge
+	# Poll arrival — process_frame fires even while the dialog has the tree paused.
+	# Frame ceiling guards against a soft-lock if he can't reach the anchor.
+	var guard: int = 0
+	while guard < 240 and is_instance_valid(_standoff_greer) \
+			and _standoff_greer.position.distance_to(anchor) > 0.45:
+		await get_tree().process_frame
+		guard += 1
+	if not is_instance_valid(_standoff_greer):
+		return
+	_standoff_greer.rotation.y = face            # square off at Rush
+	if _standoff_sidearm != null and is_instance_valid(_standoff_sidearm):
+		var tw: Tween = _standoff_greer.create_tween()
+		tw.tween_property(_standoff_sidearm, "rotation:x", 0.0, 0.22)
+	GameState.dialog_release.emit()              # now the player may continue
+
+
+# Scott's cue: walk in from behind toward the confrontation, calling Greer off.
+# His sidearm stays holstered — he's de-escalating, not aiming.
+func _standoff_enter_scott(instant: bool) -> void:
+	var anchor: Vector3 = Vector3(_standoff_rush_pos.x - 3.0, 0.0, 1.6)
+	if instant:
+		_standoff_scott.position = anchor
+		return
+	_standoff_scott.call("walk_to", anchor, 3.2, 0.0)   # quick — he's urgent
+
+
+# Resolution cue: Greer lowers the weapon, both walk back out toward the entry,
+# and the actors despawn so re-entry shows just-Rush (the repeat dialogue).
+func _standoff_clear(instant: bool) -> void:
+	if instant:
+		_despawn_standoff()
+		return
+	if _standoff_sidearm != null and is_instance_valid(_standoff_sidearm):
+		var tw: Tween = _standoff_greer.create_tween()
+		tw.tween_property(_standoff_sidearm, "rotation:x", -PI * 0.5, 0.3)
+	var exit_pt: Vector3 = Vector3(_standoff_rush_pos.x - 10.0, 0.0, 0.0)
+	_standoff_greer.call("walk_to", exit_pt + Vector3(0.0, 0.0, 1.0), 2.6, 0.2)
+	_standoff_scott.call("walk_to", exit_pt + Vector3(0.0, 0.0, -1.0), 2.6, 0.0)
+	# Despawn after they have had time to clear. The timer only ticks once the
+	# player closes the dialog (tree unpauses), by which point they're at the door.
+	await get_tree().create_timer(4.0).timeout
+	_despawn_standoff()
+
+
+func _despawn_standoff() -> void:
+	if GameState.dialog_action.is_connected(_on_standoff_cue):
+		GameState.dialog_action.disconnect(_on_standoff_cue)
+	for actor in [_standoff_greer, _standoff_scott]:
+		if actor != null and is_instance_valid(actor):
+			actor.queue_free()
+	_standoff_greer = null
+	_standoff_scott = null
+	_standoff_sidearm = null
 
 
 # Post-crisis "Rush isn't here" beat. Eli radios Scott, Scott hands the

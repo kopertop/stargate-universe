@@ -55,6 +55,9 @@ func _run() -> void:
 	# ── 1. Standoff tree structure ─────────────────────────────────────────────
 	_test_standoff_tree_structure(gs)
 
+	# ── 1b. Standoff actors physically spawn in the control room ──────────────
+	await _test_standoff_actors_spawn(gs)
+
 	# ── 2. DrRush.interact → met_rush + quest advancement ─────────────────────
 	# Uses await so it must be driven from an async wrapper.
 	await _test_rush_interact_advances_quest(gs)
@@ -89,7 +92,9 @@ func _test_standoff_tree_structure(gs: Node) -> void:
 	rush.name = "DrRush"
 	rush.set("character_name", "Dr Rush")
 
-	# Mirror the standoff tree assigned in room.gd::_spawn_dr_rush.
+	# Mirror the standoff tree assigned in room.gd::_spawn_dr_rush. The "action"
+	# keys are the choreography cues that drive the physical Greer/Scott staging
+	# (see room.gd::_on_standoff_cue) — they ride GameState.dialog_action.
 	rush.set("dialogue_tree", [
 		{
 			"speaker": "Eli",
@@ -98,11 +103,14 @@ func _test_standoff_tree_structure(gs: Node) -> void:
 		},
 		{
 			"speaker": "Sgt Greer",
+			"action": "standoff_greer",
+			"hold": true,
 			"text": "Doctor. Step away from the console. Now. I am not asking.",
 			"choices": [{"text": "Watch Greer's hand drift to his sidearm.", "next": 2}],
 		},
 		{
 			"speaker": "Lt Scott",
+			"action": "standoff_scott",
 			"text": "Greer — stand down. Nobody's shooting anyone. Rush, we just need a moment.",
 			"choices": [{"text": "Wait for Rush's response.", "next": 3}],
 		},
@@ -113,8 +121,9 @@ func _test_standoff_tree_structure(gs: Node) -> void:
 		},
 		{
 			"speaker": "Dr Rush",
-			"text": "Nothing. There — nothing happened. Now: everyone get some rest. I have work to do.",
-			"choices": [{"text": "I suppose we all do.", "next": "exit"}],
+			"action": "standoff_clear",
+			"text": "Nothing. There — nothing happened. Now stop hovering, Wallace. I don't care where you go — just go be useful somewhere else. I have work to do.",
+			"choices": [{"text": "Fine.", "next": "exit"}],
 		},
 	])
 	rush.set("met_flag", "met_rush")
@@ -145,7 +154,81 @@ func _test_standoff_tree_structure(gs: Node) -> void:
 	_expect("blow up" in eli_text,
 		"Eli's opening line contains 'blow up' (got: '%s')" % eli_text)
 
+	# Choreography cues: the Greer/Scott/resolution nodes must carry the action
+	# ids that room.gd::_on_standoff_cue dispatches on. Without these the actors
+	# never move (regression guard for the "Greer talks but isn't in the room" bug).
+	var expected_actions: Dictionary = {1: "standoff_greer", 2: "standoff_scott", 4: "standoff_clear"}
+	for idx in expected_actions:
+		var want: String = expected_actions[idx]
+		var got: String = ""
+		if idx < tree.size() and tree[idx] is Dictionary:
+			got = String((tree[idx] as Dictionary).get("action", ""))
+		_expect(got == want, "standoff node[%d] action == '%s' (got '%s')" % [idx, want, got])
+
+	# Greer's node must HOLD — the player can't continue until he's charged in.
+	var greer_holds: bool = tree.size() > 1 and tree[1] is Dictionary \
+		and (tree[1] as Dictionary).get("hold", false) == true
+	_expect(greer_holds, "Greer's standoff node holds the dialog until he arrives")
+
+	# Rush's dismissal must NOT direct Eli to his quarters — he brushes him off.
+	var final_text: String = ""
+	if tree.size() >= 5 and tree[4] is Dictionary:
+		final_text = String((tree[4] as Dictionary).get("text", "")).to_lower()
+	_expect(not ("quarters" in final_text),
+		"Rush's dismissal doesn't mention 'quarters' (got: '%s')" % final_text)
+	_expect("useful somewhere else" in final_text,
+		"Rush's dismissal brushes Eli off ('useful somewhere else')")
+
 	rush.free()
+
+
+# ── 1b. Standoff actors physically spawn in the control room ──────────────────
+# Regression guard for "Greer talks but isn't in the room": instance the REAL
+# control_interface_room at the find_rush beat and assert Greer + Scott bodies
+# spawn as silent (non-interactable) actors, with Greer carrying his sidearm.
+func _test_standoff_actors_spawn(gs: Node) -> void:
+	print("\n-- standoff actors spawn in control room --")
+	gs.call("reset")  # fresh state: met_rush/air_crisis/kino_pilot all false
+
+	var packed: PackedScene = load("res://scenes/room.tscn") as PackedScene
+	_expect(packed != null, "room.tscn loads")
+	if packed == null:
+		return
+	gs.set("next_room_id", "control_interface_room")
+	var inst: Node = packed.instantiate()
+	root.add_child(inst)
+	await process_frame  # let room.gd::_ready() build + _maybe_spawn_standoff() run
+
+	var greer: Node = inst.get_node_or_null("StandoffGreer")
+	var scott: Node = inst.get_node_or_null("StandoffScott")
+	_expect(greer != null, "StandoffGreer body spawned in control room")
+	_expect(scott != null, "StandoffScott body spawned in control room")
+
+	if greer != null:
+		_expect(greer.get("enabled") == false, "Greer is non-interactable (enabled == false)")
+		_expect(int(greer.get("collision_layer")) == 0,
+			"Greer is off the interact layer (collision_layer == 0)")
+		_expect(greer.has_node("Sidearm"), "Greer carries a Sidearm prop")
+		_expect(greer.has_node("Helmet"), "Greer wears a combat Helmet (military dress)")
+	if scott != null:
+		_expect(scott.get("enabled") == false, "Scott is non-interactable (enabled == false)")
+		_expect(scott.has_node("Sidearm"), "Scott also always carries a Sidearm")
+		_expect(scott.has_node("Helmet"), "Scott wears a combat Helmet (military dress)")
+
+	# Cue dispatch should not crash and should leave actors valid (instant_mode
+	# snaps the staging). standoff_clear despawns both.
+	gs.emit_signal("dialog_action", "standoff_greer")
+	gs.emit_signal("dialog_action", "standoff_scott")
+	await process_frame
+	_expect(is_instance_valid(greer), "Greer survives the advance/enter cues")
+	gs.emit_signal("dialog_action", "standoff_clear")
+	await process_frame
+	await process_frame  # queue_free needs a tick to actually leave the tree
+	_expect(not is_instance_valid(greer),
+		"standoff_clear despawns Greer (instant_mode)")
+
+	root.remove_child(inst)
+	inst.free()
 
 
 # ── 2. DrRush.interact → met_rush + quest step advancement ────────────────────

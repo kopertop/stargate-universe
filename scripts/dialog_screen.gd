@@ -34,6 +34,10 @@ signal closed()
 var _target: Node3D = null
 var _tree: Array = []
 var _current_index: int = 0
+# True while a node rendered with "hold": true is waiting for GameState.dialog_release.
+# Choice buttons + number keys are inert until the release fires (staged
+# choreography must land before the player can advance).
+var _held: bool = false
 # Portrait + character-registry loading lives in PortraitLoader (shared with the
 # HUD unit frame) so the .import-sidestep PNG decoder is implemented once.
 const PortraitLoaderScript := preload("res://scripts/portrait_loader.gd")
@@ -60,6 +64,12 @@ func _render_node() -> void:
 	# Data-driven side effects: a node may carry an "action" id that fires when
 	# it's shown (e.g. the FTL-drop blur on Brody's line). Listeners hook
 	# GameState.dialog_action.
+	# A held node disables its choices until GameState.dialog_release. Set the flag
+	# BEFORE emitting the action so the cue listener (which may emit dialog_release
+	# synchronously in instant_mode) can release it immediately.
+	_held = node.get("hold", false) == true
+	if _held and not GameState.dialog_release.is_connected(_release_hold):
+		GameState.dialog_release.connect(_release_hold, CONNECT_ONE_SHOT)
 	var action: String = String(node.get("action", ""))
 	if action != "":
 		GameState.dialog_action.emit(action)
@@ -89,8 +99,19 @@ func _lay_out_choices(choices: Array) -> void:
 		var nxt: Variant = choice.get("next", "exit")
 		var act: String = String(choice.get("action", ""))
 		btn.pressed.connect(_on_choice_pressed.bind(nxt, act))
+		btn.disabled = _held   # inert until the held node is released
 		Audio.attach_ui_hover(btn)
 		_choices_box.add_child(btn)
+	if not _held and _choices_box.get_child_count() > 0:
+		(_choices_box.get_child(0) as Control).grab_focus()
+
+
+# Release a held node: re-enable the choice buttons and focus the first one.
+func _release_hold() -> void:
+	_held = false
+	for c in _choices_box.get_children():
+		if c is Button:
+			(c as Button).disabled = false
 	if _choices_box.get_child_count() > 0:
 		(_choices_box.get_child(0) as Control).grab_focus()
 
@@ -132,6 +153,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if key.keycode >= KEY_1 and key.keycode <= KEY_9:
+		if _held:
+			get_viewport().set_input_as_handled()
+			return
 		var idx: int = key.keycode - KEY_1
 		if idx < _choices_box.get_child_count():
 			(_choices_box.get_child(idx) as Button).emit_signal("pressed")

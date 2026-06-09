@@ -69,6 +69,11 @@ signal dialog_closed()
 # key. Lets a data-driven dialog tree trigger a side effect mid-conversation
 # (e.g. the Phase D scrubber scene firing the FTL-drop blur on Brody's line).
 signal dialog_action(action_id: String)
+# Fired by gameplay code to RELEASE a dialog node that was rendered with
+# "hold": true (choices disabled until this fires). Lets a beat block the player
+# from advancing until staged choreography lands — e.g. Greer charging into the
+# standoff before the player can continue. dialog_screen.gd listens one-shot.
+signal dialog_release()
 
 const MAX_HEALTH: float = 100.0
 const MAX_OXYGEN: float = 100.0

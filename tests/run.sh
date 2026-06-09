@@ -10,7 +10,7 @@
 #   6. questlog     — data-driven QuestLog autoload (predicate + event advance,
 #                     save round-trip, old-format migration)
 #
-# Usage: tests/run.sh [lint|scene|flow|quest|playthrough|resume|autopilot|questlog|inventory|atmosphere|kino-doors|kino-autoexplore|gamepad|footfall|npc-chat|shaders|ancient-text|discovery-toast|door-plaque|crate|unit-frame|quest-tracker|hud-wow|gate-two-way|equip-mount|equip-assets|char-panel|equip-integration|planet-gen|planet-resources|planet-integration|biome-desert|biome-jungle|biome-toxic|biome-urban|biome-alien-tech|knockout|ftl-loop|save|save-integration|elevator-power|bridge-loop|consumption|repair-robot|all]
+# Usage: tests/run.sh [lint|scene|flow|quest|playthrough|resume|autopilot|questlog|inventory|atmosphere|kino-doors|kino-autoexplore|gamepad|footfall|npc-chat|shaders|ancient-text|discovery-toast|door-plaque|crate|unit-frame|quest-tracker|hud-wow|gate-two-way|equip-mount|equip-assets|char-panel|equip-integration|planet-gen|planet-resources|planet-integration|biome-desert|biome-jungle|biome-toxic|biome-urban|biome-alien-tech|knockout|ftl-loop|save|save-integration|elevator-power|bridge-loop|consumption|repair-robot|setdressing|all]
 #                                                                          (default: all)
 #
 # Pre-commit hook: .githooks/pre-commit invokes the lint subset via
@@ -131,6 +131,8 @@ RC_ELEVPOWER=0
 RC_BRIDGELOOP=0
 RC_CONSUMPTION=0
 RC_REPAIR=0
+RAN_SETDRESS=0
+RC_SETDRESS=0
 
 # Run a SceneTree-extending script (synchronous, no autoloads).
 #
@@ -474,6 +476,12 @@ if [[ "$MODE" == "repair-robot" || "$MODE" == "all" ]]; then
 	RAN_REPAIR=1
 fi
 
+if [[ "$MODE" == "setdressing" || "$MODE" == "all" ]]; then
+	run_script_test "setdressing" "res://tests/smoke/setdressing.gd"
+	RC_SETDRESS=$?
+	RAN_SETDRESS=1
+fi
+
 # Kino map visual captures — produces 4 PNGs under screenshots/result/ that
 # can be eyeballed against the concept image (design/concept-art/sgu-map.png).
 # Not part of `all` because it requires a headed Godot; opt-in via `visual`.
@@ -551,6 +559,7 @@ echo "==============================="
 [[ $RAN_BRIDGELOOP -eq 1 ]] && echo "bridge_loop_config:  $([[ $RC_BRIDGELOOP -eq 0 ]] && echo PASS || echo "FAIL ($RC_BRIDGELOOP)")" || echo "bridge_loop_config:  SKIPPED"
 [[ $RAN_CONSUMPTION -eq 1 ]] && echo "consumption:         $([[ $RC_CONSUMPTION -eq 0 ]] && echo PASS || echo "FAIL ($RC_CONSUMPTION)")" || echo "consumption:         SKIPPED"
 [[ $RAN_REPAIR -eq 1 ]] && echo "repair_robot:        $([[ $RC_REPAIR -eq 0 ]] && echo PASS || echo "FAIL ($RC_REPAIR)")" || echo "repair_robot:        SKIPPED"
+[[ $RAN_SETDRESS -eq 1 ]] && echo "setdressing:         $([[ $RC_SETDRESS -eq 0 ]] && echo PASS || echo "FAIL ($RC_SETDRESS)")" || echo "setdressing:         SKIPPED"
 [[ $RAN_SAVE -eq 1 ]] && echo "save_store:          $([[ $RC_SAVE_UNIT -eq 0 ]] && echo PASS || echo "FAIL ($RC_SAVE_UNIT)")" || echo "save_store:          SKIPPED"
 [[ $RAN_SAVE -eq 1 ]] && echo "save_slot_resume:    $([[ $RC_SAVE_RESUME -eq 0 ]] && echo PASS || echo "FAIL ($RC_SAVE_RESUME)")" || echo "save_slot_resume:    SKIPPED"
 [[ $RAN_SAVE -eq 1 ]] && echo "save_profile_orch:   $([[ $RC_SAVE_ORCH -eq 0 ]] && echo PASS || echo "FAIL ($RC_SAVE_ORCH)")" || echo "save_profile_orch:   SKIPPED"

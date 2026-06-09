@@ -23,7 +23,7 @@ set -euo pipefail
 REPO="${REPO:-$HOME/stargate-universe}"
 BRANCH="feature/gate-room-hero-portal"
 REMOTE="${REMOTE:-git@github.com:kopertop/stargate-universe.git}"
-SCHEDULE="${SCHEDULE:-30m}"          # hermes schedule: '30m', 'every 2h', or cron expr
+SCHEDULE="${SCHEDULE:-every 30m}"    # RECURRING hermes schedule ('30m' alone = one-shot!)
 JOB_NAME="gate-hero-loop"
 TICK_EVERY_MIN="${TICK_EVERY_MIN:-5}" # system-cron cadence that calls `hermes cron tick`
 

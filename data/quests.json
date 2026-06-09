@@ -132,5 +132,27 @@
 				"terminal": true
 			}
 		]
+	},
+	{
+		"id": "e2_explore",
+		"title": "Episode 2: Explore the Ship",
+		"auto_start": false,
+		"tracked": false,
+		"steps": [
+			{
+				"id": "unlock_upper_deck",
+				"label": "Unlock more of the ship",
+				"objective": "Salvage parts from broken panels and unlock the next deck of Destiny via the floor terminal.",
+				"target": { "room": "gate_room", "anchor": "UpperDeckDoor" },
+				"complete_when": "floor_unlocked_beyond_2"
+			},
+			{
+				"id": "explore_complete",
+				"label": "Exploration underway",
+				"objective": "The ship's secrets are yours to uncover.",
+				"target": { "room": "", "anchor": "" },
+				"terminal": true
+			}
+		]
 	}
 ]

@@ -76,7 +76,6 @@ const PROCEDURAL_ROOM_REQUIRES: Array = [
 const ROOM_INTERACTABLE_REQUIRES: Dictionary = {
 	"quarters_room_1": ["Bed"],
 	"eli_quarters": ["KinoPickup"],
-	"engineering_bay": ["PowerConsole"],
 	"breached_section_south": ["ShuttleDoorPanel", "ShuttleCrate1", "ShuttleCrate2", "ShuttleCrate3"],
 	"control_interface_room": ["DrRush"],
 	"south_corridor": ["CO2Scrubber"],
@@ -347,15 +346,6 @@ func _check_mission_wiring(inst: Node, room_id: String) -> void:
 			else:
 				_fail("%s [eli_quarters]" % ROOM_SCENE,
 					"KinoPickup.interact() did not add the kino remote to Inventory")
-		"engineering_bay":
-			var console: Node = inst.get_node("PowerConsole")
-			console.call("interact", null)
-			if _game_state.get("elevator_repaired") == true:
-				print("  OK (PowerConsole.interact → elevator_repaired=true)")
-				_passes += 1
-			else:
-				_fail("%s [engineering_bay]" % ROOM_SCENE,
-					"PowerConsole.interact() did not set GameState.elevator_repaired")
 		"breached_section_south":
 			# Loot the small-fuse crate, then repair the door panel → breach sealed.
 			inst.get_node("ShuttleCrate2").call("interact", null)
@@ -407,7 +397,7 @@ func _check_connection_reachability() -> void:
 		"sealed_section_north",         # locked trap section (blocked-door beat)
 		"control_interface_room",       # Dr Rush
 		"eli_quarters",                 # kino pickup (Eli's room)
-		"engineering_bay",              # power console — gates upper deck
+		"aft_storage_hall",             # repurposed engineering bay → long storage hall
 		"quarters_room_1",              # Crew Quarters Alpha (upper deck)
 		"south_corridor",               # CO2 scrubber (Phase D)
 		"hydroponics",                  # upper-deck room, elevator-gated

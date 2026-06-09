@@ -30,6 +30,23 @@ const DIR_FLIP: Dictionary = {
 	"-z": "+z",
 }
 
+# Stairs connection: special edge direction for the gate-room ↔ Floor-2 stairs link.
+# Not a real cardinal direction — treated as a named vertical connector, same role
+# as "elevator" in room.gd (dir remapped to a wall at stamp time). Used only in
+# door_edges() so gate_room.gd can read the edge and room.gd can mirror it back.
+const STAIRS_DIR: String = "stairs"
+# The arrival spawn key that the Observation Deck stamps for the return trip,
+# and that gate_room.gd creates a matching Marker3D for on the stair landing.
+const STAIRS_GATE_SPAWN: String = "FromObservationDeck"
+const STAIRS_OBS_SPAWN: String = "FromGateRoomStairs"
+
+# Parts budget per-floor: each generated floor seeds this many parts (via crates +
+# salvage panels) so the player can always afford to unlock the NEXT floor.
+# Budget = FLOOR_UNLOCK_COST_BASE * (n+1) * PARTS_BUDGET_MARGIN_PCT / 100
+const PARTS_BUDGET_MARGIN_PCT: int = 120   # 20% headroom over bare unlock cost
+# Parts granted per salvage panel interact.
+const SALVAGE_PANEL_GRANT: int = 3
+
 # Per-filler-type approximate size in JSON grid units (width x height).
 # Corridors are long on one axis; rooms are more square.
 const _FILLER_SIZES: Dictionary = {
@@ -78,6 +95,17 @@ func _ready() -> void:
 		_floors[1] = {
 			"unlocked": true,
 			"code_known": false,
+			"generated": false,
+			"rooms": [],
+			"specials_placed": 0,
+			"cap": 0,
+			"seed": 0,
+		}
+	# Floor 2 is free — reachable via the gate-room stairs (no parts/code required).
+	if not _floors.has(2):
+		_floors[2] = {
+			"unlocked": true,
+			"code_known": true,
 			"generated": false,
 			"rooms": [],
 			"specials_placed": 0,
@@ -224,6 +252,8 @@ func door_edges(room_id: String) -> Array:
 	var reverse: Array = _get_reverse_edges(room_id)
 	all_rooms_data.append_array(forward)
 	all_rooms_data.append_array(reverse)
+	# Inject the stairs return edge for the Floor-2 Observation Deck entry.
+	all_rooms_data = _inject_stairs_return(room_id, all_rooms_data)
 	return all_rooms_data
 
 
@@ -441,13 +471,29 @@ func _generate_floor(n: int, floor_rec: Dictionary) -> void:
 	# Each entry: {startX, endX, startY, endY, id}
 	var placed_rects: Array = []
 
-	# Place entry corridor.
+	# Place entry room.
+	# Floor 2: force entry to be the Observation Deck (deliberate narrative choice;
+	# reachable via gate-room stairs, not the elevator). Consume it from the
+	# special pool so it doesn't appear a second time on any floor.
 	var entry_id: String = "f%d_r%02d" % [n, room_counter]
 	room_counter += 1
 	var entry_w: int = 400
-	var entry_h: int = 120
+	var entry_h: int = 300
+	var entry_type: String = "corridor"
+	var entry_name: String = "Corridor"
+	var entry_template: String = "corridor-template"
+	if n == 2:
+		entry_type = "observation_deck"
+		entry_name = "Observation Deck"
+		entry_template = "quarters-template"  # observation_deck uses quarters-template
+		entry_w = 400
+		entry_h = 300
+		# Consume observation_deck from the special pool so it can't appear again.
+		if _special_pool_remaining.has("observation_deck") and int(_special_pool_remaining["observation_deck"]) > 0:
+			_special_pool_remaining["observation_deck"] = int(_special_pool_remaining["observation_deck"]) - 1
+		floor_rec["specials_placed"] = int(floor_rec.get("specials_placed", 0)) + 1
 	var entry_row: Dictionary = _make_room_row(
-		entry_id, "corridor", "Corridor", "corridor-template", n,
+		entry_id, entry_type, entry_name, entry_template, n,
 		origin_x, origin_x + entry_w, origin_y, origin_y + entry_h
 	)
 	_rooms[entry_id] = entry_row
@@ -457,7 +503,7 @@ func _generate_floor(n: int, floor_rec: Dictionary) -> void:
 
 	# Growth queue: [room_id, open_dir_count_remaining]
 	# Corridors get >= 2 exits (back edge is 1, so add at least 1 more).
-	# Regular rooms get 0-1 additional exits.
+	# Observation Deck / regular rooms get 1-2 additional exits.
 	var growth_queue: Array = [[entry_id, 2]]
 
 	while growth_queue.size() > 0 and floor_rec["rooms"].size() < cap:
@@ -564,6 +610,30 @@ func _generate_floor(n: int, floor_rec: Dictionary) -> void:
 
 	floor_rec["generated"] = true
 	_floors[n] = floor_rec
+
+	# Guarantee parts budget: ensure the floor has at least enough parts recorded
+	# so the player can afford to unlock the NEXT floor. The actual Salvage panels
+	# and crates are physical nodes spawned by room.gd; the budget here is metadata
+	# that tests and the HUD can read to verify the floor is sufficiently seeded.
+	_ensure_parts_budget(n, floor_rec)
+
+
+# Compute how many parts this floor should guarantee and store in floor_rec.
+# The budget covers the cost to unlock floor (n+1) with a margin.
+func _ensure_parts_budget(n: int, floor_rec: Dictionary) -> void:
+	var next_cost: int = floor_unlock_cost(n + 1)
+	var budget: int = (next_cost * PARTS_BUDGET_MARGIN_PCT) / 100
+	if budget < next_cost:
+		budget = next_cost  # Always at least the bare unlock cost.
+	floor_rec["parts_budget"] = budget
+
+
+# The parts budget for floor n (parts placed via salvage + crates on that floor).
+# Used by room.gd and tests to verify the guarantee.
+func floor_parts_budget(n: int) -> int:
+	if not _floors.has(n):
+		return 0
+	return int((_floors[n] as Dictionary).get("parts_budget", 0))
 
 
 # Pick a cardinal direction that this room has not yet used as a forward edge
@@ -867,6 +937,66 @@ func floor_code_terminal_room(n: int) -> String:
 	return ""
 
 
+# ============================================================
+# STAIRS EDGE — gate_room ↔ Floor-2 Observation Deck
+# ============================================================
+#
+# The stair connection is an always-open vertical link that bypasses the code/
+# parts gate. It is exposed as a virtual edge so:
+#   • door_edges(obs_entry_id) includes a return edge to "gate_room" (direction
+#     "stairs"), letting room.gd stamp a door back to the gate room.
+#   • gate_room.gd calls floor2_obs_entry_id() to get the destination room id
+#     and stamps its own transition door at the stair-top landing.
+#
+# The "stairs" direction is remapped to "-z" when room.gd calls _stamp_door,
+# exactly like the "elevator" direction remap — so the door ends up on the -Z
+# wall of the Observation Deck (the back wall facing away from the stair-top).
+
+# Room id of the Floor-2 entry (Observation Deck). Requires floor 2 to have
+# been generated; returns "" before generation.
+func floor2_obs_entry_id() -> String:
+	# Entry is always f2_r00 (first room placed in _generate_floor for n=2).
+	# ensure_floor_generated(2) must have been called first.
+	if _floors.has(2) and (_floors[2] as Dictionary).get("generated", false):
+		return "f2_r00"
+	return ""
+
+
+# Ensure floor 2 exists and return the obs-deck entry id. Generates on demand.
+func get_or_generate_floor2_entry() -> String:
+	ensure_floor_generated(2)
+	return floor2_obs_entry_id()
+
+
+# True when the stairs link is active (floor 2 generated, obs-deck entry placed).
+func stairs_link_active() -> bool:
+	return floor2_obs_entry_id() != ""
+
+
+# Returns the stairs virtual edge for door_edges() to inject into the obs-deck
+# entry room's edge list. The "stairs" dir is remapped to "-z" by room.gd
+# (same pattern as elevator → -z). plaque deliberately absent (room.gd derives
+# from target name = "Gate Room").
+func _stairs_return_edge() -> Dictionary:
+	return {"dir": STAIRS_DIR, "to": "gate_room"}
+
+
+# Override door_edges for the floor-2 obs-deck entry to include the stairs
+# return edge to gate_room. Called from door_edges() below.
+func _inject_stairs_return(room_id: String, edges: Array) -> Array:
+	var entry_id: String = floor2_obs_entry_id()
+	if entry_id == "" or room_id != entry_id:
+		return edges
+	# Check that the stairs return edge isn't already in the list.
+	for e in edges:
+		var d: Dictionary = e
+		if String(d.get("to", "")) == "gate_room" and String(d.get("dir", "")) == STAIRS_DIR:
+			return edges
+	var out: Array = edges.duplicate(true)
+	out.append(_stairs_return_edge())
+	return out
+
+
 # Assign a function to a generated storage room. Spends ROOM_ASSIGN_COST parts.
 # Returns true on success. The room's template_id and type are updated in _rooms.
 func assign_function(room_id: String, fn_type_id: String) -> bool:
@@ -995,6 +1125,16 @@ func reset() -> void:
 	_floors[1] = {
 		"unlocked": true,
 		"code_known": false,
+		"generated": false,
+		"rooms": [],
+		"specials_placed": 0,
+		"cap": 0,
+		"seed": 0,
+	}
+	# Floor 2 is always free (gate-room stairs bypass the code/parts gate).
+	_floors[2] = {
+		"unlocked": true,
+		"code_known": true,
 		"generated": false,
 		"rooms": [],
 		"specials_placed": 0,

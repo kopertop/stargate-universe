@@ -323,47 +323,50 @@ func _test_floor_unlock(ps: Node) -> void:
 	if inv == null:
 		return
 
-	# --- unlock_floor FAILS without the code ---
-	# Generate floor 2 first so the cost calculation works.
-	ps.call("ensure_floor_generated", 2)
+	# Floor 2 is FREE — reached via the gate-room stairs, unlocked + code-known by default.
+	_expect(ps.call("is_floor_unlocked", 2), "floor 2 is free/unlocked by default (stairs access)")
+
+	# Floor 3 is the first PARTS-GATED floor. Generate it so the cost calc works.
+	ps.call("ensure_floor_generated", 3)
 	await process_frame
 
+	# --- unlock_floor FAILS without the code ---
 	# Give the player plenty of parts so the only gating variable is the code.
 	inv.call("set_count", "parts", 50)
-	var ok_no_code: bool = ps.call("unlock_floor", 2)
-	_expect(not ok_no_code, "unlock_floor(2) fails when code is not known")
-	_expect(not ps.call("is_floor_unlocked", 2), "floor 2 remains locked after failed attempt")
+	var ok_no_code: bool = ps.call("unlock_floor", 3)
+	_expect(not ok_no_code, "unlock_floor(3) fails when code is not known")
+	_expect(not ps.call("is_floor_unlocked", 3), "floor 3 remains locked after failed attempt")
 	# Parts must NOT have been spent on a failed attempt.
 	_expect(inv.call("count", "parts") == 50, "parts not deducted on failed unlock attempt")
 
 	# --- unlock_floor FAILS with insufficient resources even if code known ---
-	ps.call("mark_floor_code_known", 2)
-	_expect(ps.call("is_floor_code_known", 2), "mark_floor_code_known(2) marks the code known")
+	ps.call("mark_floor_code_known", 3)
+	_expect(ps.call("is_floor_code_known", 3), "mark_floor_code_known(3) marks the code known")
 	inv.call("set_count", "parts", 0)  # Zero parts — can't afford.
-	var ok_no_parts: bool = ps.call("unlock_floor", 2)
-	_expect(not ok_no_parts, "unlock_floor(2) fails with 0 parts (cost = %d)" % ps.call("floor_unlock_cost", 2))
-	_expect(not ps.call("is_floor_unlocked", 2), "floor 2 still locked after insufficient-parts attempt")
+	var ok_no_parts: bool = ps.call("unlock_floor", 3)
+	_expect(not ok_no_parts, "unlock_floor(3) fails with 0 parts (cost = %d)" % ps.call("floor_unlock_cost", 3))
+	_expect(not ps.call("is_floor_unlocked", 3), "floor 3 still locked after insufficient-parts attempt")
 
 	# --- unlock_floor SUCCEEDS with code + sufficient resources ---
-	var cost2: int = ps.call("floor_unlock_cost", 2)
-	inv.call("set_count", "parts", cost2)
-	var ok_full: bool = ps.call("unlock_floor", 2)
-	_expect(ok_full, "unlock_floor(2) succeeds with code known + %d parts" % cost2)
-	_expect(ps.call("is_floor_unlocked", 2), "floor 2 is now unlocked")
+	var cost3: int = ps.call("floor_unlock_cost", 3)
+	inv.call("set_count", "parts", cost3)
+	var ok_full: bool = ps.call("unlock_floor", 3)
+	_expect(ok_full, "unlock_floor(3) succeeds with code known + %d parts" % cost3)
+	_expect(ps.call("is_floor_unlocked", 3), "floor 3 is now unlocked")
 	# Cost must have been deducted.
 	var parts_after: int = inv.call("count", "parts")
 	_expect(parts_after == 0, "parts deducted after successful unlock (expected 0, got %d)" % parts_after)
 
 	# --- cost escalates with floor index ---
-	var cost3: int = ps.call("floor_unlock_cost", 3)
+	var cost2: int = ps.call("floor_unlock_cost", 2)
 	var cost4: int = ps.call("floor_unlock_cost", 4)
 	_expect(cost3 > cost2, "floor 3 cost (%d) > floor 2 cost (%d)" % [cost3, cost2])
 	_expect(cost4 > cost3, "floor 4 cost (%d) > floor 3 cost (%d)" % [cost4, cost3])
 
 	# --- floor_entry_room ---
-	var entry2: String = ps.call("floor_entry_room", 2)
-	_expect(entry2 != "", "floor_entry_room(2) returns non-empty string")
-	_expect(String(entry2).begins_with("f2_"), "floor_entry_room(2) is a generated id (got '%s')" % entry2)
+	var entry3: String = ps.call("floor_entry_room", 3)
+	_expect(entry3 != "", "floor_entry_room(3) returns non-empty string")
+	_expect(String(entry3).begins_with("f3_"), "floor_entry_room(3) is a generated id (got '%s')" % entry3)
 	var entry1: String = ps.call("floor_entry_room", 1)
 	_expect(entry1 == "elevator_room_floor_1", "floor_entry_room(1) = authored elevator room (got '%s')" % entry1)
 
@@ -468,34 +471,38 @@ func _test_floor_code_poi(ps: Node) -> void:
 	ps.call("reset")
 	await process_frame
 
-	# mark_floor_code_known for a floor that doesn't yet have a record.
-	_expect(not ps.call("is_floor_code_known", 2), "floor 2 code not known after reset")
-	ps.call("mark_floor_code_known", 2)
-	_expect(ps.call("is_floor_code_known", 2), "mark_floor_code_known(2) sets code_known to true")
+	# Floor 2 is free (gate-room stairs) → code known by default, no terminal needed.
+	_expect(ps.call("is_floor_code_known", 2), "floor 2 code known by default (free via stairs)")
 
-	# Mark for floor 3 (creates the record on the fly).
-	_expect(not ps.call("is_floor_code_known", 3), "floor 3 code not known initially")
+	# Floor 3 is the first code-gated floor.
+	_expect(not ps.call("is_floor_code_known", 3), "floor 3 code not known after reset")
 	ps.call("mark_floor_code_known", 3)
-	_expect(ps.call("is_floor_code_known", 3), "mark_floor_code_known(3) works for uncreated floor")
+	_expect(ps.call("is_floor_code_known", 3), "mark_floor_code_known(3) sets code_known to true")
+
+	# Mark for floor 4 (creates the record on the fly).
+	_expect(not ps.call("is_floor_code_known", 4), "floor 4 code not known initially")
+	ps.call("mark_floor_code_known", 4)
+	_expect(ps.call("is_floor_code_known", 4), "mark_floor_code_known(4) works for uncreated floor")
 
 	# floor 1 ignores mark (no code needed).
 	ps.call("mark_floor_code_known", 1)
 	_expect(not ps.call("is_floor_code_known", 1), "mark_floor_code_known(1) is a no-op (floor 1 needs no code)")
 
-	# floor_code_terminal_room returns a non-empty string for floor 2.
-	var code_room: String = ps.call("floor_code_terminal_room", 2)
-	_expect(code_room != "", "floor_code_terminal_room(2) returns non-empty string (got '%s')" % code_room)
-	_expect(code_room == "control_interface_room",
-		"floor_code_terminal_room(2) = 'control_interface_room' (got '%s')" % code_room)
+	# floor_code_terminal_room(3) lives on floor 2 — generate it first so the
+	# terminal has a room to live in.
+	ps.call("ensure_floor_generated", 2)
+	await process_frame
+	var code_room: String = ps.call("floor_code_terminal_room", 3)
+	_expect(code_room != "", "floor_code_terminal_room(3) returns non-empty string (got '%s')" % code_room)
 
 	# Survives round-trip.
 	var snap: Dictionary = ps.call("serialize")
 	ps.call("reset")
-	_expect(not ps.call("is_floor_code_known", 2), "code not known after reset")
+	_expect(not ps.call("is_floor_code_known", 3), "floor 3 code not known after reset")
 	ps.call("deserialize", snap, 2)
 	await process_frame
-	_expect(ps.call("is_floor_code_known", 2), "floor 2 code_known restored after deserialize")
 	_expect(ps.call("is_floor_code_known", 3), "floor 3 code_known restored after deserialize")
+	_expect(ps.call("is_floor_code_known", 4), "floor 4 code_known restored after deserialize")
 
 
 # ── (h) is_key_room — base delegation + generated catalog flag ────────────────

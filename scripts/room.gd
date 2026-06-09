@@ -33,6 +33,7 @@ const ShipAlertScript: Script = preload("res://scripts/ship_alert.gd")
 const ElevatorPanelScript: Script = preload("res://scripts/elevator_panel.gd")
 const FloorCodeTerminalScript: Script = preload("res://scripts/floor_code_terminal.gd")
 const AssignmentConsoleScript: Script = preload("res://scripts/assignment_console.gd")
+const SalvagePanelScript: Script = preload("res://scripts/salvage_panel.gd")
 # Ancient/Lantean glyph cipher + font for in-room console signage. Procedural
 # console labels (door-control panel, power console) render in Ancient glyphs
 # while the room is un-deciphered — so a Kino scouting the room sees the
@@ -184,11 +185,12 @@ func _stamp_door(edge: Dictionary, half_x: float, half_z: float) -> void:
 	var target_id: String = String(edge.get("to", ""))
 	if target_id == "":
 		return
-	# Elevator pairs aren't physically adjacent — present them as a lift door on
-	# the -Z wall (deterministic so the reverse edge lands on the matching wall
-	# in the other elevator). Everything else follows wall-axis literally.
+	# Elevator and stairs pairs aren't physically adjacent — present them as a
+	# door on the -Z wall (deterministic so the reverse edge lands on the matching
+	# wall in the other room). Everything else follows wall-axis literally.
 	var is_elevator: bool = (dir == "elevator")
-	if is_elevator:
+	var is_stairs: bool = (dir == "stairs")
+	if is_elevator or is_stairs:
 		dir = "-z"
 
 	var along: float = _door_along_offset(target_id, dir)
@@ -224,12 +226,22 @@ func _stamp_door(edge: Dictionary, half_x: float, half_z: float) -> void:
 	door.set("plaque_label", plaque)
 	door.set("open_prompt", "Step through to %s" % plaque)
 	door.set("transition_prompt", "Step through to %s" % plaque)
-	# Elevator doors stay locked until Engineering Bay power is restored.
-	# Sets the legacy `locked` + `lock_message` exports on door.gd — its
-	# _on_interact() short-circuits when locked.
+
+	# Elevator doors stay locked until power is restored (legacy — engineering
+	# console removed, fuse-based restore deferred to issue #132).
 	if is_elevator and not GameState.elevator_repaired:
 		door.set("locked", true)
-		door.set("lock_message", "LOCKED — power offline. Restore power at the Engineering Bay (south of cr corridor).")
+		door.set("lock_message", "LOCKED — power offline. Elevator requires main bus restore.")
+
+	# D3: Target room has "locked": true in ship_layout.json → stamp door as sealed.
+	# Generalised check on the target room row so any future locked room benefits.
+	# TODO(#131): repair-robot can heal/unseal locked rooms.
+	var target_row: Dictionary = ProceduralShip.room(target_id)
+	if not is_elevator and not is_stairs and target_row.get("locked", false) == true:
+		var seal_msg: String = String(target_row.get("description", "SEALED — bulkhead unresponsive. Requires structural repair."))
+		door.set("locked", true)
+		door.set("lock_message", seal_msg)
+
 	door.add_to_group("interactable")
 	add_child(door)
 
@@ -400,8 +412,15 @@ func _spawn_interactables() -> void:
 			# Floor 2 access-code terminal: always present in the control room
 			# (a data terminal the player can examine). Disabled once collected.
 			_spawn_floor_code_terminal(2)
-		"engineering_bay":
-			_spawn_power_console()
+		# TODO(#132): engineering_bay removed from authored floor 0; Engineering
+		# now lives as a generated special on floors 2+. Elevator restore via the
+		# power console is deferred to the fuse-based mechanic in issue #132.
+		# GameState.unlock_elevator() remains callable for e1_flow unit tests.
+		"aft_storage_hall":
+			# D4: Aft Storage Hall seeds Floor-1 parts for the player.
+			# Multiple salvage panels + crates help meet the Floor-3 unlock cost (15).
+			_spawn_salvage_panel(0)
+			_spawn_salvage_panel(1)
 		"south_corridor":
 			# The CO2 scrubber wall panel always exists (it's a fixture), but the
 			# corridor stays EMPTY of people until the player seals the Shuttle
@@ -1723,6 +1742,35 @@ func _spawn_generated_room_interactables() -> void:
 	# Unassigned storage rooms get the assignment console.
 	if type_id == "storage":
 		_spawn_assignment_console()
+
+	# D4 parts economy: place salvage panels in control/power/storage rooms so
+	# the player can gather parts toward the next-floor unlock cost.
+	# One panel per power_node room; one per storage room (alongside the console);
+	# one per control_room / engineering generated room.
+	match type_id:
+		"power_node", "control_room", "engineering":
+			_spawn_salvage_panel(0)
+		"storage":
+			_spawn_salvage_panel(1)  # Offset from assignment console side
+
+
+# D4: Salvage panel on the +X wall. One-shot: dismantling grants `parts`.
+# side_offset: 0 = centred, 1 = offset toward +Z (avoids assignment console).
+func _spawn_salvage_panel(side_offset: int = 0) -> void:
+	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
+	var half_x: float = w_m * 0.5
+	var z_off: float = 0.0 if side_offset == 0 else 1.5
+	var panel: StaticBody3D = StaticBody3D.new()
+	panel.set_script(SalvagePanelScript)
+	panel.name = "SalvagePanel"
+	panel.position = Vector3(half_x - 0.08, 0.0, z_off)
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = Vector3(0.3, 1.8, 0.6)
+	cs.shape = box
+	cs.position = Vector3(0.0, 0.9, 0.0)
+	panel.add_child(cs)
+	add_child(panel)
 
 
 # Assignment console on the -X wall (left side when facing into the room).

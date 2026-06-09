@@ -24,6 +24,7 @@ const CompanionScript: Script = preload("res://scripts/companion.gd")
 const KinoDroneScript: Script = preload("res://scripts/kino_drone.gd")
 # Preload bypasses class_name registration timing — same reason as room.gd.
 const ShipAlertScript: Script = preload("res://scripts/ship_alert.gd")
+const DOOR_SCENE: PackedScene = preload("res://objects/door.tscn")
 const QUEST_WAYPOINT_ANCHOR_HEIGHT: float = 2.4
 const QUEST_WAYPOINT_DOOR_HEIGHT: float = 1.8
 # Z of the gate-control / FTL consoles (and the Phase E crew clustered around
@@ -106,6 +107,11 @@ func _ready() -> void:
 
 	# Place the spawn markers now that the room geometry is in place.
 	_create_spawn_markers()
+
+	# D1: stamp the always-open Upper Deck door at the right stair-top landing,
+	# and create the matching return-trip arrival marker. Floor 2 is generated on
+	# demand so the room.gd target always exists before the transition fires.
+	_build_upper_deck_stairs_door()
 
 	# Returning through the gate from the lime planet: the away team came back
 	# WITH the player — spawn them standing just behind the FromPlanet landing.
@@ -201,6 +207,49 @@ func _create_spawn_markers() -> void:
 	from_planet.position = Vector3(0.0, 0.05, room_size.y * 0.5 - 12.0)
 	from_planet.rotation = Vector3.ZERO  # -Z forward = into the room / toward the exit
 	add_child(from_planet)
+
+# D1: Stamp a transition door at the right stair-top landing (x=+12, y=5, z=-10)
+# pointing to the Floor-2 Observation Deck entry room. Generates Floor 2 on demand
+# so the target room exists before any transition fires. Also creates the
+# "FromObservationDeck" arrival Marker3D so the return trip (obs-deck → gate room)
+# lands the player at this stair-top landing facing into the room (+Z toward gate).
+func _build_upper_deck_stairs_door() -> void:
+	# Ensure Floor 2 is generated so floor2_obs_entry_id() returns a valid id.
+	ProceduralShip.ensure_floor_generated(2)
+	var obs_id: String = ProceduralShip.floor2_obs_entry_id()
+	if obs_id == "":
+		push_warning("gate_room: floor 2 not generated — upper deck door skipped")
+		return
+
+	# Stair-top position: right stair (side_sign=+1) top lands at
+	#   x = +(half_x - mezzanine_depth) = +12, y = mezzanine_height = 5, z = STAIR_Z_CENTER = -10
+	var half_x: float = room_size.x * 0.5
+	var stair_top: Vector3 = Vector3(half_x - mezzanine_depth, mezzanine_height, STAIR_Z_CENTER)
+
+	# The door faces -X from the right mezzanine wall (face_yaw = +PI*0.5 = face left/inward).
+	# Place it flush with the inner edge of the right mezzanine strip.
+	var door: Node = DOOR_SCENE.instantiate()
+	door.name = "UpperDeckDoor"
+	door.position = stair_top + Vector3(0.0, 0.0, 0.0)
+	door.rotation.y = PI * 0.5   # Face -X (door is on the right wall, opens inward)
+	door.set("target_room_id", obs_id)
+	door.set("source_room_id", "gate_room")
+	door.set("target_spawn", ProceduralShip.STAIRS_OBS_SPAWN)
+	door.set("plaque_label", "Upper Deck — Observation")
+	door.set("open_prompt", "Step up to Upper Deck")
+	door.set("transition_prompt", "Step up to Upper Deck")
+	door.add_to_group("interactable")
+	_world.add_child(door)
+
+	# Return-trip arrival marker: player landing back from the Observation Deck
+	# appears 1.2 m inward (toward -X) from the door, facing +X into the room.
+	var marker: Marker3D = Marker3D.new()
+	marker.name = ProceduralShip.STAIRS_GATE_SPAWN   # "FromObservationDeck"
+	# 1.2 m inward from the stair-top door, still on the mezzanine level (y=5).
+	marker.position = stair_top + Vector3(-1.2, 0.0, 0.0)
+	marker.rotation.y = -PI * 0.5  # face +X into room (away from wall)
+	add_child(marker)
+
 
 func _apply_pending_save_spawn() -> void:
 	if _player == null:

@@ -106,15 +106,15 @@ echo "  wrote $ENVF (gate_hero_render.sh self-sources it)"
 
 # --- 4. register the hermes cron job --------------------------------------
 say "Registering hermes cron job '$JOB_NAME' (schedule: $SCHEDULE)"
-PROMPT="You are the PM for the gate-room hero studio. Run EXACTLY ONE improvement cycle by following tools/hermes/roles/project_manager.md in this repo precisely (developer makes one change → render → independent Ollama reviewer panel → obey its verdict → commit/push or revert → journal), then STOP. Do not loop; the scheduler will call you again."
+PROMPT="You are the PM for the gate-room hero studio. Run EXACTLY ONE improvement cycle by following tools/hermes/roles/project_manager.md in this repo precisely (developer makes one change, render, then the INDEPENDENT 3-agent hermes reviewer panel hermes_review.sh, obey its verdict, commit/push or revert, journal), then STOP. Do not loop; the scheduler will call you again."
 # Remove any prior job of the same name so re-runs don't stack duplicates.
 hermes cron remove "$JOB_NAME" >/dev/null 2>&1 || true
-hermes cron create "$SCHEDULE" \
+# prompt is the 2nd POSITIONAL — must come right after schedule, before the options.
+hermes cron create "$SCHEDULE" "$PROMPT" \
 	--name "$JOB_NAME" \
 	--workdir "$REPO" \
 	--skill "$JOB_NAME" \
-	--deliver local \
-	"$PROMPT"
+	--deliver local
 hermes cron list 2>/dev/null | grep -i "$JOB_NAME" || warn "Job not visible in 'hermes cron list' — check manually."
 
 # --- 5. drive ticks from system cron (no long-lived hermes daemon) --------

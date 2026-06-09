@@ -10,7 +10,7 @@
 #   6. questlog     — data-driven QuestLog autoload (predicate + event advance,
 #                     save round-trip, old-format migration)
 #
-# Usage: tests/run.sh [lint|scene|flow|quest|playthrough|resume|autopilot|questlog|inventory|atmosphere|kino-doors|kino-autoexplore|gamepad|footfall|npc-chat|shaders|ancient-text|discovery-toast|door-plaque|crate|unit-frame|quest-tracker|hud-wow|gate-two-way|equip-mount|equip-assets|char-panel|equip-integration|planet-gen|planet-resources|planet-integration|biome-desert|biome-jungle|biome-toxic|biome-urban|biome-alien-tech|knockout|ftl-loop|save|save-integration|all]
+# Usage: tests/run.sh [lint|scene|flow|quest|playthrough|resume|autopilot|questlog|inventory|atmosphere|kino-doors|kino-autoexplore|gamepad|footfall|npc-chat|shaders|ancient-text|discovery-toast|door-plaque|crate|unit-frame|quest-tracker|hud-wow|gate-two-way|equip-mount|equip-assets|char-panel|equip-integration|planet-gen|planet-resources|planet-integration|biome-desert|biome-jungle|biome-toxic|biome-urban|biome-alien-tech|knockout|ftl-loop|save|save-integration|elevator-power|all]
 #                                                                          (default: all)
 #
 # Pre-commit hook: .githooks/pre-commit invokes the lint subset via
@@ -74,6 +74,7 @@ RAN_SCRUBBERS=0
 RAN_PROCSHIP=0
 RAN_FTLLOOP=0
 RAN_FOOTFALL=0
+RAN_ELEVPOWER=0
 RC_FOOTFALL=0
 RC_SCENE=0
 RC_FLOW=0
@@ -123,6 +124,7 @@ RC_KNOCKOUT=0
 RC_SCRUBBERS=0
 RC_PROCSHIP=0
 RC_FTLLOOP=0
+RC_ELEVPOWER=0
 
 # Run a SceneTree-extending script (synchronous, no autoloads).
 #
@@ -412,6 +414,12 @@ if [[ "$MODE" == "ftl-loop" || "$MODE" == "all" ]]; then
 	RAN_FTLLOOP=1
 fi
 
+if [[ "$MODE" == "elevator-power" || "$MODE" == "all" ]]; then
+	run_script_test "elevator_power" "res://tests/smoke/elevator_power.gd"
+	RC_ELEVPOWER=$?
+	RAN_ELEVPOWER=1
+fi
+
 if [[ "$MODE" == "npc-chat" || "$MODE" == "all" ]]; then
 	# Scene-based (autoloads active) because npc.gd references the GameState
 	# autoload singleton, which won't compile under a bare -s script.
@@ -513,6 +521,7 @@ echo "==============================="
 [[ $RAN_SCRUBBERS -eq 1 ]] && echo "scrubber_units:      $([[ $RC_SCRUBBERS -eq 0 ]] && echo PASS || echo "FAIL ($RC_SCRUBBERS)")" || echo "scrubber_units:      SKIPPED"
 [[ $RAN_PROCSHIP -eq 1 ]] && echo "test_procedural_ship: $([[ $RC_PROCSHIP -eq 0 ]] && echo PASS || echo "FAIL ($RC_PROCSHIP)")" || echo "test_procedural_ship: SKIPPED"
 [[ $RAN_FTLLOOP -eq 1 ]] && echo "ftl_loop:            $([[ $RC_FTLLOOP -eq 0 ]] && echo PASS || echo "FAIL ($RC_FTLLOOP)")" || echo "ftl_loop:            SKIPPED"
+[[ $RAN_ELEVPOWER -eq 1 ]] && echo "elevator_power:      $([[ $RC_ELEVPOWER -eq 0 ]] && echo PASS || echo "FAIL ($RC_ELEVPOWER)")" || echo "elevator_power:      SKIPPED"
 [[ $RAN_SAVE -eq 1 ]] && echo "save_store:          $([[ $RC_SAVE_UNIT -eq 0 ]] && echo PASS || echo "FAIL ($RC_SAVE_UNIT)")" || echo "save_store:          SKIPPED"
 [[ $RAN_SAVE -eq 1 ]] && echo "save_slot_resume:    $([[ $RC_SAVE_RESUME -eq 0 ]] && echo PASS || echo "FAIL ($RC_SAVE_RESUME)")" || echo "save_slot_resume:    SKIPPED"
 [[ $RAN_SAVE -eq 1 ]] && echo "save_profile_orch:   $([[ $RC_SAVE_ORCH -eq 0 ]] && echo PASS || echo "FAIL ($RC_SAVE_ORCH)")" || echo "save_profile_orch:   SKIPPED"
@@ -520,7 +529,7 @@ echo "==============================="
 [[ $RAN_SAVE -eq 1 ]] && echo "save_ingame_ui:      $([[ $RC_SAVE_INGAME -eq 0 ]] && echo PASS || echo "FAIL ($RC_SAVE_INGAME)")" || echo "save_ingame_ui:      SKIPPED"
 [[ $RAN_SAVE_INTEGRATION -eq 1 ]] && echo "save_integration:    $([[ $RC_SAVE_INTEGRATION -eq 0 ]] && echo PASS || echo "FAIL ($RC_SAVE_INTEGRATION)")" || echo "save_integration:    SKIPPED"
 
-if [[ ( $RAN_LINT -eq 1 && $RC_LINT -ne 0 ) || ( $RAN_LINT -eq 1 && $RC_FORKS -ne 0 ) || ( $RAN_SCENE -eq 1 && $RC_SCENE -ne 0 ) || ( $RAN_FLOW -eq 1 && $RC_FLOW -ne 0 ) || ( $RAN_QUEST -eq 1 && $RC_QUEST -ne 0 ) || ( $RAN_PLAY -eq 1 && $RC_PLAY -ne 0 ) || ( $RAN_RESUME -eq 1 && $RC_RESUME -ne 0 ) || ( $RAN_AUTOPILOT -eq 1 && $RC_AUTOPILOT -ne 0 ) || ( $RAN_QUESTLOG -eq 1 && $RC_QUESTLOG -ne 0 ) || ( $RAN_INV -eq 1 && $RC_INV -ne 0 ) || ( $RAN_ATMO -eq 1 && $RC_ATMO -ne 0 ) || ( $RAN_KINODOORS -eq 1 && $RC_KINODOORS -ne 0 ) || ( $RAN_KINOEXPLORE -eq 1 && $RC_KINOEXPLORE -ne 0 ) || ( $RAN_KINODISC -eq 1 && $RC_KINODISC -ne 0 ) || ( $RAN_GAMEPAD -eq 1 && $RC_GAMEPAD -ne 0 ) || ( $RAN_FOOTFALL -eq 1 && $RC_FOOTFALL -ne 0 ) || ( $RAN_NPCCHAT -eq 1 && $RC_NPCCHAT -ne 0 ) || ( $RAN_SHADER -eq 1 && $RC_SHADER -ne 0 ) || ( $RAN_ANCIENTTEXT -eq 1 && $RC_ANCIENTTEXT -ne 0 ) || ( $RAN_DISCTOAST -eq 1 && $RC_DISCTOAST -ne 0 ) || ( $RAN_DOORPLAQUE -eq 1 && $RC_DOORPLAQUE -ne 0 ) || ( $RAN_CRATE -eq 1 && $RC_CRATE -ne 0 ) || ( $RAN_UNITFRAME -eq 1 && $RC_UNITFRAME -ne 0 ) || ( $RAN_QUESTTRACKER -eq 1 && $RC_QUESTTRACKER -ne 0 ) || ( $RAN_HUDWOW -eq 1 && $RC_HUDWOW -ne 0 ) || ( $RAN_GATETWOWAY -eq 1 && $RC_GATETWOWAY -ne 0 ) || ( $RAN_EQUIPMOUNT -eq 1 && $RC_EQUIPMOUNT -ne 0 ) || ( $RAN_EQUIPASSETS -eq 1 && $RC_EQUIPASSETS -ne 0 ) || ( $RAN_CHARPANEL -eq 1 && $RC_CHARPANEL -ne 0 ) || ( $RAN_EQUIPINT -eq 1 && $RC_EQUIPINT -ne 0 ) || ( $RAN_PLANETGEN -eq 1 && $RC_PLANETGEN -ne 0 ) || ( $RAN_PLANETRES -eq 1 && $RC_PLANETRES -ne 0 ) || ( $RAN_PLANETINT -eq 1 && $RC_PLANETINT -ne 0 ) || ( $RAN_BIOMEDESERT -eq 1 && $RC_BIOMEDESERT -ne 0 ) || ( $RAN_BIOMEJUNGLE -eq 1 && $RC_BIOMEJUNGLE -ne 0 ) || ( $RAN_BIOMETOXIC -eq 1 && $RC_BIOMETOXIC -ne 0 ) || ( $RAN_BIOMEURBAN -eq 1 && $RC_BIOMEURBAN -ne 0 ) || ( $RAN_KNOCKOUT -eq 1 && $RC_KNOCKOUT -ne 0 ) || ( $RAN_SCRUBBERS -eq 1 && $RC_SCRUBBERS -ne 0 ) || ( $RAN_PROCSHIP -eq 1 && $RC_PROCSHIP -ne 0 ) || ( $RAN_FTLLOOP -eq 1 && $RC_FTLLOOP -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_UNIT -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_RESUME -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_ORCH -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_BROWSER -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_INGAME -ne 0 ) || ( $RAN_SAVE_INTEGRATION -eq 1 && $RC_SAVE_INTEGRATION -ne 0 ) ]]; then
+if [[ ( $RAN_LINT -eq 1 && $RC_LINT -ne 0 ) || ( $RAN_LINT -eq 1 && $RC_FORKS -ne 0 ) || ( $RAN_SCENE -eq 1 && $RC_SCENE -ne 0 ) || ( $RAN_FLOW -eq 1 && $RC_FLOW -ne 0 ) || ( $RAN_QUEST -eq 1 && $RC_QUEST -ne 0 ) || ( $RAN_PLAY -eq 1 && $RC_PLAY -ne 0 ) || ( $RAN_RESUME -eq 1 && $RC_RESUME -ne 0 ) || ( $RAN_AUTOPILOT -eq 1 && $RC_AUTOPILOT -ne 0 ) || ( $RAN_QUESTLOG -eq 1 && $RC_QUESTLOG -ne 0 ) || ( $RAN_INV -eq 1 && $RC_INV -ne 0 ) || ( $RAN_ATMO -eq 1 && $RC_ATMO -ne 0 ) || ( $RAN_KINODOORS -eq 1 && $RC_KINODOORS -ne 0 ) || ( $RAN_KINOEXPLORE -eq 1 && $RC_KINOEXPLORE -ne 0 ) || ( $RAN_KINODISC -eq 1 && $RC_KINODISC -ne 0 ) || ( $RAN_GAMEPAD -eq 1 && $RC_GAMEPAD -ne 0 ) || ( $RAN_FOOTFALL -eq 1 && $RC_FOOTFALL -ne 0 ) || ( $RAN_NPCCHAT -eq 1 && $RC_NPCCHAT -ne 0 ) || ( $RAN_SHADER -eq 1 && $RC_SHADER -ne 0 ) || ( $RAN_ANCIENTTEXT -eq 1 && $RC_ANCIENTTEXT -ne 0 ) || ( $RAN_DISCTOAST -eq 1 && $RC_DISCTOAST -ne 0 ) || ( $RAN_DOORPLAQUE -eq 1 && $RC_DOORPLAQUE -ne 0 ) || ( $RAN_CRATE -eq 1 && $RC_CRATE -ne 0 ) || ( $RAN_UNITFRAME -eq 1 && $RC_UNITFRAME -ne 0 ) || ( $RAN_QUESTTRACKER -eq 1 && $RC_QUESTTRACKER -ne 0 ) || ( $RAN_HUDWOW -eq 1 && $RC_HUDWOW -ne 0 ) || ( $RAN_GATETWOWAY -eq 1 && $RC_GATETWOWAY -ne 0 ) || ( $RAN_EQUIPMOUNT -eq 1 && $RC_EQUIPMOUNT -ne 0 ) || ( $RAN_EQUIPASSETS -eq 1 && $RC_EQUIPASSETS -ne 0 ) || ( $RAN_CHARPANEL -eq 1 && $RC_CHARPANEL -ne 0 ) || ( $RAN_EQUIPINT -eq 1 && $RC_EQUIPINT -ne 0 ) || ( $RAN_PLANETGEN -eq 1 && $RC_PLANETGEN -ne 0 ) || ( $RAN_PLANETRES -eq 1 && $RC_PLANETRES -ne 0 ) || ( $RAN_PLANETINT -eq 1 && $RC_PLANETINT -ne 0 ) || ( $RAN_BIOMEDESERT -eq 1 && $RC_BIOMEDESERT -ne 0 ) || ( $RAN_BIOMEJUNGLE -eq 1 && $RC_BIOMEJUNGLE -ne 0 ) || ( $RAN_BIOMETOXIC -eq 1 && $RC_BIOMETOXIC -ne 0 ) || ( $RAN_BIOMEURBAN -eq 1 && $RC_BIOMEURBAN -ne 0 ) || ( $RAN_KNOCKOUT -eq 1 && $RC_KNOCKOUT -ne 0 ) || ( $RAN_SCRUBBERS -eq 1 && $RC_SCRUBBERS -ne 0 ) || ( $RAN_PROCSHIP -eq 1 && $RC_PROCSHIP -ne 0 ) || ( $RAN_FTLLOOP -eq 1 && $RC_FTLLOOP -ne 0 ) || ( $RAN_ELEVPOWER -eq 1 && $RC_ELEVPOWER -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_UNIT -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_RESUME -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_ORCH -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_BROWSER -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_INGAME -ne 0 ) || ( $RAN_SAVE_INTEGRATION -eq 1 && $RC_SAVE_INTEGRATION -ne 0 ) ]]; then
 	exit 1
 fi
 exit 0

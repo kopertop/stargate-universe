@@ -81,6 +81,15 @@
     "show_in_inventory": true
   },
   {
+    "id": "bus_fuse",
+    "name": "Bus Fuse",
+    "category": "story_item",
+    "icon": "res://sprites/ui/items/large_fuse.png",
+    "description": "A main-bus fuse for Destiny's elevator power circuit. Two of these plus the large fuse restore the elevator.",
+    "stackable": true,
+    "show_in_inventory": true
+  },
+  {
     "id": "marine_helmet",
     "name": "Marine Helmet",
     "category": "equipment",

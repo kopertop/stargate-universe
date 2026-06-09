@@ -236,11 +236,14 @@ func _stamp_door(edge: Dictionary, half_x: float, half_z: float) -> void:
 	door.set("open_prompt", "Step through to %s" % plaque)
 	door.set("transition_prompt", "Step through to %s" % plaque)
 
-	# Elevator doors stay locked until power is restored (legacy — engineering
-	# console removed, fuse-based restore deferred to issue #132).
-	if is_elevator and not GameState.elevator_repaired:
+	# Elevator doors stay locked until power is restored (issue #132).
+	# Power is now tracked by ProceduralShip._elevator_powered, which the player
+	# restores via the elevator panel's fuse + mini-game mechanic.
+	# GameState.elevator_repaired is kept as an inert shim so e1_flow / kino
+	# readers continue to compile and assert without change.
+	if is_elevator and not ProceduralShip.is_elevator_powered():
 		door.set("locked", true)
-		door.set("lock_message", "LOCKED — power offline. Elevator requires main bus restore.")
+		door.set("lock_message", "LOCKED — power offline. Restore elevator power at the control panel.")
 
 	# D3: Target room has "locked": true in ship_layout.json → stamp door as sealed.
 	# Generalised check on the target room row so any future locked room benefits.

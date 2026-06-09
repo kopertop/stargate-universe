@@ -331,6 +331,22 @@ func _test_floor_unlock(ps: Node) -> void:
 	ps.call("ensure_floor_generated", 3)
 	await process_frame
 
+	# ── Power the elevator first (issue #132) ────────────────────────────────
+	# unlock_floor(n>=3) is gated on _elevator_powered. Grant fuses + solve the
+	# stub mini-game + restore so the power gate is cleared before testing the
+	# code/parts gates. This mirrors the real play path and keeps the subsequent
+	# assertions focused on the code/parts logic, not the power guard.
+	inv.call("set_count", "large_fuse", 1)
+	inv.call("set_count", "bus_fuse", 2)
+	ps.call("solve_elevator_minigame")
+	var powered_ok: bool = ps.call("restore_elevator_power")
+	_expect(powered_ok, "restore_elevator_power succeeds with fuses + minigame solved (pre-requisite for unlock test)")
+	_expect(ps.call("is_elevator_powered"), "elevator is powered after restore (pre-requisite for unlock test)")
+	# Fuses must have been consumed.
+	_expect(inv.call("count", "large_fuse") == 0, "large_fuse consumed after power restore")
+	_expect(inv.call("count", "bus_fuse") == 0, "bus_fuse consumed after power restore")
+	# ─────────────────────────────────────────────────────────────────────────
+
 	# --- unlock_floor FAILS without the code ---
 	# Give the player plenty of parts so the only gating variable is the code.
 	inv.call("set_count", "parts", 50)

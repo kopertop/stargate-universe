@@ -1461,6 +1461,15 @@ func find_large_fuse() -> void:
 	add_log("Found a Large Fuse. Too big for the door panel — pocket it anyway.")
 
 
+# Adds a Bus Fuse to inventory (issue #132). Bus fuses are needed together with
+# the large fuse to restore elevator power via the fuse-based restore mechanic.
+func find_bus_fuse() -> void:
+	var inv: Node = _inv()
+	if inv != null:
+		inv.call("add_item", "bus_fuse", 1, "a storage crate")
+	add_log("Found a Bus Fuse. One of the main-bus fuses Destiny's elevator circuit needs.")
+
+
 # Generic crate loot for the non-fuse crate: a ration pack the player pockets.
 # Stocks the shared resource pool so the dock crate isn't a dead end.
 func find_rations() -> void:

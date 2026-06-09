@@ -108,6 +108,19 @@ const FLOOR_UNLOCK_ITEM: String = "parts"
 # Assignment cost in parts per assignment.
 const ROOM_ASSIGN_COST: int = 3
 
+# Elevator power-restore requirement (issue #132).
+# Fuses the player must hold before restore_elevator_power() will succeed.
+# Requirement is ONE dict (not per-fuse bools) — collection-fork policy.
+const ELEVATOR_FUSE_REQUIREMENT: Dictionary = {"large_fuse": 1, "bus_fuse": 2}
+
+# Signal — emitted by restore_elevator_power() after the flag flips.
+signal elevator_power_changed(powered: bool)
+
+# Serialized power-state fields.
+# World-state verbs (not acquisition vocab) — lint-safe.
+var _elevator_powered: bool = false   # @collection-ok: single world-state flag, not an enumerated collection
+var _minigame_solved: bool = false    # @collection-ok: single world-state flag, not an enumerated collection
+
 
 func _ready() -> void:
 	_load_catalog()
@@ -919,6 +932,12 @@ func unlock_floor(n: int) -> bool:
 		return true  # Floor 1 is already unlocked.
 	if is_floor_unlocked(n):
 		return true  # Already unlocked — success (idempotent).
+	# Elevator must be powered before the floor-select mechanism works.
+	# Floor 2 bypasses this via the stairs, but its floor record is already
+	# unlocked=true in reset(), so the is_floor_unlocked(n) check above
+	# returns true first — this guard only fires for floors 3+.
+	if not _elevator_powered:
+		return false  # Elevator offline — restore power first.
 	if not is_floor_code_known(n):
 		return false  # Code not found yet.
 	var cost: int = floor_unlock_cost(n)
@@ -1178,6 +1197,71 @@ func _load_base_connections() -> Dictionary:
 
 
 # ============================================================
+# ELEVATOR POWER — issue #132
+# ============================================================
+#
+# The elevator starts unpowered. The player must:
+#   1. Hold the required fuses (ELEVATOR_FUSE_REQUIREMENT).
+#   2. Complete the mini-game (solve_elevator_minigame() — deterministic stub now,
+#      seam for a real puzzle later).
+#   3. Call restore_elevator_power() which verifies both guards, consumes fuses
+#      atomically, sets _elevator_powered, and emits elevator_power_changed.
+#
+# unlock_floor(n) is gated on _elevator_powered (after idempotency checks so
+# Floor 1/2 remain unaffected). mark_floor_code_known and Floor-2 stairs
+# reachability are intentionally NOT gated.
+
+func is_elevator_powered() -> bool:
+	return _elevator_powered
+
+
+func is_elevator_minigame_solved() -> bool:
+	return _minigame_solved
+
+
+# Returns true if the player holds ALL fuses in ELEVATOR_FUSE_REQUIREMENT.
+func has_elevator_fuses() -> bool:
+	var inv: Node = get_node_or_null("/root/Inventory")
+	if inv == null:
+		return false
+	for item_id: String in ELEVATOR_FUSE_REQUIREMENT.keys():
+		var required: int = int(ELEVATOR_FUSE_REQUIREMENT[item_id])
+		var held: int = int(inv.call("count", item_id))
+		if held < required:
+			return false
+	return true
+
+
+# Stub mini-game — sets _minigame_solved deterministically.
+# The real puzzle later calls this same method on success, so the seam is stable.
+func solve_elevator_minigame() -> void:
+	_minigame_solved = true
+
+
+# Attempt to restore elevator power.
+# Guards: fuses present + mini-game solved. On success: consumes fuses atomically,
+# sets _elevator_powered = true, emits elevator_power_changed. Idempotent.
+func restore_elevator_power() -> bool:
+	if _elevator_powered:
+		return true  # Already powered — idempotent.
+	if not _minigame_solved:
+		return false  # Mini-game not yet solved.
+	var inv: Node = get_node_or_null("/root/Inventory")
+	if inv == null:
+		return false
+	# Verify fuses atomically before consuming anything.
+	if not has_elevator_fuses():
+		return false
+	# Consume fuses.
+	for item_id: String in ELEVATOR_FUSE_REQUIREMENT.keys():
+		var required: int = int(ELEVATOR_FUSE_REQUIREMENT[item_id])
+		inv.call("remove_item", item_id, required, "elevator_power_restore")
+	_elevator_powered = true
+	elevator_power_changed.emit(true)
+	return true
+
+
+# ============================================================
 # SAVE CONTRACT
 # ============================================================
 
@@ -1188,6 +1272,8 @@ func serialize() -> Dictionary:
 		"edges": _edges.duplicate(true),
 		"special_pool_remaining": _special_pool_remaining.duplicate(true),
 		"floor_assignments": _floor_assignments.duplicate(true),
+		"elevator_powered": _elevator_powered,
+		"minigame_solved": _minigame_solved,
 	}
 
 
@@ -1202,6 +1288,9 @@ func deserialize(data: Dictionary, _version: int) -> void:
 		_special_pool_remaining = (data["special_pool_remaining"] as Dictionary).duplicate(true)
 	if data.has("floor_assignments") and data["floor_assignments"] is Dictionary:
 		_floor_assignments = (data["floor_assignments"] as Dictionary).duplicate(true)
+	# Absent key → false (starts unpowered). No SAVE_VERSION bump needed.
+	_elevator_powered = data.get("elevator_powered", false) == true
+	_minigame_solved  = data.get("minigame_solved", false) == true
 
 
 func reset() -> void:
@@ -1209,6 +1298,8 @@ func reset() -> void:
 	_rooms.clear()
 	_edges.clear()
 	_floor_assignments.clear()
+	_elevator_powered = false
+	_minigame_solved  = false
 	# Re-seed pool from catalog.
 	_seed_special_pool()
 	# Restore default floor 1 entry.

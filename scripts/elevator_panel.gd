@@ -2,18 +2,24 @@ class_name ElevatorPanel
 extends Interactable
 
 # Wall-mounted elevator control panel. Spawned in elevator rooms by room.gd.
-# Opens a floor-selection overlay:
-#   LOCKED-UNKNOWN  — access code not found; shows "ACCESS CODE REQUIRED".
-#   LOCKED-KNOWN    — code found, shows escalating resource cost + Unlock button.
-#   UNLOCKED        — shows a Travel button.
+# Opens a floor-selection overlay with two modes (issue #132):
+#
+#   POWER OFFLINE — fuses not yet seated / mini-game not completed.
+#     Shows a "POWER OFFLINE" banner and a "RESTORE POWER" button.
+#     Floor rows are visible but disabled.
+#
+#   POWER ONLINE — elevator restored.
+#     LOCKED-UNKNOWN  — access code not found; "ACCESS CODE REQUIRED" + disabled.
+#     LOCKED-KNOWN    — code found; cost label + "UNLOCK" button.
+#     UNLOCKED        — "TRAVEL" button active.
 #
 # Unlock → ProceduralShip.unlock_floor(n) (verifies code + spends cost).
 # Travel → GameState.next_room_id = floor_entry_room + SceneRouter.change_to(room.tscn).
 #
 # Respects SceneRouter.instant_mode: skips UI animation, operates synchronously.
+# Connects to ProceduralShip.elevator_power_changed to refresh UI on power restore.
 
 # How many floors beyond the authored floor 1 the panel shows as options.
-# The panel shows floor 2 and floor 3 in Phase B (expandable by raising this).
 const MAX_FLOORS_SHOWN: int = 3
 
 var _layer: CanvasLayer = null
@@ -22,6 +28,9 @@ var _open: bool = false
 # Cache row labels so _refresh_ui doesn't rebuild from scratch on every signal.
 var _floor_labels: Array[Label] = []
 var _floor_buttons: Array[Button] = []
+# Power banner label — shown/hidden based on ProceduralShip.is_elevator_powered().
+var _power_banner: Label = null
+var _restore_btn: Button = null
 
 
 func _ready() -> void:
@@ -31,12 +40,18 @@ func _ready() -> void:
 	collision_layer = 1 | 4
 	_build_visual()
 	prompt = "Access elevator panel"
+	# Connect to power-change signal so the open UI updates without re-opening.
+	var ps: Node = get_node_or_null("/root/ProceduralShip")
+	if ps != null:
+		ps.elevator_power_changed.connect(_on_elevator_power_changed)
 
 
 # ── visual ────────────────────────────────────────────────────────────────────
 
 func _build_visual() -> void:
 	# Small wall panel: dark housing + bright status strip + label.
+	# Strip color reflects power state at build time only; _refresh_ui drives
+	# runtime appearance so this never reads power state directly.
 	var housing_mat: StandardMaterial3D = StandardMaterial3D.new()
 	housing_mat.albedo_color = Color(0.18, 0.18, 0.21)
 	housing_mat.metallic = 0.55
@@ -50,7 +65,7 @@ func _build_visual() -> void:
 	housing.position = Vector3(0.0, 1.35, 0.0)
 	add_child(housing)
 
-	# Emissive status strip — cyan indicates "active / powered".
+	# Emissive status strip — cyan when powered, amber when offline.
 	var strip_mat: StandardMaterial3D = StandardMaterial3D.new()
 	var strip_col: Color = Color(0.30, 0.85, 1.0)
 	strip_mat.albedo_color = strip_col
@@ -172,6 +187,26 @@ func _build_ui() -> void:
 	var sep: HSeparator = HSeparator.new()
 	vbox.add_child(sep)
 
+	# ── Power offline banner (hidden when powered) ──
+	_power_banner = Label.new()
+	_power_banner.text = "POWER OFFLINE — Seat required fuses and restore main bus."
+	_power_banner.add_theme_color_override("font_color", Color(1.0, 0.55, 0.15, 1.0))
+	_power_banner.add_theme_font_size_override("font_size", 14)
+	_power_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_power_banner.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(_power_banner)
+
+	_restore_btn = Button.new()
+	_restore_btn.text = "RESTORE POWER"
+	_restore_btn.custom_minimum_size = Vector2(0, 40)
+	_restore_btn.focus_mode = Control.FOCUS_NONE
+	_restore_btn.add_theme_font_size_override("font_size", 15)
+	_restore_btn.pressed.connect(_on_restore_power)
+	vbox.add_child(_restore_btn)
+
+	var sep_power: HSeparator = HSeparator.new()
+	vbox.add_child(sep_power)
+
 	# Floor rows — one per generated floor.
 	_floor_labels.clear()
 	_floor_buttons.clear()
@@ -216,12 +251,29 @@ func _build_ui() -> void:
 
 
 func _refresh_ui() -> void:
+	var powered: bool = ProceduralShip.is_elevator_powered()
+
+	# Power banner + restore button visibility.
+	if _power_banner != null:
+		_power_banner.visible = not powered
+	if _restore_btn != null:
+		_restore_btn.visible = not powered
+
 	for i in range(MAX_FLOORS_SHOWN - 1):
 		var fn: int = i + 2  # Floor 2, 3, ...
 		if i >= _floor_labels.size() or i >= _floor_buttons.size():
 			break
 		var lbl: Label = _floor_labels[i]
 		var btn: Button = _floor_buttons[i]
+
+		if not powered:
+			# Elevator offline — floor rows visible but all disabled.
+			lbl.text = "UNAVAILABLE"
+			lbl.add_theme_color_override("font_color", Color(0.45, 0.45, 0.50, 1.0))
+			btn.text = "OFFLINE"
+			btn.disabled = true
+			continue
+
 		var cost: int = ProceduralShip.floor_unlock_cost(fn)
 		var inv: Node = get_node_or_null("/root/Inventory")
 		var held: int = inv.call("count", ProceduralShip.FLOOR_UNLOCK_ITEM) if inv != null else 0
@@ -251,6 +303,22 @@ func _on_bg_input(event: InputEvent) -> void:
 			_close_panel()
 
 
+# Called when the player presses "RESTORE POWER".
+# Seam: the real mini-game scene later launches here instead of the stub call.
+func _on_restore_power() -> void:
+	var ps: Node = get_node_or_null("/root/ProceduralShip")
+	if ps == null:
+		return
+	# Stub path: solve mini-game deterministically then attempt restore.
+	ps.call("solve_elevator_minigame")
+	var ok: bool = ps.call("restore_elevator_power")
+	if ok:
+		_refresh_ui()
+	else:
+		# Not enough fuses — refresh to show any partial state.
+		_refresh_ui()
+
+
 func _on_floor_button(fn: int) -> void:
 	if ProceduralShip.is_floor_unlocked(fn):
 		_travel_to_floor(fn)
@@ -261,6 +329,12 @@ func _on_floor_button(fn: int) -> void:
 		else:
 			# Show feedback (refresh to update cost label).
 			_refresh_ui()
+
+
+# Slot for ProceduralShip.elevator_power_changed signal.
+func _on_elevator_power_changed(_powered: bool) -> void:
+	if _layer != null:
+		_refresh_ui()
 
 
 func _travel_to_floor(fn: int) -> void:

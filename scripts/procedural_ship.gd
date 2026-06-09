@@ -58,6 +58,16 @@ var _floors: Dictionary = {}            # int_floor -> FloorRecord
 var _rooms: Dictionary = {}             # room_id -> row Dictionary
 var _edges: Dictionary = {}             # room_id -> Array[{dir,to,plaque}]
 var _special_pool_remaining: Dictionary = {}  # type_id -> int remaining
+# Phase B: room assignments. ONE collection (collection-fork policy). Only
+# generated storage rooms can be assigned; keyed room_id -> assigned type_id.
+var _floor_assignments: Dictionary = {} # room_id -> assigned_function type_id
+
+# Floor unlock cost parameters — tunable consts. Floor N costs BASE * N parts.
+const FLOOR_UNLOCK_COST_BASE: int = 5
+# Inventory item id used as the unlock currency.
+const FLOOR_UNLOCK_ITEM: String = "parts"
+# Assignment cost in parts per assignment.
+const ROOM_ASSIGN_COST: int = 3
 
 
 func _ready() -> void:
@@ -487,8 +497,14 @@ func _generate_floor(n: int, floor_rec: Dictionary) -> void:
 			if child_rect.is_empty():
 				continue
 
-			# Check for rectangle collisions with all existing placed rooms.
-			if _has_collision(child_rect, placed_rects):
+			# Check for rectangle collisions with all existing placed rooms EXCEPT
+			# the parent — a child is intentionally placed abutting its parent
+			# (shared wall, 0 gap), which would false-trigger the gap check.
+			var collision_rects: Array = []
+			for pr in placed_rects:
+				if String((pr as Dictionary).get("id", "")) != parent_id:
+					collision_rects.append(pr)
+			if _has_collision(child_rect, collision_rects):
 				continue
 
 			# Verify the overlap is sufficient for a door alignment.
@@ -526,8 +542,10 @@ func _generate_floor(n: int, floor_rec: Dictionary) -> void:
 			var child_exits: int = 2 if is_corridor else (rng.randi() % 2)  # 0 or 1 extra
 			if child_exits > 0 and floor_rec["rooms"].size() < cap:
 				growth_queue.append([child_id, child_exits])
-
-			break  # successfully placed one child; move to next queue item or retry
+			# Do NOT break here — let the inner while continue so this parent
+			# can fill all its exits_remaining slots in one pass. The condition
+			# re-checks _edges[parent_id].size() each iteration, so it stops
+			# naturally when the budget is met or the retry ceiling fires.
 
 	floor_rec["generated"] = true
 	_floors[n] = floor_rec
@@ -740,6 +758,155 @@ func _add_gen_edge(from_id: String, to_id: String, dir: String) -> void:
 
 
 # ============================================================
+# PHASE B — FLOOR UNLOCK / ACCESS CODE / ROOM ASSIGNMENT
+# ============================================================
+
+# Escalating cost (in FLOOR_UNLOCK_ITEM units) to unlock floor n.
+func floor_unlock_cost(n: int) -> int:
+	return FLOOR_UNLOCK_COST_BASE * n
+
+
+# True when the player has discovered floor n's access code.
+func is_floor_code_known(n: int) -> bool:
+	if not _floors.has(n):
+		return false
+	return (_floors[n] as Dictionary).get("code_known", false)
+
+
+# True when floor n is unlocked (playable).
+func is_floor_unlocked(n: int) -> bool:
+	if n <= 1:
+		return true  # Authored floor 1 is always unlocked.
+	if not _floors.has(n):
+		return false
+	return (_floors[n] as Dictionary).get("unlocked", false)
+
+
+# Mark floor n's access code as known (called by floor_code_terminal.gd).
+# Ensures the floor record exists so the panel can mark it without generating.
+func mark_floor_code_known(n: int) -> void:
+	if n <= 1:
+		return  # Floor 1 needs no code.
+	if not _floors.has(n):
+		_floors[n] = {
+			"unlocked": false,
+			"code_known": false,
+			"generated": false,
+			"rooms": [],
+			"specials_placed": 0,
+			"cap": 0,
+			"seed": 0,
+		}
+	(_floors[n] as Dictionary)["code_known"] = true
+
+
+# Attempt to unlock floor n. Returns true on success, false on failure.
+# Failure reasons: code not known, insufficient resources, floor already unlocked.
+# On success: spends the item cost via Inventory, generates the floor, sets unlocked.
+func unlock_floor(n: int) -> bool:
+	if n <= 1:
+		return true  # Floor 1 is already unlocked.
+	if is_floor_unlocked(n):
+		return true  # Already unlocked — success (idempotent).
+	if not is_floor_code_known(n):
+		return false  # Code not found yet.
+	var cost: int = floor_unlock_cost(n)
+	var inv: Node = get_node_or_null("/root/Inventory")
+	if inv == null:
+		return false  # No inventory system — cannot spend.
+	var held: int = inv.call("count", FLOOR_UNLOCK_ITEM)
+	if held < cost:
+		return false  # Insufficient resources.
+	# Spend the cost.
+	inv.call("remove_item", FLOOR_UNLOCK_ITEM, cost, "floor_unlock_%d" % n)
+	# Generate the floor (idempotent if already generated from a save).
+	ensure_floor_generated(n)
+	(_floors[n] as Dictionary)["unlocked"] = true
+	return true
+
+
+# The room_id of the elevator-landing room for floor n.
+# Floor 1 → authored elevator rooms. Generated floors → "f{n}_r00" (entry corridor).
+func floor_entry_room(n: int) -> String:
+	if n <= 1:
+		return "elevator_room_floor_1"
+	# The entry corridor is always the first room placed (index 0, see _generate_floor).
+	return "f%d_r00" % n
+
+
+# Deterministic room_id in floor n-1 where floor n's access code terminal lives.
+# Uses the floor n seed to pick from the available rooms; for floor 2 the seed
+# picks from ShipLayout base rooms (authored) — we fix it to a stable authored room.
+func floor_code_terminal_room(n: int) -> String:
+	if n <= 2:
+		# Floor 1 (base) rooms — seed the terminal in the control_interface_room
+		# (a plausible spot for a computer terminal with floor access data).
+		return "control_interface_room"
+	# Generated floor n-1: pick the first non-corridor room (index 1+).
+	var floor_rec: Dictionary = _floors.get(n - 1, {})
+	var rooms: Array = floor_rec.get("rooms", [])
+	if rooms.size() > 1:
+		return String(rooms[1])  # Second room (first non-entry corridor).
+	if rooms.size() > 0:
+		return String(rooms[0])
+	return ""
+
+
+# Assign a function to a generated storage room. Spends ROOM_ASSIGN_COST parts.
+# Returns true on success. The room's template_id and type are updated in _rooms.
+func assign_function(room_id: String, fn_type_id: String) -> bool:
+	if not is_generated(room_id):
+		return false  # Only generated rooms can be assigned.
+	var row: Dictionary = _rooms.get(room_id, {})
+	if row.is_empty():
+		return false
+	# Only storage-type rooms (unassigned) can be converted.
+	var current_type: String = String(row.get("type", ""))
+	if current_type != "storage":
+		return false
+	# Validate the target type is in the assignable catalog category.
+	_load_catalog()
+	var type_row: Dictionary = _catalog.get(fn_type_id, {})
+	if type_row.is_empty():
+		return false
+	if String(type_row.get("category", "")) != "assignable":
+		return false
+	# Spend the assignment cost.
+	var inv: Node = get_node_or_null("/root/Inventory")
+	if inv == null:
+		return false
+	var held: int = inv.call("count", FLOOR_UNLOCK_ITEM)
+	if held < ROOM_ASSIGN_COST:
+		return false
+	inv.call("remove_item", FLOOR_UNLOCK_ITEM, ROOM_ASSIGN_COST, "room_assign_%s" % room_id)
+	# Record the assignment.
+	_floor_assignments[room_id] = fn_type_id
+	# Update the room row so room.gd reads the new template.
+	var new_template: String = String(type_row.get("template_id", "storage-template"))
+	var new_name: String = String(type_row.get("display_name", fn_type_id))
+	(_rooms[room_id] as Dictionary)["type"] = fn_type_id
+	(_rooms[room_id] as Dictionary)["template_id"] = new_template
+	(_rooms[room_id] as Dictionary)["name"] = new_name
+	return true
+
+
+# Current assignment for a generated room ("" if none / not a generated room).
+func assigned_function(room_id: String) -> String:
+	return String(_floor_assignments.get(room_id, ""))
+
+
+# All catalog types marked assignable == true.
+func assignable_types() -> Array:
+	_load_catalog()
+	var out: Array = []
+	for entry in _catalog.values():
+		var d: Dictionary = entry
+		if d.get("assignable", false) == true:
+			out.append(d.duplicate())
+	return out
+
+
+# ============================================================
 # HELPERS
 # ============================================================
 
@@ -785,6 +952,7 @@ func serialize() -> Dictionary:
 		"rooms": _rooms.duplicate(true),
 		"edges": _edges.duplicate(true),
 		"special_pool_remaining": _special_pool_remaining.duplicate(true),
+		"floor_assignments": _floor_assignments.duplicate(true),
 	}
 
 
@@ -797,12 +965,15 @@ func deserialize(data: Dictionary, _version: int) -> void:
 		_edges = (data["edges"] as Dictionary).duplicate(true)
 	if data.has("special_pool_remaining") and data["special_pool_remaining"] is Dictionary:
 		_special_pool_remaining = (data["special_pool_remaining"] as Dictionary).duplicate(true)
+	if data.has("floor_assignments") and data["floor_assignments"] is Dictionary:
+		_floor_assignments = (data["floor_assignments"] as Dictionary).duplicate(true)
 
 
 func reset() -> void:
 	_floors.clear()
 	_rooms.clear()
 	_edges.clear()
+	_floor_assignments.clear()
 	# Re-seed pool from catalog.
 	_seed_special_pool()
 	# Restore default floor 1 entry.

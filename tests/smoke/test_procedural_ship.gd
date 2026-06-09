@@ -43,9 +43,12 @@ func _run() -> void:
 	await process_frame
 
 	_test_base_passthrough(ps, sl)
-	_test_floor_generation(ps)
-	_test_special_pool_limits(ps)
-	_test_save_round_trip(ps)
+	await _test_floor_generation(ps)
+	await _test_special_pool_limits(ps)
+	await _test_save_round_trip(ps)
+	await _test_floor_unlock(ps)
+	await _test_assign_function(ps)
+	await _test_floor_code_poi(ps)
 
 	_report()
 
@@ -303,6 +306,195 @@ func _test_save_round_trip(ps: Node) -> void:
 		edge_count_restored += (edges_restored[k] as Array).size()
 	_expect(edge_count_before == edge_count_restored,
 		"edge count identical after round-trip (before=%d, after=%d)" % [edge_count_before, edge_count_restored])
+
+
+# ── (e) Floor unlock gating, cost deduction, escalation ─────────────────────
+
+func _test_floor_unlock(ps: Node) -> void:
+	print("\n-- floor unlock --")
+	ps.call("reset")
+	await process_frame
+
+	# Access inventory from autoload root. In headless -s SceneTree scripts,
+	# autoloads live on /root. Duck-type via get_node_or_null.
+	var inv: Node = root.get_node_or_null("Inventory")
+	_expect(inv != null, "Inventory autoload reachable from test")
+	if inv == null:
+		return
+
+	# --- unlock_floor FAILS without the code ---
+	# Generate floor 2 first so the cost calculation works.
+	ps.call("ensure_floor_generated", 2)
+	await process_frame
+
+	# Give the player plenty of parts so the only gating variable is the code.
+	inv.call("set_count", "parts", 50)
+	var ok_no_code: bool = ps.call("unlock_floor", 2)
+	_expect(not ok_no_code, "unlock_floor(2) fails when code is not known")
+	_expect(not ps.call("is_floor_unlocked", 2), "floor 2 remains locked after failed attempt")
+	# Parts must NOT have been spent on a failed attempt.
+	_expect(inv.call("count", "parts") == 50, "parts not deducted on failed unlock attempt")
+
+	# --- unlock_floor FAILS with insufficient resources even if code known ---
+	ps.call("mark_floor_code_known", 2)
+	_expect(ps.call("is_floor_code_known", 2), "mark_floor_code_known(2) marks the code known")
+	inv.call("set_count", "parts", 0)  # Zero parts — can't afford.
+	var ok_no_parts: bool = ps.call("unlock_floor", 2)
+	_expect(not ok_no_parts, "unlock_floor(2) fails with 0 parts (cost = %d)" % ps.call("floor_unlock_cost", 2))
+	_expect(not ps.call("is_floor_unlocked", 2), "floor 2 still locked after insufficient-parts attempt")
+
+	# --- unlock_floor SUCCEEDS with code + sufficient resources ---
+	var cost2: int = ps.call("floor_unlock_cost", 2)
+	inv.call("set_count", "parts", cost2)
+	var ok_full: bool = ps.call("unlock_floor", 2)
+	_expect(ok_full, "unlock_floor(2) succeeds with code known + %d parts" % cost2)
+	_expect(ps.call("is_floor_unlocked", 2), "floor 2 is now unlocked")
+	# Cost must have been deducted.
+	var parts_after: int = inv.call("count", "parts")
+	_expect(parts_after == 0, "parts deducted after successful unlock (expected 0, got %d)" % parts_after)
+
+	# --- cost escalates with floor index ---
+	var cost3: int = ps.call("floor_unlock_cost", 3)
+	var cost4: int = ps.call("floor_unlock_cost", 4)
+	_expect(cost3 > cost2, "floor 3 cost (%d) > floor 2 cost (%d)" % [cost3, cost2])
+	_expect(cost4 > cost3, "floor 4 cost (%d) > floor 3 cost (%d)" % [cost4, cost3])
+
+	# --- floor_entry_room ---
+	var entry2: String = ps.call("floor_entry_room", 2)
+	_expect(entry2 != "", "floor_entry_room(2) returns non-empty string")
+	_expect(String(entry2).begins_with("f2_"), "floor_entry_room(2) is a generated id (got '%s')" % entry2)
+	var entry1: String = ps.call("floor_entry_room", 1)
+	_expect(entry1 == "elevator_room_floor_1", "floor_entry_room(1) = authored elevator room (got '%s')" % entry1)
+
+
+# ── (f) assign_function — persists across serialize/reset/deserialize, rejects non-storage ──
+
+func _test_assign_function(ps: Node) -> void:
+	print("\n-- assign_function --")
+	ps.call("reset")
+	await process_frame
+
+	var inv: Node = root.get_node_or_null("Inventory")
+	if inv == null:
+		return
+
+	# Generate floor 2 so we have rooms to assign.
+	ps.call("ensure_floor_generated", 2)
+	await process_frame
+
+	var floors: Dictionary = ps.get("_floors")
+	var f2_rooms: Array = (floors.get(2, {}) as Dictionary).get("rooms", [])
+	_expect(f2_rooms.size() > 0, "floor 2 has rooms to assign (got %d)" % f2_rooms.size())
+	if f2_rooms.is_empty():
+		return
+
+	# Find the first storage room in floor 2.
+	var storage_id: String = ""
+	var rooms_dict: Dictionary = ps.get("_rooms")
+	for rid in f2_rooms:
+		var row: Dictionary = rooms_dict.get(String(rid), {})
+		if String(row.get("type", "")) == "storage":
+			storage_id = String(rid)
+			break
+	_expect(storage_id != "", "floor 2 has at least one storage room")
+	if storage_id == "":
+		return
+
+	# --- assign_function FAILS without sufficient parts ---
+	inv.call("set_count", "parts", 0)
+	var ok_no_parts: bool = ps.call("assign_function", storage_id, "armory")
+	_expect(not ok_no_parts, "assign_function fails with 0 parts")
+	_expect(ps.call("assigned_function", storage_id) == "", "assigned_function is empty after failed assign")
+
+	# --- assign_function SUCCEEDS with enough parts ---
+	var assign_cost: int = ps.get("ROOM_ASSIGN_COST")
+	inv.call("set_count", "parts", assign_cost)
+	var ok_assign: bool = ps.call("assign_function", storage_id, "armory")
+	_expect(ok_assign, "assign_function succeeds with %d parts" % assign_cost)
+	_expect(ps.call("assigned_function", storage_id) == "armory",
+		"assigned_function returns 'armory' after assignment")
+	_expect(inv.call("count", "parts") == 0, "parts deducted after assignment")
+	# Room type updated in _rooms.
+	var updated_row: Dictionary = (ps.get("_rooms") as Dictionary).get(storage_id, {})
+	_expect(String(updated_row.get("type", "")) == "armory",
+		"room type updated to 'armory' in _rooms after assignment")
+
+	# --- assign_function rejects a base (non-generated) room ---
+	inv.call("set_count", "parts", 50)
+	var base_ok: bool = ps.call("assign_function", "east_corridor", "armory")
+	_expect(not base_ok, "assign_function rejects base (non-generated) room 'east_corridor'")
+
+	# --- assign_function rejects a non-storage generated room ---
+	# Find a corridor room.
+	var corridor_id: String = ""
+	for rid in f2_rooms:
+		var row: Dictionary = rooms_dict.get(String(rid), {})
+		if String(row.get("type", "")) == "corridor":
+			corridor_id = String(rid)
+			break
+	if corridor_id != "":
+		var corr_ok: bool = ps.call("assign_function", corridor_id, "armory")
+		_expect(not corr_ok, "assign_function rejects corridor room (not storage type)")
+	else:
+		print("  SKIP  no corridor room found on floor 2 for rejection test")
+		_passes += 1
+
+	# --- Persists across serialize / reset / deserialize ---
+	var snap: Dictionary = ps.call("serialize")
+	_expect(snap.has("floor_assignments"), "serialize includes floor_assignments key")
+	var snap_assignments: Dictionary = snap.get("floor_assignments", {})
+	_expect(snap_assignments.get(storage_id, "") == "armory",
+		"floor_assignments in snapshot carries 'armory' for storage room")
+
+	ps.call("reset")
+	_expect(ps.call("assigned_function", storage_id) == "",
+		"assigned_function empty after reset")
+
+	ps.call("deserialize", snap, 2)
+	await process_frame
+	_expect(ps.call("assigned_function", storage_id) == "armory",
+		"assigned_function restored to 'armory' after deserialize")
+	# Room row type should also be restored.
+	var restored_row: Dictionary = (ps.get("_rooms") as Dictionary).get(storage_id, {})
+	_expect(String(restored_row.get("type", "")) == "armory",
+		"room type is 'armory' in _rooms after deserialize")
+
+
+# ── (g) floor-code POI marks code known ──────────────────────────────────────
+
+func _test_floor_code_poi(ps: Node) -> void:
+	print("\n-- floor code POI --")
+	ps.call("reset")
+	await process_frame
+
+	# mark_floor_code_known for a floor that doesn't yet have a record.
+	_expect(not ps.call("is_floor_code_known", 2), "floor 2 code not known after reset")
+	ps.call("mark_floor_code_known", 2)
+	_expect(ps.call("is_floor_code_known", 2), "mark_floor_code_known(2) sets code_known to true")
+
+	# Mark for floor 3 (creates the record on the fly).
+	_expect(not ps.call("is_floor_code_known", 3), "floor 3 code not known initially")
+	ps.call("mark_floor_code_known", 3)
+	_expect(ps.call("is_floor_code_known", 3), "mark_floor_code_known(3) works for uncreated floor")
+
+	# floor 1 ignores mark (no code needed).
+	ps.call("mark_floor_code_known", 1)
+	_expect(not ps.call("is_floor_code_known", 1), "mark_floor_code_known(1) is a no-op (floor 1 needs no code)")
+
+	# floor_code_terminal_room returns a non-empty string for floor 2.
+	var code_room: String = ps.call("floor_code_terminal_room", 2)
+	_expect(code_room != "", "floor_code_terminal_room(2) returns non-empty string (got '%s')" % code_room)
+	_expect(code_room == "control_interface_room",
+		"floor_code_terminal_room(2) = 'control_interface_room' (got '%s')" % code_room)
+
+	# Survives round-trip.
+	var snap: Dictionary = ps.call("serialize")
+	ps.call("reset")
+	_expect(not ps.call("is_floor_code_known", 2), "code not known after reset")
+	ps.call("deserialize", snap, 2)
+	await process_frame
+	_expect(ps.call("is_floor_code_known", 2), "floor 2 code_known restored after deserialize")
+	_expect(ps.call("is_floor_code_known", 3), "floor 3 code_known restored after deserialize")
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

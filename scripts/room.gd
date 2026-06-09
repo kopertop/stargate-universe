@@ -30,6 +30,9 @@ const QuestWaypointScript: Script = preload("res://scripts/quest_waypoint.gd")
 # headless `-s` runs so the bare identifier sometimes resolves at parse-time
 # and sometimes doesn't. preload always works.
 const ShipAlertScript: Script = preload("res://scripts/ship_alert.gd")
+const ElevatorPanelScript: Script = preload("res://scripts/elevator_panel.gd")
+const FloorCodeTerminalScript: Script = preload("res://scripts/floor_code_terminal.gd")
+const AssignmentConsoleScript: Script = preload("res://scripts/assignment_console.gd")
 # Vertical offset above an in-room anchor (NPC head, console top, pickup body)
 # where the diamond sits. Tuned so it clears nametag Label3Ds.
 const QUEST_WAYPOINT_ANCHOR_HEIGHT: float = 2.4
@@ -373,6 +376,9 @@ func _spawn_interactables() -> void:
 			# gate room with the unconscious-Young tableau.
 			if not GameState.air_crisis_started:
 				_spawn_dr_rush()
+			# Floor 2 access-code terminal: always present in the control room
+			# (a data terminal the player can examine). Disabled once collected.
+			_spawn_floor_code_terminal(2)
 		"engineering_bay":
 			_spawn_power_console()
 		"south_corridor":
@@ -408,6 +414,20 @@ func _spawn_interactables() -> void:
 				_spawn_recovery_ward()
 			elif GameState.air_crisis_started:
 				_spawn_infirmary_ward()
+		"elevator_north", "elevator_room_floor_1":
+			# Elevator rooms: wall-mounted floor-selection panel (Phase B).
+			_spawn_elevator_panel()
+			# Floor-2 access code lives in control_interface_room (base room)
+			# but the terminal marker for floor 2 belongs here so the player can
+			# find the panel before they know where the code is. The actual
+			# terminal is spawned in control_interface_room via the generated
+			# floor dispatch below.
+			pass
+		_:
+			# Generated room dispatch. Runs AFTER all authored room ids have
+			# been matched (the _ branch only fires when no authored id matched).
+			if ProceduralShip.is_generated(room_id):
+				_spawn_generated_room_interactables()
 
 
 # Bed against the -Z wall, matching the position used by RoomBuilder._accent_quarters.
@@ -1575,3 +1595,102 @@ func _humanize(id: String) -> String:
 			continue
 		out.append(p[0].to_upper() + p.substr(1))
 	return " ".join(out)
+
+
+# ── Phase B interactable spawners ─────────────────────────────────────────────
+
+# Elevator floor-selection panel on the -Z wall (facing into the room).
+func _spawn_elevator_panel() -> void:
+	var d_m: float = float(_room_data.get("height", 200)) * ShipLayout.SCALE
+	var half_z: float = d_m * 0.5
+	var panel: StaticBody3D = StaticBody3D.new()
+	panel.set_script(ElevatorPanelScript)
+	panel.name = "ElevatorPanel"
+	# Position on the -Z wall at chest height. The script builds its own visual.
+	panel.position = Vector3(0.0, 0.0, -half_z + 0.08)
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = Vector3(0.6, 1.8, 0.3)
+	cs.shape = box
+	cs.position = Vector3(0.0, 0.9, 0.0)
+	panel.add_child(cs)
+	add_child(panel)
+
+
+# Floor-code terminal on the +X wall (right side when facing -Z into the room).
+# Spawning is one-shot per floor: if the code is already known, we still spawn
+# (so the player can see it was here) but it starts disabled.
+func _spawn_floor_code_terminal(target_floor: int) -> void:
+	if target_floor <= 1:
+		return  # Floor 1 has no code gating.
+	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
+	var half_x: float = w_m * 0.5
+	var terminal: StaticBody3D = StaticBody3D.new()
+	terminal.set_script(FloorCodeTerminalScript)
+	terminal.name = "FloorCodeTerminal_F%d" % target_floor
+	terminal.set("target_floor", target_floor)
+	terminal.position = Vector3(half_x - 0.08, 0.0, 0.0)
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = Vector3(0.3, 1.8, 0.6)
+	cs.shape = box
+	cs.position = Vector3(0.0, 0.9, 0.0)
+	terminal.add_child(cs)
+	add_child(terminal)
+
+
+# Dispatch for generated rooms: assignment console for unassigned storage,
+# or assigned-function props for already-assigned rooms. Also places a
+# floor-code terminal in rooms designated as the code-carrier for floor n+1.
+func _spawn_generated_room_interactables() -> void:
+	var type_id: String = String(_room_data.get("type", ""))
+	var assigned_fn: String = ProceduralShip.assigned_function(room_id)
+	var floor_n: int = int(_room_data.get("floor", 0))
+
+	# Check if this room is the designated code-carrier for the next floor.
+	# ProceduralShip.floor_code_terminal_room(n) returns the room where floor
+	# n's code terminal should be placed. We iterate the next few floors to see
+	# if this room qualifies for any of them.
+	for check_floor in range(2, 10):
+		var code_room: String = ProceduralShip.floor_code_terminal_room(check_floor)
+		if code_room == room_id:
+			_spawn_floor_code_terminal(check_floor)
+			break  # One code terminal per room max.
+
+	# Elevator landing rooms on generated floors get a panel.
+	# The landing room is always "f{n}_r00" (entry corridor, first room placed).
+	if room_id == ("f%d_r00" % floor_n) and floor_n >= 2:
+		_spawn_elevator_panel()
+
+	# Already assigned: dispatch on the function type.
+	if assigned_fn != "":
+		match assigned_fn:
+			"hydroponics_bay":
+				_spawn_co2_scrubber("gen_%s" % room_id, 0.0)
+			# armory, machine_shop, recreation, medical_annex — set-dressing
+			# deferred to Phase C; for now they're empty but labeled.
+			_:
+				pass
+		return
+
+	# Unassigned storage rooms get the assignment console.
+	if type_id == "storage":
+		_spawn_assignment_console()
+
+
+# Assignment console on the -X wall (left side when facing into the room).
+func _spawn_assignment_console() -> void:
+	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
+	var half_x: float = w_m * 0.5
+	var console: StaticBody3D = StaticBody3D.new()
+	console.set_script(AssignmentConsoleScript)
+	console.name = "AssignmentConsole"
+	console.set("console_room_id", room_id)
+	console.position = Vector3(-half_x + 0.08, 0.0, 0.0)
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = Vector3(0.3, 1.8, 0.6)
+	cs.shape = box
+	cs.position = Vector3(0.0, 0.9, 0.0)
+	console.add_child(cs)
+	add_child(console)

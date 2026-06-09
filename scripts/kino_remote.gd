@@ -913,7 +913,7 @@ func _refresh_map() -> void:
 func _active_floor() -> int:
 	if _active_floor_override >= 0:
 		return _active_floor_override
-	var room: Dictionary = ShipLayout.room(GameState.current_room_id)
+	var room: Dictionary = ProceduralShip.room(GameState.current_room_id)
 	if not room.is_empty():
 		return int(room.get("floor", 0))
 	return 0
@@ -933,7 +933,7 @@ func _rebuild_level_bar() -> void:
 	# descending so floor 1 (upper) sits above floor 0 (main).
 	var floors: Array = []
 	for room_id in GameState.rooms_discovered:
-		var r: Dictionary = ShipLayout.room(room_id)
+		var r: Dictionary = ProceduralShip.room(room_id)
 		if r.is_empty():
 			continue
 		var f: int = int(r.get("floor", 0))
@@ -1011,7 +1011,7 @@ func _visible_room_ids() -> Array:
 		return GameState.rooms_discovered
 	var ids: Array = []
 	var floor_id: int = _active_floor()
-	for r in ShipLayout.all_rooms():
+	for r in ProceduralShip.all_known_rooms():
 		if int(r.get("floor", 0)) == floor_id:
 			ids.append(String(r.get("id", "")))
 	return ids
@@ -1020,7 +1020,7 @@ func _visible_room_ids() -> Array:
 func _is_room_visible(room_id: String) -> bool:
 	if not _console_mode:
 		return GameState.rooms_discovered.has(room_id)
-	var r: Dictionary = ShipLayout.room(room_id)
+	var r: Dictionary = ProceduralShip.room(room_id)
 	return not r.is_empty() and int(r.get("floor", 0)) == _active_floor()
 
 
@@ -1040,7 +1040,7 @@ func _compute_deck_transforms() -> void:
 	var aabb: Rect2 = Rect2()
 	var has_any: bool = false
 	for room_id in _visible_room_ids():
-		var room: Dictionary = ShipLayout.room(room_id)
+		var room: Dictionary = ProceduralShip.room(room_id)
 		if room.is_empty() or int(room.get("floor", 0)) != floor_id:
 			continue
 		var sx: float = float(room["startX"])
@@ -1102,7 +1102,7 @@ func _screen_to_world(screen_pt: Vector2) -> Variant:
 
 # Centre of a room in MapView pixel space, or null if not on a fitted deck.
 func _room_to_px(room_id: String) -> Variant:
-	var room: Dictionary = ShipLayout.room(room_id)
+	var room: Dictionary = ProceduralShip.room(room_id)
 	if room.is_empty():
 		return null
 	var floor_id: int = int(room.get("floor", 0))
@@ -1115,7 +1115,7 @@ func _room_to_px(room_id: String) -> Variant:
 
 # Pixel-space room Rect2 for a given room, or null if not on a fitted deck.
 func _room_rect_px(room_id: String) -> Variant:
-	var room: Dictionary = ShipLayout.room(room_id)
+	var room: Dictionary = ProceduralShip.room(room_id)
 	if room.is_empty():
 		return null
 	var floor_id: int = int(room.get("floor", 0))
@@ -1461,13 +1461,13 @@ func _draw_elevator_glyph(canvas: CanvasItem, centre: Vector2, radius: float, co
 # top of room fills, and connection lines sit behind pips.
 func _draw_deck_geometry(canvas: CanvasItem, floor_id: int, _rect: Rect2) -> void:
 	for room_id in _visible_room_ids():
-		var room: Dictionary = ShipLayout.room(room_id)
+		var room: Dictionary = ProceduralShip.room(room_id)
 		if room.is_empty() or int(room.get("floor", 0)) != floor_id:
 			continue
 		_draw_room_outline(canvas, room)
 	_draw_connection_lines(canvas, floor_id)
 	for room_id in _visible_room_ids():
-		var room: Dictionary = ShipLayout.room(room_id)
+		var room: Dictionary = ProceduralShip.room(room_id)
 		if room.is_empty() or int(room.get("floor", 0)) != floor_id:
 			continue
 		_draw_door_pips_for_room(canvas, room)
@@ -1545,10 +1545,10 @@ func _draw_room_outline(canvas: CanvasItem, room: Dictionary) -> void:
 func _draw_connection_lines(canvas: CanvasItem, floor_id: int) -> void:
 	var seen: Dictionary = {}
 	for room_id in _visible_room_ids():
-		var room: Dictionary = ShipLayout.room(room_id)
+		var room: Dictionary = ProceduralShip.room(room_id)
 		if room.is_empty() or int(room.get("floor", 0)) != floor_id:
 			continue
-		for edge in ShipLayout.outgoing_edges(room_id):
+		for edge in ProceduralShip.outgoing_edges(room_id):
 			var e: Dictionary = edge
 			var to_id: String = String(e.get("to", ""))
 			if to_id == "" or not _is_room_visible(to_id):
@@ -1557,7 +1557,7 @@ func _draw_connection_lines(canvas: CanvasItem, floor_id: int) -> void:
 			if seen.has(key):
 				continue
 			seen[key] = true
-			var to_room: Dictionary = ShipLayout.room(to_id)
+			var to_room: Dictionary = ProceduralShip.room(to_id)
 			if to_room.is_empty() or int(to_room.get("floor", 0)) != floor_id:
 				continue
 			var a: Variant = _room_to_px(room_id)
@@ -1576,7 +1576,7 @@ func _draw_door_pips_for_room(canvas: CanvasItem, room: Dictionary) -> void:
 	var rect: Rect2 = rect_var
 	# Group outgoing edges by direction so we can stagger them along the wall.
 	var by_dir: Dictionary = {}
-	for edge in ShipLayout.outgoing_edges(room_id):
+	for edge in ProceduralShip.outgoing_edges(room_id):
 		var e: Dictionary = edge
 		var dir: String = String(e.get("dir", ""))
 		if dir == "":
@@ -1600,7 +1600,7 @@ func _draw_door_pips_for_room(canvas: CanvasItem, room: Dictionary) -> void:
 # Pip state machine. Order matters: hard-lock > kino-lock > power-lock >
 # traversed > open.
 func _pip_state(source_id: String, target_id: String, dir: String) -> String:
-	var target_room: Dictionary = ShipLayout.room(target_id)
+	var target_room: Dictionary = ProceduralShip.room(target_id)
 	if not target_room.is_empty() and target_room.get("locked", false):
 		return "hardlock"
 	if dir == "elevator" and not GameState.elevator_repaired:
@@ -1706,7 +1706,7 @@ func _draw_route(canvas: CanvasItem) -> void:
 	var target_id: String = _active_route_target()
 	if target_id == "":
 		return
-	var path: PackedStringArray = ShipLayout.path_through_rooms(GameState.current_room_id, target_id)
+	var path: PackedStringArray = ProceduralShip.path_through_rooms(GameState.current_room_id, target_id)
 	var dot_color: Color = CUSTOM_TARGET_COLOR if _placed_marker != null else QUEST_TARGET_COLOR
 	for i in range(path.size() - 1):
 		var a_var: Variant = _room_to_px(path[i])
@@ -1887,7 +1887,7 @@ func _placed_marker_room() -> String:
 	var world: Vector2 = m["world"]
 	var floor_id: int = int(m.get("floor", 0))
 	for room_id in GameState.rooms_discovered:
-		var r: Dictionary = ShipLayout.room(room_id)
+		var r: Dictionary = ProceduralShip.room(room_id)
 		if r.is_empty() or int(r.get("floor", 0)) != floor_id:
 			continue
 		var rect_world: Rect2 = Rect2(
@@ -1974,7 +1974,7 @@ func _refresh_quest() -> void:
 		if room_id == "":
 			hint.text = "  —"
 		else:
-			var room_data: Dictionary = ShipLayout.room(room_id)
+			var room_data: Dictionary = ProceduralShip.room(room_id)
 			var room_name: String = String(room_data.get("name", room_id))
 			var anchor: String = String(target.get("anchor", ""))
 			if anchor == "":

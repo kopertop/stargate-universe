@@ -144,7 +144,7 @@ const DISCOVERY_DECODE_SECS_PER_CHAR: float = 0.25
 # must read crisply over the world), keeping the hue identical to the unit
 # frame / action-bar borders.
 const DISCOVERY_ACCENT: Color = Color(SKIN_ACCENT.r, SKIN_ACCENT.g, SKIN_ACCENT.b, 1.0)
-const DISCOVERY_STING_SOUND: String = "res://sounds/terminal_boot.ogg"
+const DISCOVERY_STING_SOUND: String = "res://sounds/discovery_stinger.ogg"
 var _discovery_root: Control = null
 var _discovery_name: Node = null      # RichTextLabel (per-char decode) — duck-typed.
 var _discovery_fade: Tween = null

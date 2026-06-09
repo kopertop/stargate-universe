@@ -39,6 +39,9 @@ fi
 cd "$REPO"
 git fetch origin
 git checkout "$BRANCH"
+# discard Godot import/bake churn so it doesn't block the pull
+git checkout -- '*.import' 2>/dev/null || true
+git ls-files -m | grep -E '\.res$' | xargs -r git checkout -- 2>/dev/null || true
 git pull --ff-only origin "$BRANCH"
 chmod +x tools/gate_hero_render.sh tools/hermes/*.sh 2>/dev/null || true
 
@@ -116,6 +119,16 @@ hermes cron create "$SCHEDULE" "$PROMPT" \
 	--skill "$JOB_NAME" \
 	--deliver local
 hermes cron list 2>/dev/null | grep -i "$JOB_NAME" || warn "Job not visible in 'hermes cron list' — check manually."
+
+# --- 4b. daily develop re-sync job ----------------------------------------
+say "Registering daily develop→feature sync job 'gate-hero-sync'"
+SYNC_PROMPT="Run the daily develop re-sync by following tools/hermes/roles/sync_develop.md in this repo precisely: merge origin/develop into feature/gate-room-hero-portal, resolving conflicts per that brief (keep-ours for the loop's own files, abort + report if non-trivial), push on success. ONE pass, then STOP. Never push to develop/main."
+hermes cron remove gate-hero-sync >/dev/null 2>&1 || true
+hermes cron create "every 24h" "$SYNC_PROMPT" \
+	--name gate-hero-sync \
+	--workdir "$REPO" \
+	--deliver local
+hermes cron list 2>/dev/null | grep -i gate-hero-sync || warn "sync job not visible — check 'hermes cron list'."
 
 # --- 5. drive ticks from system cron (no long-lived hermes daemon) --------
 say "Installing system-cron tick every ${TICK_EVERY_MIN}m so jobs actually fire"

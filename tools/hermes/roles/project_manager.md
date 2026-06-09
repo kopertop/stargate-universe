@@ -38,8 +38,8 @@ Your crew:
 
 3. **Render.** `bash tools/gate_hero_render.sh candidate 220`
    Valid only if output has `(save err=0)`, a non-null camera, and NO
-   `SHADER ERROR`/`Parse Error`/`SCRIPT ERROR`. If broken, the dev's edit is bad:
-   `git checkout -- scripts/gate_room_hero.gd shaders/hero_portal.gdshader scenes/gate_room_hero.tscn assets/hero && git clean -fdq assets/hero/`
+   `SHADER ERROR`/`Parse Error`/`SCRIPT ERROR`. If broken, the dev's edit is bad —
+   revert ALL of it: `git checkout -- . ; git clean -fdq`
    then journal `broken-render` and STOP.
 
 4. **Review (authoritative, independent — three hermes agents, different models).**
@@ -50,11 +50,24 @@ Your crew:
    your own opinion — obey it. Capture the per-judge gaps for the journal.
 
 5. **Commit or revert.**
-   - ACCEPT → `cp screenshots/loop/candidate.png screenshots/loop/best.png`
-     then `git add -A scripts/gate_room_hero.gd shaders/hero_portal.gdshader scenes/gate_room_hero.tscn assets/hero`
-     then commit `loop(pm): <one-line change> — panel ACCEPT (score N)` and
-     `git push origin feature/gate-room-hero-portal`.
-   - REJECT → `git checkout -- scripts/gate_room_hero.gd shaders/hero_portal.gdshader scenes/gate_room_hero.tscn assets/hero && git clean -fdq assets/hero/`.
+   - ACCEPT → promote, commit EVERYTHING, then pull-before-push:
+     ```
+     cp screenshots/loop/candidate.png screenshots/loop/best.png
+     # never commit machine-specific Godot import/bake churn:
+     git checkout -- '*.import' 2>/dev/null || true
+     git ls-files -m | grep -E '\.res$' | xargs -r git checkout -- 2>/dev/null || true
+     git add -A                                   # commit ALL the dev's real files (new
+                                                  # scripts + their .uid, new assets, every edit),
+                                                  # NOT a hand-picked subset — nothing left behind
+     git commit -m "loop(pm): <one-line change> — panel ACCEPT (score N)"
+     git pull --rebase origin feature/gate-room-hero-portal   # take any remote advance first
+     git push origin feature/gate-room-hero-portal            # ALWAYS push after a successful commit
+     ```
+     Verify `git status` is clean (only gitignored best.png/journal differ) before finishing.
+   - REJECT → revert ALL the dev's changes (they may have touched files anywhere):
+     ```
+     git checkout -- . ; git clean -fdq          # no -x → keeps gitignored best.png/journal
+     ```
 
 6. **Journal.** Append ONE line to `screenshots/loop/journal.ndjson` (gitignored)
    with the iteration result so the NEXT cycle knows what to try next:

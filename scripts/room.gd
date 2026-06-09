@@ -89,6 +89,10 @@ var _standoff_greer: Node3D = null
 var _standoff_scott: Node3D = null
 var _standoff_sidearm: Node3D = null
 var _standoff_rush_pos: Vector3 = Vector3.ZERO
+# Player frame captured when the standoff dialog opens (the actors are restaged
+# behind the player THEN, since the player walks up to Rush well after _ready).
+var _standoff_player_pos: Vector3 = Vector3.ZERO
+var _standoff_player_fwd: Vector3 = Vector3.FORWARD
 
 
 func _ready() -> void:
@@ -1051,6 +1055,30 @@ func _spawn_standoff_actors() -> void:
 
 	if not GameState.dialog_action.is_connected(_on_standoff_cue):
 		GameState.dialog_action.connect(_on_standoff_cue)
+	# Restage behind the player the moment the standoff dialog opens (the player
+	# has by then walked up to Rush, far from the _ready spawn point).
+	if not GameState.dialog_started.is_connected(_standoff_reposition):
+		GameState.dialog_started.connect(_standoff_reposition)
+
+
+# Snap the actors to just behind the player when the DrRush standoff dialog opens
+# so Greer is literally "right behind us" wherever the player stopped — the charge
+# to Rush then covers a short, punchy distance instead of the whole room.
+func _standoff_reposition(npc: Node3D, _tree: Array) -> void:
+	if _standoff_greer == null or not is_instance_valid(_standoff_greer):
+		return
+	if npc == null or npc.name != "DrRush":
+		return
+	var p_pos: Vector3 = player.position
+	var fwd: Vector3 = Vector3(-sin(player.rotation.y), 0.0, -cos(player.rotation.y))
+	var right: Vector3 = fwd.cross(Vector3.UP)
+	var face: float = atan2(-fwd.x, -fwd.z)
+	_standoff_player_pos = p_pos
+	_standoff_player_fwd = fwd
+	_standoff_greer.position = p_pos - fwd * 1.6 + right * 0.5
+	_standoff_greer.rotation.y = face
+	_standoff_scott.position = p_pos - fwd * 3.0 - right * 0.3
+	_standoff_scott.rotation.y = face
 
 
 # A silent armed soldier actor for the standoff: soldier.glb in fatigues (Mini
@@ -1151,7 +1179,7 @@ func _build_helmet() -> MeshInstance3D:
 func _build_sidearm() -> Node3D:
 	var pivot: Node3D = Node3D.new()
 	pivot.name = "Sidearm"
-	pivot.position = Vector3(0.48, 1.10, 0.20)   # right hand, hip height
+	pivot.position = Vector3(0.40, 1.28, 0.30)   # right hand, raised to chest/aim height
 	pivot.rotation.x = -PI * 0.5                  # barrel points down (holstered)
 	var mat: StandardMaterial3D = StandardMaterial3D.new()
 	mat.albedo_color = Color(0.05, 0.05, 0.06)
@@ -1159,10 +1187,10 @@ func _build_sidearm() -> Node3D:
 	mat.roughness = 0.45
 	var slide: MeshInstance3D = MeshInstance3D.new()
 	var smesh: BoxMesh = BoxMesh.new()
-	smesh.size = Vector3(0.10, 0.13, 0.44)        # barrel/slide along -Z (body-forward)
+	smesh.size = Vector3(0.11, 0.14, 0.54)        # barrel/slide along -Z (body-forward)
 	slide.mesh = smesh
 	slide.material_override = mat
-	slide.position = Vector3(0.0, 0.0, -0.16)
+	slide.position = Vector3(0.0, 0.0, -0.22)     # protrudes toward the target
 	pivot.add_child(slide)
 	var grip: MeshInstance3D = MeshInstance3D.new()
 	var gmesh: BoxMesh = BoxMesh.new()
@@ -1200,7 +1228,7 @@ func _on_standoff_cue(action_id: String) -> void:
 # arrived and aimed.
 func _standoff_advance_greer(instant: bool) -> void:
 	# Behind-right of Rush: +X is behind his back (he faces -X); -Z is his right.
-	var anchor: Vector3 = Vector3(_standoff_rush_pos.x + 1.4, 0.0, _standoff_rush_pos.z - 1.2)
+	var anchor: Vector3 = Vector3(_standoff_rush_pos.x + 1.55, 0.0, _standoff_rush_pos.z - 1.35)
 	var face: float = atan2(-(_standoff_rush_pos.x - anchor.x), -(_standoff_rush_pos.z - anchor.z))
 	if instant:
 		_standoff_greer.position = anchor
@@ -1226,14 +1254,15 @@ func _standoff_advance_greer(instant: bool) -> void:
 	GameState.dialog_release.emit()              # now the player may continue
 
 
-# Scott's cue: walk in from behind toward the confrontation, calling Greer off.
-# His sidearm stays holstered — he's de-escalating, not aiming.
+# Scott's cue: walk in from behind, stepping up beside the player toward the
+# confrontation. His sidearm stays holstered — he's de-escalating, not aiming.
 func _standoff_enter_scott(instant: bool) -> void:
-	var anchor: Vector3 = Vector3(_standoff_rush_pos.x - 3.0, 0.0, 1.6)
+	var right: Vector3 = _standoff_player_fwd.cross(Vector3.UP)
+	var anchor: Vector3 = _standoff_player_pos + _standoff_player_fwd * 1.2 + right * 1.2
 	if instant:
 		_standoff_scott.position = anchor
 		return
-	_standoff_scott.call("walk_to", anchor, 3.2, 0.0)   # quick — he's urgent
+	_standoff_scott.call("walk_to", anchor, 3.4, 0.0)   # quick — he's urgent
 
 
 # Resolution cue: Greer lowers the weapon, both walk back out toward the entry,
@@ -1257,6 +1286,8 @@ func _standoff_clear(instant: bool) -> void:
 func _despawn_standoff() -> void:
 	if GameState.dialog_action.is_connected(_on_standoff_cue):
 		GameState.dialog_action.disconnect(_on_standoff_cue)
+	if GameState.dialog_started.is_connected(_standoff_reposition):
+		GameState.dialog_started.disconnect(_standoff_reposition)
 	for actor in [_standoff_greer, _standoff_scott]:
 		if actor != null and is_instance_valid(actor):
 			actor.queue_free()

@@ -39,6 +39,17 @@ carry-overs; project-specific audio gets added under the same convention.
 - `menu_click.ogg` — UI tab click (Kenney Interface Sounds / click_001).
 - `terminal_boot.ogg` — Computer power-on tone (Kenney Sci-Fi Sounds /
   computerNoise_001). Plays diegetically when E-ing a control console.
+- `discovery_stinger.ogg` — Epic deep-string swell "Daaahhhh" played on the
+  room-discovery toast for a NORMAL room (`hud.gd` DISCOVERY_STING_SOUND).
+  ElevenLabs-generated (prompt: a short deep string chord), ~4s, Ogg Vorbis.
+- `discovery_stinger_key.ogg` — **KEY-ROOM** discovery cue: a brighter
+  "magical discovery" swell (~5.9s, ElevenLabs, Ogg Vorbis), `hud.gd`
+  DISCOVERY_STING_KEY_SOUND. Played INSTEAD of the normal stinger when the
+  discovered room is a "key room" (Control Interface Room, Kino Room, …).
+  ⚠️ Which rooms are "key" is **owned by a separate work stream** and is read
+  ONLY via `ShipLayout.is_key_room(room_id)` — see the big coordination note in
+  `../scripts/ship_layout.gd` and `../data/AGENTS.md`. Do not add a second
+  list of key rooms here or in hud.gd.
 - `radio_click.ogg` — CB-radio static squelch (CbRadioStatic_S08TE.400,
   converted from MP3). Plays when a radio connection OPENS — Scott's
   wake-up order (bed.gd), the Rush-absent exchange (room.gd), and the

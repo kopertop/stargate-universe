@@ -33,6 +33,11 @@ const ShipAlertScript: Script = preload("res://scripts/ship_alert.gd")
 const ElevatorPanelScript: Script = preload("res://scripts/elevator_panel.gd")
 const FloorCodeTerminalScript: Script = preload("res://scripts/floor_code_terminal.gd")
 const AssignmentConsoleScript: Script = preload("res://scripts/assignment_console.gd")
+# Ancient/Lantean glyph cipher + font for in-room console signage. Procedural
+# console labels (door-control panel, power console) render in Ancient glyphs
+# while the room is un-deciphered — so a Kino scouting the room sees the
+# signage but can't read it — then decode when the player walks in.
+const AncientTextRef: Script = preload("res://scripts/ancient_text.gd")
 # Vertical offset above an in-room anchor (NPC head, console top, pickup body)
 # where the diamond sits. Tuned so it clears nametag Label3Ds.
 const QUEST_WAYPOINT_ANCHOR_HEIGHT: float = 2.4
@@ -69,6 +74,10 @@ var _crate_waypoints: Array[Node3D] = []
 # True once the red-alert tint has been applied to this scene, so the objective
 # handler knows whether it needs to clear the tint when the breach is sealed.
 var _alert_applied: bool = false
+# Console signage labels currently shown in the Ancient glyph font (room not yet
+# deciphered). Each entry is {"node": Label3D, "text": String}; decoded to the
+# stored readable text when room_deciphered fires for this room.
+var _ancient_console_labels: Array = []
 
 
 func _ready() -> void:
@@ -132,6 +141,18 @@ func _ready() -> void:
 	if GameState.kino_pilot_mode:
 		_start_kino_arrival()
 		return
+
+	# On-foot arrival ONLY (we're past the Kino-pilot early-return): the player
+	# physically walked in, so decipher this room — its Ancient-glyph name,
+	# plaques, and consoles resolve to readable English. A remote Kino flyby
+	# took the early return above and only discover_room()'d it (still encrypted).
+	# Connect the console-decode handler BEFORE decipher_room emits (only if any
+	# in-room signage is currently locked — re-entering an already-deciphered
+	# room builds its labels readable and registers nothing).
+	if not _ancient_console_labels.is_empty() \
+			and not GameState.room_deciphered.is_connected(_on_room_deciphered_consoles):
+		GameState.room_deciphered.connect(_on_room_deciphered_consoles)
+	GameState.decipher_room(room_id)
 
 	# Quest diamond waypoint — refreshes on objective_changed so quest
 	# advances mid-room (e.g. picking up the Kino) reposition the diamond
@@ -584,6 +605,7 @@ func _spawn_shuttle_dock() -> void:
 	plabel.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
 	plabel.position = panel_pos + Vector3(0.05, 0.55, 0.0)
 	add_child(plabel)
+	_register_ancient_label(plabel, "DOOR CONTROL")
 
 	# --- Three supply crates along the +X wall. Contents: a Large Fuse (wrong
 	# size), the Small Fuse the door needs (crate 2), and ration packs — the
@@ -710,6 +732,7 @@ func _spawn_power_console() -> void:
 	label.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
 	label.position = console.position + Vector3(0.05, 0.6, 0.0)
 	add_child(label)
+	_register_ancient_label(label, "MAIN POWER\n(Elevator)")
 
 
 # Spawn a CO2 scrubber wall panel on the -Z wall at world-x `x`. `unit_id` ""
@@ -774,6 +797,30 @@ func _add_mesh_box(parent: Node3D, pos: Vector3, size: Vector3, mat: StandardMat
 	mi.material_override = mat
 	mi.position = pos
 	parent.add_child(mi)
+
+
+# Put an in-room console-signage Label3D into its locked (Ancient glyph) or
+# readable state based on whether this room is deciphered yet. Locked labels are
+# tracked so _on_room_deciphered_consoles can decode them when the player enters.
+func _register_ancient_label(node: Label3D, text: String) -> void:
+	if GameState.is_deciphered(room_id):
+		AncientTextRef.set_readable_font(node)
+		node.text = text
+		return
+	AncientTextRef.set_locked(node, text)
+	_ancient_console_labels.append({"node": node, "text": text})
+
+
+# Decode every locked console label the moment THIS room is deciphered (on-foot
+# entry). AncientText.decode honors instant_mode/headless (settles immediately).
+func _on_room_deciphered_consoles(rid: String) -> void:
+	if rid != room_id:
+		return
+	for entry: Dictionary in _ancient_console_labels:
+		var node: Label3D = entry.get("node") as Label3D
+		if is_instance_valid(node):
+			AncientTextRef.decode(node, String(entry.get("text", "")), self)
+	_ancient_console_labels.clear()
 
 
 # Dr Rush in the control interface room. Stands at the NW console (one of four

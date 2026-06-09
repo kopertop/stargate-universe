@@ -84,6 +84,42 @@ func all_rooms() -> Array:
 	return _by_id.values()
 
 
+# ============================================================================
+# KEY ROOMS  —  ⚠️ COORDINATION SEAM (read before editing)
+# ============================================================================
+# A "key room" is a story-/system-critical room (Control Interface Room, Kino
+# Room, …) that earns a SPECIAL discovery sting — sounds/discovery_stinger_key.ogg
+# (the "magical discovery" cue) — instead of the normal one. The room-discovery
+# audio (scripts/hud.gd::_on_room_deciphered) decides which sting to play by
+# calling THIS function and nothing else.
+#
+# ──────────────────────────────────────────────────────────────────────────
+# 🛑 A SEPARATE WORK STREAM OWNS THE KEY-ROOM DEFINITIONS. 🛑
+# ──────────────────────────────────────────────────────────────────────────
+# The CANONICAL way to mark a room "key" is a per-room flag in
+# data/ship_layout.json:   { "id": "...", ..., "key_room": true }
+# `is_key_room()` reads that flag FIRST, so as soon as those flags land the
+# audio routing is automatically correct — no code change here.
+#
+# `_KEY_ROOMS_FALLBACK` below is a TEMPORARY hardcoded list so the key-room
+# sting works TODAY, before the flags exist. When the key-room definitions
+# land, DELETE the fallback list and the `or … .has(id)` clause so
+# ship_layout.json is the single source of truth (avoid the project's
+# scattered-collection anti-pattern — do NOT keep two lists of key rooms).
+# If the definitions end up living somewhere other than the JSON flag, update
+# THIS function to read them and keep is_key_room() the ONLY key-room query.
+const _KEY_ROOMS_FALLBACK: PackedStringArray = [
+	"control_interface_room",  # Control Interface Room
+	"eli_quarters",            # "Kino Room" (the Kino Remote lives here)
+]
+
+
+func is_key_room(id: String) -> bool:
+	if room(id).get("key_room", false) == true:
+		return true
+	return _KEY_ROOMS_FALLBACK.has(id)
+
+
 # JSON width/height converted to metres. Returns Vector2(width, depth) in the
 # Godot XZ plane (JSON 2D plan maps to ship's floor plan).
 func size_metres(id: String) -> Vector2:

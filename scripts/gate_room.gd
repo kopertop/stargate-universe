@@ -116,6 +116,10 @@ func _ready() -> void:
 	# Discover + run arrival branch. If resuming from save, skip the cinematic.
 	var first_visit: bool = not GameState.rooms_discovered.has("gate_room")
 	GameState.discover_room("gate_room", "Gate Room")
+	# Home base — the player is here on foot, so decipher it (readable name /
+	# plaques, no glyphs). The hand-authored gate room doesn't route through
+	# room.gd, so decipher explicitly here.
+	GameState.decipher_room("gate_room")
 	GameState.set_current_room("gate_room")
 
 	# Piloted-Kino arrival: a Kino flew back through the planet's to_ship gate

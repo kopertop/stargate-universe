@@ -12,6 +12,11 @@ extends Node
 # is true. Constructs its UI tree programmatically (no scene dependency)
 # so it can attach to every scene's root without per-scene wiring.
 
+# Ancient/Lantean glyph cipher + font. Rooms the Kino has found but the on-foot
+# player hasn't entered (deciphered) render their map label in the Ancient font
+# — you can see the sector exists, but can't read its name until you walk in.
+const AncientTextRef: GDScript = preload("res://scripts/ancient_text.gd")
+
 const PAGE_MAP: int = 0
 const PAGE_STATUS: int = 1
 const PAGE_QUEST: int = 2
@@ -1510,7 +1515,14 @@ func _draw_room_outline(canvas: CanvasItem, room: Dictionary) -> void:
 	var name_text: String = String(room.get("name", room_id)).to_upper()
 	if rect.size.x < 24.0 or rect.size.y < 18.0:
 		return
+	# Un-deciphered rooms render in the Ancient glyph font (a consistent cipher);
+	# the current/entered rooms read plainly. Same Font object drives the fit
+	# math below so the glyph string is measured in its own metrics.
 	var font: Font = ThemeDB.fallback_font
+	if not GameState.is_deciphered(room_id):
+		var ancient: Font = AncientTextRef.ancient_font()
+		if ancient != null:
+			font = ancient
 	var fs: int = 11 if is_current else 10
 	# Shrink font until the string fits inside the room's inner padding,
 	# down to a 7px floor; below that, drop to the first word only.

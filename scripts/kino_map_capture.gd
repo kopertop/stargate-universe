@@ -55,6 +55,12 @@ func _run() -> void:
 		get_tree().quit(1)
 		return
 	call(_scenarios[_scenario_name])
+	# Decipher every discovered room so the map labels render in readable English,
+	# not the Ancient glyph font — this capture compares ship LAYOUT against the
+	# concept art, so glyph names would only obscure the comparison. (In real play
+	# a room stays glyph'd on the map until the on-foot player walks in.)
+	for rid: String in GameState.rooms_discovered:
+		GameState.decipher_room(rid)
 	# KinoRemote autoload owns the UI tree. Force-open even if the kino_remote
 	# item is absent from Inventory (the capture is allowed to peek).
 	Inventory.set_count("kino_remote", 1)

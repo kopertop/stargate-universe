@@ -33,6 +33,11 @@ var slot: int = 0
 # their pose until a rush_to() coroutine moves them. Set this before adding to
 # the tree (or any time before _process actually decides what to do).
 var stationary: bool = false
+# Peeled-off companions (Scott + Park on the south team) hold their spawn
+# position and do not follow or mine. They still rush_to() on departure muster
+# because the peeled_off check sits AFTER the _rushing check in _process().
+# Set this before setup() via c.set("peeled_off", entry.team == "south").
+var peeled_off: bool = false
 
 var _model: Node3D = null
 var _anim: AnimationPlayer = null
@@ -104,6 +109,12 @@ func _process(delta: float) -> void:
 		_step_toward(_rush_target, RUSH_SPEED, delta)
 		return
 	if stationary:
+		_set_moving(false)
+		return
+	# Scott + Park (south team): hold spawn position, never follow or mine.
+	# Placed AFTER the _rushing check so they still rush_to() the gate on
+	# departure muster (planet_timer.gd calls rush_to on all "away_team" nodes).
+	if peeled_off:
 		_set_moving(false)
 		return
 	var player: Node3D = get_tree().get_first_node_in_group("player") as Node3D

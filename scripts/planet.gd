@@ -79,6 +79,7 @@ func _ready() -> void:
 		# whole run. Live play only — headless must not have companions auto-mining
 		# lime and skewing resource assertions.
 		if not SceneRouter.instant_mode:
+			_play_split_dialogue()
 			_spawn_away_team(_player.global_position)
 
 
@@ -119,22 +120,72 @@ func _refresh_lime_objective() -> void:
 # Mini-Characters males) with a warm-brown tint applied per-instance, so on
 # screen the away team reads as two same-silhouette soldiers with different
 # skin tones (none of the Kenney mini-chars ship with a darker-skin variant).
+#
+# On arrival Scott splits the team: Greer (north, -Z) follows + mines with the
+# player; Scott + Park (south, +Z) peel off and hold position. "north"=-Z per
+# project convention (planet.gd coordinate frame). Both teams are still members
+# of group "away_team" so the departure muster (planet_timer.gd rush_to()) and
+# compass HUD behave identically. Issue #137.
 const SCOTT_GLB: String = "res://models/characters/scott.glb"
 const GREER_TINT: Color = Color(0.66, 0.50, 0.38)   # warm brown — skin reads as brown, uniform as olive-drab
 func _spawn_away_team(near: Vector3) -> void:
+	# team attribute: "north" = -Z (follows + mines), "south" = +Z (peeled off).
 	var roster: Array = [
-		{"name": "Greer", "glb": SCOTT_GLB, "tint": GREER_TINT},
-		{"name": "Park", "glb": "res://models/characters/park.glb", "tint": Color.WHITE},
-		{"name": "Lt Scott", "glb": SCOTT_GLB, "tint": Color.WHITE},
+		{"name": "Greer",    "glb": SCOTT_GLB,                              "tint": GREER_TINT,   "team": "north"},
+		{"name": "Park",     "glb": "res://models/characters/park.glb",     "tint": Color.WHITE,  "team": "south"},
+		{"name": "Lt Scott", "glb": SCOTT_GLB,                              "tint": Color.WHITE,  "team": "south"},
 	]
+	var north_idx: int = 0   # X spread within each team
+	var south_idx: int = 0
 	for i in roster.size():
 		var entry: Dictionary = roster[i]
-		var at: Vector3 = near + Vector3(-2.4 + float(i) * 2.4, 0.0, 2.4)
+		var is_south: bool = entry["team"] == "south"
+		var at: Vector3
+		if is_south:
+			# South team: offset clearly to +Z so Scott + Park visibly peel off.
+			at = near + Vector3(-1.2 + float(south_idx) * 2.4, 0.0, 6.0)
+			south_idx += 1
+		else:
+			# North team: near the player on the -Z side (same side as the gate).
+			at = near + Vector3(-1.2 + float(north_idx) * 2.4, 0.0, -2.4)
+			north_idx += 1
 		var c: Node3D = CompanionScript.new()
 		c.name = "Companion_" + String(entry["name"]).replace(" ", "")
+		# Set peeled_off BEFORE setup() so _process sees the correct value as
+		# soon as the first frame ticks — mirrors gate_room's stationary pattern.
+		c.set("peeled_off", is_south)
 		add_child(c)
 		c.global_position = at
 		c.call("setup", String(entry["name"]), String(entry["glb"]), i, entry["tint"])
+	# Radio report: Scott's south team found lime on their ridge. Log only —
+	# must NOT call add_resource (would skew the mine_lime count and potentially
+	# auto-advance the quest step). Live play only (whole block is inside the
+	# not instant_mode guard in _ready).
+	GameState.add_log("Lt Scott (radio): South ridge's got lime too — we're pulling some. You grab what's near the gate.")
+
+
+# Arrival split dialogue (issue #137). Scott calls the north/south split on
+# landing. Single beat, emitted via GameState.dialog_started exactly as
+# _play_gate_dialog does in gate_room.gd. Double instant_mode guard: the outer
+# guard in _ready already skips the whole live-play block, but this inner guard
+# is an explicit contract so the function is safe to call standalone in tests.
+func _play_split_dialogue() -> void:
+	if SceneRouter.instant_mode:
+		return
+	GameState.add_log("Lt Scott: Okay, let's split up. Greer and Eli, you head north. Park and I will head south.")
+	var tree: Array = _split_dialog_tree()
+	var player: Node = get_tree().get_first_node_in_group("player")
+	GameState.dialog_started.emit(player, tree)
+
+
+func _split_dialog_tree() -> Array:
+	return [
+		{
+			"speaker": "Lt Scott",
+			"text": "Okay, let's split up. Greer and Eli, you head north. Park and I will head south.",
+			"choices": [{"text": "...", "next": "exit"}],
+		},
+	]
 
 # Replace the third-person player rig with a pilotable Kino. The drone owns its
 # own camera + overlay; freeing the player/view rig stops their camera and

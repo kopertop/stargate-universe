@@ -124,7 +124,8 @@ hermes cron list 2>/dev/null | grep -i "$JOB_NAME" || warn "Job not visible in '
 say "Registering daily develop→feature sync job 'gate-hero-sync'"
 SYNC_PROMPT="Run the daily develop re-sync by following tools/hermes/roles/sync_develop.md in this repo precisely: merge origin/develop into feature/gate-room-hero-portal, resolving conflicts per that brief (keep-ours for the loop's own files, abort + report if non-trivial), push on success. ONE pass, then STOP. Never push to develop/main."
 hermes cron remove gate-hero-sync >/dev/null 2>&1 || true
-hermes cron create "every 24h" "$SYNC_PROMPT" \
+# Daily needs a cron expression — hermes accepts 'every 30m'/'every 2h' but NOT 'every 24h'.
+hermes cron create "${SYNC_SCHEDULE:-0 9 * * *}" "$SYNC_PROMPT" \
 	--name gate-hero-sync \
 	--workdir "$REPO" \
 	--deliver local

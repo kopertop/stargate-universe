@@ -18,9 +18,16 @@ Your crew:
    ```
    git rev-parse --abbrev-ref HEAD     # MUST be feature/gate-room-hero-portal
    git fetch origin && git checkout feature/gate-room-hero-portal && git pull --ff-only origin feature/gate-room-hero-portal
-   git status --porcelain              # MUST be clean
+   # Godot's render re-bakes machine-specific import sidecars + baked resources EVERY
+   # run. That is build noise, NOT dev work — discard it before guarding:
+   git checkout -- '*.import' 2>/dev/null || true
+   git ls-files -m | grep -E '\.res$' | xargs -r git checkout -- 2>/dev/null || true
+   git status --porcelain              # should now be clean (or only loop-editable files)
    ```
-   If HEAD is main/develop, or the tree is dirty with changes you didn't make, STOP and report the anomaly. Do nothing else.
+   STOP and report ONLY if: HEAD is main/develop, OR after discarding `*.import`/`*.res`
+   churn the tree STILL has unexpected modifications outside the loop's editable files
+   (`scripts/gate_room_hero.gd`, `shaders/hero_portal.gdshader`, `scenes/gate_room_hero.tscn`,
+   `assets/hero/`). Import/bake churn is expected — never treat it as an anomaly.
    If `screenshots/loop/best.png` is missing, seed it: `bash tools/gate_hero_render.sh best 220`.
 
 2. **Develop.** Have the Godot developer make exactly ONE focused, high-impact

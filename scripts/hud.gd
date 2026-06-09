@@ -139,7 +139,7 @@ const DISCOVERY_FADE_SECS: float = 3.0
 # Per-letter decode rate for the room-name reveal: each character flips from its
 # Ancient glyph to readable Latin one at a time (left→right) at this cadence, so
 # the total decode time scales with the name length.
-const DISCOVERY_DECODE_SECS_PER_CHAR: float = 0.25
+const DISCOVERY_DECODE_SECS_PER_CHAR: float = 0.125
 # Discovery header shares the cool-blue skin accent at full opacity (the header
 # must read crisply over the world), keeping the hue identical to the unit
 # frame / action-bar borders.

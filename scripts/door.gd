@@ -83,7 +83,13 @@ func _refresh_prompt() -> void:
 	elif requires_kino and not Inventory.has("kino_remote"):
 		prompt = requires_kino_message
 	elif _is_transition_door():
-		prompt = transition_prompt
+		# Don't leak an un-deciphered room's name in the interact prompt (the
+		# plaque above already shows it as glyphs). Generic until the player has
+		# physically entered the destination; the real name returns afterward.
+		if target_room_id != "" and not GameState.is_deciphered(target_room_id):
+			prompt = "to Enter Room"
+		else:
+			prompt = transition_prompt
 	elif _is_open:
 		prompt = "Close"
 	else:
@@ -369,6 +375,8 @@ func _on_room_deciphered(room_id: String) -> void:
 	for label: Label3D in _plaque_labels:
 		if label != null:
 			ANCIENT_TEXT.decode(label, _plaque_resolved, self, PLAQUE_DECODE_DURATION)
+	# Destination now known — let the interact prompt name it too.
+	_refresh_prompt()
 
 
 func _title_case_snake(s: String) -> String:

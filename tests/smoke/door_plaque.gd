@@ -62,6 +62,7 @@ func _run_checks() -> void:
 	await _test_already_deciphered_door_shows_real_name()
 	await _test_decipher_decodes_in_place()
 	await _test_reverse_stamped_door_obfuscates()
+	await _test_prompt_does_not_leak_name()
 	_report()
 
 
@@ -169,6 +170,28 @@ func _test_reverse_stamped_door_obfuscates() -> void:
 		_expect(lbl.font == null, "reverse-stamped door reverts to the readable font")
 	if router != null:
 		router.set("instant_mode", prev_instant)
+	door.free()
+
+
+# --- 5. the interact prompt must NOT leak an un-deciphered room's name ------
+# (the plaque shows glyphs but the bottom-screen "[E] ..." prompt would
+# otherwise spell out the destination). Generic until entered, named after.
+func _test_prompt_does_not_leak_name() -> void:
+	var door: Node = _door_scene.instantiate()
+	door.set("target_room_id", "leaky_room_undeciph")
+	door.set("source_room_id", "control_interface_room")
+	door.set("plaque_label", "Secret Lab")
+	door.set("transition_prompt", "Step through to Secret Lab")
+	root.add_child(door)
+	await process_frame
+	_expect(String(door.get("prompt")) == "to Enter Room",
+		"undeciphered door prompt is generic ('to Enter Room')")
+	_expect(not String(door.get("prompt")).contains("Secret Lab"),
+		"undeciphered door prompt does NOT leak the destination name")
+	# Once the player has been there (deciphered), the prompt may name it.
+	_gs.call("decipher_room", "leaky_room_undeciph")
+	_expect(String(door.get("prompt")).contains("Secret Lab"),
+		"deciphered door prompt names the destination")
 	door.free()
 
 

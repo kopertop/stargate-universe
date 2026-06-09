@@ -168,6 +168,10 @@ func _walk_predicate_sequence(gs: Node, ql: Node) -> void:
 	# in one advance — the test mirrors the production reality where the
 	# Kino is launched directly into the gate without ever sitting in
 	# inventory.
+	# `inv` must be a local in THIS function's scope so the setter lambdas below
+	# can capture it — GDScript lambdas only close over their defining function's
+	# locals (the kino_remote/kino_orb setters at "sleep"/"scout_kino" use it).
+	var inv: Node = root.get_node_or_null("Inventory")
 	var sequence: Array = [
 		{"next": "find_rush",            "set": func() -> void: gs.met_scott = true},
 		{"next": "find_rest",            "set": func() -> void: gs.met_rush = true},

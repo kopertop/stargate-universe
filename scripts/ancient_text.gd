@@ -128,11 +128,12 @@ static func decode(node: Object, final_text: String, host: Node, duration: float
 		_assign_text(node, final_text))
 
 
-# Per-CHARACTER decode for a RichTextLabel (the discovery toast): each letter
-# starts as an Ancient glyph and flips to its readable Latin form one at a time,
-# left→right, at `secs_per_char` (the resolved prefix renders in the readable
-# font, the unresolved suffix in the Ancient font via a `[font]` tag — something
-# a single-font Label can't do). instant_mode / zero rate settle immediately.
+# Per-CHARACTER decode for a RichTextLabel (the discovery toast): the resolved
+# prefix renders in the readable font, locking in left→right one letter at a
+# time at `secs_per_char`; every UN-resolved character shimmers through random
+# Ancient glyphs (re-rolled each frame) in the Ancient font, so the whole tail
+# reads as actively-decoding alien text. (Mixing two fonts on one line is why
+# this is a RichTextLabel, not a Label.) instant_mode / zero rate settle now.
 static func decode_richtext(rtl: RichTextLabel, text: String, host: Node, secs_per_char: float = 0.25) -> void:
 	rtl.bbcode_enabled = true
 	var n: int = text.length()
@@ -147,20 +148,24 @@ static func decode_richtext(rtl: RichTextLabel, text: String, host: Node, secs_p
 	var tw: Tween = host.create_tween()
 	tw.tween_method(
 		func(v: float) -> void:
-			rtl.text = _richtext_decode_frame(text, int(floor(clampf(v, 0.0, 1.0) * float(n)))),
+			# Live frame counter feeds the shimmer seed so the unresolved tail
+			# churns each tick rather than holding a static cipher.
+			rtl.text = _richtext_decode_frame(text, int(floor(clampf(v, 0.0, 1.0) * float(n))), Engine.get_process_frames()),
 		0.0, 1.0, dur)
 	tw.tween_callback(func() -> void: rtl.text = _escape_bbcode(text))
 
 
-# BBCode for one frame: `frontier` readable chars, then the rest as upper-cased
-# glyphs wrapped in the Ancient font tag. A contiguous prefix/suffix split — the
-# reveal only ever moves the frontier rightward.
-static func _richtext_decode_frame(text: String, frontier: int) -> String:
+# BBCode for one frame: `frontier` resolved chars in the readable font, then the
+# unresolved tail as RANDOM Ancient glyphs (scramble over LETTER_GLYPHS at
+# progress 0 with a per-frame `seed`) wrapped in the Ancient font tag — so every
+# not-yet-decoded character is visibly shuffling. Whitespace passes through.
+static func _richtext_decode_frame(text: String, frontier: int, seed: int) -> String:
 	var prefix: String = text.substr(0, frontier)
 	var suffix: String = text.substr(frontier)
 	var out: String = _escape_bbcode(prefix)
 	if suffix != "":
-		out += "[font=%s]%s[/font]" % [ANCIENT_FONT_PATH, _escape_bbcode(suffix.to_upper())]
+		var shimmer: String = scramble(suffix.to_upper(), 0.0, seed, LETTER_GLYPHS)
+		out += "[font=%s]%s[/font]" % [ANCIENT_FONT_PATH, _escape_bbcode(shimmer)]
 	return out
 
 

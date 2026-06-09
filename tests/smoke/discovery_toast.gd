@@ -124,6 +124,12 @@ func _run_checks() -> void:
 	_expect(letters_only, "toast decode visible text is letters/spaces only, no ASCII punctuation")
 	# One letter in, the reveal has NOT jumped to the full readable name.
 	_expect(raw.contains("[font="), "decode is mid-reveal (still has glyphs), not a single jump to English")
+	# The unresolved tail SHIMMERS: re-rolled random glyphs each frame, so two
+	# consecutive frames mid-decode differ (every char looks like it's decoding).
+	await process_frame
+	var raw2: String = String(name_label.get("text"))
+	_expect(raw2.contains("[font=") and raw2 != raw,
+		"unresolved tail shimmers (glyphs change frame-to-frame), not a static cipher")
 
 	# --- 4. Entering the SAME room (set_current_room) must NOT hide it. -----
 	_game.set_current_room("hydroponics")

@@ -117,6 +117,7 @@ const CEILING_BY_TEMPLATE: Dictionary = {
 	"quarters-template": 5.4,
 	"hydroponics-template": 10.0,
 	"elevator-template": 5.6,
+	"storage-template": 5.0,
 }
 
 
@@ -221,6 +222,8 @@ static func _add_template_accents(world: Node3D, template_id: String, width: flo
 			_accent_hydroponics(world, width, depth, height, palette)
 		"elevator-template":
 			_accent_elevator(world, width, depth, height, palette)
+		"storage-template":
+			_accent_storage(world, width, depth, height, palette)
 		"gate-room-template":
 			# Reference-only — the artisan gate_room.tscn handles its own geometry.
 			pass
@@ -1099,6 +1102,85 @@ static func _accent_elevator(world: Node3D, width: float, depth: float, height: 
 	world.add_child(cap_light)
 
 
+# Storage room: industrial cargo bay. Rows of BoxMesh crates and barrels
+# along both long walls, a ceiling emissive strip down the centreline, a wall-
+# mounted indicator panel on the -Z wall, and a dim OmniLight from above.
+# Deliberately cheap — no GLB loads, all procedural — so generated storage
+# rooms build fast and remain readable as "stuff lives here."
+static func _accent_storage(world: Node3D, width: float, depth: float, height: float, palette: Dictionary) -> void:
+	var crate_mat: StandardMaterial3D = _make_mat(Color(0.45, 0.38, 0.28), 0.35, 0.65)
+	var barrel_mat: StandardMaterial3D = _make_mat(Color(0.55, 0.48, 0.35), 0.40, 0.60)
+	var strip_mat: StandardMaterial3D = _emissive_mat(palette["accent"], 2.0)
+	var panel_mat: StandardMaterial3D = _make_mat((palette["wall"] as Color).darkened(0.50), 0.50, 0.55)
+	var indicator_mat: StandardMaterial3D = _emissive_mat(palette["accent"], 3.5)
+
+	var half_x: float = width * 0.5
+	var half_z: float = depth * 0.5
+	var axis_z: bool = depth > width
+	var long_len: float = depth if axis_z else width
+	var short_len: float = width if axis_z else depth
+
+	# --- Ceiling strip down the long axis centreline --------------------------
+	var strip_len: float = long_len - 1.0
+	if axis_z:
+		_add_decor(world, strip_mat, Vector3(0.0, height - 0.12, 0.0), Vector3(0.20, 0.06, strip_len))
+	else:
+		_add_decor(world, strip_mat, Vector3(0.0, height - 0.12, 0.0), Vector3(strip_len, 0.06, 0.20))
+
+	# --- Crate rows along both long walls -------------------------------------
+	# Number of crate stacks derived from corridor length so short vestibules
+	# and long halls both get appropriately dense rows.
+	var crate_count: int = max(2, int(floor(long_len / 2.5)))
+	var crate_spacing: float = strip_len / float(crate_count)
+	var crate_w: float = 0.80
+	var crate_h: float = 0.85
+	var crate_d: float = 0.70
+	var barrel_radius: float = 0.28
+	var wall_inset: float = 0.55   # how far off the wall the crate front sits
+
+	for i in crate_count:
+		var along: float = -strip_len * 0.5 + crate_spacing * (float(i) + 0.5)
+		for side in [1.0, -1.0]:
+			var perp: float = side * (short_len * 0.5 - wall_inset)
+			# Alternate crates and barrels for visual variety.
+			if i % 3 == 2:
+				# Barrel pair: two stacked cylinders drawn as thin boxes (cylinders are costlier; boxes match the game's prop convention).
+				var barrel_pos: Vector3
+				if axis_z:
+					barrel_pos = Vector3(perp, crate_h * 0.5, along)
+				else:
+					barrel_pos = Vector3(along, crate_h * 0.5, perp)
+				_add_decor(world, barrel_mat, barrel_pos, Vector3(barrel_radius * 2.0, crate_h, barrel_radius * 2.0))
+			else:
+				# Crate box.
+				var crate_pos: Vector3
+				if axis_z:
+					crate_pos = Vector3(perp, crate_h * 0.5, along)
+				else:
+					crate_pos = Vector3(along, crate_h * 0.5, perp)
+				_add_decor(world, crate_mat, crate_pos, Vector3(crate_w, crate_h, crate_d))
+				# Second crate stacked on top for depth.
+				if i % 2 == 0:
+					var top_pos: Vector3 = crate_pos + Vector3(0.0, crate_h, 0.0)
+					_add_decor(world, crate_mat, top_pos, Vector3(crate_w * 0.85, crate_h * 0.85, crate_d * 0.85))
+
+	# --- Wall indicator panel on -Z face (works for both axis orientations) ---
+	var panel_pos: Vector3 = Vector3(0.0, 1.55, -half_z + 0.04)
+	_add_decor(world, panel_mat, panel_pos, Vector3(0.55, 0.42, 0.06))
+	_add_decor(world, indicator_mat, panel_pos + Vector3(0.0, 0.10, 0.04), Vector3(0.08, 0.08, 0.03))
+
+	# --- Overhead fill OmniLight ----------------------------------------------
+	var over_light: OmniLight3D = OmniLight3D.new()
+	over_light.name = "StorageLight"
+	over_light.light_color = (palette["accent"] as Color).lerp(Color(1.0, 0.88, 0.72), 0.50)
+	over_light.light_energy = 1.4
+	over_light.omni_range = max(width, depth) * 0.75 + 3.0
+	over_light.omni_attenuation = 1.6
+	over_light.shadow_enabled = false
+	over_light.position = Vector3(0.0, height - 0.55, 0.0)
+	world.add_child(over_light)
+
+
 # ----- palette ---------------------------------------------------------------
 
 static func _palette_for(template_id: String) -> Dictionary:
@@ -1147,6 +1229,13 @@ static func _palette_for(template_id: String) -> Dictionary:
 				"wall": Color(0.26, 0.30, 0.36, 1.0),
 				"ceiling": Color(0.10, 0.12, 0.14, 1.0),
 				"accent": Color(0.20, 0.85, 1.0, 1.0),
+			}
+		"storage-template":
+			return {
+				"floor": Color(0.22, 0.20, 0.18, 1.0),
+				"wall": Color(0.30, 0.28, 0.26, 1.0),
+				"ceiling": Color(0.12, 0.11, 0.10, 1.0),
+				"accent": Color(0.90, 0.60, 0.20, 1.0),
 			}
 		_:
 			return {

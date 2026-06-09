@@ -1,0 +1,817 @@
+extends Node
+
+# ProceduralShip — generated multi-floor ship topology.
+#
+# Wraps ShipLayout (base authored rooms, floor 0–1) and owns the procedurally
+# grown floors (floor 2+). Exposes the same lookup surface as ShipLayout so
+# callers use one API regardless of which floor a room lives on.
+#
+# SAVE CONTRACT: state is serialized in full because the grown graph is stored
+# by value, not re-derived from a seed. Generated rooms are discovered incrementally
+# by the player; regenerating from a seed is not an option because the pool of
+# once-only specials would differ between runs.
+#
+# Data that lives here (all JSON-serializable, no acquisition-vocab bools):
+#   _floors   {int -> {unlocked, code_known, generated, rooms, specials_placed, cap, seed}}
+#   _rooms    {room_id -> room row (same shape as ShipLayout rows)}
+#   _edges    {room_id -> [{dir, to, plaque}]}  — forward declarations only; reverse mirrored at read time
+#   _special_pool_remaining {type_id -> int}    — draw-without-replacement pool
+#
+# Autoload — reach as ProceduralShip.room("id") from game scripts.
+# In headless -s SceneTree tests reach via root.get_node_or_null("/root/ProceduralShip").
+
+const ROOM_TYPES_PATH: String = "res://data/room_types.json"
+
+# Typed direction flip — shared with ShipLayout conventions.
+const DIR_FLIP: Dictionary = {
+	"+x": "-x",
+	"-x": "+x",
+	"+z": "-z",
+	"-z": "+z",
+}
+
+# Per-filler-type approximate size in JSON grid units (width x height).
+# Corridors are long on one axis; rooms are more square.
+const _FILLER_SIZES: Dictionary = {
+	"corridor":   {"w": 400, "h": 120},
+	"storage":    {"w": 200, "h": 200},
+	"power_node": {"w": 300, "h": 250},
+	"recycling":  {"w": 250, "h": 200},
+	"crew_quarters": {"w": 200, "h": 200},
+}
+const _SPECIAL_SIZE: Dictionary = {"w": 300, "h": 300}
+
+# Floor N grid origin offset in JSON units (so floor 2 doesn't collide with floor 1).
+const _FLOOR_GRID_STRIDE_Y: int = 4000
+# Retry limit before capping a branch during layout growth.
+const _MAX_PLACE_RETRIES: int = 12
+# Minimum overlap (in JSON units) for a door to read as physically aligned.
+const _MIN_OVERLAP: int = 40
+# Minimum room gap tolerance before rectangles are considered colliding.
+const _ROOM_GAP: int = 10
+
+var _catalog: Dictionary = {}           # type_id -> row
+var _catalog_loaded: bool = false
+
+# Serialized state.
+var _floors: Dictionary = {}            # int_floor -> FloorRecord
+var _rooms: Dictionary = {}             # room_id -> row Dictionary
+var _edges: Dictionary = {}             # room_id -> Array[{dir,to,plaque}]
+var _special_pool_remaining: Dictionary = {}  # type_id -> int remaining
+
+
+func _ready() -> void:
+	_load_catalog()
+	_seed_special_pool()
+	# Default: floor 1 is unlocked (authored spine). Others locked until Phase B.
+	if not _floors.has(1):
+		_floors[1] = {
+			"unlocked": true,
+			"code_known": false,
+			"generated": false,
+			"rooms": [],
+			"specials_placed": 0,
+			"cap": 0,
+			"seed": 0,
+		}
+	# Register with SaveManager (duck-typed: works under autoload AND headless).
+	var sm: Node = get_node_or_null("/root/SaveManager")
+	if sm != null:
+		sm.call("register_system", "procedural_ship", self)
+
+
+# ============================================================
+# CATALOG
+# ============================================================
+
+func _load_catalog() -> void:
+	if _catalog_loaded:
+		return
+	var f: FileAccess = FileAccess.open(ROOM_TYPES_PATH, FileAccess.READ)
+	if f == null:
+		push_error("ProceduralShip: cannot open %s" % ROOM_TYPES_PATH)
+		_catalog_loaded = true
+		return
+	var parsed: Variant = JSON.parse_string(f.get_as_text())
+	f.close()
+	if not (parsed is Array):
+		push_error("ProceduralShip: %s did not parse to array" % ROOM_TYPES_PATH)
+		_catalog_loaded = true
+		return
+	for entry in parsed:
+		if entry is Dictionary and (entry as Dictionary).has("id"):
+			var d: Dictionary = entry
+			_catalog[String(d["id"])] = d
+	_catalog_loaded = true
+
+
+# Enumerate every room type in the catalog.
+func all_room_types() -> Array:
+	_load_catalog()
+	return _catalog.values()
+
+
+# Single room type row by id.
+func room_type(type_id: String) -> Dictionary:
+	_load_catalog()
+	if _catalog.has(type_id):
+		return _catalog[type_id]
+	return {}
+
+
+# ============================================================
+# SPECIAL POOL
+# ============================================================
+
+func _seed_special_pool() -> void:
+	_load_catalog()
+	_special_pool_remaining.clear()
+	for entry in _catalog.values():
+		var d: Dictionary = entry
+		var cat: String = String(d.get("category", ""))
+		if cat == "special_once" or cat == "special_limited":
+			var mc: int = int(d.get("max_count", 1))
+			_special_pool_remaining[String(d["id"])] = mc
+
+
+# ============================================================
+# FACADE — delegates base ids to ShipLayout, answers generated ids itself
+# ============================================================
+
+# True when this id was generated by ProceduralShip (not from ShipLayout).
+func is_generated(id: String) -> bool:
+	return _rooms.has(id)
+
+
+# Room row for any id — base or generated. Returns {} when unknown.
+func room(id: String) -> Dictionary:
+	if _rooms.has(id):
+		return _rooms[id]
+	var sl: Node = _ship_layout()
+	if sl != null:
+		return sl.call("room", id)
+	return {}
+
+
+# Grid centre in JSON units. Delegates to ShipLayout for base rooms.
+func grid_centre(id: String) -> Vector2:
+	var r: Dictionary = room(id)
+	if r.is_empty():
+		return Vector2.ZERO
+	return Vector2(
+		(float(r.get("startX", 0)) + float(r.get("endX", 0))) * 0.5,
+		(float(r.get("startY", 0)) + float(r.get("endY", 0))) * 0.5,
+	)
+
+
+# All known rooms: base authored list + discovered generated rooms.
+func all_known_rooms() -> Array:
+	var sl: Node = _ship_layout()
+	var out: Array = []
+	if sl != null:
+		out.append_array(sl.call("all_rooms"))
+	for r in _rooms.values():
+		out.append(r)
+	return out
+
+
+# Direction-tagged outgoing edges (ShipLayout-compatible: forward + reverse mirrored).
+# Both forward edges (with plaque) and reverse edges (with plaque from ShipLayout
+# mirror logic, plaque key present for ShipLayout consistency) are returned here.
+# This variant is used by ShipLayout consumers (Kino map).
+func outgoing_edges(id: String) -> Array:
+	if is_generated(id):
+		return _mirror_edges(id)
+	var sl: Node = _ship_layout()
+	if sl != null:
+		return sl.call("outgoing_edges", id)
+	return []
+
+
+# room.gd-compatible door edge set: forward edges KEEP plaque; reverse (mirrored)
+# edges OMIT the "plaque" key so room.gd's _stamp_door auto-derives the name.
+# This reproduces room.gd's old two-loop behavior exactly.
+func door_edges(room_id: String) -> Array:
+	var all_rooms_data: Array = []
+	# Collect forward edges that originate at room_id.
+	var forward: Array = _get_forward_edges(room_id)
+	# Collect reverse edges: rooms that point TO room_id, mirrored back.
+	var reverse: Array = _get_reverse_edges(room_id)
+	all_rooms_data.append_array(forward)
+	all_rooms_data.append_array(reverse)
+	return all_rooms_data
+
+
+# Forward edges for room_id from both stores.
+func _get_forward_edges(room_id: String) -> Array:
+	if is_generated(room_id):
+		if _edges.has(room_id):
+			return (_edges[room_id] as Array).duplicate(true)
+		return []
+	# Base room: read from room_connections.json via ShipLayout's loaded data.
+	# ShipLayout stores outgoing_edges with BOTH forward and mirrored reverse.
+	# We need only the forward declarations (ones declared in room_connections.json
+	# as originating from this room). We extract those by looking at what ShipLayout
+	# says are "outgoing" edges from this id — all have plaque keys present.
+	# ShipLayout.outgoing_edges already has both forward+reverse with plaque filled,
+	# but we need only the JSON-declared forward edges for door_edges() forward pass.
+	# Strategy: read raw connections.json to get only the declared edges.
+	var result: Array = []
+	var sl: Node = _ship_layout()
+	if sl == null:
+		return result
+	# ShipLayout doesn't expose raw forward-only edges separately, so load directly.
+	var conn: Dictionary = _load_base_connections()
+	var raw_edges: Variant = conn.get(room_id, [])
+	if not (raw_edges is Array):
+		return result
+	for e in raw_edges:
+		if e is Dictionary:
+			result.append((e as Dictionary).duplicate())
+	return result
+
+
+# Reverse edges: find all rooms (base + generated) that declare an edge TO room_id,
+# mirror them. Result edges have no "plaque" key (room.gd derives from target name).
+func _get_reverse_edges(room_id: String) -> Array:
+	var result: Array = []
+	# Scan generated edges.
+	for from_id in _edges.keys():
+		if String(from_id) == room_id:
+			continue
+		for edge in _edges[from_id] as Array:
+			var e: Dictionary = edge
+			if String(e.get("to", "")) == room_id:
+				var rev: Dictionary = {}
+				rev["dir"] = _flip_dir(String(e.get("dir", "")))
+				rev["to"] = String(from_id)
+				# No "plaque" key — room.gd auto-derives from target.
+				result.append(rev)
+	# Scan base connections.
+	var conn: Dictionary = _load_base_connections()
+	for from_id in conn.keys():
+		if String(from_id) == room_id:
+			continue
+		var edges_raw: Variant = conn[from_id]
+		if not (edges_raw is Array):
+			continue
+		for edge in edges_raw as Array:
+			if not (edge is Dictionary):
+				continue
+			var e: Dictionary = edge
+			if String(e.get("to", "")) == room_id:
+				var rev: Dictionary = {}
+				rev["dir"] = _flip_dir(String(e.get("dir", "")))
+				rev["to"] = String(from_id)
+				# No "plaque" key — room.gd auto-derives.
+				result.append(rev)
+	return result
+
+
+# Full mirror of _edges[room_id] (forward + symmetric reverse with plaque).
+# Used by outgoing_edges() for Kino map compatibility.
+func _mirror_edges(room_id: String) -> Array:
+	var result: Array = []
+	if _edges.has(room_id):
+		for e in _edges[room_id] as Array:
+			result.append((e as Dictionary).duplicate())
+	# Mirror: any generated edge pointing TO room_id.
+	for from_id in _edges.keys():
+		if String(from_id) == room_id:
+			continue
+		for edge in _edges[from_id] as Array:
+			var e: Dictionary = edge
+			if String(e.get("to", "")) == room_id:
+				var rev: Dictionary = {
+					"dir": _flip_dir(String(e.get("dir", ""))),
+					"to": String(from_id),
+					"plaque": String(e.get("plaque", "")),
+				}
+				result.append(rev)
+	return result
+
+
+# Neighbours for BFS.
+func neighbours(id: String) -> Array:
+	var edges: Array = outgoing_edges(id)
+	var out: Array = []
+	for e in edges:
+		var d: Dictionary = e
+		var n: String = String(d.get("to", ""))
+		if n != "" and not out.has(n):
+			out.append(n)
+	return out
+
+
+# BFS shortest path (both base and generated rooms).
+func path_through_rooms(from_id: String, to_id: String) -> PackedStringArray:
+	var out: PackedStringArray = PackedStringArray()
+	if from_id == "" or to_id == "":
+		return out
+	if from_id == to_id:
+		out.append(from_id)
+		return out
+	# If both are base rooms, delegate to ShipLayout directly (faster).
+	var sl: Node = _ship_layout()
+	if sl != null and not is_generated(from_id) and not is_generated(to_id):
+		return sl.call("path_through_rooms", from_id, to_id)
+	# BFS over combined graph.
+	var parent: Dictionary = {from_id: ""}
+	var queue: Array[String] = [from_id]
+	var target_found: bool = false
+	while queue.size() > 0:
+		var current: String = queue.pop_front()
+		if current == to_id:
+			target_found = true
+			break
+		for n in neighbours(current):
+			var ns: String = String(n)
+			if parent.has(ns):
+				continue
+			parent[ns] = current
+			queue.append(ns)
+	if not target_found:
+		return out
+	var reversed: Array[String] = []
+	var cursor: String = to_id
+	while cursor != "":
+		reversed.append(cursor)
+		cursor = String(parent.get(cursor, ""))
+	reversed.reverse()
+	for r in reversed:
+		out.append(r)
+	return out
+
+
+# Next hop toward to_id.
+func next_room_toward(from_id: String, to_id: String) -> String:
+	var path: PackedStringArray = path_through_rooms(from_id, to_id)
+	if path.size() < 2:
+		return ""
+	return path[1]
+
+
+# Current floor derived from GameState.current_room_id. Defaults to 1 if room
+# unknown (authored spine is floor 0 in JSON but game convention uses 1-based display).
+func current_floor() -> int:
+	var gs: Node = get_node_or_null("/root/GameState")
+	if gs == null:
+		return 1
+	var room_id: String = String(gs.get("current_room_id") if gs.get("current_room_id") != null else "")
+	if room_id == "":
+		return 1
+	var r: Dictionary = room(room_id)
+	if r.is_empty():
+		return 1
+	return int(r.get("floor", 0)) + 1
+
+
+# ============================================================
+# GENERATION CORE
+# ============================================================
+
+# Idempotent: if floor n is already generated, return.
+# Phase A: can be called by tests directly; Floor 1 (authored) never generates.
+func ensure_floor_generated(n: int) -> void:
+	if n <= 1:
+		return  # Floor 1 is the authored spine — never regenerate.
+	_load_catalog()
+	if not _floors.has(n):
+		_floors[n] = {
+			"unlocked": false,
+			"code_known": false,
+			"generated": false,
+			"rooms": [],
+			"specials_placed": 0,
+			"cap": 0,
+			"seed": 0,
+		}
+	var floor_rec: Dictionary = _floors[n]
+	if floor_rec.get("generated", false):
+		return
+	_generate_floor(n, floor_rec)
+
+
+func _generate_floor(n: int, floor_rec: Dictionary) -> void:
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	# Deterministic per-floor seed derived from floor index + salt. Using
+	# integer arithmetic (no float random) as required by project conventions.
+	var seed_val: int = (n * 0x9e3779b9) ^ 0xdeadbeef
+	seed_val = seed_val & 0x7fffffff  # keep positive
+	floor_rec["seed"] = seed_val
+	rng.seed = seed_val
+
+	var cap: int = 12 + (rng.randi() % 9)  # 12..20
+	floor_rec["cap"] = cap
+
+	# Origin in JSON grid units for this floor. Large Y offset keeps it visually
+	# separate from other floors if ever rendered together.
+	var origin_x: int = 0
+	var origin_y: int = n * _FLOOR_GRID_STRIDE_Y
+
+	# Room counter for id generation.
+	var room_counter: int = 0
+
+	# Track placed rectangles for collision detection.
+	# Each entry: {startX, endX, startY, endY, id}
+	var placed_rects: Array = []
+
+	# Place entry corridor.
+	var entry_id: String = "f%d_r%02d" % [n, room_counter]
+	room_counter += 1
+	var entry_w: int = 400
+	var entry_h: int = 120
+	var entry_row: Dictionary = _make_room_row(
+		entry_id, "corridor", "Corridor", "corridor-template", n,
+		origin_x, origin_x + entry_w, origin_y, origin_y + entry_h
+	)
+	_rooms[entry_id] = entry_row
+	placed_rects.append({"startX": origin_x, "endX": origin_x + entry_w,
+		"startY": origin_y, "endY": origin_y + entry_h, "id": entry_id})
+	floor_rec["rooms"].append(entry_id)
+
+	# Growth queue: [room_id, open_dir_count_remaining]
+	# Corridors get >= 2 exits (back edge is 1, so add at least 1 more).
+	# Regular rooms get 0-1 additional exits.
+	var growth_queue: Array = [[entry_id, 2]]
+
+	while growth_queue.size() > 0 and floor_rec["rooms"].size() < cap:
+		var item: Array = growth_queue.pop_front()
+		var parent_id: String = String(item[0])
+		var exits_remaining: int = int(item[1])
+
+		# Count already-stamped edges from this room.
+		var existing_exits: int = (_edges.get(parent_id, []) as Array).size()
+		var total_budget: int = 3  # max outgoing edges per room (4th is the back-edge)
+
+		var parent_row: Dictionary = _rooms.get(parent_id, {})
+		if parent_row.is_empty():
+			continue
+
+		var tries_for_parent: int = 0
+		while (existing_exits + (_edges.get(parent_id, []) as Array).size() - existing_exits) < min(exits_remaining, total_budget) and floor_rec["rooms"].size() < cap:
+			tries_for_parent += 1
+			if tries_for_parent > _MAX_PLACE_RETRIES * 4:
+				break
+
+			# Pick a free cardinal direction.
+			var dir: String = _pick_free_dir(parent_id, parent_row, rng)
+			if dir == "":
+				break
+
+			# Choose child type.
+			var child_type_id: String = _draw_child_type(floor_rec, rng)
+			if child_type_id == "":
+				break
+
+			var child_type_row: Dictionary = _catalog.get(child_type_id, {})
+			var child_template: String = String(child_type_row.get("template_id", "storage-template"))
+			var child_name: String = String(child_type_row.get("display_name", "Room"))
+
+			# Size from table or special size.
+			var sz: Dictionary = _FILLER_SIZES.get(child_type_id, _SPECIAL_SIZE)
+			var child_w: int = int(sz["w"])
+			var child_h: int = int(sz["h"])
+
+			# For corridor type: orient the long axis based on direction.
+			if child_type_id == "corridor":
+				if dir == "+x" or dir == "-x":
+					child_w = 400
+					child_h = 120
+				else:
+					child_w = 120
+					child_h = 400
+
+			# Compute child rectangle that ABUTS the parent wall AND OVERLAPS it.
+			var child_rect: Dictionary = _compute_child_rect(parent_row, dir, child_w, child_h, rng)
+			if child_rect.is_empty():
+				continue
+
+			# Check for rectangle collisions with all existing placed rooms.
+			if _has_collision(child_rect, placed_rects):
+				continue
+
+			# Verify the overlap is sufficient for a door alignment.
+			var overlap: int = _compute_overlap(parent_row, child_rect, dir)
+			if overlap < _MIN_OVERLAP:
+				continue
+
+			# All checks pass — place the room.
+			var child_id: String = "f%d_r%02d" % [n, room_counter]
+			room_counter += 1
+
+			var child_row: Dictionary = _make_room_row(
+				child_id, child_type_id, child_name, child_template, n,
+				child_rect["startX"], child_rect["endX"],
+				child_rect["startY"], child_rect["endY"]
+			)
+			_rooms[child_id] = child_row
+			placed_rects.append({
+				"startX": child_rect["startX"], "endX": child_rect["endX"],
+				"startY": child_rect["startY"], "endY": child_rect["endY"],
+				"id": child_id,
+			})
+			floor_rec["rooms"].append(child_id)
+
+			# Stamp edge parent -> child.
+			_add_gen_edge(parent_id, child_id, dir)
+
+			# Update specials count.
+			var cat: String = String(child_type_row.get("category", ""))
+			if cat == "special_once" or cat == "special_limited":
+				floor_rec["specials_placed"] = int(floor_rec.get("specials_placed", 0)) + 1
+
+			# Enqueue child for further growth.
+			var is_corridor: bool = (child_type_id == "corridor")
+			var child_exits: int = 2 if is_corridor else (rng.randi() % 2)  # 0 or 1 extra
+			if child_exits > 0 and floor_rec["rooms"].size() < cap:
+				growth_queue.append([child_id, child_exits])
+
+			break  # successfully placed one child; move to next queue item or retry
+
+	floor_rec["generated"] = true
+	_floors[n] = floor_rec
+
+
+# Pick a cardinal direction that this room has not yet used as a forward edge
+# AND that also respects the 4-door-max budget.
+func _pick_free_dir(room_id: String, room_row: Dictionary, rng: RandomNumberGenerator) -> String:
+	# Directions already used as outgoing edges from this room.
+	var used_dirs: Array = []
+	for e in (_edges.get(room_id, []) as Array):
+		var ed: Dictionary = e
+		used_dirs.append(String(ed.get("dir", "")))
+	# Also check reverse edges pointing back at this room — those walls are occupied.
+	# We can't stamp a door on a wall that already has one from a reverse edge.
+	# Build a set of blocked walls: reverse edges that COME INTO this room.
+	# (The back-edge from the parent will have been added as a reverse edge on child's wall.)
+	var all_dirs: Array = ["+x", "-x", "+z", "-z"]
+	var candidates: Array = []
+	for d in all_dirs:
+		if not used_dirs.has(d) and used_dirs.size() < 3:
+			candidates.append(d)
+	if candidates.is_empty():
+		return ""
+	# Shuffle via rng.
+	for i in range(candidates.size() - 1, 0, -1):
+		var j: int = rng.randi() % (i + 1)
+		var tmp: Variant = candidates[i]
+		candidates[i] = candidates[j]
+		candidates[j] = tmp
+	return String(candidates[0])
+
+
+# Weighted draw for a filler or special child type.
+func _draw_child_type(floor_rec: Dictionary, rng: RandomNumberGenerator) -> String:
+	var specials_placed: int = int(floor_rec.get("specials_placed", 0))
+	var cap: int = int(floor_rec.get("cap", 12))
+	var rooms_placed: int = (floor_rec.get("rooms", []) as Array).size()
+
+	# 20% chance to place a special if budget allows and we're past the first 3 rooms.
+	if specials_placed < 3 and rooms_placed > 3 and rng.randf() < 0.20:
+		var special_id: String = _draw_special(rng)
+		if special_id != "":
+			return special_id
+
+	# Weighted filler draw.
+	var total_weight: int = 0
+	var filler_ids: Array = []
+	var filler_weights: Array = []
+	for entry in _catalog.values():
+		var d: Dictionary = entry
+		if String(d.get("category", "")) == "filler":
+			var w: int = int(d.get("floor_weight", 0))
+			if w > 0:
+				filler_ids.append(String(d["id"]))
+				filler_weights.append(w)
+				total_weight += w
+	if total_weight == 0:
+		return "storage"
+	var roll: int = rng.randi() % total_weight
+	var accumulated: int = 0
+	for i in filler_ids.size():
+		accumulated += int(filler_weights[i])
+		if roll < accumulated:
+			return String(filler_ids[i])
+	return "storage"
+
+
+# Draw a special type without replacement from the pool.
+func _draw_special(rng: RandomNumberGenerator) -> String:
+	var available: Array = []
+	for type_id in _special_pool_remaining.keys():
+		if int(_special_pool_remaining[type_id]) > 0:
+			available.append(String(type_id))
+	if available.is_empty():
+		return ""
+	var idx: int = rng.randi() % available.size()
+	var chosen: String = String(available[idx])
+	_special_pool_remaining[chosen] = int(_special_pool_remaining[chosen]) - 1
+	return chosen
+
+
+# Compute child rectangle that abuts the parent wall on `dir` side AND overlaps
+# it so _door_along_offset produces hi>lo. Returns {} if computation fails.
+func _compute_child_rect(parent: Dictionary, dir: String, child_w: int, child_h: int, rng: RandomNumberGenerator) -> Dictionary:
+	var psx: int = int(parent.get("startX", 0))
+	var pex: int = int(parent.get("endX", 0))
+	var psy: int = int(parent.get("startY", 0))
+	var pey: int = int(parent.get("endY", 0))
+
+	# Parent dimensions in JSON units.
+	var parent_span_x: int = pex - psx
+	var parent_span_y: int = pey - psy
+
+	var child_sx: int = 0
+	var child_ex: int = 0
+	var child_sy: int = 0
+	var child_ey: int = 0
+
+	match dir:
+		"+x":
+			# Child placed to the right of parent; wall at pex.
+			child_sx = pex
+			child_ex = pex + child_w
+			# Overlap on Y: child must share some of [psy, pey] range.
+			var max_jitter: int = max(0, parent_span_y - child_h - _MIN_OVERLAP)
+			var jitter: int = 0 if max_jitter <= 0 else (rng.randi() % (max_jitter + 1))
+			child_sy = psy + jitter
+			child_ey = child_sy + child_h
+		"-x":
+			child_ex = psx
+			child_sx = psx - child_w
+			var max_jitter: int = max(0, parent_span_y - child_h - _MIN_OVERLAP)
+			var jitter: int = 0 if max_jitter <= 0 else (rng.randi() % (max_jitter + 1))
+			child_sy = psy + jitter
+			child_ey = child_sy + child_h
+		"+z":
+			# In JSON coordinates: +z maps to larger startY/endY (south).
+			child_sy = pey
+			child_ey = pey + child_h
+			var max_jitter: int = max(0, parent_span_x - child_w - _MIN_OVERLAP)
+			var jitter: int = 0 if max_jitter <= 0 else (rng.randi() % (max_jitter + 1))
+			child_sx = psx + jitter
+			child_ex = child_sx + child_w
+		"-z":
+			child_ey = psy
+			child_sy = psy - child_h
+			var max_jitter: int = max(0, parent_span_x - child_w - _MIN_OVERLAP)
+			var jitter: int = 0 if max_jitter <= 0 else (rng.randi() % (max_jitter + 1))
+			child_sx = psx + jitter
+			child_ex = child_sx + child_w
+		_:
+			return {}
+
+	return {"startX": child_sx, "endX": child_ex, "startY": child_sy, "endY": child_ey}
+
+
+# Returns the overlap length (in JSON units) on the shared axis between parent and child.
+# For +x/-x doors: overlap is on the Y axis. For +z/-z: on the X axis.
+func _compute_overlap(parent: Dictionary, child: Dictionary, dir: String) -> int:
+	if dir == "+x" or dir == "-x":
+		var lo: int = max(int(parent.get("startY", 0)), int(child.get("startY", 0)))
+		var hi: int = min(int(parent.get("endY", 0)), int(child.get("endY", 0)))
+		return max(0, hi - lo)
+	else:
+		var lo: int = max(int(parent.get("startX", 0)), int(child.get("startX", 0)))
+		var hi: int = min(int(parent.get("endX", 0)), int(child.get("endX", 0)))
+		return max(0, hi - lo)
+
+
+# Axis-aligned rectangle collision check. Two rects DO NOT collide when they
+# are separated by at least _ROOM_GAP on either axis.
+func _has_collision(candidate: Dictionary, placed: Array) -> bool:
+	var csx: int = int(candidate.get("startX", 0))
+	var cex: int = int(candidate.get("endX", 0))
+	var csy: int = int(candidate.get("startY", 0))
+	var cey: int = int(candidate.get("endY", 0))
+	for p in placed:
+		var d: Dictionary = p
+		var psx: int = int(d.get("startX", 0))
+		var pex: int = int(d.get("endX", 0))
+		var psy: int = int(d.get("startY", 0))
+		var pey: int = int(d.get("endY", 0))
+		# Separated on X or Y by at least _ROOM_GAP? If not, they collide.
+		var sep_x: bool = (cex + _ROOM_GAP <= psx) or (pex + _ROOM_GAP <= csx)
+		var sep_y: bool = (cey + _ROOM_GAP <= psy) or (pey + _ROOM_GAP <= csy)
+		if not sep_x and not sep_y:
+			return true
+	return false
+
+
+# Build a room row in the same shape as ship_layout.json rows.
+func _make_room_row(id: String, type_id: String, display_name: String, template_id: String,
+		floor_n: int, sx: int, ex: int, sy: int, ey: int) -> Dictionary:
+	return {
+		"id": id,
+		"template_id": template_id,
+		"layout_id": "destiny_generated",
+		"type": type_id,
+		"name": display_name,
+		"description": "",
+		"startX": sx,
+		"endX": ex,
+		"startY": sy,
+		"endY": ey,
+		"floor": floor_n,
+		"width": ex - sx,
+		"height": ey - sy,
+		"found": false,
+		"locked": false,
+		"explored": false,
+		"status": "ok",
+	}
+
+
+# Add a forward edge declaration.
+func _add_gen_edge(from_id: String, to_id: String, dir: String) -> void:
+	if not _edges.has(from_id):
+		_edges[from_id] = []
+	var arr: Array = _edges[from_id]
+	# Avoid duplicates.
+	for e in arr:
+		var ed: Dictionary = e
+		if String(ed.get("to", "")) == to_id and String(ed.get("dir", "")) == dir:
+			return
+	# Use destination display name as plaque.
+	var dest_row: Dictionary = _rooms.get(to_id, {})
+	var plaque: String = String(dest_row.get("name", to_id))
+	arr.append({"dir": dir, "to": to_id, "plaque": plaque})
+
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+static func _flip_dir(d: String) -> String:
+	match d:
+		"+x": return "-x"
+		"-x": return "+x"
+		"+z": return "-z"
+		"-z": return "+z"
+		_:    return d
+
+
+func _ship_layout() -> Node:
+	return get_node_or_null("/root/ShipLayout")
+
+
+# Cache for base connections (loaded once, never modified).
+var _base_connections_cache: Dictionary = {}
+var _base_connections_loaded: bool = false
+
+func _load_base_connections() -> Dictionary:
+	if _base_connections_loaded:
+		return _base_connections_cache
+	var f: FileAccess = FileAccess.open("res://data/room_connections.json", FileAccess.READ)
+	if f == null:
+		_base_connections_loaded = true
+		return _base_connections_cache
+	var parsed: Variant = JSON.parse_string(f.get_as_text())
+	f.close()
+	if parsed is Dictionary:
+		_base_connections_cache = parsed
+	_base_connections_loaded = true
+	return _base_connections_cache
+
+
+# ============================================================
+# SAVE CONTRACT
+# ============================================================
+
+func serialize() -> Dictionary:
+	return {
+		"floors": _floors.duplicate(true),
+		"rooms": _rooms.duplicate(true),
+		"edges": _edges.duplicate(true),
+		"special_pool_remaining": _special_pool_remaining.duplicate(true),
+	}
+
+
+func deserialize(data: Dictionary, _version: int) -> void:
+	if data.has("floors") and data["floors"] is Dictionary:
+		_floors = (data["floors"] as Dictionary).duplicate(true)
+	if data.has("rooms") and data["rooms"] is Dictionary:
+		_rooms = (data["rooms"] as Dictionary).duplicate(true)
+	if data.has("edges") and data["edges"] is Dictionary:
+		_edges = (data["edges"] as Dictionary).duplicate(true)
+	if data.has("special_pool_remaining") and data["special_pool_remaining"] is Dictionary:
+		_special_pool_remaining = (data["special_pool_remaining"] as Dictionary).duplicate(true)
+
+
+func reset() -> void:
+	_floors.clear()
+	_rooms.clear()
+	_edges.clear()
+	# Re-seed pool from catalog.
+	_seed_special_pool()
+	# Restore default floor 1 entry.
+	_floors[1] = {
+		"unlocked": true,
+		"code_known": false,
+		"generated": false,
+		"rooms": [],
+		"specials_placed": 0,
+		"cap": 0,
+		"seed": 0,
+	}

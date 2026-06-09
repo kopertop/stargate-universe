@@ -1,0 +1,272 @@
+[
+  {
+    "id": "infirmary",
+    "display_name": "Infirmary",
+    "category": "special_once",
+    "template_id": "quarters-template",
+    "max_count": 1,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": false
+  },
+  {
+    "id": "bridge",
+    "display_name": "Bridge",
+    "category": "special_once",
+    "template_id": "control-room-template",
+    "max_count": 1,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": false
+  },
+  {
+    "id": "water_storage",
+    "display_name": "Water Storage",
+    "category": "special_once",
+    "template_id": "storage-template",
+    "max_count": 1,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": false
+  },
+  {
+    "id": "observation_deck",
+    "display_name": "Observation Deck",
+    "category": "special_once",
+    "template_id": "quarters-template",
+    "max_count": 1,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": false
+  },
+  {
+    "id": "interface_chair",
+    "display_name": "Interface Chair Room",
+    "category": "special_once",
+    "template_id": "control-room-template",
+    "max_count": 1,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": false
+  },
+  {
+    "id": "astrometrics",
+    "display_name": "Astrometrics",
+    "category": "special_once",
+    "template_id": "control-room-template",
+    "max_count": 1,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": false
+  },
+  {
+    "id": "weapons_control",
+    "display_name": "Weapons Control",
+    "category": "special_once",
+    "template_id": "control-room-template",
+    "max_count": 1,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": false
+  },
+  {
+    "id": "mess_hall",
+    "display_name": "Mess Hall",
+    "category": "special_limited",
+    "template_id": "quarters-template",
+    "max_count": 2,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": false
+  },
+  {
+    "id": "engineering",
+    "display_name": "Engineering",
+    "category": "special_limited",
+    "template_id": "control-room-template",
+    "max_count": 2,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": false
+  },
+  {
+    "id": "shuttle_bay",
+    "display_name": "Shuttle Bay",
+    "category": "special_limited",
+    "template_id": "storage-template",
+    "max_count": 2,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": false
+  },
+  {
+    "id": "ground_vehicle_bay",
+    "display_name": "Ground Vehicle Bay",
+    "category": "special_limited",
+    "template_id": "storage-template",
+    "max_count": 2,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": false
+  },
+  {
+    "id": "manufacturing_shop",
+    "display_name": "Manufacturing Shop",
+    "category": "special_limited",
+    "template_id": "storage-template",
+    "max_count": 2,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": false
+  },
+  {
+    "id": "stasis_pods",
+    "display_name": "Stasis Pod Chamber",
+    "category": "special_limited",
+    "template_id": "quarters-template",
+    "max_count": 2,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": false
+  },
+  {
+    "id": "research_lab",
+    "display_name": "Research Laboratory",
+    "category": "special_limited",
+    "template_id": "control-room-template",
+    "max_count": 2,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": false
+  },
+  {
+    "id": "armory",
+    "display_name": "Armory",
+    "category": "assignable",
+    "template_id": "storage-template",
+    "max_count": -1,
+    "floor_weight": 0,
+    "assignable": true,
+    "authored_setdressing": false
+  },
+  {
+    "id": "machine_shop",
+    "display_name": "Machine Shop",
+    "category": "assignable",
+    "template_id": "storage-template",
+    "max_count": -1,
+    "floor_weight": 0,
+    "assignable": true,
+    "authored_setdressing": false
+  },
+  {
+    "id": "recreation",
+    "display_name": "Recreation Room",
+    "category": "assignable",
+    "template_id": "quarters-template",
+    "max_count": -1,
+    "floor_weight": 0,
+    "assignable": true,
+    "authored_setdressing": false
+  },
+  {
+    "id": "hydroponics_bay",
+    "display_name": "Hydroponics Bay",
+    "category": "assignable",
+    "template_id": "hydroponics-template",
+    "max_count": -1,
+    "floor_weight": 0,
+    "assignable": true,
+    "authored_setdressing": false
+  },
+  {
+    "id": "medical_annex",
+    "display_name": "Medical Annex",
+    "category": "assignable",
+    "template_id": "quarters-template",
+    "max_count": -1,
+    "floor_weight": 0,
+    "assignable": true,
+    "authored_setdressing": false
+  },
+  {
+    "id": "corridor",
+    "display_name": "Corridor",
+    "category": "filler",
+    "template_id": "corridor-template",
+    "max_count": -1,
+    "floor_weight": 5,
+    "assignable": false,
+    "authored_setdressing": false
+  },
+  {
+    "id": "storage",
+    "display_name": "Storage Room",
+    "category": "filler",
+    "template_id": "storage-template",
+    "max_count": -1,
+    "floor_weight": 3,
+    "assignable": false,
+    "authored_setdressing": false
+  },
+  {
+    "id": "power_node",
+    "display_name": "Power Node",
+    "category": "filler",
+    "template_id": "control-room-template",
+    "max_count": -1,
+    "floor_weight": 2,
+    "assignable": false,
+    "authored_setdressing": false
+  },
+  {
+    "id": "recycling",
+    "display_name": "Recycling Bay",
+    "category": "filler",
+    "template_id": "storage-template",
+    "max_count": -1,
+    "floor_weight": 2,
+    "assignable": false,
+    "authored_setdressing": false
+  },
+  {
+    "id": "crew_quarters",
+    "display_name": "Crew Quarters",
+    "category": "filler",
+    "template_id": "quarters-template",
+    "max_count": -1,
+    "floor_weight": 2,
+    "assignable": false,
+    "authored_setdressing": false
+  },
+  {
+    "id": "gate_room",
+    "display_name": "Gate Room",
+    "category": "preset",
+    "template_id": "gate-room-template",
+    "max_count": 1,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": true
+  },
+  {
+    "id": "kino_room",
+    "display_name": "Kino Room",
+    "category": "preset",
+    "template_id": "kino-room-template",
+    "max_count": 1,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": true
+  },
+  {
+    "id": "control_interface_room",
+    "display_name": "Control Interface Room",
+    "category": "preset",
+    "template_id": "control-room-template",
+    "max_count": 1,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": true
+  }
+]

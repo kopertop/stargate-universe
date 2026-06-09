@@ -313,12 +313,12 @@ func _add_plaque(visual: Node3D, frame_mat: StandardMaterial3D) -> void:
 		_plaque_labels.append(label)
 
 
-# Priority: explicit plaque_label → ShipLayout row name → title-cased id/scene.
+# Priority: explicit plaque_label → ProceduralShip row name → title-cased id/scene.
 func _resolve_plaque_text() -> String:
 	if plaque_label != "":
 		return plaque_label
 	if target_room_id != "":
-		var row: Dictionary = ShipLayout.room(target_room_id)
+		var row: Dictionary = ProceduralShip.room(target_room_id)
 		if not row.is_empty() and row.has("name"):
 			return String(row["name"])
 		return _title_case_snake(target_room_id)

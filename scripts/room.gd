@@ -77,9 +77,9 @@ func _ready() -> void:
 		push_error("room.gd: no room_id provided (GameState.next_room_id and @export both empty)")
 		return
 
-	_room_data = ShipLayout.room(room_id)
+	_room_data = ProceduralShip.room(room_id)
 	if _room_data.is_empty():
-		push_error("room.gd: ShipLayout has no row for '%s'" % room_id)
+		push_error("room.gd: ProceduralShip has no row for '%s'" % room_id)
 		return
 
 	# Some JSON corridors are 3.5 m short-axis (cr_north, room_1751649578881)
@@ -140,34 +140,15 @@ func _ready() -> void:
 
 # Stamp door + matching spawn Marker3D for each connection that originates at
 # this room (and the reverse-edge stamp from any other room that points here).
-# Reads data/room_connections.json on demand — no preload cost when running
-# the gate-room scene.
+# Delegates edge resolution to ProceduralShip.door_edges() which handles both
+# base (authored) rooms and procedurally generated rooms uniformly.
 func _setup_doors() -> void:
-	var connections: Dictionary = _load_connections()
-	if connections.is_empty():
-		return
 	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
 	var d_m: float = float(_room_data.get("height", 200)) * ShipLayout.SCALE
 	var half_x: float = w_m * 0.5
 	var half_z: float = d_m * 0.5
-
-	# Edges originating at THIS room — stamp doors that exit here.
-	for edge: Dictionary in connections.get(room_id, []) as Array:
+	for edge: Dictionary in ProceduralShip.door_edges(room_id):
 		_stamp_door(edge, half_x, half_z)
-	# Edges where ANOTHER room points at us — flip the direction and stamp
-	# matching doors on this side so the trip is two-way without requiring
-	# the connection table to list every edge twice.
-	for from_id: String in connections.keys():
-		for edge: Dictionary in connections[from_id] as Array:
-			if String(edge.get("to", "")) == room_id:
-				var reverse: Dictionary = edge.duplicate()
-				reverse["to"] = from_id
-				reverse["dir"] = _flip_direction(String(edge.get("dir", "")))
-				# Plaque on the return-side door should name the destination
-				# (i.e. the room we came from), not whatever the outgoing
-				# plaque said. _stamp_door auto-derives that from `to`.
-				reverse.erase("plaque")
-				_stamp_door(reverse, half_x, half_z)
 
 
 # Stamps one door + matching arrival marker on the wall indicated by `edge.dir`.
@@ -250,7 +231,7 @@ func _stamp_door(edge: Dictionary, half_x: float, half_z: float) -> void:
 # converted to metres relative to this room's local origin. Falls back to 0
 # (wall centre) when there's no overlap (elevator pairs across floors).
 func _door_along_offset(target_id: String, dir: String) -> float:
-	var target: Dictionary = ShipLayout.room(target_id)
+	var target: Dictionary = ProceduralShip.room(target_id)
 	if target.is_empty() or _room_data.is_empty():
 		return 0.0
 	var my_sx: float = float(_room_data.get("startX", 0))
@@ -1449,7 +1430,7 @@ func _refresh_quest_waypoint() -> void:
 				placed = true
 	else:
 		# Cross-room — point at the door leading to the next hop on the path.
-		var next_hop: String = ShipLayout.next_room_toward(room_id, target_room)
+		var next_hop: String = ProceduralShip.next_room_toward(room_id, target_room)
 		if next_hop != "":
 			var door: Node3D = _find_door_to(next_hop)
 			if door != null:

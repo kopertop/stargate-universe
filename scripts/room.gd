@@ -35,6 +35,7 @@ const FloorCodeTerminalScript: Script = preload("res://scripts/floor_code_termin
 const AssignmentConsoleScript: Script = preload("res://scripts/assignment_console.gd")
 const SalvagePanelScript: Script = preload("res://scripts/salvage_panel.gd")
 const BridgeConsoleScript: Script = preload("res://scripts/bridge_console.gd")
+const RepairConsoleScript: Script = preload("res://scripts/repair_console.gd")
 # Ancient/Lantean glyph cipher + font for in-room console signage. Procedural
 # console labels (door-control panel, power console) render in Ancient glyphs
 # while the room is un-deciphered — so a Kino scouting the room sees the
@@ -246,11 +247,13 @@ func _stamp_door(edge: Dictionary, half_x: float, half_z: float) -> void:
 		door.set("locked", true)
 		door.set("lock_message", "LOCKED — power offline. Restore elevator power at the control panel.")
 
-	# D3: Target room has "locked": true in ship_layout.json → stamp door as sealed.
-	# Generalised check on the target room row so any future locked room benefits.
-	# TODO(#131): repair-robot can heal/unseal locked rooms.
+	# D3: Target room sealed/damaged → stamp door locked until repaired (issue #131).
+	# ProceduralShip.is_room_sealed() consults the _room_conditions registry, which
+	# starts "sealed" for any row with "locked":true and transitions to "repaired"
+	# after the repair robot completes its work. A repaired room passes this check
+	# as false → door is left unlocked. Never mutates the base row's "locked" flag.
 	var target_row: Dictionary = ProceduralShip.room(target_id)
-	if not is_elevator and not is_stairs and not is_upper_deck and target_row.get("locked", false) == true:
+	if not is_elevator and not is_stairs and not is_upper_deck and ProceduralShip.is_room_sealed(target_id):
 		var seal_msg: String = String(target_row.get("description", "SEALED — bulkhead unresponsive. Requires structural repair."))
 		door.set("locked", true)
 		door.set("lock_message", seal_msg)
@@ -451,6 +454,11 @@ func _spawn_interactables() -> void:
 			# Optional maintenance scrubber (issue: ship-wide scrubbers). West end
 			# of the long corridor, clear of the mid-wall spur/approach doors.
 			_spawn_co2_scrubber("north_corridor", -350.0)
+		"north_spur":
+			# Repair console for the Sealed Shuttle Bay (issue #131). Only visible
+			# while the bay is still sealed/repairing — clears after repair completes.
+			if ProceduralShip.is_room_sealed("sealed_section_north"):
+				_spawn_repair_console("sealed_section_north")
 		"east_corridor_far":
 			# New maintenance spur off the east corridor — houses a scrubber.
 			_spawn_co2_scrubber("east_far", 0.0)
@@ -1788,6 +1796,26 @@ func _spawn_salvage_panel(side_offset: int = 0) -> void:
 	cs.position = Vector3(0.0, 0.9, 0.0)
 	panel.add_child(cs)
 	add_child(panel)
+
+
+# Repair console for a sealed/damaged target room (issue #131).
+# Mounts on the +X wall at room centre, facing into the room (-X).
+# `target_room_id` is the room the player wants to unlock via repair.
+func _spawn_repair_console(target_room_id: String) -> void:
+	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
+	var half_x: float = w_m * 0.5
+	var console: StaticBody3D = StaticBody3D.new()
+	console.set_script(RepairConsoleScript)
+	console.name = "RepairConsole"
+	console.set("target_room_id", target_room_id)
+	console.position = Vector3(half_x - 0.08, 0.0, 0.0)
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = Vector3(0.3, 1.8, 0.6)
+	cs.shape = box
+	cs.position = Vector3(0.0, 0.9, 0.0)
+	console.add_child(cs)
+	add_child(console)
 
 
 # Bridge Core-Loop config console on the -X wall (issue #133).

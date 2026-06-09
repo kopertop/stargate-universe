@@ -79,6 +79,15 @@ const PARTS_BUDGET_MARGIN_PCT: int = 120   # 20% headroom over bare unlock cost
 # Parts granted per salvage panel interact.
 const SALVAGE_PANEL_GRANT: int = 3
 
+# Room-condition repair system (issue #131).
+# Cost to repair a sealed/damaged room. Tuned above SALVAGE_PANEL_GRANT (3)
+# so the player must gather parts from multiple sources.
+const SEAL_REPAIR_COST: int = 8
+# Tick rate constants: RepairRobot calls spend_repair_parts() in real-time;
+# these let callers tune the rate without touching RepairRobot.
+const REPAIR_TICK_PARTS: int = 1     # parts consumed per tick
+const REPAIR_TICK_INTERVAL: float = 2.0  # seconds between ticks (wall time)
+
 # Per-filler-type approximate size in JSON grid units (width x height).
 # Corridors are long on one axis; rooms are more square.
 const _FILLER_SIZES: Dictionary = {
@@ -110,6 +119,15 @@ var _special_pool_remaining: Dictionary = {}  # type_id -> int remaining
 # Phase B: room assignments. ONE collection (collection-fork policy). Only
 # generated storage rooms can be assigned; keyed room_id -> assigned type_id.
 var _floor_assignments: Dictionary = {} # room_id -> assigned_function type_id
+
+# Room conditions registry (issue #131). ONE collection — collection-fork policy.
+# Keys: room_id -> {state: String, parts_required: int, parts_spent: int}
+# States: "sealed" | "damaged" | "repairing" | "repaired" (terminal)
+# Absent key = nominal (no repair needed).
+var _room_conditions: Dictionary = {}
+
+# Signal emitted by complete_repair() when a room finishes repairing.
+signal repair_completed(room_id: String)
 
 # Floor unlock cost parameters — tunable consts. Floor N costs BASE * N parts.
 const FLOOR_UNLOCK_COST_BASE: int = 5
@@ -161,6 +179,9 @@ func _ready() -> void:
 			"cap": 0,
 			"seed": 0,
 		}
+	# Seed room conditions from authored locked rows (issue #131). INSERT-only:
+	# never clobbers a restored "repaired" record from a loaded save.
+	_seed_room_conditions()
 	# Register with SaveManager (duck-typed: works under autoload AND headless).
 	var sm: Node = get_node_or_null("/root/SaveManager")
 	if sm != null:
@@ -1237,6 +1258,129 @@ func assignable_types() -> Array:
 
 
 # ============================================================
+# ROOM CONDITIONS (issue #131)
+# ============================================================
+#
+# ONE registry (_room_conditions) — collection-fork policy. No *_repaired bools.
+# Seeded from any ship_layout.json row with "locked": true. State machine:
+#   sealed / damaged  →  repairing  →  repaired  (terminal)
+# Absent key = nominal (no repair required).
+
+# Seed initial "sealed" records for all authored locked rooms. INSERT-only —
+# never overwrites an existing entry (so a restored "repaired" save survives).
+# Safe to call multiple times (idempotent beyond the first call per key).
+func _seed_room_conditions() -> void:
+	var sl: Node = _ship_layout()
+	if sl == null:
+		return
+	var all_rooms: Array = sl.call("all_rooms")
+	for row in all_rooms:
+		var d: Dictionary = row
+		if d.get("locked", false) != true:
+			continue
+		var rid: String = String(d.get("id", ""))
+		if rid == "" or _room_conditions.has(rid):
+			continue  # INSERT-only: never clobber restored save state.
+		_room_conditions[rid] = {
+			"state": "sealed",
+			"parts_required": SEAL_REPAIR_COST,
+			"parts_spent": 0,
+		}
+
+
+# Return the condition record for a room, or {} if nominal.
+func room_condition(room_id: String) -> Dictionary:
+	var cond: Variant = _room_conditions.get(room_id)
+	if cond is Dictionary:
+		return cond as Dictionary
+	return {}
+
+
+# True when a room is in a state that prevents entry (sealed / damaged / repairing).
+# "repaired" → false (door unlocked, entry allowed).
+func is_room_sealed(room_id: String) -> bool:
+	var cond: Dictionary = room_condition(room_id)
+	if cond.is_empty():
+		return false
+	var state: String = String(cond.get("state", ""))
+	return state == "sealed" or state == "damaged" or state == "repairing"
+
+
+# Transition a room into "repairing". No-op if already repairing or repaired.
+# Returns true on success, false if the room has no condition entry.
+func begin_repair(room_id: String) -> bool:
+	if not _room_conditions.has(room_id):
+		return false
+	var cond: Dictionary = _room_conditions[room_id] as Dictionary
+	var state: String = String(cond.get("state", ""))
+	if state == "repairing" or state == "repaired":
+		return true  # Idempotent.
+	(_room_conditions[room_id] as Dictionary)["state"] = "repairing"
+	return true
+
+
+# Consume `n` parts from Inventory toward the repair of `room_id`.
+# Validates Inventory has enough before deducting. Accumulates parts_spent
+# and auto-transitions to "repaired" when parts_required is met.
+# Returns true if parts were successfully spent (or repair already complete).
+func spend_repair_parts(room_id: String, n: int) -> bool:
+	if not _room_conditions.has(room_id):
+		return false
+	var cond: Dictionary = _room_conditions[room_id] as Dictionary
+	var state: String = String(cond.get("state", ""))
+	if state == "repaired":
+		return true  # Already done — idempotent.
+	if state != "repairing":
+		return false  # Must call begin_repair first.
+	var inv: Node = get_node_or_null("/root/Inventory")
+	if inv == null:
+		return false
+	var held: int = int(inv.call("count", FLOOR_UNLOCK_ITEM))
+	var to_spend: int = mini(n, held)
+	if to_spend <= 0:
+		return false
+	inv.call("remove_item", FLOOR_UNLOCK_ITEM, to_spend, "repair_%s" % room_id)
+	var spent: int = int(cond.get("parts_spent", 0)) + to_spend
+	(_room_conditions[room_id] as Dictionary)["parts_spent"] = spent
+	var required: int = int(cond.get("parts_required", SEAL_REPAIR_COST))
+	if spent >= required:
+		complete_repair(room_id)
+	return true
+
+
+# Mark a room as fully repaired (terminal state). Emits repair_completed.
+# Called automatically by spend_repair_parts when threshold is reached,
+# but can also be called directly (e.g. from instant_mode tests).
+func complete_repair(room_id: String) -> void:
+	if not _room_conditions.has(room_id):
+		return
+	(_room_conditions[room_id] as Dictionary)["state"] = "repaired"
+	repair_completed.emit(room_id)
+
+
+# Const accessors — GDScript Object.get() cannot read consts, so callers
+# that only have a duck-typed Node reference use these instead.
+func get_seal_repair_cost() -> int:
+	return SEAL_REPAIR_COST
+
+func get_repair_tick_parts() -> int:
+	return REPAIR_TICK_PARTS
+
+func get_repair_tick_interval() -> float:
+	return REPAIR_TICK_INTERVAL
+
+
+# List all room_ids in state "repaired".
+func repaired_rooms() -> Array:
+	var out: Array = []
+	for rid: String in _room_conditions.keys():
+		var cond: Dictionary = _room_conditions[rid] as Dictionary
+		if String(cond.get("state", "")) == "repaired":
+			out.append(rid)
+	return out
+
+
+# ============================================================
 # HELPERS
 # ============================================================
 
@@ -1351,6 +1495,7 @@ func serialize() -> Dictionary:
 		"elevator_powered": _elevator_powered,
 		"minigame_solved": _minigame_solved,
 		"bridge_discovered": _bridge_discovered,
+		"room_conditions": _room_conditions.duplicate(true),
 	}
 
 
@@ -1375,6 +1520,11 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	_elevator_powered = data.get("elevator_powered", false) == true
 	_minigame_solved  = data.get("minigame_solved", false) == true
 	_bridge_discovered = data.get("bridge_discovered", false) == true
+	# Room conditions: overwrite wholesale from save, then seed any missing locked
+	# rows that didn't exist yet when the save was written (forward-compat INSERT).
+	if data.has("room_conditions") and data["room_conditions"] is Dictionary:
+		_room_conditions = (data["room_conditions"] as Dictionary).duplicate(true)
+	_seed_room_conditions()  # INSERT-only: won't clobber restored "repaired" state.
 
 
 func reset() -> void:
@@ -1385,8 +1535,11 @@ func reset() -> void:
 	_elevator_powered = false
 	_minigame_solved  = false
 	_bridge_discovered = false
+	_room_conditions.clear()
 	# Re-seed pool from catalog.
 	_seed_special_pool()
+	# Re-seed room conditions from authored locked rows after clearing.
+	_seed_room_conditions()
 	# Restore default floor 1 entry.
 	_floors[1] = {
 		"unlocked": true,

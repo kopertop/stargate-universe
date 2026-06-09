@@ -50,6 +50,7 @@ func _run() -> void:
 	await _test_assign_function(ps)
 	await _test_floor_code_poi(ps)
 	await _test_key_rooms(ps)
+	await _test_upper_deck_stairs_route(ps)
 
 	_report()
 
@@ -553,6 +554,107 @@ func _test_key_rooms(ps: Node) -> void:
 			_expect(ps.call("is_key_room", String(rid)) == true,
 				"is_key_room(generated special '%s') true" % t)
 			break
+
+
+# ── (i) Upper-deck reachable on foot via stairs (no elevator required) ────────
+#
+# After generating Floor 2 the Observation Deck (f2_r00) must be linked to the
+# authored hydroponics room via the virtual UPPER_DECK_DIR edge, making the whole
+# upper-deck cluster reachable on foot from gate_room through the stairs.
+#
+# Assertions:
+#   1. door_edges(f2_r00) includes an edge with to == "hydroponics".
+#   2. door_edges("hydroponics") includes a reverse edge with to == f2_r00.
+#   3. path_through_rooms("gate_room", "hydroponics") is non-empty.
+#   4. path_through_rooms("gate_room", "quarters_room_1") is non-empty.
+#   5. Both paths pass through f2_r00 (the obs-deck), proving the stairs route.
+#   6. Neither path requires traversing the elevator_north → elevator_room_floor_1
+#      elevator edge (stairs route is self-contained).
+
+func _test_upper_deck_stairs_route(ps: Node) -> void:
+	print("\n-- upper-deck stairs route --")
+
+	ps.call("reset")
+	ps.call("ensure_floor_generated", 2)
+	await process_frame
+
+	var obs_entry_id: String = ps.call("floor2_obs_entry_id")
+	_expect(obs_entry_id != "", "floor2_obs_entry_id() returns non-empty after generation")
+	if obs_entry_id == "":
+		return
+
+	# (1) obs-deck → hydroponics edge present in door_edges.
+	var obs_edges: Array = ps.call("door_edges", obs_entry_id)
+	var has_hydro_edge: bool = false
+	for e in obs_edges:
+		var d: Dictionary = e
+		if String(d.get("to", "")) == "hydroponics":
+			has_hydro_edge = true
+	_expect(has_hydro_edge,
+		"door_edges(%s) includes edge to hydroponics" % obs_entry_id)
+
+	# (2) hydroponics → obs-deck reverse edge present in door_edges.
+	var hydro_edges: Array = ps.call("door_edges", "hydroponics")
+	var has_obs_edge: bool = false
+	for e in hydro_edges:
+		var d: Dictionary = e
+		if String(d.get("to", "")) == obs_entry_id:
+			has_obs_edge = true
+	_expect(has_obs_edge,
+		"door_edges(hydroponics) includes reverse edge to %s" % obs_entry_id)
+
+	# (3) gate_room → hydroponics path is non-empty.
+	var path_hydro: PackedStringArray = ps.call("path_through_rooms", "gate_room", "hydroponics")
+	_expect(path_hydro.size() > 0, "path gate_room → hydroponics is non-empty (got %d hops)" % path_hydro.size())
+
+	# (4) gate_room → quarters_room_1 path is non-empty.
+	var path_quarters: PackedStringArray = ps.call("path_through_rooms", "gate_room", "quarters_room_1")
+	_expect(path_quarters.size() > 0, "path gate_room → quarters_room_1 is non-empty (got %d hops)" % path_quarters.size())
+
+	# (5a) gate_room → hydroponics path passes through f2_r00 (obs-deck via stairs).
+	var hydro_via_obs: bool = false
+	for room_in_path in path_hydro:
+		if String(room_in_path) == obs_entry_id:
+			hydro_via_obs = true
+	_expect(hydro_via_obs,
+		"path gate_room → hydroponics traverses %s (stairs route)" % obs_entry_id)
+
+	# (5b) gate_room → quarters_room_1 path passes through f2_r00.
+	var quarters_via_obs: bool = false
+	for room_in_path in path_quarters:
+		if String(room_in_path) == obs_entry_id:
+			quarters_via_obs = true
+	_expect(quarters_via_obs,
+		"path gate_room → quarters_room_1 traverses %s (stairs route)" % obs_entry_id)
+
+	# (6) Neither path traverses the elevator_north → elevator_room_floor_1 hop.
+	# The path nodes must NOT contain BOTH elevator_north AND elevator_room_floor_1
+	# consecutively — i.e. the elevator edge must not appear in either path.
+	# Simple check: elevator_north must NOT appear in the path at all (since the
+	# only reason to visit it is to reach elevator_room_floor_1 via the elevator).
+	var hydro_no_elevator: bool = true
+	for room_in_path in path_hydro:
+		if String(room_in_path) == "elevator_north":
+			hydro_no_elevator = false
+	_expect(hydro_no_elevator,
+		"path gate_room → hydroponics does NOT traverse elevator_north (stairs-only route)")
+
+	var quarters_no_elevator: bool = true
+	for room_in_path in path_quarters:
+		if String(room_in_path) == "elevator_north":
+			quarters_no_elevator = false
+	_expect(quarters_no_elevator,
+		"path gate_room → quarters_room_1 does NOT traverse elevator_north (stairs-only route)")
+
+	# Sanity: elevator_room_floor_1 still has door_edges to its neighbours
+	# (elevator intact as alternate route). Its edges must include hydroponics.
+	var hub_edges: Array = ps.call("door_edges", "elevator_room_floor_1")
+	var hub_has_hydro: bool = false
+	for e in hub_edges:
+		var d: Dictionary = e
+		if String(d.get("to", "")) == "hydroponics":
+			hub_has_hydro = true
+	_expect(hub_has_hydro, "elevator_room_floor_1 door_edges still includes hydroponics (elevator intact)")
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

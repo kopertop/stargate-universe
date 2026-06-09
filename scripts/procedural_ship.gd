@@ -40,6 +40,28 @@ const STAIRS_DIR: String = "stairs"
 const STAIRS_GATE_SPAWN: String = "FromObservationDeck"
 const STAIRS_OBS_SPAWN: String = "FromGateRoomStairs"
 
+# Upper-deck link: virtual edge connecting Floor-2 Observation Deck (f2_r00) to
+# the authored hydroponics room so the upper-deck cluster is reachable on foot
+# via the gate stairs (no elevator required).
+#
+# Two separate dir tokens decouple the wall remap on each side:
+#   UPPER_DECK_DIR        — used on the f2_r00 (obs-deck) side → remapped to +z
+#   UPPER_DECK_RETURN_DIR — used on the hydroponics side       → remapped to +z
+#
+# Wall-stacking audit (non-overlap doors → wall-centre, stacking is visual only):
+#   f2_r00     -z = stairs (reserved), +z = upper-deck link (free cardinal)
+#   hydroponics +z = upper-deck link (free; only occupied wall is -x reverse from
+#                    elevator_room_floor_1 +x forward edge)
+#
+# The elevator edge (elevator_north → elevator_room_floor_1) stays intact; the
+# elevator hub is now an ALTERNATE route to the upper deck, not the sole one.
+const UPPER_DECK_DIR: String = "upper_deck"
+const UPPER_DECK_RETURN_DIR: String = "upper_deck_return"
+# Room ids for the upper-deck link endpoints. Hydroponics is the hub of the
+# authored upper-deck cluster (elevator_room_floor_1 → +x → hydroponics and the
+# cluster's other rooms hang off the hub).
+const UPPER_DECK_TARGET: String = "hydroponics"
+
 # Parts budget per-floor: each generated floor seeds this many parts (via crates +
 # salvage panels) so the player can always afford to unlock the NEXT floor.
 # Budget = FLOOR_UNLOCK_COST_BASE * (n+1) * PARTS_BUDGET_MARGIN_PCT / 100
@@ -254,6 +276,8 @@ func door_edges(room_id: String) -> Array:
 	all_rooms_data.append_array(reverse)
 	# Inject the stairs return edge for the Floor-2 Observation Deck entry.
 	all_rooms_data = _inject_stairs_return(room_id, all_rooms_data)
+	# Inject the upper-deck link (obs deck ↔ hydroponics).
+	all_rooms_data = _inject_upper_deck_link(room_id, all_rooms_data)
 	return all_rooms_data
 
 
@@ -346,9 +370,10 @@ func _mirror_edges(room_id: String) -> Array:
 	return result
 
 
-# Neighbours for BFS.
+# Neighbours for BFS. Uses door_edges() so virtual injections (stairs, upper-deck
+# link) are visible to pathfinding — outgoing_edges() only covers stored edges.
 func neighbours(id: String) -> Array:
-	var edges: Array = outgoing_edges(id)
+	var edges: Array = door_edges(id)
 	var out: Array = []
 	for e in edges:
 		var d: Dictionary = e
@@ -366,10 +391,11 @@ func path_through_rooms(from_id: String, to_id: String) -> PackedStringArray:
 	if from_id == to_id:
 		out.append(from_id)
 		return out
-	# If both are base rooms, delegate to ShipLayout directly (faster).
-	var sl: Node = _ship_layout()
-	if sl != null and not is_generated(from_id) and not is_generated(to_id):
-		return sl.call("path_through_rooms", from_id, to_id)
+	# NOTE: the "both base rooms" ShipLayout shortcut is intentionally skipped
+	# here. When Floor 2 is generated, the upper-deck link creates a cross-floor
+	# path (e.g. gate_room → f2_r00 → hydroponics) that ShipLayout cannot see.
+	# We always use the full BFS over the combined graph so virtual edges are
+	# included. Performance cost is negligible for the room counts in this game.
 	# BFS over combined graph.
 	var parent: Dictionary = {from_id: ""}
 	var queue: Array[String] = [from_id]
@@ -981,20 +1007,84 @@ func _stairs_return_edge() -> Dictionary:
 	return {"dir": STAIRS_DIR, "to": "gate_room"}
 
 
-# Override door_edges for the floor-2 obs-deck entry to include the stairs
-# return edge to gate_room. Called from door_edges() below.
+# Override door_edges to include the gate_room ↔ Floor-2 stairs edges.
+# Two virtual edges are injected (routing only — gate_room.gd stamps its own
+# physical door; room.gd does not build gate_room, so no double-stamp occurs):
+#   • gate_room side:  forward edge gate_room → f2_r00, dir=STAIRS_DIR, with plaque.
+#                      This makes neighbours("gate_room") include f2_r00 so BFS
+#                      can route gate_room → f2_r00 → hydroponics via stairs, not
+#                      just via elevator_north → elevator_room_floor_1.
+#   • f2_r00 side:     return edge f2_r00 → gate_room, dir=STAIRS_DIR, no plaque
+#                      (room.gd derives the name from "gate_room").
+# Both are kept out of _edges so the door-overlap assertion ignores them.
 func _inject_stairs_return(room_id: String, edges: Array) -> Array:
 	var entry_id: String = floor2_obs_entry_id()
-	if entry_id == "" or room_id != entry_id:
-		return edges
-	# Check that the stairs return edge isn't already in the list.
-	for e in edges:
-		var d: Dictionary = e
-		if String(d.get("to", "")) == "gate_room" and String(d.get("dir", "")) == STAIRS_DIR:
-			return edges
-	var out: Array = edges.duplicate(true)
-	out.append(_stairs_return_edge())
-	return out
+	if entry_id == "":
+		return edges  # Floor 2 not generated yet — nothing to inject.
+
+	# Gate-room side: forward edge toward the obs-deck (for BFS routing).
+	if room_id == "gate_room":
+		for e in edges:
+			var d: Dictionary = e
+			if String(d.get("to", "")) == entry_id and String(d.get("dir", "")) == STAIRS_DIR:
+				return edges  # Already present.
+		var out: Array = edges.duplicate(true)
+		out.append({"dir": STAIRS_DIR, "to": entry_id, "plaque": "Upper Deck — Observation"})
+		return out
+
+	# Obs-deck side: return edge back to gate_room (room.gd stamps the door here).
+	if room_id == entry_id:
+		for e in edges:
+			var d: Dictionary = e
+			if String(d.get("to", "")) == "gate_room" and String(d.get("dir", "")) == STAIRS_DIR:
+				return edges  # Already present.
+		var out: Array = edges.duplicate(true)
+		out.append(_stairs_return_edge())
+		return out
+
+	return edges
+
+
+# ============================================================
+# UPPER-DECK LINK — f2_r00 ↔ hydroponics (on-foot via stairs)
+# ============================================================
+#
+# Injects a virtual edge on BOTH endpoints so room.gd stamps doors on each side
+# without any special case logic in the room scripts:
+#   • f2_r00 side:      dir = UPPER_DECK_DIR        → room.gd remaps to +z
+#   • hydroponics side: dir = UPPER_DECK_RETURN_DIR → room.gd remaps to +z
+#
+# Called from door_edges() for both rooms. The edge is virtual (never stored in
+# _edges), preserving the save contract and the generation's forward-edge tracking.
+
+func _inject_upper_deck_link(room_id: String, edges: Array) -> Array:
+	var entry_id: String = floor2_obs_entry_id()
+	if entry_id == "":
+		return edges  # Floor 2 not yet generated — no link to inject.
+
+	if room_id == entry_id:
+		# Obs-deck side: forward edge to hydroponics with a plaque so the player
+		# sees "Hydroponics" on the door in the Observation Deck.
+		for e in edges:
+			var d: Dictionary = e
+			if String(d.get("dir", "")) == UPPER_DECK_DIR and String(d.get("to", "")) == UPPER_DECK_TARGET:
+				return edges  # Already injected.
+		var out: Array = edges.duplicate(true)
+		out.append({"dir": UPPER_DECK_DIR, "to": UPPER_DECK_TARGET, "plaque": "Hydroponics"})
+		return out
+
+	if room_id == UPPER_DECK_TARGET:
+		# Hydroponics side: reverse edge back to obs deck. No "plaque" key so
+		# room.gd auto-derives the label from the target room name ("Observation Deck").
+		for e in edges:
+			var d: Dictionary = e
+			if String(d.get("dir", "")) == UPPER_DECK_RETURN_DIR and String(d.get("to", "")) == entry_id:
+				return edges  # Already injected.
+		var out: Array = edges.duplicate(true)
+		out.append({"dir": UPPER_DECK_RETURN_DIR, "to": entry_id})
+		return out
+
+	return edges
 
 
 # Assign a function to a generated storage room. Spends ROOM_ASSIGN_COST parts.

@@ -192,6 +192,15 @@ func _stamp_door(edge: Dictionary, half_x: float, half_z: float) -> void:
 	var is_stairs: bool = (dir == "stairs")
 	if is_elevator or is_stairs:
 		dir = "-z"
+	# Upper-deck link: virtual connector between the Obs Deck (f2_r00) and the
+	# authored hydroponics room. Each side uses its own dir token remapped to +z
+	# (south wall) so the two ends are independently positioned.
+	#   UPPER_DECK_DIR        fires on the obs-deck side  → +z (south wall, free)
+	#   UPPER_DECK_RETURN_DIR fires on the hydroponics side → +z (south wall, free)
+	# Using +z (not -z) keeps the stairs door (-z) and this door on separate walls.
+	var is_upper_deck: bool = (dir == "upper_deck" or dir == "upper_deck_return")
+	if is_upper_deck:
+		dir = "+z"
 
 	var along: float = _door_along_offset(target_id, dir)
 	var pos: Vector3 = Vector3.ZERO
@@ -237,7 +246,7 @@ func _stamp_door(edge: Dictionary, half_x: float, half_z: float) -> void:
 	# Generalised check on the target room row so any future locked room benefits.
 	# TODO(#131): repair-robot can heal/unseal locked rooms.
 	var target_row: Dictionary = ProceduralShip.room(target_id)
-	if not is_elevator and not is_stairs and target_row.get("locked", false) == true:
+	if not is_elevator and not is_stairs and not is_upper_deck and target_row.get("locked", false) == true:
 		var seal_msg: String = String(target_row.get("description", "SEALED — bulkhead unresponsive. Requires structural repair."))
 		door.set("locked", true)
 		door.set("lock_message", seal_msg)

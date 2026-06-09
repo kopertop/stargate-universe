@@ -85,6 +85,9 @@ echo "  reviewers use the ollama.com provider already configured in the cloned p
 # --- 3. auto-approve in cron context --------------------------------------
 say "Setting hermes cron approvals to auto-allow (else loop git/terminal calls get denied)"
 hermes config set approvals.cron_mode allow || warn "Could not set approvals.cron_mode — set it manually (hermes config edit)."
+# The PM shells out to a render (~30s) and the parallel reviewer panel (~2min). The
+# default terminal tool timeout (180s) can kill the reviewer — give it headroom.
+hermes config set terminal.timeout 600 || warn "Could not raise terminal.timeout — set it manually."
 
 # --- 3b. install the hermes skill so the host 'knows' the loop ------------
 say "Installing the gate-hero-loop hermes skill"

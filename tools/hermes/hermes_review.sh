@@ -33,22 +33,33 @@ lens_for() { case "$1" in
 	*) echo 'Weight architecture depth, console banks, floor reflections and composition most.' ;;
 esac; }
 
-closer_votes=0; valid=0; sum_c=0; sum_b=0; gaps=""
+# Dispatch all reviewers IN PARALLEL (the PM shells out to this with a bounded
+# terminal timeout; sequential 235B agents would blow it). Each writes its raw
+# output to a temp file; we parse after they all return.
+TMPD="$(mktemp -d)"; trap 'rm -rf "$TMPD"' EXIT
 i=0
 for p in "${PROFILES[@]}"; do
 	lens="$(lens_for $(( i % 3 )))"
 	prompt="$RUBRIC $lens You are shown THREE local images (paths relative to the current directory): TARGET (the goal) = $TARGET ; BEST (previous render) = $BEST ; CANDIDATE (new render) = $CAND . View all three. Decide whether CANDIDATE is GENUINELY closer to TARGET than BEST is — a real, visible improvement with no clear regression; a lateral move or merely-different means closer=false; when unsure, false. Reply with ONLY one line of strict JSON, no prose, no markdown: {\"closer\": <true|false>, \"candidate_score\": <0-100>, \"best_score\": <0-100>, \"gap\": \"<biggest remaining gap vs target, <=12 words>\"}"
-	raw="$(timeout 200 hermes --profile "$p" --yolo --accept-hooks -z "$prompt" 2>/dev/null)"
+	timeout 200 hermes --profile "$p" --yolo --accept-hooks -z "$prompt" >"$TMPD/$i.out" 2>/dev/null &
+	i=$((i+1))
+done
+wait
+
+closer_votes=0; valid=0; sum_c=0; sum_b=0; gaps=""
+i=0
+for p in "${PROFILES[@]}"; do
+	raw="$(cat "$TMPD/$i.out" 2>/dev/null)"
+	i=$((i+1))
 	# Extract the last {...} object containing "closer" from whatever the agent printed.
 	json="$(printf '%s' "$raw" | grep -oE '\{[^{}]*"closer"[^{}]*\}' | tail -1)"
 	v="$(printf '%s' "$json" | jq -rc '{closer:(.closer==true), cs:(.candidate_score//0|floor), bs:(.best_score//0|floor), gap:(.gap//"")}' 2>/dev/null)"
-	if [[ -z "$v" ]]; then echo "review $p: NO/!JSON"; i=$((i+1)); continue; fi
+	if [[ -z "$v" ]]; then echo "review $p: NO/!JSON"; continue; fi
 	valid=$((valid+1))
 	c="$(jq -r .closer <<<"$v")"; cs="$(jq -r .cs <<<"$v")"; bs="$(jq -r .bs <<<"$v")"; gap="$(jq -r .gap <<<"$v")"
 	[[ "$c" == "true" ]] && closer_votes=$((closer_votes+1))
 	sum_c=$((sum_c+cs)); sum_b=$((sum_b+bs)); gaps="$gaps; $gap"
 	echo "review $p: closer=$c cand=$cs best=$bs gap=$gap"
-	i=$((i+1))
 done
 
 if (( valid < 2 )); then echo "VERDICT=REJECT (panel too thin: $valid valid)"; exit 10; fi

@@ -13,18 +13,28 @@ extends Interactable
 #     LOCKED-KNOWN    — code found; cost label + "UNLOCK" button.
 #     UNLOCKED        — "TRAVEL" button active.
 #
+# Down-floors (SL-1, SL-2…) are hidden until ProceduralShip.is_bridge_discovered()
+# returns true — Bridge discovery reveals the lower decks on the panel.
+# Down-floors are elevator-only (no stairs), so they obey the same code+parts gate
+# as upper floors 3+.
+#
 # Unlock → ProceduralShip.unlock_floor(n) (verifies code + spends cost).
 # Travel → GameState.next_room_id = floor_entry_room + SceneRouter.change_to(room.tscn).
 #
 # Respects SceneRouter.instant_mode: skips UI animation, operates synchronously.
 # Connects to ProceduralShip.elevator_power_changed to refresh UI on power restore.
 
-# How many floors beyond the authored floor 1 the panel shows as options.
+# How many upper floors beyond Floor 2 the panel shows as options (floors 3…N).
 const MAX_FLOORS_SHOWN: int = 3
 
 var _layer: CanvasLayer = null
 var _root: Control = null
 var _open: bool = false
+# Ordered list of floor indices shown as rows. Built in _build_ui / refreshed in
+# _refresh_ui. Explicit list so up- and down-floors share identical row machinery;
+# avoids the brittle fn=i+2 index math that would mis-map labels to buttons for
+# negative floors. ONE list — no parallel _down_floors registry.
+var _panel_floors: Array[int] = []
 # Cache row labels so _refresh_ui doesn't rebuild from scratch on every signal.
 var _floor_labels: Array[Label] = []
 var _floor_buttons: Array[Button] = []
@@ -207,16 +217,28 @@ func _build_ui() -> void:
 	var sep_power: HSeparator = HSeparator.new()
 	vbox.add_child(sep_power)
 
-	# Floor rows — one per generated floor.
+	# Build the ordered floor list: upper floors first (2…MAX_FLOORS_SHOWN+1),
+	# then down-floors (-1…MIN_FLOOR) only when Bridge is discovered.
+	# ONE list — indices are explicit so label/button mapping is never ambiguous.
+	_panel_floors.clear()
+	for fn in range(2, MAX_FLOORS_SHOWN + 1):
+		_panel_floors.append(fn)
+	if ProceduralShip.is_bridge_discovered():
+		var min_fl: int = ProceduralShip.MIN_FLOOR
+		for fn in range(-1, min_fl - 1, -1):
+			_panel_floors.append(fn)
+
+	# Floor rows — one per floor in _panel_floors.
 	_floor_labels.clear()
 	_floor_buttons.clear()
-	for fn in range(2, MAX_FLOORS_SHOWN + 1):
+	for fn in _panel_floors:
 		var row: HBoxContainer = HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
 		vbox.add_child(row)
 
 		var floor_lbl: Label = Label.new()
-		floor_lbl.text = "FLOOR %d" % fn
+		# SL-n label for negative floors; FLOOR n for positive.
+		floor_lbl.text = "SL-%d" % (-fn) if fn < 0 else "FLOOR %d" % fn
 		floor_lbl.custom_minimum_size = Vector2(90, 0)
 		floor_lbl.add_theme_color_override("font_color", Color(0.80, 0.90, 1.0, 1.0))
 		floor_lbl.add_theme_font_size_override("font_size", 16)
@@ -259,10 +281,13 @@ func _refresh_ui() -> void:
 	if _restore_btn != null:
 		_restore_btn.visible = not powered
 
-	for i in range(MAX_FLOORS_SHOWN - 1):
-		var fn: int = i + 2  # Floor 2, 3, ...
+	# Iterate via _panel_floors so label/button index mapping is never ambiguous.
+	# _panel_floors is built once in _build_ui; both up- and down-floors share
+	# the same machinery here.
+	for i in _panel_floors.size():
 		if i >= _floor_labels.size() or i >= _floor_buttons.size():
 			break
+		var fn: int = _panel_floors[i]
 		var lbl: Label = _floor_labels[i]
 		var btn: Button = _floor_buttons[i]
 

@@ -51,6 +51,7 @@ func _run() -> void:
 	await _test_floor_code_poi(ps)
 	await _test_key_rooms(ps)
 	await _test_upper_deck_stairs_route(ps)
+	await _test_down_floors(ps)
 
 	_report()
 
@@ -671,6 +672,214 @@ func _test_upper_deck_stairs_route(ps: Node) -> void:
 		if String(d.get("to", "")) == "hydroponics":
 			hub_has_hydro = true
 	_expect(hub_has_hydro, "elevator_room_floor_1 door_edges still includes hydroponics (elevator intact)")
+
+
+# ── (j) Down-floors: SL-1…SL-3, cost, grid sign, JSON key round-trip, panel ──
+#
+# Issue #138 assertions:
+#   7a  generate SL-1: _floors.has(-1), generated flag, entry id = "f-1_r00"
+#   7b  grid offset sign: all SL-1 room startY < 0; no overlap with Floor-2 band
+#   7c  cost positive: floor_unlock_cost(-1)==5, (-2)==10; positive escalation reg
+#   7d  LOAD-BEARING JSON round-trip: serialize → JSON.stringify → JSON.parse_string
+#       → reset → deserialize(reparsed) → _floors.has(-1) AND has(2) both true
+#       (this FAILS without the int(k) key-normalization in deserialize)
+#   7e  panel index excludes negatives until mark_bridge_discovered(); then includes
+#       -1…MIN_FLOOR; door_edges("f-1_r00") has no STAIRS_DIR / gate_room edge
+#   7f  bridge-flag persistence: mark_bridge_discovered → serialize/reset/deserialize
+#       → is_bridge_discovered() still true
+
+func _test_down_floors(ps: Node) -> void:
+	print("\n-- down-floors (issue #138) --")
+	ps.call("reset")
+	await process_frame
+
+	# ── 7a: generate SL-1 ────────────────────────────────────────────────────
+	ps.call("ensure_floor_generated", -1)
+	await process_frame
+
+	var floors: Dictionary = ps.get("_floors")
+	_expect(floors.has(-1), "7a: _floors.has(-1) after ensure_floor_generated(-1)")
+
+	var sl1_rec: Dictionary = floors.get(-1, {})
+	_expect(sl1_rec.get("generated", false), "7a: SL-1 floor record is marked generated")
+
+	var entry_m1: String = ps.call("floor_entry_room", -1)
+	_expect(entry_m1 == "f-1_r00",
+		"7a: floor_entry_room(-1) == 'f-1_r00' (got '%s')" % entry_m1)
+
+	var sl1_rooms: Array = sl1_rec.get("rooms", [])
+	_expect(sl1_rooms.size() >= 12,
+		"7a: SL-1 has >= 12 rooms (got %d)" % sl1_rooms.size())
+	_expect(sl1_rooms.size() <= 20,
+		"7a: SL-1 has <= 20 rooms (got %d)" % sl1_rooms.size())
+
+	# is_generated flag set for entry room.
+	_expect(ps.call("is_generated", "f-1_r00"),
+		"7a: 'f-1_r00' is flagged as generated")
+
+	# ── 7b: grid offset sign ─────────────────────────────────────────────────
+	# Also generate Floor 2 so we can check for band non-overlap.
+	ps.call("ensure_floor_generated", 2)
+	await process_frame
+
+	var rooms_dict: Dictionary = ps.get("_rooms")
+	floors = ps.get("_floors")
+
+	# All SL-1 rooms must have startY < 0 (grid stride puts them at y = -1 * 4000).
+	var all_sl1_negative: bool = true
+	for rid in (floors.get(-1, {}) as Dictionary).get("rooms", []):
+		var r: Dictionary = rooms_dict.get(String(rid), {})
+		if int(r.get("startY", 0)) >= 0:
+			all_sl1_negative = false
+			print("  FAIL 7b: SL-1 room %s has startY=%d (expected < 0)" % [rid, int(r.get("startY", 0))])
+	_expect(all_sl1_negative, "7b: all SL-1 rooms have startY < 0 (negative grid band)")
+
+	# No SL-1 room's Y range overlaps the Floor-2 positive band (startY > 0).
+	# Floor-2 rooms all have startY >= 4000*2 = 8000 (n=2 → origin_y=8000).
+	# SL-1 rooms all have endY <= 0 + some room height ≤ ~4000 < 8000. No overlap.
+	var no_overlap: bool = true
+	var f2_min_y: int = 8000  # n=2 → origin_y = 2 * 4000
+	for rid in (floors.get(-1, {}) as Dictionary).get("rooms", []):
+		var r: Dictionary = rooms_dict.get(String(rid), {})
+		var ey: int = int(r.get("endY", 0))
+		if ey > f2_min_y:
+			no_overlap = false
+			print("  FAIL 7b: SL-1 room %s endY=%d overlaps Floor-2 band (>%d)" % [rid, ey, f2_min_y])
+	_expect(no_overlap, "7b: no SL-1 room's endY reaches the Floor-2 band (>= %d)" % f2_min_y)
+
+	# ── 7c: cost curve — positive, absi(n) * BASE ────────────────────────────
+	var cost_m1: int = ps.call("floor_unlock_cost", -1)
+	var cost_m2: int = ps.call("floor_unlock_cost", -2)
+	var cost_p3: int = ps.call("floor_unlock_cost", 3)
+	var cost_p4: int = ps.call("floor_unlock_cost", 4)
+	_expect(cost_m1 == 5,
+		"7c: floor_unlock_cost(-1) == 5 (got %d)" % cost_m1)
+	_expect(cost_m2 == 10,
+		"7c: floor_unlock_cost(-2) == 10 (got %d)" % cost_m2)
+	_expect(cost_m1 > 0,
+		"7c: floor_unlock_cost(-1) is positive (got %d)" % cost_m1)
+	_expect(cost_m2 > cost_m1,
+		"7c: floor_unlock_cost(-2) > floor_unlock_cost(-1) — negative escalation (%d > %d)" % [cost_m2, cost_m1])
+	# Positive escalation regression — must not have regressed.
+	_expect(cost_p4 > cost_p3,
+		"7c: positive escalation intact: floor_unlock_cost(4)=%d > floor_unlock_cost(3)=%d" % [cost_p4, cost_p3])
+
+	# ── 7d: LOAD-BEARING JSON key round-trip ────────────────────────────────
+	# This is the critical regression: JSON.stringify converts int keys to strings,
+	# so after a real disk save/load _floors.has(-1) and _floors.has(2) would BOTH
+	# be false without the int(k) normalization in deserialize().
+	ps.call("reset")
+	ps.call("ensure_floor_generated", -1)
+	ps.call("ensure_floor_generated", 2)
+	await process_frame
+
+	var snap_raw: Dictionary = ps.call("serialize")
+	_expect((snap_raw.get("floors", {}) as Dictionary).has(-1),
+		"7d: in-memory serialize has int key -1 before JSON stringification")
+	_expect((snap_raw.get("floors", {}) as Dictionary).has(2),
+		"7d: in-memory serialize has int key 2 before JSON stringification")
+
+	# Simulate the real disk save/load path: JSON.stringify → JSON.parse_string.
+	# This is what SaveStore._write_plain / _read_json_dict does on disk.
+	var json_str: String = JSON.stringify(snap_raw)
+	var reparsed: Variant = JSON.parse_string(json_str)
+	_expect(reparsed is Dictionary,
+		"7d: JSON.parse_string returns a Dictionary")
+	if not (reparsed is Dictionary):
+		_expect(false, "7d: aborting round-trip — reparsed is not a Dictionary")
+		return
+
+	# Verify string-key form in reparsed (proving the bug EXISTS without the fix).
+	var reparsed_floors: Variant = (reparsed as Dictionary).get("floors", null)
+	_expect(reparsed_floors is Dictionary,
+		"7d: reparsed.floors is a Dictionary")
+	if reparsed_floors is Dictionary:
+		var has_string_minus1: bool = (reparsed_floors as Dictionary).has("-1")
+		var has_string_2: bool = (reparsed_floors as Dictionary).has("2")
+		_expect(has_string_minus1,
+			"7d: reparsed floors dict has STRING key '-1' (confirming JSON stringifies int keys)")
+		_expect(has_string_2,
+			"7d: reparsed floors dict has STRING key '2' (confirming JSON stringifies int keys)")
+
+	# Now deserialize the string-keyed snapshot and verify int-key normalization.
+	ps.call("reset")
+	ps.call("deserialize", reparsed, 2)
+	await process_frame
+
+	var floors_restored: Dictionary = ps.get("_floors")
+	_expect(floors_restored.has(-1),
+		"7d: LOAD-BEARING — _floors.has(-1) true after JSON string-key round-trip (int normalization)")
+	_expect(floors_restored.has(2),
+		"7d: LOAD-BEARING — _floors.has(2) true after JSON string-key round-trip (int normalization)")
+	_expect((floors_restored.get(-1, {}) as Dictionary).get("generated", false),
+		"7d: SL-1 floor record still marked generated after round-trip")
+	_expect((floors_restored.get(2, {}) as Dictionary).get("generated", false),
+		"7d: Floor-2 record still marked generated after round-trip")
+
+	# Confirm room ids are still accessible (rooms are string-keyed, unaffected).
+	_expect(ps.call("is_generated", "f-1_r00"),
+		"7d: 'f-1_r00' still flagged as generated after round-trip")
+	_expect(ps.call("is_generated", "f2_r00"),
+		"7d: 'f2_r00' still flagged as generated after round-trip")
+
+	# ── 7e: panel index — bridge-gating and no stairs edge ───────────────────
+	ps.call("reset")
+	await process_frame
+
+	# Before bridge discovery: is_bridge_discovered() must be false.
+	_expect(not ps.call("is_bridge_discovered"),
+		"7e: is_bridge_discovered() false before mark_bridge_discovered()")
+
+	# After mark: true.
+	ps.call("mark_bridge_discovered")
+	_expect(ps.call("is_bridge_discovered"),
+		"7e: is_bridge_discovered() true after mark_bridge_discovered()")
+
+	# Generate SL-1 so door_edges has a result.
+	ps.call("ensure_floor_generated", -1)
+	await process_frame
+
+	# door_edges("f-1_r00") must NOT contain any STAIRS_DIR or gate_room edge.
+	# Down-floors are elevator-only — stairs injection is strictly for floor 2.
+	var dm1_edges: Array = ps.call("door_edges", "f-1_r00")
+	var has_stairs_edge: bool = false
+	var has_gate_room_edge: bool = false
+	var stairs_dir: String = ps.get("STAIRS_DIR")
+	for e in dm1_edges:
+		var ed: Dictionary = e
+		if String(ed.get("dir", "")) == stairs_dir:
+			has_stairs_edge = true
+		if String(ed.get("to", "")) == "gate_room":
+			has_gate_room_edge = true
+	_expect(not has_stairs_edge,
+		"7e: door_edges('f-1_r00') has no STAIRS_DIR edge (elevator-only)")
+	_expect(not has_gate_room_edge,
+		"7e: door_edges('f-1_r00') has no gate_room edge (elevator-only)")
+
+	# ── 7f: bridge-flag persistence through JSON round-trip ─────────────────
+	ps.call("reset")
+	ps.call("mark_bridge_discovered")
+	_expect(ps.call("is_bridge_discovered"),
+		"7f: is_bridge_discovered() true before serialize")
+
+	var snap_bridge: Dictionary = ps.call("serialize")
+	_expect(snap_bridge.get("bridge_discovered", false) == true,
+		"7f: serialize includes bridge_discovered == true")
+
+	var json_str_bridge: String = JSON.stringify(snap_bridge)
+	var reparsed_bridge: Variant = JSON.parse_string(json_str_bridge)
+	_expect(reparsed_bridge is Dictionary,
+		"7f: bridge snapshot JSON round-trip parses back to Dictionary")
+
+	ps.call("reset")
+	_expect(not ps.call("is_bridge_discovered"),
+		"7f: is_bridge_discovered() false after reset")
+
+	if reparsed_bridge is Dictionary:
+		ps.call("deserialize", reparsed_bridge, 2)
+		await process_frame
+		_expect(ps.call("is_bridge_discovered"),
+			"7f: is_bridge_discovered() true after JSON round-trip deserialize")
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

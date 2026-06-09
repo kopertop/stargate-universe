@@ -30,6 +30,16 @@ const DIR_FLIP: Dictionary = {
 	"-z": "+z",
 }
 
+# Floor index bounds — generatable range excludes 0 (JSON-internal authored index)
+# and the authored spine (floor 1). Down-floors run from -1 to MIN_FLOOR (negative).
+const MIN_FLOOR: int = -3
+const MAX_FLOOR: int = 6
+# Authored floors — floors whose room layout is the hand-authored spine, never
+# regenerated. Floor 2 is NOT in this list: it has a pre-seeded floor record
+# (unlocked + code_known) but its rooms are grown by _generate_floor just like
+# floors 3+. Only floor 1 is truly authored (ShipLayout base rooms, no generation).
+const AUTHORED_FLOORS: Array = [1]
+
 # Stairs connection: special edge direction for the gate-room ↔ Floor-2 stairs link.
 # Not a real cardinal direction — treated as a named vertical connector, same role
 # as "elevator" in room.gd (dir remapped to a wall at stamp time). Used only in
@@ -120,6 +130,10 @@ signal elevator_power_changed(powered: bool)
 # World-state verbs (not acquisition vocab) — lint-safe.
 var _elevator_powered: bool = false   # @collection-ok: single world-state flag, not an enumerated collection
 var _minigame_solved: bool = false    # @collection-ok: single world-state flag, not an enumerated collection
+# Bridge-discovered flag — set via mark_bridge_discovered(); also checked via
+# GameState.rooms_discovered scan (is_bridge_discovered reads both).
+# Persisted so elevator-panel down-floor reveal survives save/load.
+var _bridge_discovered: bool = false  # @collection-ok: single world-state flag, not an enumerated collection
 
 
 func _ready() -> void:
@@ -263,10 +277,15 @@ func is_key_room(id: String) -> bool:
 	return false
 
 
-# Returns true when any room the player has discovered has effective type "bridge".
-# Used by BridgeConsole to gate the loop-config UI (issue #133).
-# Reads GameState.rooms_discovered directly — no new bool, no acquisition vocab.
+# Returns true when the Bridge has been discovered.
+# Source of truth: the explicit _bridge_discovered flag (serialized, set by
+# mark_bridge_discovered) OR the live scan of GameState.rooms_discovered.
+# Both paths are checked so #133's discovery hook (rooms_discovered scan) and
+# the serialized flag both work as expected — no duplicate bool for the same
+# state; the flag is additive. Down-floors read this to gate their panel reveal.
 func is_bridge_discovered() -> bool:
+	if _bridge_discovered:
+		return true
 	var gs: Node = get_node_or_null("/root/GameState")
 	if gs == null:
 		return false
@@ -284,6 +303,13 @@ func is_bridge_discovered() -> bool:
 			if String(cat_entry.get("id", "")) == "bridge":
 				return true
 	return false
+
+
+# Explicitly mark the Bridge as discovered. Called from bridge_console.gd /
+# #133's discovery hook. Sets the persistent _bridge_discovered flag so the
+# state survives save/load without requiring rooms_discovered to be re-scanned.
+func mark_bridge_discovered() -> void:
+	_bridge_discovered = true
 
 
 # Direction-tagged outgoing edges (ShipLayout-compatible: forward + reverse mirrored).
@@ -484,14 +510,38 @@ func current_floor() -> int:
 
 
 # ============================================================
+# FLOOR SEMANTIC HELPERS
+# ============================================================
+
+# True if floor n is one of the authored floors (always present, never generated).
+func _is_authored_floor(n: int) -> bool:
+	return AUTHORED_FLOORS.has(n)
+
+
+# True if floor n can be procedurally generated.
+# n==0 is the JSON-internal authored index — excluded.
+# Authored floors (1, 2) are excluded (they're stamped in _ready / reset).
+# All other integers within [MIN_FLOOR, MAX_FLOOR] are generatable.
+func _is_generatable_floor(n: int) -> bool:
+	if n == 0:
+		return false
+	if _is_authored_floor(n):
+		return false
+	if n < MIN_FLOOR or n > MAX_FLOOR:
+		return false
+	return true
+
+
+# ============================================================
 # GENERATION CORE
 # ============================================================
 
 # Idempotent: if floor n is already generated, return.
-# Phase A: can be called by tests directly; Floor 1 (authored) never generates.
+# Authored floors (1, 2) are never regenerated.
+# Bounds-check: n must be in [MIN_FLOOR, MAX_FLOOR] and not 0 or an authored floor.
 func ensure_floor_generated(n: int) -> void:
-	if n <= 1:
-		return  # Floor 1 is the authored spine — never regenerate.
+	if not _is_generatable_floor(n):
+		return
 	_load_catalog()
 	if not _floors.has(n):
 		_floors[n] = {
@@ -909,8 +959,10 @@ func _add_gen_edge(from_id: String, to_id: String, dir: String) -> void:
 # ============================================================
 
 # Escalating cost (in FLOOR_UNLOCK_ITEM units) to unlock floor n.
+# Uses absi(n) so down-floors (negative n) yield positive costs — SL-1=5, SL-2=10…
+# Never passes a negative cost to Inventory.remove_item.
 func floor_unlock_cost(n: int) -> int:
-	return FLOOR_UNLOCK_COST_BASE * n
+	return FLOOR_UNLOCK_COST_BASE * absi(n)
 
 
 # True when the player has discovered floor n's access code.
@@ -922,8 +974,8 @@ func is_floor_code_known(n: int) -> bool:
 
 # True when floor n is unlocked (playable).
 func is_floor_unlocked(n: int) -> bool:
-	if n <= 1:
-		return true  # Authored floor 1 is always unlocked.
+	if _is_authored_floor(n):
+		return true  # Authored floors (1, 2) are always unlocked.
 	if not _floors.has(n):
 		return false
 	return (_floors[n] as Dictionary).get("unlocked", false)
@@ -932,8 +984,8 @@ func is_floor_unlocked(n: int) -> bool:
 # Mark floor n's access code as known (called by floor_code_terminal.gd).
 # Ensures the floor record exists so the panel can mark it without generating.
 func mark_floor_code_known(n: int) -> void:
-	if n <= 1:
-		return  # Floor 1 needs no code.
+	if _is_authored_floor(n):
+		return  # Authored floors need no code (floor 1 always free; floor 2 via stairs).
 	if not _floors.has(n):
 		_floors[n] = {
 			"unlocked": false,
@@ -951,19 +1003,18 @@ func mark_floor_code_known(n: int) -> void:
 # Failure reasons: code not known, insufficient resources, floor already unlocked.
 # On success: spends the item cost via Inventory, generates the floor, sets unlocked.
 func unlock_floor(n: int) -> bool:
-	if n <= 1:
-		return true  # Floor 1 is already unlocked.
+	if _is_authored_floor(n):
+		return true  # Authored floors (1, 2) are always unlocked.
 	if is_floor_unlocked(n):
 		return true  # Already unlocked — success (idempotent).
 	# Elevator must be powered before the floor-select mechanism works.
-	# Floor 2 bypasses this via the stairs, but its floor record is already
-	# unlocked=true in reset(), so the is_floor_unlocked(n) check above
-	# returns true first — this guard only fires for floors 3+.
+	# Authored floors bypass this via their default unlocked=true state above.
 	if not _elevator_powered:
 		return false  # Elevator offline — restore power first.
 	if not is_floor_code_known(n):
 		return false  # Code not found yet.
 	var cost: int = floor_unlock_cost(n)
+	# cost is always positive (absi(n) * BASE); safe to pass to remove_item.
 	var inv: Node = get_node_or_null("/root/Inventory")
 	if inv == null:
 		return false  # No inventory system — cannot spend.
@@ -979,11 +1030,13 @@ func unlock_floor(n: int) -> bool:
 
 
 # The room_id of the elevator-landing room for floor n.
-# Floor 1 → authored elevator rooms. Generated floors → "f{n}_r00" (entry corridor).
+# Floor 1 → authored elevator room. Generated floors (2+, and -1, -2…) → "f{n}_r00".
+# Note: "f-1_r00" is a valid Godot String — no special handling needed for negatives.
 func floor_entry_room(n: int) -> String:
-	if n <= 1:
+	if n == 1:
 		return "elevator_room_floor_1"
 	# The entry corridor is always the first room placed (index 0, see _generate_floor).
+	# For negative n: "f%d_r00" % -1 → "f-1_r00" — valid, no collision with positive floors.
 	return "f%d_r00" % n
 
 
@@ -1297,12 +1350,19 @@ func serialize() -> Dictionary:
 		"floor_assignments": _floor_assignments.duplicate(true),
 		"elevator_powered": _elevator_powered,
 		"minigame_solved": _minigame_solved,
+		"bridge_discovered": _bridge_discovered,
 	}
 
 
 func deserialize(data: Dictionary, _version: int) -> void:
 	if data.has("floors") and data["floors"] is Dictionary:
-		_floors = (data["floors"] as Dictionary).duplicate(true)
+		# CRITICAL: JSON.stringify turns int keys into strings on disk.
+		# JSON.parse_string restores them as strings, so after a real disk
+		# save/load _floors.has(2) (int) would be FALSE.  Normalize here so
+		# int(-1)→-1 and int("2")→2 both work — covers in-memory and disk paths.
+		_floors.clear()
+		for k in (data["floors"] as Dictionary).keys():
+			_floors[int(k)] = ((data["floors"] as Dictionary)[k] as Dictionary).duplicate(true)
 	if data.has("rooms") and data["rooms"] is Dictionary:
 		_rooms = (data["rooms"] as Dictionary).duplicate(true)
 	if data.has("edges") and data["edges"] is Dictionary:
@@ -1311,9 +1371,10 @@ func deserialize(data: Dictionary, _version: int) -> void:
 		_special_pool_remaining = (data["special_pool_remaining"] as Dictionary).duplicate(true)
 	if data.has("floor_assignments") and data["floor_assignments"] is Dictionary:
 		_floor_assignments = (data["floor_assignments"] as Dictionary).duplicate(true)
-	# Absent key → false (starts unpowered). No SAVE_VERSION bump needed.
+	# Absent key → false (starts unpowered / undiscovered). No SAVE_VERSION bump needed.
 	_elevator_powered = data.get("elevator_powered", false) == true
 	_minigame_solved  = data.get("minigame_solved", false) == true
+	_bridge_discovered = data.get("bridge_discovered", false) == true
 
 
 func reset() -> void:
@@ -1323,6 +1384,7 @@ func reset() -> void:
 	_floor_assignments.clear()
 	_elevator_powered = false
 	_minigame_solved  = false
+	_bridge_discovered = false
 	# Re-seed pool from catalog.
 	_seed_special_pool()
 	# Restore default floor 1 entry.

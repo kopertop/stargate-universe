@@ -1,24 +1,15 @@
 extends Node3D
 
-# Quaternius Character Builder — interactive modular-outfit lab for the
-# experiment branch. Universal Base body + per-slot outfit parts + rigged
-# hairstyles, all assembled in code on one %GeneralSkeleton, driven by the
-# shared Mixamo crew animation library.
+# Quaternius Character Builder — interactive WoW-style gear lab over
+# ModularCharacter (Universal Base + Modular Outfits, humanoid-retargeted).
+# Body regions hide under equipped parts (no clip-through); rifle mounts
+# hand (aimed) or back (slung); shared Mixamo crew animations.
 # Launch standalone:
 #   godot --path . scenes/quaternius_lab.tscn
 
-const FactoryRef: Script = preload("res://scripts/character_factory.gd")
+const ModularScript: Script = preload("res://scripts/modular_character.gd")
 
-const BASE_DIR: String = "res://models/quaternius/base"
-const PARTS_DIR: String = "res://models/quaternius/parts"
-const HAIR_DIR: String = "res://models/quaternius/hair"
-const BODY_LIB: String = "res://models/vrm/anim/crew_body.res"
-const SLOT_ORDER: Array[String] = ["Body", "Arms", "Legs", "Feet", "Head", "Acc", "Hair"]
-
-var _base: Node3D = null
-var _skel: Skeleton3D = null
-var _anim: AnimationPlayer = null
-var _worn: Dictionary = {}            # slot -> Array[Node] currently equipped
+var _char: Node3D = null
 var _cam: Camera3D = null
 var _cam_yaw: float = 0.25
 var _cam_pitch: float = 0.25
@@ -28,19 +19,20 @@ var _turntable: bool = false
 
 var _base_pick: OptionButton
 var _anim_pick: OptionButton
-var _slot_picks: Dictionary = {}      # slot -> OptionButton
+var _slot_picks: Dictionary = {}
 var _rifle_box: CheckBox
+var _aim_box: CheckBox
 
 
 func _ready() -> void:
 	_build_stage()
 	_build_ui()
-	_rebuild_base()
+	_rebuild_character()
 
 
 func _process(delta: float) -> void:
-	if _turntable and _base != null:
-		_base.rotation.y += delta * 0.7
+	if _turntable and _char != null:
+		_char.rotation.y += delta * 0.7
 	_update_camera()
 
 
@@ -58,8 +50,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		_cam_yaw -= mm.relative.x * 0.008
 		_cam_pitch = clampf(_cam_pitch + mm.relative.y * 0.006, -0.2, 1.2)
 
-
-# ------------------------------- stage ---------------------------------------
 
 func _build_stage() -> void:
 	var env: WorldEnvironment = WorldEnvironment.new()
@@ -106,141 +96,75 @@ func _update_camera() -> void:
 	_cam.look_at(target, Vector3.UP)
 
 
-# ----------------------------- assembly --------------------------------------
-
 func _gender() -> String:
 	return "Male" if _base_pick.selected == 0 else "Female"
 
 
-func _rebuild_base() -> void:
-	if _base != null:
-		_base.queue_free()
-	_worn.clear()
-	var path: String = "%s/Superhero_%s_FullBody.gltf" % [BASE_DIR, _gender()]
-	_base = (load(path) as PackedScene).instantiate()
-	add_child(_base)
-	_skel = _base.get_node_or_null("%GeneralSkeleton")
-	if _skel == null:
-		_skel = _find_skeleton(_base)
-	_anim = AnimationPlayer.new()
-	_base.add_child(_anim)
-	_anim.root_node = _anim.get_path_to(_base)
-	if ResourceLoader.exists(BODY_LIB):
-		_anim.add_animation_library("body", load(BODY_LIB))
+func _rebuild_character() -> void:
+	if _char != null:
+		_char.queue_free()
+	_char = ModularScript.create(_gender())
+	add_child(_char)
 	_refresh_slot_items()
 	_refresh_anim_list()
 	_apply_all_slots()
-	_on_rifle_toggled(_rifle_box.button_pressed)
-
-
-# Scan part/hair files for the current gender: slot -> [file stems].
-func _parts_by_slot() -> Dictionary:
-	var out: Dictionary = {}
-	var dir: DirAccess = DirAccess.open(PARTS_DIR)
-	if dir != null:
-		for f in dir.get_files():
-			if not f.ends_with(".gltf"):
-				continue
-			var stem: String = f.get_basename()
-			var bits: PackedStringArray = stem.split("_")
-			if bits.size() < 3 or bits[0] != _gender():
-				continue
-			var slot: String = bits[2]
-			if not out.has(slot):
-				out[slot] = []
-			out[slot].append(stem)
-	var hdir: DirAccess = DirAccess.open(HAIR_DIR)
-	if hdir != null:
-		out["Hair"] = []
-		for f in hdir.get_files():
-			if f.ends_with(".gltf"):
-				out["Hair"].append(f.get_basename())
-	return out
+	_apply_rifle()
 
 
 func _refresh_slot_items() -> void:
-	var by_slot: Dictionary = _parts_by_slot()
-	for slot in SLOT_ORDER:
+	for slot in ModularScript.SLOTS:
 		var pick: OptionButton = _slot_picks[slot]
 		var prev: String = pick.get_item_text(pick.selected) if pick.selected >= 0 else ""
 		pick.clear()
 		pick.add_item("(none)")
-		for stem in by_slot.get(slot, []):
+		for stem in ModularScript.parts_for_slot(slot, _gender()):
 			pick.add_item(stem)
-		# Keep the same selection across gender swaps when possible.
+		var want: String = prev.replace("Female", "@").replace("Male", "Female").replace("@", "Male") if not prev.begins_with(_gender()) else prev
 		for i in range(pick.item_count):
-			if pick.get_item_text(i) == prev or pick.get_item_text(i).replace("Female", "Male") == prev.replace("Female", "Male"):
+			if pick.get_item_text(i) == prev or pick.get_item_text(i) == want:
 				pick.select(i)
 				break
 
 
 func _apply_all_slots() -> void:
-	for slot in SLOT_ORDER:
+	for slot in ModularScript.SLOTS:
 		_apply_slot(slot)
 
 
 func _apply_slot(slot: String) -> void:
-	for n in _worn.get(slot, []):
-		if is_instance_valid(n):
-			n.queue_free()
-	_worn[slot] = []
+	if _char == null:
+		return
 	var pick: OptionButton = _slot_picks[slot]
-	if pick.selected <= 0 or _skel == null:
-		return
-	var stem: String = pick.get_item_text(pick.selected)
-	var dir: String = HAIR_DIR if slot == "Hair" else PARTS_DIR
-	var packed: PackedScene = load("%s/%s.gltf" % [dir, stem])
-	if packed == null:
-		return
-	var part: Node = packed.instantiate()
-	for mi in _skinned_meshes(part):
-		var worn: MeshInstance3D = mi.duplicate() as MeshInstance3D
-		worn.name = "Part_%s_%s" % [slot, worn.name]
-		_skel.add_child(worn)
-		_worn[slot].append(worn)
-	part.free()
+	var stem: String = "" if pick.selected <= 0 else pick.get_item_text(pick.selected)
+	_char.call("set_slot", slot, stem)
 
 
-func _on_rifle_toggled(on: bool) -> void:
-	if _skel == null:
-		return
-	var existing: Node = _skel.get_node_or_null("RifleMount")
-	if existing != null:
-		existing.name = "RifleMount_retired"
-		existing.queue_free()
-	if not on:
-		return
-	var mount: BoneAttachment3D = BoneAttachment3D.new()
-	mount.name = "RifleMount"
-	_skel.add_child(mount)
-	mount.bone_name = "RightHand"
-	var rifle: Node3D = FactoryRef.build_rifle()
-	rifle.position = Vector3(0.0, 0.08, -0.02)
-	rifle.rotation = Vector3(1.57, 0.0, 0.0)
-	mount.add_child(rifle)
+func _apply_rifle() -> void:
+	if _char != null:
+		_char.call("set_rifle", _rifle_box.button_pressed, _aim_box.button_pressed)
+		if _aim_box.button_pressed and _rifle_box.button_pressed:
+			_char.call("play_clip", "rifle_aim")
 
-
-# -------------------------------- UI ----------------------------------------
 
 func _build_ui() -> void:
 	var layer: CanvasLayer = CanvasLayer.new()
 	add_child(layer)
 	var panel: PanelContainer = PanelContainer.new()
 	panel.position = Vector2(12, 12)
-	panel.custom_minimum_size = Vector2(280, 0)
+	panel.custom_minimum_size = Vector2(290, 0)
 	layer.add_child(panel)
 	var box: VBoxContainer = VBoxContainer.new()
 	box.add_theme_constant_override("separation", 5)
 	panel.add_child(box)
 
 	var title: Label = Label.new()
-	title.text = "QUATERNIUS BUILDER (experiment)"
+	title.text = "QUATERNIUS BUILDER"
 	box.add_child(title)
 
 	_base_pick = OptionButton.new()
 	_base_pick.add_item("Male base")
 	_base_pick.add_item("Female base")
-	_base_pick.item_selected.connect(func(_i: int) -> void: _rebuild_base())
+	_base_pick.item_selected.connect(func(_i: int) -> void: _rebuild_character())
 	box.add_child(_base_pick)
 
 	_anim_pick = OptionButton.new()
@@ -249,17 +173,17 @@ func _build_ui() -> void:
 
 	box.add_child(HSeparator.new())
 	var lbl: Label = Label.new()
-	lbl.text = "Outfit slots (hot-swap in code)"
+	lbl.text = "Equipment slots (hides body under gear)"
 	lbl.add_theme_font_size_override("font_size", 12)
 	box.add_child(lbl)
-	for slot in SLOT_ORDER:
+	for slot in ModularScript.SLOTS:
 		var row: HBoxContainer = HBoxContainer.new()
 		var slbl: Label = Label.new()
 		slbl.text = slot
 		slbl.custom_minimum_size = Vector2(46, 0)
 		row.add_child(slbl)
 		var pick: OptionButton = OptionButton.new()
-		pick.custom_minimum_size = Vector2(210, 0)
+		pick.custom_minimum_size = Vector2(220, 0)
 		pick.add_item("(none)")
 		pick.item_selected.connect(func(_i: int, s: String = slot) -> void: _apply_slot(s))
 		row.add_child(pick)
@@ -268,9 +192,13 @@ func _build_ui() -> void:
 
 	box.add_child(HSeparator.new())
 	_rifle_box = CheckBox.new()
-	_rifle_box.text = "Rifle (RightHand bone)"
-	_rifle_box.toggled.connect(_on_rifle_toggled)
+	_rifle_box.text = "Rifle"
+	_rifle_box.toggled.connect(func(_on: bool) -> void: _apply_rifle())
 	box.add_child(_rifle_box)
+	_aim_box = CheckBox.new()
+	_aim_box.text = "Aim (hand; off = slung on back)"
+	_aim_box.toggled.connect(func(_on: bool) -> void: _apply_rifle())
+	box.add_child(_aim_box)
 
 	var turn: CheckBox = CheckBox.new()
 	turn.text = "Turntable"
@@ -284,10 +212,10 @@ func _build_ui() -> void:
 
 func _refresh_anim_list() -> void:
 	_anim_pick.clear()
-	if _anim == null or not _anim.has_animation_library("body"):
+	var clips: PackedStringArray = _char.call("clip_names")
+	if clips.is_empty():
 		_anim_pick.add_item("(no animations)")
 		return
-	var clips: PackedStringArray = _anim.get_animation_library("body").get_animation_list()
 	var idle_idx: int = 0
 	for i in range(clips.size()):
 		_anim_pick.add_item(clips[i])
@@ -298,33 +226,5 @@ func _refresh_anim_list() -> void:
 
 
 func _on_anim_selected(idx: int) -> void:
-	if _anim == null or idx < 0:
-		return
-	var clip: String = "body/" + _anim_pick.get_item_text(idx)
-	if _anim.has_animation(clip):
-		_anim.play(clip)
-
-
-# ------------------------------- helpers -------------------------------------
-
-func _skinned_meshes(node: Node) -> Array:
-	var out: Array = []
-	var stack: Array = [node]
-	while not stack.is_empty():
-		var n: Node = stack.pop_back()
-		if n is MeshInstance3D and (n as MeshInstance3D).skin != null:
-			out.append(n)
-		for c in n.get_children():
-			stack.append(c)
-	return out
-
-
-func _find_skeleton(node: Node) -> Skeleton3D:
-	var stack: Array = [node]
-	while not stack.is_empty():
-		var n: Node = stack.pop_back()
-		if n is Skeleton3D:
-			return n
-		for c in n.get_children():
-			stack.append(c)
-	return null
+	if _char != null and idx >= 0:
+		_char.call("play_clip", _anim_pick.get_item_text(idx))

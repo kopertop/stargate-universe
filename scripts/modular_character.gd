@@ -1,0 +1,302 @@
+extends Node3D
+class_name ModularCharacter
+
+# WoW-style modular character on the Quaternius Universal Base + Modular
+# Outfit packs (all BoneMap-retargeted to %GeneralSkeleton humanoid names).
+#
+# Key insight from the pack README: outfit parts REPLACE body regions ("only
+# the head of the model is required; using the full body will result in
+# clipping"). Since the pack ships no split body, we split the FullBody
+# skinned mesh ourselves AT LOAD by bone weights into region meshes
+# (head/torso/arms/legs/feet) and show only regions whose slot is empty —
+# bare base, full outfits, and mixed outfits all render clip-free.
+#
+#   var c := ModularCharacter.create("Male")
+#   add_child(c)
+#   c.set_slot("Body", "Male_Ranger_Body")   # tunic on
+#   c.set_slot("Legs", "Male_Peasant_Legs")  # mixed outfit
+#   c.set_slot("Hair", "Hair_Buzzed")
+#   c.play_clip("walk"); c.set_rifle(true, true)
+
+const FactoryRef: Script = preload("res://scripts/character_factory.gd")
+
+const BASE_DIR: String = "res://models/quaternius/base"
+const PARTS_DIR: String = "res://models/quaternius/parts"
+const HAIR_DIR: String = "res://models/quaternius/hair"
+const BODY_LIB: String = "res://models/vrm/anim/crew_body.res"
+
+const SLOTS: Array[String] = ["Body", "Arms", "Legs", "Feet", "Head", "Acc", "Hair"]
+
+# Which split-body regions an occupied slot hides.
+const SLOT_COVERS: Dictionary = {
+	"Body": ["torso"], "Arms": ["arms"], "Legs": ["legs"], "Feet": ["feet"],
+	"Head": [], "Acc": [], "Hair": [],
+}
+
+# Region -> humanoid bones whose weights claim a triangle.
+const REGION_BONES: Dictionary = {
+	"head": ["Head", "Neck"],
+	"torso": ["Spine", "Chest", "UpperChest", "LeftShoulder", "RightShoulder"],
+	"arms": ["LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm",
+		"RightLowerArm", "RightHand"],
+	"legs": ["Hips", "LeftUpperLeg", "LeftLowerLeg", "RightUpperLeg", "RightLowerLeg"],
+	"feet": ["LeftFoot", "LeftToes", "RightFoot", "RightToes"],
+}
+
+# gender -> {region -> ArrayMesh} (split once, shared by every instance).
+static var _region_cache: Dictionary = {}
+
+var gender: String = "Male"
+
+var _base: Node3D = null
+var _skel: Skeleton3D = null
+var _anim: AnimationPlayer = null
+var _region_meshes: Dictionary = {}   # region -> MeshInstance3D
+var _equipped: Dictionary = {}        # slot -> {"stem": String, "nodes": Array}
+
+
+static func create(body_gender: String = "Male") -> Node3D:
+	var c: Node3D = new()
+	c.set("gender", body_gender)
+	c.name = "Modular_" + body_gender
+	return c
+
+
+func _ready() -> void:
+	_base = (load("%s/Superhero_%s_FullBody.gltf" % [BASE_DIR, gender]) as PackedScene).instantiate()
+	add_child(_base)
+	_skel = _base.get_node_or_null("%GeneralSkeleton")
+	if _skel == null:
+		_skel = _find_skeleton(_base)
+	_split_base_body()
+	_anim = AnimationPlayer.new()
+	_base.add_child(_anim)
+	_anim.root_node = _anim.get_path_to(_base)
+	if ResourceLoader.exists(BODY_LIB):
+		_anim.add_animation_library("body", load(BODY_LIB))
+	play_clip("idle")
+
+
+# ----------------------------- body splitting --------------------------------
+
+# Replace the FullBody mesh with five region meshes so equipment can hide the
+# body underneath (the pack's intended anti-clipping model).
+func _split_base_body() -> void:
+	var body_mi: MeshInstance3D = null
+	for mi in _skinned_meshes(_base):
+		# Pack naming is inconsistent: SuperHero_Male vs Superhero_Female.
+		if String(mi.name).to_lower().begins_with("superhero"):
+			body_mi = mi
+	if body_mi == null:
+		return
+	var regions: Dictionary = _split_regions(body_mi)
+	for region in regions:
+		var rmi: MeshInstance3D = MeshInstance3D.new()
+		rmi.name = "BaseRegion_" + region
+		rmi.mesh = regions[region]
+		rmi.skin = body_mi.skin
+		_skel.add_child(rmi)
+		_region_meshes[region] = rmi
+	body_mi.visible = false
+
+
+func _split_regions(body_mi: MeshInstance3D) -> Dictionary:
+	var key: String = gender
+	if _region_cache.has(key):
+		return _region_cache[key]
+	var mesh: ArrayMesh = body_mi.mesh as ArrayMesh
+	var skin: Skin = body_mi.skin
+	# Skin bind index -> region name.
+	var bind_region: Dictionary = {}
+	for i in range(skin.get_bind_count()):
+		var bone: String = String(skin.get_bind_name(i))
+		for region in REGION_BONES:
+			if (REGION_BONES[region] as Array).has(bone) \
+					or _finger_of(bone, region):
+				bind_region[i] = region
+	var out: Dictionary = {}
+	for s in range(mesh.get_surface_count()):
+		var arrays: Array = mesh.surface_get_arrays(s)
+		var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+		var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]
+		var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+		var influences: int = bones.size() / (arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+		# Region index buffers.
+		var region_indices: Dictionary = {}
+		for t in range(0, indices.size(), 3):
+			var votes: Dictionary = {}
+			for k in range(3):
+				var v: int = indices[t + k]
+				for j in range(influences):
+					var w: float = weights[v * influences + j]
+					if w <= 0.0:
+						continue
+					var region: String = String(bind_region.get(bones[v * influences + j], "torso"))
+					votes[region] = float(votes.get(region, 0.0)) + w
+			var best: String = "torso"
+			var best_w: float = -1.0
+			for region in votes:
+				if float(votes[region]) > best_w:
+					best_w = votes[region]
+					best = region
+			if not region_indices.has(best):
+				region_indices[best] = PackedInt32Array()
+			var buf: PackedInt32Array = region_indices[best]
+			buf.append(indices[t])
+			buf.append(indices[t + 1])
+			buf.append(indices[t + 2])
+			region_indices[best] = buf
+		for region in region_indices:
+			var rarrays: Array = arrays.duplicate()
+			rarrays[Mesh.ARRAY_INDEX] = region_indices[region]
+			if not out.has(region):
+				out[region] = ArrayMesh.new()
+			var am: ArrayMesh = out[region]
+			am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, rarrays)
+			am.surface_set_material(am.get_surface_count() - 1, mesh.surface_get_material(s))
+	_region_cache[key] = out
+	return out
+
+
+func _finger_of(bone: String, region: String) -> bool:
+	if region != "arms":
+		return false
+	for finger in ["Thumb", "Index", "Middle", "Ring", "Little"]:
+		if bone.contains(finger):
+			return true
+	return false
+
+
+# ------------------------------- equipment -----------------------------------
+
+# Equip a part into a slot ("" or "(none)" clears it). Returns true on change.
+func set_slot(slot: String, stem: String) -> bool:
+	if not SLOTS.has(slot):
+		return false
+	# Clear current.
+	if _equipped.has(slot):
+		for n in _equipped[slot]["nodes"]:
+			if is_instance_valid(n):
+				n.queue_free()
+		_equipped.erase(slot)
+	if stem != "" and stem != "(none)":
+		var dir: String = HAIR_DIR if slot == "Hair" else PARTS_DIR
+		var packed: PackedScene = load("%s/%s.gltf" % [dir, stem])
+		if packed == null:
+			_refresh_regions()
+			return false
+		var part: Node = packed.instantiate()
+		var nodes: Array = []
+		for mi in _skinned_meshes(part):
+			var worn: MeshInstance3D = mi.duplicate() as MeshInstance3D
+			worn.name = "Part_%s_%s" % [slot, worn.name]
+			_skel.add_child(worn)
+			nodes.append(worn)
+		part.free()
+		_equipped[slot] = {"stem": stem, "nodes": nodes}
+	_refresh_regions()
+	return true
+
+
+func equipped(slot: String) -> String:
+	return String(_equipped.get(slot, {}).get("stem", ""))
+
+
+# Hide base regions covered by occupied slots; bare regions show base skin.
+func _refresh_regions() -> void:
+	var hidden: Array = []
+	for slot in _equipped:
+		hidden.append_array(SLOT_COVERS.get(slot, []))
+	for region in _region_meshes:
+		(_region_meshes[region] as MeshInstance3D).visible = not hidden.has(region)
+
+
+# ------------------------------ rigid gear -----------------------------------
+
+# Rifle in the right hand (aimed) or slung via Chest mount (stowed).
+func set_rifle(carried: bool, aimed: bool = false) -> void:
+	for mount_name in ["RifleHand", "RifleBack"]:
+		var old: Node = _skel.get_node_or_null(mount_name)
+		if old != null:
+			old.name = mount_name + "_retired"
+			old.queue_free()
+	if not carried:
+		return
+	var mount: BoneAttachment3D = BoneAttachment3D.new()
+	mount.name = "RifleHand" if aimed else "RifleBack"
+	_skel.add_child(mount)
+	mount.bone_name = "RightHand" if aimed else "Chest"
+	var rifle: Node3D = FactoryRef.build_rifle()
+	if aimed:
+		rifle.position = Vector3(0.0, 0.08, -0.02)
+		# Rx(-90): barrel (-Z gear frame) along +Y fingers; +90 was backwards.
+		rifle.rotation = Vector3(-1.57, 0.0, 0.0)
+	else:
+		rifle.position = Vector3(-0.04, 0.10, -0.18)
+		rifle.rotation = Vector3(-1.25, 0.0, 0.85)
+	mount.add_child(rifle)
+
+
+# ------------------------------- animation -----------------------------------
+
+func play_clip(clip: String, blend: float = 0.3) -> void:
+	if _anim == null:
+		return
+	var full: String = "body/" + clip
+	if _anim.has_animation(full):
+		_anim.play(full, blend)
+
+
+func clip_names() -> PackedStringArray:
+	if _anim != null and _anim.has_animation_library("body"):
+		return _anim.get_animation_library("body").get_animation_list()
+	return PackedStringArray()
+
+
+func skeleton() -> Skeleton3D:
+	return _skel
+
+
+# Available parts for a slot/gender: scans the import folders.
+static func parts_for_slot(slot: String, body_gender: String) -> Array:
+	var out: Array = []
+	var dir_path: String = HAIR_DIR if slot == "Hair" else PARTS_DIR
+	var dir: DirAccess = DirAccess.open(dir_path)
+	if dir == null:
+		return out
+	for f in dir.get_files():
+		if not f.ends_with(".gltf"):
+			continue
+		var stem: String = f.get_basename()
+		if slot == "Hair":
+			out.append(stem)
+			continue
+		var bits: PackedStringArray = stem.split("_")
+		if bits.size() >= 3 and bits[0] == body_gender and bits[2] == slot:
+			out.append(stem)
+	return out
+
+
+# ------------------------------- helpers -------------------------------------
+
+func _skinned_meshes(node: Node) -> Array:
+	var out: Array = []
+	var stack: Array = [node]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is MeshInstance3D and (n as MeshInstance3D).skin != null:
+			out.append(n)
+		for c in n.get_children():
+			stack.append(c)
+	return out
+
+
+func _find_skeleton(node: Node) -> Skeleton3D:
+	var stack: Array = [node]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is Skeleton3D:
+			return n
+		for c in n.get_children():
+			stack.append(c)
+	return null

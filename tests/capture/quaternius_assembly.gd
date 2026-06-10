@@ -1,24 +1,30 @@
 extends SceneTree
 
-# Quaternius modular-outfit experiment: assemble characters IN CODE from the
-# Universal Base + Modular Outfit parts (all BoneMap-retargeted to humanoid
-# names), drive them with OUR shared Mixamo crew_body AnimationLibrary, and
-# mount our rifle on the RightHand bone. Columns:
-#   1. bare base (walk)   2. full Ranger assembled (walk)
-#   3. MIXED Ranger top + Peasant legs (rifle_aim + rifle in hands)
+# ModularCharacter verification: bone-weight body splitting + slot equipment +
+# rifle mounts on the Quaternius packs. Columns:
+#   1. bare base (all body regions visible)
+#   2. FULL Ranger (covered regions hidden — no clip-through "holes")
+#   3. mixed Ranger/Peasant + rifle AIMED in hand (fixed direction)
+#   4. Peasant + hair + rifle slung on back
 # Run NON-headless:
 #   godot --quit-after 900 -s res://tests/capture/quaternius_assembly.gd
 
-const FactoryRef: Script = preload("res://scripts/character_factory.gd")
-const BASE: String = "res://models/quaternius/base/Superhero_Male_FullBody.gltf"
-const PARTS_DIR: String = "res://models/quaternius/parts"
+const ModularScript: Script = preload("res://scripts/modular_character.gd")
 
+# label, clip, phase, slots{}, rifle[carried, aimed]
 const LOOKS: Array = [
-	["bare base", "body/walk", []],
-	["ranger (assembled)", "body/walk",
-		["Male_Ranger_Body", "Male_Ranger_Legs", "Male_Ranger_Feet_Boots", "Male_Ranger_Head_Hood"]],
-	["ranger top + peasant legs", "body/rifle_aim",
-		["Male_Ranger_Body", "Male_Peasant_Legs", "Male_Ranger_Feet_Boots"]],
+	["bare base", "walk", 0.35, {}, [false, false]],
+	["full ranger", "walk", 0.35, {
+		"Body": "Male_Ranger_Body", "Arms": "Male_Ranger_Arms",
+		"Legs": "Male_Ranger_Legs", "Feet": "Male_Ranger_Feet_Boots",
+		"Head": "Male_Ranger_Head_Hood", "Acc": "Male_Ranger_Acc_Pauldron"}, [false, false]],
+	["mixed + rifle aimed", "rifle_aim", 0.40, {
+		"Body": "Male_Ranger_Body", "Arms": "Male_Ranger_Arms",
+		"Legs": "Male_Peasant_Legs", "Feet": "Male_Ranger_Feet_Boots"}, [true, true]],
+	["peasant + hair + slung", "idle", 0.20, {
+		"Body": "Male_Peasant_Body", "Arms": "Male_Peasant_Arms",
+		"Legs": "Male_Peasant_Legs", "Feet": "Male_Peasant_Feet",
+		"Hair": "Hair_Buzzed"}, [true, false]],
 ]
 
 
@@ -27,7 +33,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	root.size = Vector2i(1380, 800)
+	root.size = Vector2i(1500, 800)
 	var world: Node3D = Node3D.new()
 	root.add_child(world)
 	var env: WorldEnvironment = WorldEnvironment.new()
@@ -43,48 +49,25 @@ func _run() -> void:
 	sun.light_energy = 1.1
 	world.add_child(sun)
 
-	var lib: AnimationLibrary = load("res://models/vrm/anim/crew_body.res")
 	for i in range(LOOKS.size()):
 		var look: Array = LOOKS[i]
-		var inst: Node3D = (load(BASE) as PackedScene).instantiate()
-		inst.position = Vector3(i * 1.5 - 1.5, 0.0, 0.0)
-		inst.rotation.y = 0.35
-		world.add_child(inst)
-		var skel: Skeleton3D = inst.get_node_or_null("%GeneralSkeleton")
-		if skel == null:
-			skel = _find_skeleton(inst)
-		# Assemble outfit parts onto the base skeleton (binds match by name).
-		for part_name in look[2]:
-			var part_scene: PackedScene = load("%s/%s.gltf" % [PARTS_DIR, part_name])
-			if part_scene == null:
-				print("[asm] missing part %s" % part_name)
-				continue
-			var part: Node = part_scene.instantiate()
-			for mi in _skinned_meshes(part):
-				var worn: MeshInstance3D = mi.duplicate() as MeshInstance3D
-				skel.add_child(worn)
-			part.free()
-		# Drive with OUR Mixamo library via a fresh AnimationPlayer.
-		var ap: AnimationPlayer = AnimationPlayer.new()
-		inst.add_child(ap)
-		ap.root_node = ap.get_path_to(inst)
-		ap.add_animation_library("body", lib)
-		if ap.has_animation(look[1]):
-			ap.play(look[1])
-			ap.seek(ap.current_animation_length * 0.35, true)
+		var c: Node3D = ModularScript.create("Male")
+		c.position = Vector3(i * 1.45 - 2.2, 0.0, 0.0)
+		c.rotation.y = 0.35
+		world.add_child(c)
+		for slot in look[3]:
+			c.call("set_slot", slot, look[3][slot])
+		c.call("set_rifle", look[4][0], look[4][1])
+		c.call("play_clip", look[1], 0.0)
+		var ap: AnimationPlayer = c.get_node_or_null("Superhero_Male_FullBody/AnimationPlayer")
+		if ap == null:
+			ap = _find_anim(c)
+		if ap != null and ap.current_animation != "":
+			ap.seek(ap.current_animation_length * float(look[2]), true)
 			ap.pause()
-		# Our rifle in his hands for the aim column.
-		if String(look[1]).contains("aim") and skel != null:
-			var mount: BoneAttachment3D = BoneAttachment3D.new()
-			skel.add_child(mount)
-			mount.bone_name = "RightHand"
-			var rifle: Node3D = FactoryRef.build_rifle()
-			rifle.position = Vector3(0.0, 0.08, -0.02)
-			rifle.rotation = Vector3(1.57, 0.0, 0.0)
-			mount.add_child(rifle)
 		var tag: Label3D = Label3D.new()
 		tag.text = look[0]
-		tag.position = Vector3(inst.position.x, 2.05, 0.0)
+		tag.position = Vector3(c.position.x, 2.05, 0.0)
 		tag.pixel_size = 0.0032
 		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		tag.outline_size = 8
@@ -93,7 +76,7 @@ func _run() -> void:
 	var cam: Camera3D = Camera3D.new()
 	cam.fov = 45.0
 	world.add_child(cam)
-	cam.position = Vector3(0.0, 1.2, 4.6)
+	cam.position = Vector3(0.0, 1.2, 5.2)
 	cam.look_at(Vector3(0.0, 1.0, 0.0), Vector3.UP)
 	cam.current = true
 
@@ -106,23 +89,11 @@ func _run() -> void:
 	quit()
 
 
-func _skinned_meshes(node: Node) -> Array:
-	var out: Array = []
+func _find_anim(node: Node) -> AnimationPlayer:
 	var stack: Array = [node]
 	while not stack.is_empty():
 		var n: Node = stack.pop_back()
-		if n is MeshInstance3D and (n as MeshInstance3D).skin != null:
-			out.append(n)
-		for c in n.get_children():
-			stack.append(c)
-	return out
-
-
-func _find_skeleton(node: Node) -> Skeleton3D:
-	var stack: Array = [node]
-	while not stack.is_empty():
-		var n: Node = stack.pop_back()
-		if n is Skeleton3D:
+		if n is AnimationPlayer:
 			return n
 		for c in n.get_children():
 			stack.append(c)

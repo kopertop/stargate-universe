@@ -39,7 +39,46 @@ Or open the editor: `godot -e --path .` and press **F5**.
 - **Arrow keys** — camera orbit (fallback)
 - **Esc** — release mouse / quit
 
-## VRM Lab (VRoid characters — primary pipeline)
+## Character Builder (Quaternius modular — PRIMARY pipeline)
+
+The hero character direction: **Quaternius Universal Base Characters + Modular
+Character Outfits** (CC0, glTF) — true WoW-style slot equipment, assembled and
+hot-swapped entirely in code. Launch the builder:
+
+```sh
+godot --path . scenes/quaternius_lab.tscn
+```
+
+Male/Female base picker; per-slot dropdowns (Body / Arms / Legs / Feet / Head /
+Acc / Hair); rifle with aimed-in-hand vs slung-on-back; the shared Mixamo crew
+animation library; turntable.
+
+### How it works (`scripts/modular_character.gd`)
+
+- Packs import with a **UE-mannequin→Humanoid BoneMap**
+  (`tools/gen_mixamo_imports.py --profile ue --skelpath Armature/Skeleton3D`),
+  so every body, outfit part, and hairstyle lands on `%GeneralSkeleton` with
+  humanoid bone names — the same ecosystem as the Mixamo animation library
+  and the VRM cast.
+- **Outfit parts REPLACE body regions** (per the pack README, the full body
+  clips through clothing). The pack ships no split body, so ModularCharacter
+  splits the FullBody mesh **at load by bone weights** into five region
+  meshes (head/torso/arms/legs/feet) and hides regions covered by equipped
+  slots — bare base, full outfits, and mixed outfits all render without
+  clip-through.
+- API: `ModularCharacter.create("Male")`, `set_slot("Body",
+  "Male_Ranger_Body")`, `set_slot("Legs", "")` (restores base region),
+  `set_rifle(true, aimed)`, `play_clip("walk")`,
+  `ModularCharacter.parts_for_slot(slot, gender)`.
+- **Adding outfits**: drop part GLTFs in `models/quaternius/parts/`
+  (`<Gender>_<Outfit>_<Slot>[_Variant]` naming), run the BoneMap tool +
+  `--import`. The free tier has Peasant + Ranger; the other 10 outfits are
+  Quaternius Patreon rewards. Sci-fi/military outfits: commission, Patreon
+  packs, or author parts on the same rig in Blender.
+- Tests: `tests/run.sh modular` (25 asserts); visual proof
+  `tests/capture/quaternius_assembly.gd`.
+
+## VRM Lab (VRoid characters — secondary)
 
 The crew's hero pipeline is **VRoid/VRM**: full anime-grade characters authored in VRoid
 Studio with facial expressions, finger bones, spring-bone hair physics, and retargeted

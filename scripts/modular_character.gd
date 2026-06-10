@@ -43,8 +43,15 @@ const REGION_BONES: Dictionary = {
 	"feet": ["LeftFoot", "LeftToes", "RightFoot", "RightToes"],
 }
 
+# Clothing inflation: garment vertices pushed along their normals so gear
+# sits proud of the (muscular) base body instead of skin-tight — kills
+# poke-through at region boundaries and animation extremes.
+const CLOTH_INFLATE: float = 0.008
+
 # gender -> {region -> ArrayMesh} (split once, shared by every instance).
 static var _region_cache: Dictionary = {}
+# part stem -> inflated ArrayMesh (built once, shared).
+static var _inflated_cache: Dictionary = {}
 
 var gender: String = "Male"
 
@@ -190,6 +197,8 @@ func set_slot(slot: String, stem: String) -> bool:
 		for mi in _skinned_meshes(part):
 			var worn: MeshInstance3D = mi.duplicate() as MeshInstance3D
 			worn.name = "Part_%s_%s" % [slot, worn.name]
+			if slot != "Hair":
+				worn.mesh = _inflated("%s|%s" % [stem, worn.name], worn.mesh)
 			_skel.add_child(worn)
 			nodes.append(worn)
 		part.free()
@@ -211,6 +220,26 @@ func _refresh_regions() -> void:
 		(_region_meshes[region] as MeshInstance3D).visible = not hidden.has(region)
 
 
+# Push every vertex along its normal so the garment sits slightly off the
+# body (skinning arrays untouched — only ARRAY_VERTEX changes).
+static func _inflated(cache_key: String, mesh: Mesh) -> ArrayMesh:
+	if _inflated_cache.has(cache_key):
+		return _inflated_cache[cache_key]
+	var out: ArrayMesh = ArrayMesh.new()
+	for s in range(mesh.get_surface_count()):
+		var arrays: Array = (mesh as ArrayMesh).surface_get_arrays(s)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+		if normals.size() == verts.size():
+			for i in range(verts.size()):
+				verts[i] += normals[i] * CLOTH_INFLATE
+			arrays[Mesh.ARRAY_VERTEX] = verts
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		out.surface_set_material(out.get_surface_count() - 1, mesh.surface_get_material(s))
+	_inflated_cache[cache_key] = out
+	return out
+
+
 # ------------------------------ rigid gear -----------------------------------
 
 # Rifle in the right hand (aimed) or slung via Chest mount (stowed).
@@ -228,15 +257,16 @@ func set_rifle(carried: bool, aimed: bool = false) -> void:
 	mount.bone_name = "RightHand" if aimed else "Chest"
 	var rifle: Node3D = FactoryRef.build_rifle()
 	if aimed:
-		rifle.position = Vector3(0.0, 0.08, -0.02)
 		# Hand-bone axes are rig-specific; tuned via rifle_grip_tune capture:
-		# Rx(-90) alone = sideways across the grip, +Ry(90) = on the aim line
-		# but inverted, +Rz(180) = scope up. Don't reason about axes — render
-		# the candidate grid.
+		# Rx(-90) alone = sideways, +Ry(90) = on the aim line but inverted,
+		# +Rz(180) = scope up; z+0.07 centers the receiver on the hands.
+		# Don't reason about axes — render the candidate grid.
+		rifle.position = Vector3(0.0, 0.08, 0.07)
 		rifle.rotation = Vector3(-1.57, 1.57, 3.14)
 	else:
+		# Slung diagonally across the back, barrel toward the ground.
 		rifle.position = Vector3(-0.04, 0.10, -0.18)
-		rifle.rotation = Vector3(-1.25, 0.0, 0.85)
+		rifle.rotation = Vector3(1.25, 0.0, 0.85)
 	mount.add_child(rifle)
 
 

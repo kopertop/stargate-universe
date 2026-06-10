@@ -49,6 +49,10 @@ ProceduralShip="*res://scripts/procedural_ship.gd"
 RepairRobot="*res://scripts/repair_robot.gd"
 KinoMapCapture="*res://scripts/kino_map_capture.gd"
 
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/vrm/plugin.cfg")
+
 [display]
 
 window/size/viewport_width=1280

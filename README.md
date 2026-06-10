@@ -39,7 +39,50 @@ Or open the editor: `godot -e --path .` and press **F5**.
 - **Arrow keys** — camera orbit (fallback)
 - **Esc** — release mouse / quit
 
-## Character Lab
+## VRM Lab (VRoid characters — primary pipeline)
+
+The crew's hero pipeline is **VRoid/VRM**: full anime-grade characters authored in VRoid
+Studio with facial expressions, finger bones, spring-bone hair physics, and retargeted
+humanoid animations. Launch the studio:
+
+```sh
+godot --path . scenes/vrm_lab.tscn
+```
+
+Live controls: character picker, body animation dropdown (retargeted Mixamo clips),
+emotion buttons + weight (happy/angry/sad/relaxed/surprised), visemes for lip-sync
+preview (aa/ih/ou/ee/oh), auto/manual blink, gaze sliders, gear toggles with Aim
+routing (rifle: back ↔ right hand; sidearm: hip ↔ hand), turntable.
+
+### How the VRM pipeline works
+
+- **Import**: `addons/vrm` (godot-vrm) + `addons/Godot-MToon-Shader`. A `.vrm` dropped in
+  `models/vrm/` imports as: `%GeneralSkeleton` (humanoid-profile bone names incl. full
+  finger chains), an AnimationPlayer of VRM expression clips, MToon materials, and a
+  spring-bone `secondary` (hair/cloth sway runs automatically).
+- **Animations**: Mixamo FBX clips in `models/vrm/anim_src/` import with a
+  Mixamo→Humanoid `BoneMap` (`tools/gen_mixamo_imports.py` splices it into each
+  `.import`), which rewrites every track to `%GeneralSkeleton:<HumanoidBone>` — the same
+  addressing as the VRM skeletons. `tools/extract_anim_library.gd` collects them into the
+  shared `models/vrm/anim/crew_body.res` (15 clips: idle/walk/run, emotional idles,
+  gestures, the full rifle set, death). One library animates every VRM character.
+  To add a clip: download FBX (without skin is fine) from Mixamo → drop in `anim_src/` →
+  run the two tools → add to the manifest in `extract_anim_library.gd`.
+- **Runtime**: `scripts/vrm_character.gd` (`VrmCharacter.create(path)`) — body animation
+  API (`play_clip("walk")`), simultaneous expression channels (emotion + viseme + blink +
+  gaze mixed per frame from the imported expression clips), auto-blink, and bone-snapped
+  gear (helmet→Head, rifle→Chest back-sling or RightHand when aimed, sidearm→Hips).
+- **Models**: `models/vrm/eli.vrm`, `models/vrm/scott.vrm` (authored in VRoid Studio —
+  sources in `~/Documents/VRM/*.vroid`). Export more crew from VRoid Studio and drop the
+  `.vrm` here; everything (expressions, animations, gear) works automatically because the
+  pipeline only depends on the standard VRM humanoid rig.
+- **Tests**: `tests/run.sh vrm` (38 asserts) and captures `vrm_lineup.gd`,
+  `vrm_motion.gd`, `vrm_showcase.gd`, `vrm_gear_debug.gd` (mount tuning).
+
+Known gaps: `.vrma` (VRM Animation) import is a stub in godot-vrm — use the Mixamo
+pipeline instead; `Rush.vroid` exists but needs a `.vrm` export from VRoid Studio.
+
+## Character Lab (Kenney minis — secondary/legacy)
 
 A standalone VRoid-style character editor / test bench for the crew generation system.
 Launch it without touching game state:

@@ -180,13 +180,18 @@ const OUTFITS: Dictionary = {
 # camo + rifle + sidearm off-ship. Civilians: their own clothes on the ship,
 # unarmed fatigues on missions.
 # ---------------------------------------------------------------------------
+# Characters with a "vrm" key have a full VRoid body (models/vrm/) — the
+# VrmCharacter pipeline (expressions, retargeted animations, bone-snapped
+# gear). The mini "model" stays as the in-world fallback until spawn sites
+# migrate. Export more crew from VRoid Studio (~/Documents/VRM/*.vroid) to
+# extend the roster.
 const PROFILES: Dictionary = {
-	"Eli": {"model": "eli", "ship": "civvies", "mission": "fatigues", "military": false},
+	"Eli": {"model": "eli", "vrm": "res://models/vrm/eli.vrm", "ship": "civvies", "mission": "fatigues", "military": false},
 	"Dr Rush": {"model": "rush", "ship": "civvies", "mission": "fatigues", "military": false},
 	"Dr Park": {"model": "park", "ship": "civvies", "mission": "fatigues", "military": false},
 	"Dr James": {"model": "james", "ship": "civvies", "mission": "fatigues", "military": false},
 	"Chloe Armstrong": {"model": "chloe", "ship": "civvies", "mission": "fatigues", "military": false},
-	"Lt Scott": {"model": "scott", "ship": "duty_black", "mission": "combat", "military": true},
+	"Lt Scott": {"model": "scott", "vrm": "res://models/vrm/scott.vrm", "ship": "duty_black", "mission": "combat", "military": true},
 	# Greer's skin/hair recolors bake into every outfit (the old away-team
 	# hack tinted Scott's whole body brown; this is the parameterized version).
 	"Sgt Greer": {

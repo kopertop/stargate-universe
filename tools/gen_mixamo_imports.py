@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
-"""Splice a Mixamo->SkeletonProfileHumanoid BoneMap into Godot .import files.
+"""Splice a SkeletonProfileHumanoid BoneMap into Godot .import files.
 
 Godot's scene importer applies `retarget/bone_map` at import time: bones get
 renamed to humanoid names (Hips, Spine, RightHand...), the skeleton becomes
 %GeneralSkeleton, and every animation track is rewritten to match — which is
 exactly the naming the godot-vrm importer gives our VRM characters. After this
-runs (+ `godot --headless --import`), Mixamo clips play directly on any VRM.
+runs (+ `godot --headless --import`), the rigs join the shared humanoid
+ecosystem: animations and skinned gear interchange by bone name.
 
-Usage: python3 tools/gen_mixamo_imports.py models/vrm/anim_src/*.fbx.import
+Profiles: mixamo (mixamorig_*) and ue (Unreal-mannequin-style names, used by
+Quaternius Universal Base Characters / Modular Outfits).
+
+Usage:
+  python3 tools/gen_mixamo_imports.py models/vrm/anim_src/*.fbx.import
+  python3 tools/gen_mixamo_imports.py --profile ue --skelpath Armature/Skeleton3D \\
+      models/quaternius/**/*.gltf.import
 """
 import sys
 
@@ -50,6 +57,43 @@ for k, v in list(MIXAMO.items()):
 	if k.startswith("Left"):
 		MIXAMO["Right" + k[4:]] = v.replace("Left", "Right")
 
+# Unreal-mannequin-style naming (Quaternius Universal Base / Modular Outfits).
+UE = {
+	"Root": "root",
+	"Hips": "pelvis",
+	"Spine": "spine_01",
+	"Chest": "spine_02",
+	"UpperChest": "spine_03",
+	"Neck": "neck_01",
+	"Head": "Head",
+	"LeftShoulder": "clavicle_l",
+	"LeftUpperArm": "upperarm_l",
+	"LeftLowerArm": "lowerarm_l",
+	"LeftHand": "hand_l",
+	"LeftThumbMetacarpal": "thumb_01_l",
+	"LeftThumbProximal": "thumb_02_l",
+	"LeftThumbDistal": "thumb_03_l",
+	"LeftIndexProximal": "index_01_l",
+	"LeftIndexIntermediate": "index_02_l",
+	"LeftIndexDistal": "index_03_l",
+	"LeftMiddleProximal": "middle_01_l",
+	"LeftMiddleIntermediate": "middle_02_l",
+	"LeftMiddleDistal": "middle_03_l",
+	"LeftRingProximal": "ring_01_l",
+	"LeftRingIntermediate": "ring_02_l",
+	"LeftRingDistal": "ring_03_l",
+	"LeftLittleProximal": "pinky_01_l",
+	"LeftLittleIntermediate": "pinky_02_l",
+	"LeftLittleDistal": "pinky_03_l",
+	"LeftUpperLeg": "thigh_l",
+	"LeftLowerLeg": "calf_l",
+	"LeftFoot": "foot_l",
+	"LeftToes": "ball_l",
+}
+for k, v in list(UE.items()):
+	if k.startswith("Left"):
+		UE["Right" + k[4:]] = v[:-2] + "_r" if v.endswith("_l") else v
+
 PROFILE_ORDER = [
 	"Root", "Hips", "Spine", "Chest", "UpperChest", "Neck", "Head", "LeftEye",
 	"RightEye", "Jaw", "LeftShoulder", "LeftUpperArm", "LeftLowerArm",
@@ -69,9 +113,9 @@ PROFILE_ORDER = [
 ]
 
 
-def bone_map_blob() -> str:
+def bone_map_blob(mapping: dict) -> str:
 	entries = ",".join(
-		'"bone_map/%s":&"%s"' % (b, MIXAMO.get(b, "")) for b in PROFILE_ORDER
+		'"bone_map/%s":&"%s"' % (b, mapping.get(b, "")) for b in PROFILE_ORDER
 	)
 	profile = (
 		'Object(SkeletonProfileHumanoid,"resource_local_to_scene":false,'
@@ -84,27 +128,29 @@ def bone_map_blob() -> str:
 	)
 
 
-SUBRESOURCES = (
-	"_subresources={\n"
-	'"nodes": {\n'
-	'"PATH:Skeleton3D": {\n'
-	'"retarget/bone_map": %s'
-	"}\n"
-	"}\n"
-	"}\n" % bone_map_blob()
-)
+def subresources(mapping: dict, skelpath: str) -> str:
+	return (
+		"_subresources={\n"
+		'"nodes": {\n'
+		'"PATH:%s": {\n'
+		'"retarget/bone_map": %s'
+		"}\n"
+		"}\n"
+		"}\n" % (skelpath, bone_map_blob(mapping))
+	)
 
 
-def splice(path: str) -> None:
+def splice(path: str, mapping: dict, skelpath: str) -> None:
 	with open(path) as f:
 		raw = f.read()
 	if "retarget/bone_map" in raw:
 		print("skip (already mapped):", path)
 		return
+	blob = subresources(mapping, skelpath)
 	if "_subresources={}" in raw:
-		raw = raw.replace("_subresources={}", SUBRESOURCES)
+		raw = raw.replace("_subresources={}", blob)
 	elif "_subresources=" not in raw:
-		raw = raw.rstrip() + "\n" + SUBRESOURCES
+		raw = raw.rstrip() + "\n" + blob
 	else:
 		print("WARN: non-empty _subresources, skipping:", path)
 		return
@@ -114,5 +160,15 @@ def splice(path: str) -> None:
 
 
 if __name__ == "__main__":
-	for p in sys.argv[1:]:
-		splice(p)
+	args = sys.argv[1:]
+	mapping, skelpath = MIXAMO, "Skeleton3D"
+	if "--profile" in args:
+		i = args.index("--profile")
+		mapping = {"mixamo": MIXAMO, "ue": UE}[args[i + 1]]
+		del args[i:i + 2]
+	if "--skelpath" in args:
+		i = args.index("--skelpath")
+		skelpath = args[i + 1]
+		del args[i:i + 2]
+	for p in args:
+		splice(p, mapping, skelpath)

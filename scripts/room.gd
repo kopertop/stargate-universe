@@ -38,7 +38,7 @@ const BridgeConsoleScript: Script = preload("res://scripts/bridge_console.gd")
 const RepairConsoleScript: Script = preload("res://scripts/repair_console.gd")
 # Single source of truth for crew appearance (base model + military fatigues +
 # sidearm). Keeps a character looking the same in every room.
-const CharacterStyleRef: Script = preload("res://scripts/character_style.gd")
+const CharacterFactoryRef: Script = preload("res://scripts/character_factory.gd")
 # Ancient/Lantean glyph cipher + font for in-room console signage. Procedural
 # console labels (door-control panel, power console) render in Ancient glyphs
 # while the room is un-deciphered — so a Kino scouting the room sees the
@@ -1084,14 +1084,14 @@ func _standoff_reposition(npc: Node3D, _tree: Array) -> void:
 	_standoff_scott.rotation.y = face
 
 
-# A silent standoff actor: a normal NPC (so it inherits the shared CharacterStyle
-# military dress — fatigues + sidearm) PLUS a standoff-only combat helmet and the
+# A silent standoff actor: a normal NPC (so it inherits the CharacterFactory
+# ship dress — duty blacks + sidearm) PLUS a standoff-only combat helmet and the
 # silent-actor flags (non-interactable, off the interact layer, ALWAYS process so
 # it keeps moving while the open dialog has the tree paused).
 func _spawn_standoff_soldier(npc_name: String, char_name: String, pos: Vector3, yaw: float) -> StaticBody3D:
 	var body: StaticBody3D = _spawn_npc(npc_name, char_name, pos, yaw,
-		CharacterStyleRef.model_for(char_name, "res://models/characters/scott.glb"), [])
-	body.add_child(CharacterStyleRef.build_helmet())   # standoff-only kit
+		CharacterFactoryRef.model_for(char_name, "res://models/characters/scott.glb"), [])
+	CharacterFactoryRef.add_gear(body, "helmet")   # standoff-only kit
 	body.process_mode = Node.PROCESS_MODE_ALWAYS
 	body.set("enabled", false)
 	body.collision_layer = 0
@@ -1300,18 +1300,15 @@ func _spawn_npc(
 	# Resolve the base model from the central registry (the per-site glb_path is a
 	# fallback for characters not registered there) so a character looks the same
 	# everywhere and the model is tweakable in one place.
-	var glb: PackedScene = load(CharacterStyleRef.model_for(character_name, glb_path))
+	var glb: PackedScene = load(CharacterFactoryRef.model_for(character_name, glb_path))
 	if glb != null:
 		var inst: Node = glb.instantiate()
 		model_holder.add_child(inst)
-		var colormap: Texture2D = load("res://models/characters/Textures/colormap.png")
-		Npc.apply_kenney_colormap(inst, colormap)
 		Npc.play_idle_animation(inst)
 	body.add_child(model_holder)
-	# Military crew (Greer, Scott) get olive fatigues + a holstered sidearm
-	# wherever they spawn — consistent across the whole ship.
-	if CharacterStyleRef.is_military(character_name):
-		CharacterStyleRef.dress_military(body, model_holder)
+	# Ship dress code from the central registry: military crew in duty blacks
+	# with a sidearm, civilians in their own clothes — consistent everywhere.
+	CharacterFactoryRef.dress(body, model_holder, character_name, CharacterFactoryRef.CTX_SHIP)
 
 	var tag: Label3D = Label3D.new()
 	tag.name = "Nametag"

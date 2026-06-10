@@ -14,12 +14,9 @@ extends Node3D
 # Preloaded (not class_name) so this script never depends on another global
 # class being registered first in a headless load — same reason we avoid
 # referencing our own class_name in a factory.
-const NpcScript: Script = preload("res://scripts/npc.gd")
-# Shared crew-appearance source of truth (military fatigues + sidearm) so an
-# away-team Greer/Scott matches their ship-side selves.
-const CharacterStyleRef: Script = preload("res://scripts/character_style.gd")
-
-const COLORMAP_PATH: String = "res://models/characters/Textures/colormap.png"
+# Shared crew-appearance source of truth (base models, mission fatigues, gear,
+# Greer's skin tone) so an away-team member matches their ship-side self.
+const CharacterFactoryRef: Script = preload("res://scripts/character_factory.gd")
 const GROUND_MASK: int = 1          # terrain collides on layer 1
 const FOLLOW_DIST: float = 3.2      # idle leash distance from the player
 const MOVE_SPEED: float = 3.6
@@ -75,23 +72,22 @@ func _build_body(display_name: String, glb_path: String, tint: Color = Color.WHI
 	_model.scale = Vector3(2.2, 2.2, 2.2)
 	_model.rotation.y = PI   # Kenney mini-chars export +Z forward; flip to -Z
 	add_child(_model)
-	var glb: PackedScene = load(glb_path) as PackedScene if ResourceLoader.exists(glb_path) else null
+	# Registered crew resolve their base model centrally; glb_path is only a
+	# fallback for characters the factory doesn't know.
+	var resolved: String = CharacterFactoryRef.model_for(display_name, glb_path)
+	var glb: PackedScene = load(resolved) as PackedScene if ResourceLoader.exists(resolved) else null
 	if glb != null:
 		var inst: Node = glb.instantiate()
 		_model.add_child(inst)
-		var colormap: Texture2D = load(COLORMAP_PATH) as Texture2D
-		NpcScript.apply_kenney_colormap(inst, colormap)
-		if tint != Color.WHITE:
-			# Re-tint the just-applied colormap material per-instance — the atlas
-			# colour × tint shifts the (peach) skin column toward brown without
-			# touching the GLB itself, so Greer can share Scott's body model and
-			# still read as a different character.
-			_apply_tint(inst, tint)
 		_anim = _find_anim(inst)
 		_play_clip("idle")
-	# Military away-team members carry the same fatigues + sidearm as on the ship.
-	if CharacterStyleRef.is_military(display_name):
-		CharacterStyleRef.dress_military(self, _model)
+	# Off-ship dress code: fatigues for everyone, rifle + sidearm for military,
+	# Greer's skin tone baked in. Replaces the old colormap+tint pipeline.
+	CharacterFactoryRef.dress(self, _model, display_name, CharacterFactoryRef.CTX_MISSION, 2.2)
+	if tint != Color.WHITE:
+		# Legacy per-instance tint for unregistered characters (multiplies over
+		# the dressed material).
+		_apply_tint(_model, tint)
 	var tag: Label3D = Label3D.new()
 	tag.text = display_name
 	tag.pixel_size = 0.0042

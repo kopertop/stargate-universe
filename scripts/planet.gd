@@ -115,25 +115,22 @@ func _refresh_lime_objective() -> void:
 
 # Greer, Park and Scott followed Eli through the gate. They follow him on the
 # surface and fan out to mine lime, then rush back through the gate when the
-# departure timer fires (group "away_team"). Greer reuses Scott's GLB (Kenney
-# `character-male-d`, beret + uniform — the most military-looking of the six
-# Mini-Characters males) with a warm-brown tint applied per-instance, so on
-# screen the away team reads as two same-silhouette soldiers with different
-# skin tones (none of the Kenney mini-chars ship with a darker-skin variant).
+# departure timer fires (group "away_team"). Appearance (base model, mission
+# fatigues, Greer's skin tone, rifles for military) comes from
+# CharacterFactory — companions dress for CTX_MISSION in _build_body.
 #
 # On arrival Scott splits the team: Greer (north, -Z) follows + mines with the
 # player; Scott + Park (south, +Z) peel off and hold position. "north"=-Z per
 # project convention (planet.gd coordinate frame). Both teams are still members
 # of group "away_team" so the departure muster (planet_timer.gd rush_to()) and
 # compass HUD behave identically. Issue #137.
-const SCOTT_GLB: String = "res://models/characters/scott.glb"
-const GREER_TINT: Color = Color(0.66, 0.50, 0.38)   # warm brown — skin reads as brown, uniform as olive-drab
 func _spawn_away_team(near: Vector3) -> void:
 	# team attribute: "north" = -Z (follows + mines), "south" = +Z (peeled off).
+	# glb is a fallback only — the factory resolves registered crew models.
 	var roster: Array = [
-		{"name": "Greer",    "glb": SCOTT_GLB,                              "tint": GREER_TINT,   "team": "north"},
-		{"name": "Park",     "glb": "res://models/characters/park.glb",     "tint": Color.WHITE,  "team": "south"},
-		{"name": "Lt Scott", "glb": SCOTT_GLB,                              "tint": Color.WHITE,  "team": "south"},
+		{"name": "Greer",    "glb": "res://models/characters/greer.glb", "team": "north"},
+		{"name": "Park",     "glb": "res://models/characters/park.glb",  "team": "south"},
+		{"name": "Lt Scott", "glb": "res://models/characters/scott.glb", "team": "south"},
 	]
 	var north_idx: int = 0   # X spread within each team
 	var south_idx: int = 0
@@ -156,7 +153,7 @@ func _spawn_away_team(near: Vector3) -> void:
 		c.set("peeled_off", is_south)
 		add_child(c)
 		c.global_position = at
-		c.call("setup", String(entry["name"]), String(entry["glb"]), i, entry["tint"])
+		c.call("setup", String(entry["name"]), String(entry["glb"]), i)
 	# Radio report: Scott's south team found lime on their ridge. Log only —
 	# must NOT call add_resource (would skew the mine_lime count and potentially
 	# auto-advance the quest step). Live play only (whole block is inside the

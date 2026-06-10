@@ -22,8 +22,8 @@ const PLANET_GATE_SCRIPT: Script = preload("res://scripts/planet_gate.gd")
 const QuestWaypointScript: Script = preload("res://scripts/quest_waypoint.gd")
 const CompanionScript: Script = preload("res://scripts/companion.gd")
 const KinoDroneScript: Script = preload("res://scripts/kino_drone.gd")
-# Shared crew-appearance source of truth (military fatigues + sidearm).
-const CharacterStyleRef: Script = preload("res://scripts/character_style.gd")
+# Shared crew-appearance source of truth (base models, outfits per context, gear).
+const CharacterFactoryRef: Script = preload("res://scripts/character_factory.gd")
 # Preload bypasses class_name registration timing — same reason as room.gd.
 const ShipAlertScript: Script = preload("res://scripts/ship_alert.gd")
 const DOOR_SCENE: PackedScene = preload("res://objects/door.tscn")
@@ -418,14 +418,13 @@ func _assemble_away_team_at_gate() -> void:
 	var gate_z: float = room_size.y * 0.5 - 3.8
 	var line_z: float = gate_z - 2.4         # ≈ +9.8 — a couple metres south of the event horizon
 	var line_y: float = 1.05
-	const SCOTT_GLB: String = "res://models/characters/scott.glb"
-	const GREER_TINT: Color = Color(0.66, 0.50, 0.38)
 	# Roster order matches the planet-side spawn (Greer left, Park centre,
-	# Scott right) and the cutscene's group "away_team" muster.
+	# Scott right) and the cutscene's group "away_team" muster. Appearance
+	# (models, fatigues, Greer's skin tone) comes from CharacterFactory.
 	var roster: Array = [
-		{"name": "Greer", "glb": SCOTT_GLB, "tint": GREER_TINT, "x": -1.6},
-		{"name": "Park", "glb": "res://models/characters/park.glb", "tint": Color.WHITE, "x": 0.0},
-		{"name": "Lt Scott", "glb": SCOTT_GLB, "tint": Color.WHITE, "x": 1.6},
+		{"name": "Greer", "glb": "res://models/characters/greer.glb", "x": -1.6},
+		{"name": "Park", "glb": "res://models/characters/park.glb", "x": 0.0},
+		{"name": "Lt Scott", "glb": "res://models/characters/scott.glb", "x": 1.6},
 	]
 	for i in roster.size():
 		var entry: Dictionary = roster[i]
@@ -435,7 +434,7 @@ func _assemble_away_team_at_gate() -> void:
 		_world.add_child(c)
 		c.position = Vector3(float(entry["x"]), line_y, line_z)
 		c.rotation.y = 0.0    # model holder is internally flipped 180° → visible front faces +Z (the gate)
-		c.call("setup", String(entry["name"]), String(entry["glb"]), i, entry["tint"])
+		c.call("setup", String(entry["name"]), String(entry["glb"]), i)
 		_gate_team.append(c)
 	# Lock the player out of the gate until the team has walked through.
 	_gate_player_locked = true
@@ -487,19 +486,18 @@ func _spawn_returned_away_team() -> void:
 	for child in _world.get_children():
 		if String(child.name).begins_with("ReturnTeam_"):
 			return
-	const SCOTT_GLB: String = "res://models/characters/scott.glb"
-	const GREER_TINT: Color = Color(0.66, 0.50, 0.38)
 	# Spawn line: on the dais top (y=1.05) a couple metres south of the event
 	# horizon, mirroring the departure muster. Home line: down on the main floor
 	# (y=0.05), gate-side of the FromPlanet landing so the player lands behind
 	# them and watches them spread out. Slight per-member X spread at each end.
+	# Appearance comes from CharacterFactory (glb is fallback-only).
 	var gate_z: float = room_size.y * 0.5 - 3.8
 	var spawn_z: float = gate_z - 2.4               # ≈ +9.8 on the dais
 	var home_z: float = room_size.y * 0.5 - 10.5    # ≈ +5.5 on the main floor
 	var roster: Array = [
-		{"name": "Greer", "glb": SCOTT_GLB, "tint": GREER_TINT, "x": -2.4, "kind": "greer"},
+		{"name": "Greer", "glb": "res://models/characters/greer.glb", "tint": Color.WHITE, "x": -2.4, "kind": "greer"},
 		{"name": "Park", "glb": "res://models/characters/park.glb", "tint": Color.WHITE, "x": 0.0, "kind": "park"},
-		{"name": "Lt Scott", "glb": SCOTT_GLB, "tint": Color.WHITE, "x": 2.4, "kind": "scott"},
+		{"name": "Lt Scott", "glb": "res://models/characters/scott.glb", "tint": Color.WHITE, "x": 2.4, "kind": "scott"},
 	]
 	for i in roster.size():
 		var entry: Dictionary = roster[i]
@@ -566,18 +564,17 @@ func _build_returned_crew_npc(display_name: String, kind: String, glb_path: Stri
 	model_holder.name = "Model"
 	model_holder.scale = Vector3(2.6, 2.6, 2.6)
 	model_holder.rotation.y = PI
-	var glb: PackedScene = load(glb_path)
+	var glb: PackedScene = load(CharacterFactoryRef.model_for(display_name, glb_path))
 	if glb != null:
 		var inst: Node = glb.instantiate()
 		model_holder.add_child(inst)
-		var colormap: Texture2D = load("res://models/characters/Textures/colormap.png")
-		Npc.apply_kenney_colormap(inst, colormap)
-		if tint != Color.WHITE:
-			_tint_kenney_model(inst, tint)
 		Npc.play_idle_animation(inst)
 	body.add_child(model_holder)
-	if CharacterStyleRef.is_military(display_name):
-		CharacterStyleRef.dress_military(body, model_holder)
+	# Back aboard: ship dress code (duty blacks + sidearm for military).
+	CharacterFactoryRef.dress(body, model_holder, display_name, CharacterFactoryRef.CTX_SHIP)
+	if tint != Color.WHITE:
+		# Legacy per-instance tint for unregistered characters.
+		_tint_kenney_model(model_holder, tint)
 
 	var tag: Label3D = Label3D.new()
 	tag.name = "Nametag"
@@ -1381,20 +1378,16 @@ func _build_npcs() -> void:
 	# import preview), so rotate 180° to align with Godot's -Z forward
 	# convention — otherwise Scott walks/auto-greets facing the wrong way.
 	model_holder.rotation.y = PI
-	var scott_glb: PackedScene = load("res://models/characters/scott.glb")
+	var scott_glb: PackedScene = load(CharacterFactoryRef.model_for("Lt Scott"))
 	if scott_glb != null:
 		var scott_model: Node = scott_glb.instantiate()
 		model_holder.add_child(scott_model)
-		# Kenney GLBs reference an external colormap.png that the Godot importer
-		# doesn't bind to the material — without this override Scott renders as
-		# a solid white silhouette. (See feedback-kenney-mini-chars-colormap.)
-		var colormap: Texture2D = load("res://models/characters/Textures/colormap.png")
-		Npc.apply_kenney_colormap(scott_model, colormap)
 		# Start the GLB's idle animation so Scott isn't a statue.
 		Npc.play_idle_animation(scott_model)
 	scott.add_child(model_holder)
-	# Lt Scott is military — fatigues + sidearm, consistent with everywhere else.
-	CharacterStyleRef.dress_military(scott, model_holder)
+	# Ship dress code: duty blacks + sidearm, consistent with everywhere else.
+	# (dress also binds the colormap texture the GLB importer drops.)
+	CharacterFactoryRef.dress(scott, model_holder, "Lt Scott", CharacterFactoryRef.CTX_SHIP)
 
 	# Floating nametag billboard so the player can ID him from across the room.
 	var tag: Label3D = Label3D.new()

@@ -22,6 +22,8 @@ const PLANET_GATE_SCRIPT: Script = preload("res://scripts/planet_gate.gd")
 const QuestWaypointScript: Script = preload("res://scripts/quest_waypoint.gd")
 const CompanionScript: Script = preload("res://scripts/companion.gd")
 const KinoDroneScript: Script = preload("res://scripts/kino_drone.gd")
+# Shared crew-appearance source of truth (military fatigues + sidearm).
+const CharacterStyleRef: Script = preload("res://scripts/character_style.gd")
 # Preload bypasses class_name registration timing — same reason as room.gd.
 const ShipAlertScript: Script = preload("res://scripts/ship_alert.gd")
 const DOOR_SCENE: PackedScene = preload("res://objects/door.tscn")
@@ -574,6 +576,8 @@ func _build_returned_crew_npc(display_name: String, kind: String, glb_path: Stri
 			_tint_kenney_model(inst, tint)
 		Npc.play_idle_animation(inst)
 	body.add_child(model_holder)
+	if CharacterStyleRef.is_military(display_name):
+		CharacterStyleRef.dress_military(body, model_holder)
 
 	var tag: Label3D = Label3D.new()
 	tag.name = "Nametag"
@@ -1389,6 +1393,8 @@ func _build_npcs() -> void:
 		# Start the GLB's idle animation so Scott isn't a statue.
 		Npc.play_idle_animation(scott_model)
 	scott.add_child(model_holder)
+	# Lt Scott is military — fatigues + sidearm, consistent with everywhere else.
+	CharacterStyleRef.dress_military(scott, model_holder)
 
 	# Floating nametag billboard so the player can ID him from across the room.
 	var tag: Label3D = Label3D.new()

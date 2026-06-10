@@ -36,6 +36,9 @@ const AssignmentConsoleScript: Script = preload("res://scripts/assignment_consol
 const SalvagePanelScript: Script = preload("res://scripts/salvage_panel.gd")
 const BridgeConsoleScript: Script = preload("res://scripts/bridge_console.gd")
 const RepairConsoleScript: Script = preload("res://scripts/repair_console.gd")
+# Single source of truth for crew appearance (base model + military fatigues +
+# sidearm). Keeps a character looking the same in every room.
+const CharacterStyleRef: Script = preload("res://scripts/character_style.gd")
 # Ancient/Lantean glyph cipher + font for in-room console signage. Procedural
 # console labels (door-control panel, power console) render in Ancient glyphs
 # while the room is un-deciphered — so a Kino scouting the room sees the
@@ -1081,125 +1084,18 @@ func _standoff_reposition(npc: Node3D, _tree: Array) -> void:
 	_standoff_scott.rotation.y = face
 
 
-# A silent armed soldier actor for the standoff: soldier.glb in fatigues (Mini
-# Arena colormap), capsule collider, nametag, a holstered sidearm, and the
-# silent-actor flags (non-interactable, off the interact layer, ALWAYS process).
+# A silent standoff actor: a normal NPC (so it inherits the shared CharacterStyle
+# military dress — fatigues + sidearm) PLUS a standoff-only combat helmet and the
+# silent-actor flags (non-interactable, off the interact layer, ALWAYS process so
+# it keeps moving while the open dialog has the tree paused).
 func _spawn_standoff_soldier(npc_name: String, char_name: String, pos: Vector3, yaw: float) -> StaticBody3D:
-	var body: StaticBody3D = StaticBody3D.new()
-	body.set_script(NpcScript)
-	body.name = npc_name
-	body.position = pos
-	body.rotation.y = yaw
-	body.set("character_name", char_name)
-
-	var cs: CollisionShape3D = CollisionShape3D.new()
-	var cap: CapsuleShape3D = CapsuleShape3D.new()
-	cap.radius = 0.32
-	cap.height = 1.75
-	cs.shape = cap
-	cs.position = Vector3(0.0, 0.88, 0.0)
-	body.add_child(cs)
-
-	var model_holder: Node3D = Node3D.new()
-	model_holder.name = "Model"
-	model_holder.scale = Vector3(2.6, 2.6, 2.6)
-	model_holder.rotation.y = PI   # Kenney +Z forward → face parent -Z
-	# Art-consistent crew mini-char, dressed military: olive-drab fatigues tint +
-	# a combat helmet (the Mini-Arena "soldier" model is a gladiator — wrong era).
-	var glb: PackedScene = load("res://models/characters/scott.glb")
-	if glb != null:
-		var inst: Node = glb.instantiate()
-		model_holder.add_child(inst)
-		_apply_fatigues(inst, load("res://models/characters/Textures/colormap.png"))
-		Npc.play_idle_animation(inst)
-	body.add_child(model_holder)
-	body.add_child(_build_helmet())
-
-	var tag: Label3D = Label3D.new()
-	tag.name = "Nametag"
-	tag.text = char_name
-	tag.pixel_size = 0.0042
-	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	tag.outline_size = 6
-	tag.shaded = false
-	tag.modulate = Color(0.95, 0.92, 0.78, 1.0)
-	tag.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
-	tag.position = Vector3(0.0, 2.00, 0.0)
-	body.add_child(tag)
-
-	body.add_child(_build_sidearm())
-	add_child(body)
-	# Flags AFTER add_child so Interactable._ready doesn't clobber collision_layer
-	# back to 4. enabled=false + layer 0 = the interact ray never targets them.
+	var body: StaticBody3D = _spawn_npc(npc_name, char_name, pos, yaw,
+		CharacterStyleRef.model_for(char_name, "res://models/characters/scott.glb"), [])
+	body.add_child(CharacterStyleRef.build_helmet())   # standoff-only kit
 	body.process_mode = Node.PROCESS_MODE_ALWAYS
 	body.set("enabled", false)
 	body.collision_layer = 0
 	return body
-
-
-# Tint a Kenney mini-char into olive-drab fatigues: the colormap texture stays
-# (so the face/skin still reads) but albedo is multiplied toward army green.
-func _apply_fatigues(root: Node, tex: Texture2D) -> void:
-	var mat: StandardMaterial3D = StandardMaterial3D.new()
-	mat.albedo_texture = tex
-	mat.albedo_color = Color(0.45, 0.52, 0.32)   # olive-drab multiply
-	mat.roughness = 0.85
-	mat.metallic = 0.0
-	var stack: Array = [root]
-	while not stack.is_empty():
-		var n: Node = stack.pop_back()
-		if n is MeshInstance3D:
-			(n as MeshInstance3D).material_override = mat
-		for c in n.get_children():
-			stack.append(c)
-
-
-# Dark-olive combat helmet — a squashed dome on the crown. Unambiguously reads
-# "soldier" on the stylized mini-char without touching the face.
-func _build_helmet() -> MeshInstance3D:
-	var helmet: MeshInstance3D = MeshInstance3D.new()
-	helmet.name = "Helmet"
-	var dome: SphereMesh = SphereMesh.new()
-	dome.radius = 0.34
-	dome.height = 0.46
-	dome.is_hemisphere = true
-	helmet.mesh = dome
-	helmet.position = Vector3(0.0, 1.62, 0.0)
-	var mat: StandardMaterial3D = StandardMaterial3D.new()
-	mat.albedo_color = Color(0.20, 0.24, 0.16)   # dark olive
-	mat.roughness = 0.7
-	mat.metallic = 0.0
-	helmet.material_override = mat
-	return helmet
-
-
-# Procedural sidearm on a pivot at the right hand. Starts barrel-down (holstered);
-# raised level (barrel along body-forward) on the standoff_greer cue. Sized to be
-# clearly readable at gameplay camera distance.
-func _build_sidearm() -> Node3D:
-	var pivot: Node3D = Node3D.new()
-	pivot.name = "Sidearm"
-	pivot.position = Vector3(0.40, 1.28, 0.30)   # right hand, raised to chest/aim height
-	pivot.rotation.x = -PI * 0.5                  # barrel points down (holstered)
-	var mat: StandardMaterial3D = StandardMaterial3D.new()
-	mat.albedo_color = Color(0.05, 0.05, 0.06)
-	mat.metallic = 0.6
-	mat.roughness = 0.45
-	var slide: MeshInstance3D = MeshInstance3D.new()
-	var smesh: BoxMesh = BoxMesh.new()
-	smesh.size = Vector3(0.11, 0.14, 0.54)        # barrel/slide along -Z (body-forward)
-	slide.mesh = smesh
-	slide.material_override = mat
-	slide.position = Vector3(0.0, 0.0, -0.22)     # protrudes toward the target
-	pivot.add_child(slide)
-	var grip: MeshInstance3D = MeshInstance3D.new()
-	var gmesh: BoxMesh = BoxMesh.new()
-	gmesh.size = Vector3(0.08, 0.24, 0.11)
-	grip.mesh = gmesh
-	grip.material_override = mat
-	grip.position = Vector3(0.0, -0.16, 0.06)
-	pivot.add_child(grip)
-	return pivot
 
 
 # Per-node dialogue cue dispatcher. Each standoff node carries an "action" that
@@ -1401,7 +1297,10 @@ func _spawn_npc(
 	model_holder.scale = Vector3(2.6, 2.6, 2.6)
 	# Kenney mini chars export +Z forward; rotate so model faces -Z (parent forward).
 	model_holder.rotation.y = PI
-	var glb: PackedScene = load(glb_path)
+	# Resolve the base model from the central registry (the per-site glb_path is a
+	# fallback for characters not registered there) so a character looks the same
+	# everywhere and the model is tweakable in one place.
+	var glb: PackedScene = load(CharacterStyleRef.model_for(character_name, glb_path))
 	if glb != null:
 		var inst: Node = glb.instantiate()
 		model_holder.add_child(inst)
@@ -1409,6 +1308,10 @@ func _spawn_npc(
 		Npc.apply_kenney_colormap(inst, colormap)
 		Npc.play_idle_animation(inst)
 	body.add_child(model_holder)
+	# Military crew (Greer, Scott) get olive fatigues + a holstered sidearm
+	# wherever they spawn — consistent across the whole ship.
+	if CharacterStyleRef.is_military(character_name):
+		CharacterStyleRef.dress_military(body, model_holder)
 
 	var tag: Label3D = Label3D.new()
 	tag.name = "Nametag"

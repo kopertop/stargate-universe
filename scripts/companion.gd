@@ -15,6 +15,9 @@ extends Node3D
 # class being registered first in a headless load — same reason we avoid
 # referencing our own class_name in a factory.
 const NpcScript: Script = preload("res://scripts/npc.gd")
+# Shared crew-appearance source of truth (military fatigues + sidearm) so an
+# away-team Greer/Scott matches their ship-side selves.
+const CharacterStyleRef: Script = preload("res://scripts/character_style.gd")
 
 const COLORMAP_PATH: String = "res://models/characters/Textures/colormap.png"
 const GROUND_MASK: int = 1          # terrain collides on layer 1
@@ -86,6 +89,9 @@ func _build_body(display_name: String, glb_path: String, tint: Color = Color.WHI
 			_apply_tint(inst, tint)
 		_anim = _find_anim(inst)
 		_play_clip("idle")
+	# Military away-team members carry the same fatigues + sidearm as on the ship.
+	if CharacterStyleRef.is_military(display_name):
+		CharacterStyleRef.dress_military(self, _model)
 	var tag: Label3D = Label3D.new()
 	tag.text = display_name
 	tag.pixel_size = 0.0042

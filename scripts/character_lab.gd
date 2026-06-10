@@ -15,9 +15,13 @@ const FactoryRef: Script = preload("res://scripts/character_factory.gd")
 
 const ROLE_ORDER: Array[String] = ["top", "bottom", "shoes", "limbs", "accent"]
 
+const MODEL_SCALE: float = 2.6
+
 var _actor: Node3D = null
 var _model_holder: Node3D = null
+var _skel: Skeleton3D = null
 var _anim: AnimationPlayer = null
+var _aimed: bool = false
 var _cam: Camera3D = null
 var _cam_yaw: float = 0.35
 var _cam_pitch: float = 0.42
@@ -29,6 +33,7 @@ var _char_pick: OptionButton
 var _ctx_pick: OptionButton
 var _anim_pick: OptionButton
 var _gear_boxes: Dictionary = {}      # gear id -> CheckBox
+var _aim_toggle: CheckBox
 var _custom_toggle: CheckBox
 var _role_pickers: Dictionary = {}    # role -> ColorPickerButton
 var _turn_toggle: CheckBox
@@ -140,11 +145,13 @@ func _rebuild_actor() -> void:
 	var character_name: String = _selected_character()
 	var glb: PackedScene = load(FactoryRef.model_for(character_name))
 	_anim = null
+	_skel = null
 	if glb != null:
 		var inst: Node = glb.instantiate()
 		_model_holder.add_child(inst)
 		_anim = _find_anim(inst)
-	FactoryRef.dress(_actor, _model_holder, character_name, _selected_context())
+		_skel = FactoryRef._find_skeleton(_model_holder)
+	FactoryRef.dress(_actor, _model_holder, character_name, _selected_context(), MODEL_SCALE, _aimed)
 	if _custom_toggle.button_pressed:
 		_apply_custom_colors()
 	_refresh_gear_boxes()
@@ -205,6 +212,11 @@ func _build_ui() -> void:
 		box.add_child(cb)
 		_gear_boxes[gear_id] = cb
 
+	_aim_toggle = CheckBox.new()
+	_aim_toggle.text = "Aim (weapon to hand)"
+	_aim_toggle.toggled.connect(_on_aim_toggled)
+	box.add_child(_aim_toggle)
+
 	box.add_child(HSeparator.new())
 	_custom_toggle = CheckBox.new()
 	_custom_toggle.text = "Override colors"
@@ -248,21 +260,48 @@ func _build_ui() -> void:
 
 
 func _on_gear_toggled(on: bool, gear_id: String) -> void:
-	if _actor == null:
+	if _skel == null:
 		return
+	if on:
+		FactoryRef.attach_gear(_skel, gear_id, MODEL_SCALE, _aimed)
+	else:
+		FactoryRef._remove_gear(_skel, gear_id.capitalize())
+
+
+# Aiming routes the primary weapon (rifle > sidearm) to the hand and plays the
+# matching holding pose; stowing returns weapons to back/belt and resumes idle.
+func _on_aim_toggled(on: bool) -> void:
+	_aimed = on
+	if _skel == null:
+		return
+	var carried: Array = []
+	for gear_id in ["rifle", "sidearm"]:
+		if _gear_carried(gear_id):
+			carried.append(gear_id)
+			FactoryRef._remove_gear(_skel, gear_id.capitalize())
+	var primary: String = FactoryRef.aimed_weapon(carried) if on else ""
+	for gear_id in carried:
+		FactoryRef.attach_gear(_skel, gear_id, MODEL_SCALE, gear_id == primary)
+	if on and _anim != null and _anim.has_animation("holding-right"):
+		_anim.play("holding-right")
+	else:
+		_refresh_anim_list()
+
+
+func _gear_carried(gear_id: String) -> bool:
+	if _skel == null:
+		return false
 	var node_name: String = gear_id.capitalize()
-	var existing: Node = _actor.get_node_or_null(node_name)
-	if on and existing == null:
-		FactoryRef.add_gear(_actor, gear_id)
-	elif not on and existing != null:
-		existing.name = node_name + "_retired"
-		existing.queue_free()
+	for ba in _skel.get_children():
+		if ba is BoneAttachment3D and ba.get_node_or_null(node_name) != null:
+			return true
+	return false
 
 
 func _refresh_gear_boxes() -> void:
 	for gear_id in _gear_boxes:
 		var cb: CheckBox = _gear_boxes[gear_id]
-		cb.set_pressed_no_signal(_actor.get_node_or_null(String(gear_id).capitalize()) != null)
+		cb.set_pressed_no_signal(_gear_carried(gear_id))
 
 
 func _refresh_anim_list() -> void:

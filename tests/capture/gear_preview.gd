@@ -31,10 +31,15 @@ func _run() -> void:
 		var holder: Node3D = Node3D.new()
 		holder.position = Vector3(i * 2.4 - 2.4, 1.0, 0.0)
 		world.add_child(holder)
-		var gear: Node3D = FactoryRef.add_gear(holder, gear_ids[i])
+		var gear: Node3D = null
+		match gear_ids[i]:
+			"sidearm": gear = FactoryRef.build_sidearm()
+			"rifle":   gear = FactoryRef.build_rifle()
+			"helmet":  gear = FactoryRef.build_helmet()
 		if gear == null:
 			print("[gear] %s -> NULL" % gear_ids[i])
 			continue
+		holder.add_child(gear)
 		gear.position = Vector3.ZERO
 		gear.scale = Vector3.ONE * 2.0
 		# Profile view: gear barrels run along Z (toward the camera); yaw 90 so

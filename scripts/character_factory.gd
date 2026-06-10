@@ -23,6 +23,40 @@ const COLORMAP_PATH: String = "res://models/characters/Textures/colormap.png"
 const RIFLE_GLB: String = "res://models/gear/rifle.glb"
 const ATLAS_CELL: int = 32
 
+# --- snap points -----------------------------------------------------------
+# Gear attaches to BONES via BoneAttachment3D, NOT to the body in body-space —
+# so a helmet bobs with the head and a holstered pistol swings with the hips.
+# The Kenney mini rig is shared by every roster model (7 bones: root, leg-left,
+# leg-right, torso, arm-left, arm-right, head), so one mount table covers all.
+#
+# Each mount = a named snap point: which bone it rides + a local offset
+# (position in skeleton-local units, euler rotation) tuned visually in the
+# Character Lab. Offsets are small because they live under the model holder's
+# 2.6x scale; gear meshes (authored in world units) are divided by that scale
+# at attach time so they read at their intended real size.
+# NOTE on signs: gear lives under the model holder's 180° Y-flip, so a +X/+Z
+# offset here lands at world −X/−Z. The chunky mini torso is ~0.25 half-width,
+# so offsets must push gear clear of the mesh. Tuned via gear_snap_debug.gd.
+const MOUNTS: Dictionary = {
+	# on the crown of the head bone
+	"head":   {"bone": "head",      "pos": Vector3(0.0, 0.085, 0.0),   "rot": Vector3(0.0, 0.0, 0.0)},
+	# slung diagonally high across the BACK (local +Z = world −Z = behind),
+	# muzzle up over the shoulder
+	"back":   {"bone": "torso",     "pos": Vector3(0.05, 0.26, 0.33),  "rot": Vector3(-1.30, 0.0, 0.55)},
+	# holstered on the hip, clear of the body, barrel down
+	"belt":   {"bone": "torso",     "pos": Vector3(0.30, -0.04, -0.05), "rot": Vector3(-1.57, 0.0, 0.0)},
+	# in the right hand, presented forward (arm-right bone tip)
+	"hand_r": {"bone": "arm-right", "pos": Vector3(0.0, -0.22, 0.04),  "rot": Vector3(0.0, 0.0, 0.0)},
+	"hand_l": {"bone": "arm-left",  "pos": Vector3(0.0, -0.22, 0.04),  "rot": Vector3(0.0, 0.0, 0.0)},
+}
+
+# Where each gear kind rides by default (stowed) vs. when the character is
+# aiming. Helmet has no aimed variant. Aiming also plays a holding-* animation
+# (see AIM_ANIM) so the arm comes up to meet the hand-mounted weapon.
+const GEAR_MOUNT: Dictionary = {"helmet": "head", "rifle": "back", "sidearm": "belt"}
+const GEAR_MOUNT_AIMED: Dictionary = {"rifle": "hand_r", "sidearm": "hand_r"}
+const GEAR_NODES: Array[String] = ["Helmet", "Rifle", "Sidearm"]
+
 # Contexts a character can be dressed for. SHIP = aboard Destiny;
 # MISSION = off-ship (planets, away missions).
 const CTX_SHIP: String = "ship"
@@ -218,15 +252,19 @@ static func outfit_id_for(character_name: String, context: String) -> String:
 # ------------------------------- dressing ----------------------------------
 
 # Dress a spawned character for a context: bake/apply the outfit texture onto
-# the model and sync carried gear. `body` owns gear nodes (so they live in
-# body space, independent of model scale); `model_root` is the Model holder
-# wrapping the GLB instance. `model_scale` is the holder's scale — gear is
-# calibrated for the room-standard 2.6 and scales proportionally elsewhere.
-static func dress(body: Node3D, model_root: Node, character_name: String, context: String = CTX_SHIP, model_scale: float = 2.6) -> void:
+# the model and snap carried gear onto the SKELETON's bones. `model_root` is the
+# Model holder wrapping the GLB instance (the skeleton is found inside it).
+# `model_scale` is the holder's uniform scale — gear meshes are authored in
+# world units and divided by it so they read at the right size on the rig.
+# `aimed` routes weapons to the hand mount instead of back/belt.
+# `body` is accepted for call-site compatibility (gear no longer lives there).
+static func dress(body: Node3D, model_root: Node, character_name: String, context: String = CTX_SHIP, model_scale: float = 2.6, aimed: bool = false) -> void:
 	var outfit_id: String = outfit_id_for(character_name, context)
 	apply_texture(model_root, character_texture(character_name, context))
 	var outfit: Dictionary = OUTFITS.get(outfit_id, OUTFITS["civvies"])
-	_sync_gear(body, outfit["gear"], model_scale)
+	var skel: Skeleton3D = _find_skeleton(model_root)
+	if skel != null:
+		_sync_gear(skel, outfit["gear"], model_scale, aimed)
 
 
 # Walk the model and override every mesh with a material using `tex` — same
@@ -327,55 +365,123 @@ static func _recolor_cell(img: Image, cell: Vector2i, target: Color) -> void:
 
 
 # -------------------------------- gear -------------------------------------
+# Gear rides BoneAttachment3D nodes on the skeleton (real snap points), so it
+# tracks animation. The hierarchy under the model holder ends up:
+#   Skeleton3D
+#     body-mesh / head-mesh
+#     Mount_head   (BoneAttachment3D bone=head)  -> Helmet
+#     Mount_torso  (BoneAttachment3D bone=torso) -> Rifle (slung) / Sidearm (hip)
+#     Mount_arm-right (...)                       -> weapon when aimed
 
-# Make the body's gear match the outfit's loadout — removes gear that doesn't
-# belong, adds what's missing. Extras like the standoff helmet are added
-# explicitly via add_gear AFTER dressing.
-static func _sync_gear(body: Node3D, loadout: Array, model_scale: float) -> void:
-	for gear_name in ["Sidearm", "Rifle", "Helmet"]:
-		var node: Node = body.get_node_or_null(gear_name)
-		if node != null and not loadout.has(gear_name.to_lower()):
-			node.queue_free()
-			# Rename so get_node_or_null can't find the dying node this frame.
-			node.name = gear_name + "_retired"
+# Find the Skeleton3D the importer creates inside the GLB (one level deep,
+# not at the holder root — same reasoning as the AnimationPlayer lookup).
+static func _find_skeleton(model_root: Node) -> Skeleton3D:
+	if model_root == null:
+		return null
+	var stack: Array = [model_root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is Skeleton3D:
+			return n
+		for c in n.get_children():
+			stack.append(c)
+	return null
+
+
+# Sync the skeleton's snapped gear to the loadout: drop gear no longer carried,
+# (re)attach what is, at the mount appropriate for the aim state. When aiming,
+# only ONE weapon goes to the hand (rifle wins); the rest stay stowed.
+static func _sync_gear(skel: Skeleton3D, loadout: Array, model_scale: float, aimed: bool) -> void:
+	for node_name in GEAR_NODES:
+		if not loadout.has(node_name.to_lower()):
+			_remove_gear(skel, node_name)
+	var primary: String = aimed_weapon(loadout) if aimed else ""
 	for gear_id in loadout:
-		add_gear(body, gear_id, model_scale)
+		attach_gear(skel, gear_id, model_scale, gear_id == primary)
 
 
-# Idempotent: a body carries at most one of each gear kind.
-static func add_gear(body: Node3D, gear_id: String, model_scale: float = 2.6) -> Node3D:
+# Which weapon a loadout presents when aiming (rifle over sidearm).
+static func aimed_weapon(loadout: Array) -> String:
+	if loadout.has("rifle"):
+		return "rifle"
+	if loadout.has("sidearm"):
+		return "sidearm"
+	return ""
+
+
+# Detach a gear kind from wherever it is on the skeleton.
+static func _remove_gear(skel: Skeleton3D, node_name: String) -> void:
+	for ba in skel.get_children():
+		if not (ba is BoneAttachment3D):
+			continue
+		var g: Node = ba.get_node_or_null(node_name)
+		if g != null:
+			g.name = node_name + "_retired"
+			g.queue_free()
+
+
+# Attach a gear kind to its mount (aim-aware), idempotently. Returns the gear
+# node. `body`-free: everything hangs off the skeleton so it follows the rig.
+static func attach_gear(skel: Skeleton3D, gear_id: String, model_scale: float = 2.6, aimed: bool = false) -> Node3D:
+	if skel == null:
+		return null
 	var node_name: String = gear_id.capitalize()
-	var existing: Node = body.get_node_or_null(node_name)
+	var mount_name: String = ""
+	if aimed and GEAR_MOUNT_AIMED.has(gear_id):
+		mount_name = GEAR_MOUNT_AIMED[gear_id]
+	else:
+		mount_name = GEAR_MOUNT.get(gear_id, "head")
+	var mount: Dictionary = MOUNTS.get(mount_name, MOUNTS["head"])
+
+	# Already attached at the correct mount? leave it. Otherwise detach + rebuild.
+	var attach: BoneAttachment3D = _bone_attachment(skel, String(mount["bone"]))
+	var existing: Node = attach.get_node_or_null(node_name)
 	if existing != null:
-		return existing
+		return existing as Node3D
+	_remove_gear(skel, node_name)   # might be on a different bone
+
 	var gear: Node3D = null
 	match gear_id:
-		"sidearm":
-			gear = build_sidearm()
-		"rifle":
-			gear = build_rifle()
-		"helmet":
-			gear = build_helmet()
+		"sidearm": gear = build_sidearm()
+		"rifle":   gear = build_rifle()
+		"helmet":  gear = build_helmet()
 	if gear == null:
 		return null
-	var k: float = model_scale / 2.6
-	gear.position *= k
-	gear.scale *= k
-	body.add_child(gear)
+	gear.name = node_name
+	# Place at the snap offset; divide by model scale so the world-unit mesh
+	# reads correctly under the holder's uniform scale.
+	gear.position = (mount["pos"] as Vector3) / model_scale
+	gear.rotation = mount["rot"]
+	gear.scale = Vector3.ONE / model_scale
+	attach.add_child(gear)
 	return gear
 
 
-# Dark-olive combat helmet — a squashed dome on the crown. Standoff-only kit;
-# never part of an outfit loadout.
+# One BoneAttachment3D per bone, cached as a named child of the skeleton so
+# multiple gear pieces can share a bone (rifle on back + sidearm on hip both
+# ride `torso`).
+static func _bone_attachment(skel: Skeleton3D, bone_name: String) -> BoneAttachment3D:
+	var attach_name: String = "Mount_" + bone_name
+	var existing: Node = skel.get_node_or_null(attach_name)
+	if existing is BoneAttachment3D:
+		return existing
+	var ba: BoneAttachment3D = BoneAttachment3D.new()
+	ba.name = attach_name
+	skel.add_child(ba)
+	ba.bone_name = bone_name   # set AFTER entering the tree so it resolves
+	return ba
+
+
+# Dark-olive combat helmet — a squashed dome, origin at the skull base so the
+# head mount lifts it onto the crown. World-unit sized.
 static func build_helmet() -> MeshInstance3D:
 	var helmet: MeshInstance3D = MeshInstance3D.new()
 	helmet.name = "Helmet"
 	var dome: SphereMesh = SphereMesh.new()
-	dome.radius = 0.34
-	dome.height = 0.46
+	dome.radius = 0.30
+	dome.height = 0.40
 	dome.is_hemisphere = true
 	helmet.mesh = dome
-	helmet.position = Vector3(0.0, 1.62, 0.0)
 	var mat: StandardMaterial3D = StandardMaterial3D.new()
 	mat.albedo_color = Color(0.20, 0.24, 0.16)
 	mat.roughness = 0.7
@@ -384,13 +490,12 @@ static func build_helmet() -> MeshInstance3D:
 	return helmet
 
 
-# Procedural sidearm on a pivot at the right hand. Starts barrel-down
-# (holstered); the standoff raises it level on Greer's cue.
+# Procedural sidearm in canonical gear frame: barrel along -Z, grip down,
+# origin at the grip/trigger (where the hand holds it and where it clips to a
+# holster). The MOUNT rotation decides holstered-on-hip vs presented-in-hand.
 static func build_sidearm() -> Node3D:
 	var pivot: Node3D = Node3D.new()
 	pivot.name = "Sidearm"
-	pivot.position = Vector3(0.40, 1.28, 0.30)
-	pivot.rotation.x = -PI * 0.5
 	var mat: StandardMaterial3D = StandardMaterial3D.new()
 	mat.albedo_color = Color(0.05, 0.05, 0.06)
 	mat.metallic = 0.6
@@ -412,17 +517,12 @@ static func build_sidearm() -> Node3D:
 	return pivot
 
 
-# Kenney Blaster Kit rifle (blaster-e) on a pivot at low-ready across the
-# chest, tinted gunmetal (the kit's toy colors don't read as military).
-# Auto-scaled so the barrel spans ~0.85 body units regardless of source size.
+# Kenney Blaster Kit rifle (blaster-e) in canonical gear frame: barrel along
+# -Z, grip near the origin. The MOUNT decides slung-on-back vs in-hand.
+# Auto-scaled so the longest axis spans ~0.85 world units.
 static func build_rifle() -> Node3D:
 	var pivot: Node3D = Node3D.new()
 	pivot.name = "Rifle"
-	# Minis are ~0.8 units deep at the chest — keep the carry position well in
-	# front of the torso or the rifle embeds invisibly inside the mesh.
-	pivot.position = Vector3(0.30, 1.15, 0.55)
-	pivot.rotation.x = -0.28   # muzzle dipped — low ready
-	pivot.rotation.y = -0.55   # carried diagonally across the body
 	var glb: PackedScene = load(RIFLE_GLB)
 	if glb == null:
 		return pivot
@@ -431,12 +531,12 @@ static func build_rifle() -> Node3D:
 	var longest: float = maxf(aabb.size.x, maxf(aabb.size.y, aabb.size.z))
 	if longest > 0.001:
 		inst.scale = Vector3.ONE * (0.85 / longest)
-	# Kenney blasters model the barrel along +Z; flip to -Z (body forward).
+	# Kenney blasters model the barrel along +Z; flip to -Z (gear forward).
 	if aabb.size.z >= aabb.size.x and aabb.size.z >= aabb.size.y:
 		inst.rotation.y = PI
 	else:
 		inst.rotation.y = PI * 0.5
-	# Center the mesh on the pivot.
+	# Center the mesh on the pivot (grip ≈ centre for a rifle).
 	inst.position = -(aabb.get_center() * inst.scale).rotated(Vector3.UP, inst.rotation.y)
 	var mat: StandardMaterial3D = StandardMaterial3D.new()
 	mat.albedo_color = Color(0.24, 0.25, 0.28)

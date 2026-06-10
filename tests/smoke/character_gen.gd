@@ -17,7 +17,8 @@ extends SceneTree
 #   5. Bake cache — same texture instance on repeat calls.
 #   6. dress() gear sync — military ship = sidearm only; mission = sidearm +
 #      rifle; civilian mission = unarmed; re-dress removes stale gear.
-#   7. Gear builders — rifle auto-scales to ~0.85 units; add_gear idempotent.
+#   7. Gear snapping — gear rides BoneAttachment3D on the right bone (helmet→head,
+#      stowed weapons→torso, aimed weapon→arm-right); attach is idempotent.
 
 const FactoryRef: Script = preload("res://scripts/character_factory.gd")
 
@@ -150,34 +151,60 @@ func _test_outfit_bake_cache_returns_same_instance() -> void:
 
 # --- 6. dress() gear sync --------------------------------------------------------
 
-func _make_actor() -> Array:
+# Build a real actor (body → Model holder → instanced GLB with a Skeleton3D)
+# so dress() can find bones to snap gear onto.
+func _make_actor(character_name: String) -> Array:
 	var body: Node3D = Node3D.new()
 	var holder: Node3D = Node3D.new()
 	holder.name = "Model"
 	body.add_child(holder)
+	var glb: PackedScene = load(FactoryRef.model_for(character_name, "res://models/characters/scott.glb"))
+	if glb != null:
+		holder.add_child(glb.instantiate())
 	root.add_child(body)
 	return [body, holder]
 
 
+# The bone a gear kind is currently snapped to ("" if not carried).
+func _gear_mount_bone(holder: Node, node_name: String) -> String:
+	var skel: Skeleton3D = FactoryRef._find_skeleton(holder)
+	if skel == null:
+		return ""
+	for ba in skel.get_children():
+		if ba is BoneAttachment3D and ba.get_node_or_null(node_name) != null:
+			return (ba as BoneAttachment3D).bone_name
+	return ""
+
+
+func _carries(holder: Node, node_name: String) -> bool:
+	return _gear_mount_bone(holder, node_name) != ""
+
+
 func _test_dress_syncs_gear_to_context() -> void:
-	var pair: Array = _make_actor()
+	var pair: Array = _make_actor("Sgt Greer")
 	var body: Node3D = pair[0]
 	var holder: Node3D = pair[1]
 
+	_expect(FactoryRef._find_skeleton(holder) != null, "imported mini has a Skeleton3D to snap gear onto")
+
 	FactoryRef.dress(body, holder, "Sgt Greer", FactoryRef.CTX_SHIP)
-	_expect(body.get_node_or_null("Sidearm") != null, "military on ship carries a sidearm")
-	_expect(body.get_node_or_null("Rifle") == null, "military on ship carries NO rifle")
+	_expect(_gear_mount_bone(holder, "Sidearm") == "torso", "ship sidearm holstered on the torso (belt) bone")
+	_expect(not _carries(holder, "Rifle"), "military on ship carries NO rifle")
 
 	FactoryRef.dress(body, holder, "Sgt Greer", FactoryRef.CTX_MISSION)
-	_expect(body.get_node_or_null("Sidearm") != null, "military on mission keeps the sidearm")
-	_expect(body.get_node_or_null("Rifle") != null, "military on mission carries a rifle")
+	_expect(_carries(holder, "Sidearm"), "military on mission keeps the sidearm")
+	_expect(_gear_mount_bone(holder, "Rifle") == "torso", "stowed mission rifle slung on the torso (back) bone")
+
+	# Aimed: weapons move to the right-arm (hand) bone.
+	FactoryRef.dress(body, holder, "Sgt Greer", FactoryRef.CTX_MISSION, 2.6, true)
+	_expect(_gear_mount_bone(holder, "Rifle") == "arm-right", "aimed rifle snaps to the right-arm (hand) bone")
 
 	FactoryRef.dress(body, holder, "Sgt Greer", FactoryRef.CTX_SHIP)
-	_expect(body.get_node_or_null("Rifle") == null, "re-dress for ship removes the rifle")
+	_expect(not _carries(holder, "Rifle"), "re-dress for ship removes the rifle")
 
-	var civ: Array = _make_actor()
+	var civ: Array = _make_actor("Eli")
 	FactoryRef.dress(civ[0], civ[1], "Eli", FactoryRef.CTX_MISSION)
-	_expect(civ[0].get_node_or_null("Sidearm") == null and civ[0].get_node_or_null("Rifle") == null,
+	_expect(not _carries(civ[1], "Sidearm") and not _carries(civ[1], "Rifle"),
 		"Eli on mission wears fatigues but stays unarmed")
 
 	body.queue_free()
@@ -191,20 +218,17 @@ func _test_gear_builders_scale_and_idempotence() -> void:
 	_expect(mesh_count > 0, "rifle GLB instanced with meshes (%d)" % mesh_count)
 	var aabb: AABB = FactoryRef._merged_aabb(rifle)
 	var longest: float = maxf(aabb.size.x, maxf(aabb.size.y, aabb.size.z))
-	_expect(longest > 0.6 and longest < 1.1, "rifle scaled to ~0.85 body units (got %.2f)" % longest)
+	_expect(longest > 0.6 and longest < 1.1, "rifle scaled to ~0.85 world units (got %.2f)" % longest)
 	rifle.free()
 
-	var body: Node3D = Node3D.new()
-	root.add_child(body)
-	var h1: Node3D = FactoryRef.add_gear(body, "helmet")
-	var h2: Node3D = FactoryRef.add_gear(body, "helmet")
-	_expect(h1 == h2, "add_gear is idempotent (one helmet)")
-	var helmet_total: int = 0
-	for c in body.get_children():
-		if c.name.begins_with("Helmet"):
-			helmet_total += 1
-	_expect(helmet_total == 1, "exactly one Helmet child after double add")
-	body.queue_free()
+	# Helmet snaps to the head bone, idempotently (one BoneAttachment, one helmet).
+	var pair: Array = _make_actor("Sgt Greer")
+	var skel: Skeleton3D = FactoryRef._find_skeleton(pair[1])
+	var h1: Node3D = FactoryRef.attach_gear(skel, "helmet")
+	var h2: Node3D = FactoryRef.attach_gear(skel, "helmet")
+	_expect(h1 == h2, "attach_gear is idempotent (one helmet)")
+	_expect(_gear_mount_bone(pair[1], "Helmet") == "head", "helmet snaps to the head bone")
+	pair[0].queue_free()
 
 
 func _count_meshes(root_node: Node) -> int:

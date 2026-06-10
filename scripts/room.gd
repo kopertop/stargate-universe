@@ -90,7 +90,6 @@ var _ancient_console_labels: Array = []
 # so they keep moving while the open dialog window has the SceneTree paused.
 var _standoff_greer: Node3D = null
 var _standoff_scott: Node3D = null
-var _standoff_sidearm: Node3D = null
 var _standoff_rush_pos: Vector3 = Vector3.ZERO
 # Player frame captured when the standoff dialog opens (the actors are restaged
 # behind the player THEN, since the player walks up to Rush well after _ready).
@@ -1052,10 +1051,6 @@ func _spawn_standoff_actors() -> void:
 	_standoff_scott = _spawn_standoff_soldier(
 		"StandoffScott", "Lt Scott", p_pos + behind * 6.0, face_fwd)
 
-	# Greer's sidearm is the one he raises to aim; keep a handle. Scott's is just
-	# holstered set-dressing (he's de-escalating). Both are always equipped.
-	_standoff_sidearm = _standoff_greer.get_node_or_null("Sidearm")
-
 	if not GameState.dialog_action.is_connected(_on_standoff_cue):
 		GameState.dialog_action.connect(_on_standoff_cue)
 	# Restage behind the player the moment the standoff dialog opens (the player
@@ -1091,7 +1086,11 @@ func _standoff_reposition(npc: Node3D, _tree: Array) -> void:
 func _spawn_standoff_soldier(npc_name: String, char_name: String, pos: Vector3, yaw: float) -> StaticBody3D:
 	var body: StaticBody3D = _spawn_npc(npc_name, char_name, pos, yaw,
 		CharacterFactoryRef.model_for(char_name, "res://models/characters/scott.glb"), [])
-	CharacterFactoryRef.add_gear(body, "helmet")   # standoff-only kit
+	# Standoff-only kit: snap a helmet onto the head bone of the spawned model.
+	var model_holder: Node = body.get_node_or_null("Model")
+	var skel: Skeleton3D = CharacterFactoryRef._find_skeleton(model_holder)
+	if skel != null:
+		CharacterFactoryRef.attach_gear(skel, "helmet")
 	body.process_mode = Node.PROCESS_MODE_ALWAYS
 	body.set("enabled", false)
 	body.collision_layer = 0
@@ -1129,8 +1128,7 @@ func _standoff_advance_greer(instant: bool) -> void:
 	if instant:
 		_standoff_greer.position = anchor
 		_standoff_greer.rotation.y = face
-		if _standoff_sidearm != null and is_instance_valid(_standoff_sidearm):
-			_standoff_sidearm.rotation.x = 0.0
+		_standoff_aim(_standoff_greer, true)     # sidearm to hand, leveled at Rush
 		GameState.dialog_release.emit()
 		return
 	_standoff_greer.call("walk_to", anchor, 6.0, 0.0)   # charge
@@ -1144,9 +1142,7 @@ func _standoff_advance_greer(instant: bool) -> void:
 	if not is_instance_valid(_standoff_greer):
 		return
 	_standoff_greer.rotation.y = face            # square off at Rush
-	if _standoff_sidearm != null and is_instance_valid(_standoff_sidearm):
-		var tw: Tween = _standoff_greer.create_tween()
-		tw.tween_property(_standoff_sidearm, "rotation:x", 0.0, 0.22)
+	_standoff_aim(_standoff_greer, true)         # draw + level the sidearm at Rush
 	GameState.dialog_release.emit()              # now the player may continue
 
 
@@ -1167,9 +1163,7 @@ func _standoff_clear(instant: bool) -> void:
 	if instant:
 		_despawn_standoff()
 		return
-	if _standoff_sidearm != null and is_instance_valid(_standoff_sidearm):
-		var tw: Tween = _standoff_greer.create_tween()
-		tw.tween_property(_standoff_sidearm, "rotation:x", -PI * 0.5, 0.3)
+	_standoff_aim(_standoff_greer, false)        # holster the sidearm, stand down
 	var exit_pt: Vector3 = Vector3(_standoff_rush_pos.x - 10.0, 0.0, 0.0)
 	_standoff_greer.call("walk_to", exit_pt + Vector3(0.0, 0.0, 1.0), 2.6, 0.2)
 	_standoff_scott.call("walk_to", exit_pt + Vector3(0.0, 0.0, -1.0), 2.6, 0.0)
@@ -1189,7 +1183,42 @@ func _despawn_standoff() -> void:
 			actor.queue_free()
 	_standoff_greer = null
 	_standoff_scott = null
-	_standoff_sidearm = null
+
+
+# Raise/holster a standoff actor's sidearm by moving it between the belt and hand
+# bone mounts and switching to the matching pose — the bone-attach equivalent of
+# the old "tween the gun's rotation" hack. Safe under instant_mode (no frames).
+func _standoff_aim(actor: Node3D, aimed: bool) -> void:
+	if actor == null or not is_instance_valid(actor):
+		return
+	var holder: Node = actor.get_node_or_null("Model")
+	var skel: Skeleton3D = CharacterFactoryRef._find_skeleton(holder)
+	if skel == null:
+		return
+	CharacterFactoryRef._remove_gear(skel, "Sidearm")
+	CharacterFactoryRef.attach_gear(skel, "sidearm", 2.6, aimed)
+	var anim: AnimationPlayer = _find_animplayer(holder)
+	if anim == null:
+		return
+	if aimed and anim.has_animation("holding-right-shoot"):
+		anim.play("holding-right-shoot")
+	elif aimed and anim.has_animation("holding-right"):
+		anim.play("holding-right")
+	elif anim.has_animation("idle"):
+		anim.play("idle")
+
+
+func _find_animplayer(node: Node) -> AnimationPlayer:
+	if node == null:
+		return null
+	var stack: Array = [node]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is AnimationPlayer:
+			return n
+		for c in n.get_children():
+			stack.append(c)
+	return null
 
 
 # Post-crisis "Rush isn't here" beat. Eli radios Scott, Scott hands the

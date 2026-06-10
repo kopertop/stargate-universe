@@ -54,7 +54,10 @@ What you can do there:
 
 - **Pick any crew member** and flip between **Ship** / **Mission** contexts — outfits, gear,
   and identity (e.g. Greer's skin tone) come from the central registry.
-- **Toggle gear** (sidearm / rifle / helmet) on the live model.
+- **Toggle gear** (sidearm / rifle / helmet) on the live model — each snaps to a skeleton
+  bone, so it bobs and turns with the rig (the helmet rides the head, not the body).
+- **Aim** toggle moves the primary weapon (rifle > sidearm) from its stowed mount to the
+  hand and plays the holding pose.
 - **Override garment colors** per role (top / bottom / shoes / limbs / accent) with live
   rebake, then hit **Print snippet** to dump a paste-ready recolor dict to the console for
   promoting into `CharacterFactory.OUTFITS`. The lab never writes files itself.
@@ -62,7 +65,7 @@ What you can do there:
 
 ### How character generation works
 
-`scripts/character_factory.gd` is the single source of truth, in three layers:
+`scripts/character_factory.gd` is the single source of truth, in four layers:
 
 1. **PROFILES** — who: base model, outfit per context, military flag, optional skin/hair
    identity overrides.
@@ -72,6 +75,11 @@ What you can do there:
    swatch cells in the shared `colormap.png` atlas, so changing a shirt = recoloring that
    model's shirt cells in a per-instance baked texture. Faces/hair/skin cells are excluded,
    so identity survives every outfit.
+4. **MOUNTS** — snap points: gear attaches to the skeleton via `BoneAttachment3D`, never to
+   the body in body-space, so it tracks animation. The Kenney mini rig (7 bones) gives us
+   `head` (helmet), `torso` (rifle slung on the back, sidearm holstered on the hip), and
+   `arm-right` (weapon in hand when aiming). Mount offsets are tuned visually in the Lab via
+   `tests/capture/gear_snap_debug.gd` (3-angle view + world-position dump).
 
 Dress rules shipped: military crew wear **black duty uniforms + sidearm on the ship** and
 **olive fatigues + rifle + sidearm on missions**; civilians wear their own clothes aboard

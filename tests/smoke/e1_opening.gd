@@ -208,12 +208,12 @@ func _test_standoff_actors_spawn(gs: Node) -> void:
 		_expect(greer.get("enabled") == false, "Greer is non-interactable (enabled == false)")
 		_expect(int(greer.get("collision_layer")) == 0,
 			"Greer is off the interact layer (collision_layer == 0)")
-		_expect(greer.has_node("Sidearm"), "Greer carries a Sidearm prop")
-		_expect(greer.has_node("Helmet"), "Greer wears a combat Helmet (military dress)")
+		_expect(_has_snapped_gear(greer, "Sidearm"), "Greer carries a Sidearm snapped to a bone")
+		_expect(_has_snapped_gear(greer, "Helmet"), "Greer wears a combat Helmet (military dress)")
 	if scott != null:
 		_expect(scott.get("enabled") == false, "Scott is non-interactable (enabled == false)")
-		_expect(scott.has_node("Sidearm"), "Scott also always carries a Sidearm")
-		_expect(scott.has_node("Helmet"), "Scott wears a combat Helmet (military dress)")
+		_expect(_has_snapped_gear(scott, "Sidearm"), "Scott also always carries a Sidearm")
+		_expect(_has_snapped_gear(scott, "Helmet"), "Scott wears a combat Helmet (military dress)")
 
 	# Cue dispatch should not crash and should leave actors valid (instant_mode
 	# snaps the staging). standoff_clear despawns both.
@@ -229,6 +229,20 @@ func _test_standoff_actors_spawn(gs: Node) -> void:
 
 	root.remove_child(inst)
 	inst.free()
+
+
+# Gear now snaps to skeleton bones via BoneAttachment3D, not to the body root.
+# True if a live gear node of `gear_name` hangs off a BoneAttachment3D anywhere
+# under the actor (ignores "_retired" nodes mid-queue_free).
+func _has_snapped_gear(actor: Node, gear_name: String) -> bool:
+	var stack: Array = [actor]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is BoneAttachment3D and n.get_node_or_null(gear_name) != null:
+			return true
+		for c in n.get_children():
+			stack.append(c)
+	return false
 
 
 # ── 2. DrRush.interact → met_rush + quest step advancement ────────────────────

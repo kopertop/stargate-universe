@@ -229,10 +229,11 @@ func set_rifle(carried: bool, aimed: bool = false) -> void:
 	var rifle: Node3D = FactoryRef.build_rifle()
 	if aimed:
 		rifle.position = Vector3(0.0, 0.08, -0.02)
-		# This rig's hand bone is ROLLED 90deg vs the VRM hand: Rx(-90) alone
-		# holds the rifle sideways across the grip; the extra Ry(+90) swings
-		# the barrel onto the aim line (verified in rifle_grip_tune capture).
-		rifle.rotation = Vector3(-1.57, 1.57, 0.0)
+		# Hand-bone axes are rig-specific; tuned via rifle_grip_tune capture:
+		# Rx(-90) alone = sideways across the grip, +Ry(90) = on the aim line
+		# but inverted, +Rz(180) = scope up. Don't reason about axes — render
+		# the candidate grid.
+		rifle.rotation = Vector3(-1.57, 1.57, 3.14)
 	else:
 		rifle.position = Vector3(-0.04, 0.10, -0.18)
 		rifle.rotation = Vector3(-1.25, 0.0, 0.85)

@@ -9,10 +9,10 @@ const ModularScript: Script = preload("res://scripts/modular_character.gd")
 const FactoryRef: Script = preload("res://scripts/character_factory.gd")
 
 const CANDIDATES: Array = [
-	["Rx-90 (current)", Vector3(-1.57, 0.0, 0.0)],
-	["Rx-90 Ry+90", Vector3(-1.57, 1.57, 0.0)],
-	["Rx-90 Ry-90", Vector3(-1.57, -1.57, 0.0)],
-	["Ry-90 only", Vector3(0.0, -1.57, 0.0)],
+	["current (upside down)", Vector3(-1.57, 1.57, 0.0)],
+	["+ Z roll 180", Vector3(-1.57, 1.57, 3.14)],
+	["Rx+90 Ry-90", Vector3(1.57, -1.57, 0.0)],
+	["Rx+90 Ry+90", Vector3(1.57, 1.57, 0.0)],
 ]
 
 

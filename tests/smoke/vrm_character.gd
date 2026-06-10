@@ -18,6 +18,7 @@ extends SceneTree
 #      helmet->Head, sidearm->Hips; idempotent; removal works.
 
 const VrmCharacterScript: Script = preload("res://scripts/vrm_character.gd")
+const GearLib: Script = preload("res://scripts/vrm_gear_library.gd")
 
 var _failures: Array[String] = []
 var _passes: int = 0
@@ -33,6 +34,7 @@ func _run() -> void:
 	_test_body_library()
 	_test_expressions()
 	_test_gear_snapping()
+	_test_wow_equipment()
 	_report()
 
 
@@ -128,6 +130,53 @@ func _test_gear_snapping() -> void:
 	c.call("remove_gear", "rifle")
 	_expect(not bool(c.call("has_gear", "rifle")), "remove_gear detaches the rifle")
 	c.queue_free()
+
+
+# WoW-style per-slot equipment: items harvested from donor VRMs by material
+# name, equipped cross-character, own garments stripped/restored.
+func _test_wow_equipment() -> void:
+	_expect(GearLib.items_for_slot("chest").has("tee_red")
+		and GearLib.items_for_slot("chest").has("tactical_top"),
+		"chest slot lists items from BOTH donor VRMs")
+
+	var piece_a: Dictionary = GearLib.piece("tactical_top")
+	_expect(not piece_a.is_empty() and (piece_a["mesh"] as ArrayMesh).get_surface_count() > 0,
+		"tactical_top extracts garment surfaces from Scott's VRM")
+	_expect(piece_a == GearLib.piece("tactical_top"), "piece extraction is cached")
+
+	var c: Node3D = _make("eli")
+	var body: MeshInstance3D = _find_mesh(c, "Body")
+	var base_surfaces: int = body.mesh.get_surface_count()
+
+	_expect(bool(c.call("equip", "tactical_top")), "Eli equips Scott's tactical top")
+	_expect(String(c.call("equipped", "chest")) == "tactical_top", "chest slot reports the item")
+	var skel: Skeleton3D = c.call("skeleton")
+	var worn: MeshInstance3D = skel.get_node_or_null("Equip_chest")
+	_expect(worn != null and worn.skin != null, "worn item is a skinned mesh on the skeleton")
+	_expect(body.mesh.get_surface_count() < base_surfaces,
+		"Eli's own tee surfaces stripped while chest is occupied")
+
+	_expect(bool(c.call("equip", "tactical_boots")), "Eli equips Scott's boots too (multi-slot)")
+	c.call("unequip", "chest")
+	_expect(String(c.call("equipped", "chest")) == "", "unequip clears the slot")
+	c.call("unequip", "feet")
+	_expect(body.mesh.get_surface_count() == base_surfaces,
+		"own garments fully restored after unequip (%d surfaces)" % body.mesh.get_surface_count())
+
+	_expect(bool(c.call("equip", "rifle")) and bool(c.call("has_gear", "rifle")),
+		"rigid items (rifle) route through bone snap points via equip()")
+	c.queue_free()
+
+
+func _find_mesh(node: Node, mesh_name: String) -> MeshInstance3D:
+	var stack: Array = [node]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is MeshInstance3D and n.name == mesh_name:
+			return n
+		for ch in n.get_children():
+			stack.append(ch)
+	return null
 
 
 func _mount_bone(skel: Skeleton3D, node_name: String) -> String:

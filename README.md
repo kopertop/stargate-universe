@@ -51,8 +51,33 @@ godot --path . scenes/vrm_lab.tscn
 
 Live controls: character picker, body animation dropdown (retargeted Mixamo clips),
 emotion buttons + weight (happy/angry/sad/relaxed/surprised), visemes for lip-sync
-preview (aa/ih/ou/ee/oh), auto/manual blink, gaze sliders, gear toggles with Aim
-routing (rifle: back ↔ right hand; sidearm: hip ↔ hand), turntable.
+preview (aa/ih/ou/ee/oh), auto/manual blink, gaze sliders, **WoW-style equipment slot
+dropdowns (chest/legs/feet — swap shirts/pants/shoes between characters in code)**,
+gear toggles with Aim routing (rifle: back ↔ right hand; sidearm: hip ↔ hand), turntable.
+
+### WoW-style equipment (hot-swap gear in code)
+
+Every VRoid export shares the same standard base body, so **any garment authored on any
+character fits every other one** — VRoid Studio is the gear-authoring tool. The system
+(`scripts/vrm_gear_library.gd` + `VrmCharacter.equip/unequip`):
+
+- **Items are harvested from donor VRMs at runtime** by surface material name — VRoid
+  names every material by garment class (`*_Tops_*`, `*_Bottoms_*`, `*_Shoes_*`,
+  `*_Onepiece_*`), so a gear item = a donor VRM + a keyword list. Extracted pieces keep
+  their `Skin` (name-based humanoid bone binds) and snap onto any crew skeleton,
+  following animation automatically.
+- **Equipping strips the wearer's own garment surfaces** for occupied slots (no
+  z-fighting) and restores them on unequip.
+- **Rigid items** (helmet, rifle, sidearm) ride `BoneAttachment3D` snap points with
+  aim routing.
+- Code: `character.equip("tactical_top")`, `character.unequip("chest")`,
+  `character.equipped("legs")`.
+- **To add gear**: dress a throwaway character in VRoid Studio → export
+  `models/vrm/outfits/<name>.vrm` → add one `ITEMS` entry in `vrm_gear_library.gd`.
+- Proof captures: `tests/capture/vrm_wardrobe.gd` (one character, three outfits),
+  `vrm_slot_swap_probe.gd`, `vrm_outfit_swap_probe.gd`, `equip_probe.gd` (cross-pack
+  binding experiment — also documents the constraint: garments must come from
+  same-proportioned rigs, which the shared VRoid base body guarantees).
 
 ### How the VRM pipeline works
 

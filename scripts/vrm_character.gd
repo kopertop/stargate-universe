@@ -23,6 +23,7 @@ class_name VrmCharacter
 
 const BODY_LIB_PATH: String = "res://models/vrm/anim/crew_body.res"
 const FactoryRef: Script = preload("res://scripts/character_factory.gd")
+const GearLib: Script = preload("res://scripts/vrm_gear_library.gd")
 
 const EMOTIONS: Array[String] = ["happy", "angry", "sad", "relaxed", "surprised", "neutral"]
 const VISEMES: Array[String] = ["aa", "ih", "ou", "ee", "oh"]
@@ -55,6 +56,9 @@ var _channels: Dictionary = {}            # channel -> {"expr": String, "weight"
 var _face_meshes: Array[MeshInstance3D] = []
 var _blink_timer: float = 0.0
 var _blink_phase: float = -1.0            # <0 idle; 0..1 = blink progress
+var _body_mesh: MeshInstance3D = null     # the VRoid Body mesh (skin + garments)
+var _body_src_mesh: Mesh = null           # pristine copy for restoring own clothes
+var _equipped: Dictionary = {}            # slot -> item id (mesh slots only)
 
 
 # Returns a VrmCharacter (typed Node3D so a cold headless load never has to
@@ -90,6 +94,9 @@ func _ready() -> void:
 	for mesh in _collect_meshes():
 		if mesh.mesh != null and mesh.mesh is ArrayMesh and (mesh.mesh as ArrayMesh).get_blend_shape_count() > 0:
 			_face_meshes.append(mesh)
+		if mesh.name == "Body":
+			_body_mesh = mesh
+			_body_src_mesh = mesh.mesh
 
 
 # ------------------------------ body animation ------------------------------
@@ -199,6 +206,69 @@ func _mix_face() -> void:
 		var values: Dictionary = acc.get(mesh, {})
 		for i in range((mesh.mesh as ArrayMesh).get_blend_shape_count()):
 			mesh.set_blend_shape_value(i, float(values.get(i, 0.0)))
+
+
+# ------------------------------ equipment (WoW-style) ------------------------
+
+# Equip an item from VrmGearLibrary into its slot. Mesh items (shirts, pants,
+# shoes) replace the character's own garment surfaces; rigid items (helmet,
+# weapons) ride bone snap points. Returns true on success.
+func equip(item_id: String) -> bool:
+	var def: Dictionary = GearLib.item_def(item_id)
+	if def.is_empty():
+		return false
+	var slot: String = String(def["slot"])
+	if GearLib.is_rigid(item_id):
+		return attach_gear(String(def["rigid"])) != null
+	var piece: Dictionary = GearLib.piece(item_id)
+	if piece.is_empty() or _skel == null:
+		return false
+	unequip(slot)
+	var worn: MeshInstance3D = MeshInstance3D.new()
+	worn.name = "Equip_" + slot
+	worn.mesh = piece["mesh"]
+	worn.skin = piece["skin"]
+	_skel.add_child(worn)
+	_equipped[slot] = item_id
+	_rebuild_own_body()
+	return true
+
+
+# Remove a slot's item; the character's own authored garment returns.
+func unequip(slot: String) -> void:
+	var def: Dictionary = {}
+	if _equipped.has(slot):
+		_equipped.erase(slot)
+	if _skel != null:
+		var worn: Node = _skel.get_node_or_null("Equip_" + slot)
+		if worn != null:
+			worn.name = "Equip_%s_retired" % slot
+			worn.queue_free()
+	# Rigid slots route to the bone-mount remover.
+	for gear_id in ["helmet", "rifle", "sidearm"]:
+		def = GearLib.item_def(gear_id)
+		if String(def.get("slot", "")) == slot:
+			remove_gear(gear_id)
+	_rebuild_own_body()
+
+
+func equipped(slot: String) -> String:
+	return String(_equipped.get(slot, ""))
+
+
+# Strip the character's OWN garment surfaces for every occupied mesh slot so
+# equipped items don't z-fight the authored clothes underneath; restore them
+# when slots free up. Skin/face/hair surfaces always survive.
+func _rebuild_own_body() -> void:
+	if _body_mesh == null or _body_src_mesh == null:
+		return
+	var strip: Array = []
+	for slot in _equipped:
+		strip.append_array(GearLib.SLOT_KEYWORDS.get(slot, []))
+	if strip.is_empty():
+		_body_mesh.mesh = _body_src_mesh
+	else:
+		_body_mesh.mesh = GearLib.filtered_mesh(_body_src_mesh, strip, true)
 
 
 # ---------------------------------- gear ------------------------------------

@@ -9,8 +9,10 @@ extends Node3D
 # bone-snapped gear with aim routing, spring-bone hair physics, turntable.
 
 const VrmCharacterScript: Script = preload("res://scripts/vrm_character.gd")
+const GearLib: Script = preload("res://scripts/vrm_gear_library.gd")
 
 const VRM_DIR: String = "res://models/vrm"
+const MESH_SLOTS: Array[String] = ["chest", "legs", "feet"]
 
 var _char: Node3D = null
 var _cam: Camera3D = null
@@ -29,6 +31,7 @@ var _gaze_v: HSlider
 var _autoblink_toggle: CheckBox
 var _aim_toggle: CheckBox
 var _gear_boxes: Dictionary = {}
+var _slot_picks: Dictionary = {}   # slot -> OptionButton
 var _emotion: String = "neutral"
 var _viseme: String = ""
 
@@ -123,6 +126,8 @@ func _rebuild_character() -> void:
 	_char = VrmCharacterScript.create("%s/%s.vrm" % [VRM_DIR, stem], stem)
 	add_child(_char)
 	_char.set("auto_blink", _autoblink_toggle.button_pressed)
+	for slot in _slot_picks:
+		(_slot_picks[slot] as OptionButton).select(0)
 	_refresh_anim_list()
 	_apply_expression_ui()
 	for gear_id in _gear_boxes:
@@ -192,6 +197,24 @@ func _build_ui() -> void:
 		if _char != null:
 			_char.set("auto_blink", on))
 	box.add_child(_autoblink_toggle)
+
+	box.add_child(HSeparator.new())
+	box.add_child(_label("Equipment (WoW slots — swap in code)"))
+	for slot in MESH_SLOTS:
+		var row: HBoxContainer = HBoxContainer.new()
+		var lbl: Label = Label.new()
+		lbl.text = slot
+		lbl.custom_minimum_size = Vector2(48, 0)
+		row.add_child(lbl)
+		var pick: OptionButton = OptionButton.new()
+		pick.custom_minimum_size = Vector2(180, 0)
+		pick.add_item("(own)")
+		for item_id in GearLib.items_for_slot(slot):
+			pick.add_item(item_id)
+		pick.item_selected.connect(_on_slot_item.bind(slot))
+		row.add_child(pick)
+		box.add_child(row)
+		_slot_picks[slot] = pick
 
 	box.add_child(HSeparator.new())
 	box.add_child(_label("Gear (bone snap points)"))
@@ -273,6 +296,16 @@ func _apply_expression_ui() -> void:
 	else:
 		_char.call("set_viseme", _viseme, _viseme_slider.value)
 	_char.call("set_gaze", _gaze_h.value, _gaze_v.value)
+
+
+func _on_slot_item(idx: int, slot: String) -> void:
+	if _char == null:
+		return
+	var pick: OptionButton = _slot_picks[slot]
+	if idx == 0:
+		_char.call("unequip", slot)
+	else:
+		_char.call("equip", pick.get_item_text(idx))
 
 
 func _on_gear_toggled(on: bool, gear_id: String) -> void:

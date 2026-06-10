@@ -60,6 +60,9 @@ var _skel: Skeleton3D = null
 var _anim: AnimationPlayer = null
 var _region_meshes: Dictionary = {}   # region -> MeshInstance3D
 var _equipped: Dictionary = {}        # slot -> {"stem": String, "nodes": Array}
+# Equipment calls made before _ready (spawners often dress before add_child);
+# replayed once the skeleton exists.
+var _pending: Array = []
 
 
 static func create(body_gender: String = "Male") -> Node3D:
@@ -82,6 +85,11 @@ func _ready() -> void:
 	if ResourceLoader.exists(BODY_LIB):
 		_anim.add_animation_library("body", load(BODY_LIB))
 	play_clip("idle")
+	# Replay equipment configured before we entered the tree.
+	var queued: Array = _pending
+	_pending = []
+	for call_args in queued:
+		callv(call_args[0], call_args[1])
 
 
 # ----------------------------- body splitting --------------------------------
@@ -180,6 +188,9 @@ func _finger_of(bone: String, region: String) -> bool:
 func set_slot(slot: String, stem: String) -> bool:
 	if not SLOTS.has(slot):
 		return false
+	if _skel == null:
+		_pending.append(["set_slot", [slot, stem]])
+		return true
 	# Clear current.
 	if _equipped.has(slot):
 		for n in _equipped[slot]["nodes"]:
@@ -244,18 +255,16 @@ static func _inflated(cache_key: String, mesh: Mesh) -> ArrayMesh:
 
 # Rifle in the right hand (aimed) or slung via Chest mount (stowed).
 func set_rifle(carried: bool, aimed: bool = false) -> void:
-	for mount_name in ["RifleHand", "RifleBack"]:
-		var old: Node = _skel.get_node_or_null(mount_name)
-		if old != null:
-			old.name = mount_name + "_retired"
-			old.queue_free()
+	if _skel == null:
+		_pending.append(["set_rifle", [carried, aimed]])
+		return
+	_clear_mounts(["RifleHand", "RifleBack"])
 	if not carried:
 		return
-	var mount: BoneAttachment3D = BoneAttachment3D.new()
-	mount.name = "RifleHand" if aimed else "RifleBack"
-	_skel.add_child(mount)
-	mount.bone_name = "RightHand" if aimed else "Chest"
+	var mount: BoneAttachment3D = _mount("RifleHand" if aimed else "RifleBack",
+		"RightHand" if aimed else "Chest")
 	var rifle: Node3D = FactoryRef.build_rifle()
+	rifle.name = "Rifle"
 	if aimed:
 		# Hand-bone axes are rig-specific; tuned via rifle_grip_tune capture:
 		# Rx(-90) alone = sideways, +Ry(90) = on the aim line but inverted,
@@ -268,6 +277,82 @@ func set_rifle(carried: bool, aimed: bool = false) -> void:
 		rifle.position = Vector3(-0.04, 0.10, -0.18)
 		rifle.rotation = Vector3(1.25, 0.0, 0.85)
 	mount.add_child(rifle)
+
+
+# Sidearm: right hand (aimed) or holstered on the right hip. Same canonical
+# gear frame as the rifle, so the hand transform family matches.
+func set_sidearm(carried: bool, aimed: bool = false) -> void:
+	if _skel == null:
+		_pending.append(["set_sidearm", [carried, aimed]])
+		return
+	_clear_mounts(["SidearmHand", "SidearmHip"])
+	if not carried:
+		return
+	var mount: BoneAttachment3D = _mount("SidearmHand" if aimed else "SidearmHip",
+		"RightHand" if aimed else "Hips")
+	var gun: Node3D = FactoryRef.build_sidearm()
+	gun.name = "Sidearm"
+	gun.scale = Vector3.ONE * 0.5   # mini-proportioned mesh on a human frame
+	if aimed:
+		gun.position = Vector3(0.0, 0.06, 0.02)
+		gun.rotation = Vector3(-1.57, 1.57, 3.14)
+	else:
+		gun.position = Vector3(0.16, 0.02, -0.03)
+		gun.rotation = Vector3(-1.57, 0.0, 0.0)   # barrel down along the thigh
+	mount.add_child(gun)
+
+
+# Combat helmet on the Head bone (standoff/military kit).
+func set_helmet(worn: bool) -> void:
+	if _skel == null:
+		_pending.append(["set_helmet", [worn]])
+		return
+	_clear_mounts(["HelmetMount"])
+	if not worn:
+		return
+	var mount: BoneAttachment3D = _mount("HelmetMount", "Head")
+	var helmet: Node3D = FactoryRef.build_helmet()
+	helmet.name = "Helmet"
+	helmet.scale = Vector3.ONE * 0.42
+	helmet.position = Vector3(0.0, 0.11, 0.02)
+	mount.add_child(helmet)
+
+
+func _mount(mount_name: String, bone: String) -> BoneAttachment3D:
+	var mount: BoneAttachment3D = BoneAttachment3D.new()
+	mount.name = mount_name
+	_skel.add_child(mount)
+	mount.bone_name = bone
+	return mount
+
+
+func _clear_mounts(names: Array) -> void:
+	for mount_name in names:
+		var old: Node = _skel.get_node_or_null(mount_name)
+		if old != null:
+			old.name = mount_name + "_retired"
+			old.queue_free()
+
+
+# Multiply a tint over every equipped garment's albedo (ship duty blacks vs
+# natural "field" colors) and optionally the base skin texture variant.
+func tint_clothing(tint: Color) -> void:
+	if _skel == null:
+		_pending.append(["tint_clothing", [tint]])
+		return
+	for slot in _equipped:
+		if slot == "Hair":
+			continue
+		for n in _equipped[slot]["nodes"]:
+			if not (is_instance_valid(n) and n is MeshInstance3D):
+				continue
+			var mi: MeshInstance3D = n
+			for s in range(mi.mesh.get_surface_count()):
+				var src: Material = mi.mesh.surface_get_material(s)
+				if src is BaseMaterial3D:
+					var mat: BaseMaterial3D = (src as BaseMaterial3D).duplicate()
+					mat.albedo_color = tint
+					mi.set_surface_override_material(s, mat)
 
 
 # ------------------------------- animation -----------------------------------

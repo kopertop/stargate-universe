@@ -559,22 +559,27 @@ func _build_returned_crew_npc(display_name: String, kind: String, glb_path: Stri
 	cs.position = Vector3(0.0, 0.9, 0.0)
 	body.add_child(cs)
 
-	# Visual body — Kenney mini-char GLB, flipped 180° (export +Z forward).
+	# Visual body — flipped 180° (models export +Z forward).
 	var model_holder: Node3D = Node3D.new()
 	model_holder.name = "Model"
-	model_holder.scale = Vector3(2.6, 2.6, 2.6)
 	model_holder.rotation.y = PI
-	var glb: PackedScene = load(CharacterFactoryRef.model_for(display_name, glb_path))
-	if glb != null:
-		var inst: Node = glb.instantiate()
-		model_holder.add_child(inst)
-		Npc.play_idle_animation(inst)
 	body.add_child(model_holder)
-	# Back aboard: ship dress code (duty blacks + sidearm for military).
-	CharacterFactoryRef.dress(body, model_holder, display_name, CharacterFactoryRef.CTX_SHIP)
-	if tint != Color.WHITE:
-		# Legacy per-instance tint for unregistered characters.
-		_tint_kenney_model(model_holder, tint)
+	if CharacterFactoryRef.profile_for(display_name).has("mod"):
+		var mc: Node3D = CharacterFactoryRef.build_modular(display_name)
+		model_holder.add_child(mc)
+		# Back aboard: ship dress code (duty tint + sidearm for military).
+		CharacterFactoryRef.dress_modular(mc, display_name, CharacterFactoryRef.CTX_SHIP)
+	else:
+		model_holder.scale = Vector3(2.6, 2.6, 2.6)
+		var glb: PackedScene = load(CharacterFactoryRef.model_for(display_name, glb_path))
+		if glb != null:
+			var inst: Node = glb.instantiate()
+			model_holder.add_child(inst)
+			Npc.play_idle_animation(inst)
+		CharacterFactoryRef.dress(body, model_holder, display_name, CharacterFactoryRef.CTX_SHIP)
+		if tint != Color.WHITE:
+			# Legacy per-instance tint for unregistered characters.
+			_tint_kenney_model(model_holder, tint)
 
 	var tag: Label3D = Label3D.new()
 	tag.name = "Nametag"
@@ -1373,21 +1378,14 @@ func _build_npcs() -> void:
 	var model_holder: Node3D = Node3D.new()
 	model_holder.name = "Model"
 	model_holder.position = Vector3(0.0, 0.0, 0.0)
-	model_holder.scale = Vector3(2.6, 2.6, 2.6)
-	# Kenney mini characters export with +Z forward (look at the spine in the
-	# import preview), so rotate 180° to align with Godot's -Z forward
-	# convention — otherwise Scott walks/auto-greets facing the wrong way.
+	# Models export with +Z forward; rotate 180° to Godot's -Z forward —
+	# otherwise Scott walks/auto-greets facing the wrong way.
 	model_holder.rotation.y = PI
-	var scott_glb: PackedScene = load(CharacterFactoryRef.model_for("Lt Scott"))
-	if scott_glb != null:
-		var scott_model: Node = scott_glb.instantiate()
-		model_holder.add_child(scott_model)
-		# Start the GLB's idle animation so Scott isn't a statue.
-		Npc.play_idle_animation(scott_model)
 	scott.add_child(model_holder)
-	# Ship dress code: duty blacks + sidearm, consistent with everywhere else.
-	# (dress also binds the colormap texture the GLB importer drops.)
-	CharacterFactoryRef.dress(scott, model_holder, "Lt Scott", CharacterFactoryRef.CTX_SHIP)
+	# Ship dress code: duty tint + sidearm, consistent with everywhere else.
+	var scott_mc: Node3D = CharacterFactoryRef.build_modular("Lt Scott")
+	model_holder.add_child(scott_mc)
+	CharacterFactoryRef.dress_modular(scott_mc, "Lt Scott", CharacterFactoryRef.CTX_SHIP)
 
 	# Floating nametag billboard so the player can ID him from across the room.
 	var tag: Label3D = Label3D.new()

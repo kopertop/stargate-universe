@@ -1086,11 +1086,14 @@ func _standoff_reposition(npc: Node3D, _tree: Array) -> void:
 func _spawn_standoff_soldier(npc_name: String, char_name: String, pos: Vector3, yaw: float) -> StaticBody3D:
 	var body: StaticBody3D = _spawn_npc(npc_name, char_name, pos, yaw,
 		CharacterFactoryRef.model_for(char_name, "res://models/characters/scott.glb"), [])
-	# Standoff-only kit: snap a helmet onto the head bone of the spawned model.
-	var model_holder: Node = body.get_node_or_null("Model")
-	var skel: Skeleton3D = CharacterFactoryRef._find_skeleton(model_holder)
-	if skel != null:
-		CharacterFactoryRef.attach_gear(skel, "helmet")
+	# Standoff-only kit: combat helmet on the head bone.
+	var mc: Node = _modular_model(body)
+	if mc != null:
+		mc.call("set_helmet", true)
+	else:
+		var skel: Skeleton3D = CharacterFactoryRef._find_skeleton(body.get_node_or_null("Model"))
+		if skel != null:
+			CharacterFactoryRef.attach_gear(skel, "helmet")
 	body.process_mode = Node.PROCESS_MODE_ALWAYS
 	body.set("enabled", false)
 	body.collision_layer = 0
@@ -1185,12 +1188,17 @@ func _despawn_standoff() -> void:
 	_standoff_scott = null
 
 
-# Raise/holster a standoff actor's sidearm by moving it between the belt and hand
-# bone mounts and switching to the matching pose — the bone-attach equivalent of
-# the old "tween the gun's rotation" hack. Safe under instant_mode (no frames).
+# Raise/holster a standoff actor's sidearm by moving it between the belt and
+# hand bone mounts and switching to the matching pose. Safe under instant_mode.
 func _standoff_aim(actor: Node3D, aimed: bool) -> void:
 	if actor == null or not is_instance_valid(actor):
 		return
+	var mc: Node = _modular_model(actor)
+	if mc != null:
+		mc.call("set_sidearm", true, aimed)
+		mc.call("play_clip", "rifle_aim" if aimed else "idle")
+		return
+	# Legacy mini path.
 	var holder: Node = actor.get_node_or_null("Model")
 	var skel: Skeleton3D = CharacterFactoryRef._find_skeleton(holder)
 	if skel == null:
@@ -1206,6 +1214,17 @@ func _standoff_aim(actor: Node3D, aimed: bool) -> void:
 		anim.play("holding-right")
 	elif anim.has_animation("idle"):
 		anim.play("idle")
+
+
+# The ModularCharacter under an actor's Model holder, or null on legacy minis.
+func _modular_model(actor: Node3D) -> Node:
+	var holder: Node = actor.get_node_or_null("Model")
+	if holder == null:
+		return null
+	for c in holder.get_children():
+		if c.has_method("set_slot"):
+			return c
+	return null
 
 
 func _find_animplayer(node: Node) -> AnimationPlayer:
@@ -1323,21 +1342,24 @@ func _spawn_npc(
 
 	var model_holder: Node3D = Node3D.new()
 	model_holder.name = "Model"
-	model_holder.scale = Vector3(2.6, 2.6, 2.6)
-	# Kenney mini chars export +Z forward; rotate so model faces -Z (parent forward).
+	# Models face +Z as exported; rotate so they face -Z (parent forward).
 	model_holder.rotation.y = PI
-	# Resolve the base model from the central registry (the per-site glb_path is a
-	# fallback for characters not registered there) so a character looks the same
-	# everywhere and the model is tweakable in one place.
-	var glb: PackedScene = load(CharacterFactoryRef.model_for(character_name, glb_path))
-	if glb != null:
-		var inst: Node = glb.instantiate()
-		model_holder.add_child(inst)
-		Npc.play_idle_animation(inst)
 	body.add_child(model_holder)
-	# Ship dress code from the central registry: military crew in duty blacks
-	# with a sidearm, civilians in their own clothes — consistent everywhere.
-	CharacterFactoryRef.dress(body, model_holder, character_name, CharacterFactoryRef.CTX_SHIP)
+	if CharacterFactoryRef.profile_for(character_name).has("mod"):
+		# PRIMARY pipeline: Quaternius ModularCharacter at real-world scale,
+		# dressed for ship context (duty tint + sidearm for military).
+		var mc: Node3D = CharacterFactoryRef.build_modular(character_name)
+		model_holder.add_child(mc)
+		CharacterFactoryRef.dress_modular(mc, character_name, CharacterFactoryRef.CTX_SHIP)
+	else:
+		# Legacy mini fallback for unregistered characters.
+		model_holder.scale = Vector3(2.6, 2.6, 2.6)
+		var glb: PackedScene = load(CharacterFactoryRef.model_for(character_name, glb_path))
+		if glb != null:
+			var inst: Node = glb.instantiate()
+			model_holder.add_child(inst)
+			Npc.play_idle_animation(inst)
+		CharacterFactoryRef.dress(body, model_holder, character_name, CharacterFactoryRef.CTX_SHIP)
 
 	var tag: Label3D = Label3D.new()
 	tag.name = "Nametag"

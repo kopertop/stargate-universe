@@ -69,25 +69,28 @@ func _enter_tree() -> void:
 func _build_body(display_name: String, glb_path: String, tint: Color = Color.WHITE) -> void:
 	_model = Node3D.new()
 	_model.name = "Model"
-	_model.scale = Vector3(2.2, 2.2, 2.2)
-	_model.rotation.y = PI   # Kenney mini-chars export +Z forward; flip to -Z
+	_model.rotation.y = PI   # models export +Z forward; flip to -Z
 	add_child(_model)
-	# Registered crew resolve their base model centrally; glb_path is only a
-	# fallback for characters the factory doesn't know.
-	var resolved: String = CharacterFactoryRef.model_for(display_name, glb_path)
-	var glb: PackedScene = load(resolved) as PackedScene if ResourceLoader.exists(resolved) else null
-	if glb != null:
-		var inst: Node = glb.instantiate()
-		_model.add_child(inst)
-		_anim = _find_anim(inst)
-		_play_clip("idle")
-	# Off-ship dress code: fatigues for everyone, rifle + sidearm for military,
-	# Greer's skin tone baked in. Replaces the old colormap+tint pipeline.
-	CharacterFactoryRef.dress(self, _model, display_name, CharacterFactoryRef.CTX_MISSION, 2.2)
-	if tint != Color.WHITE:
-		# Legacy per-instance tint for unregistered characters (multiplies over
-		# the dressed material).
-		_apply_tint(_model, tint)
+	if CharacterFactoryRef.profile_for(display_name).has("mod"):
+		# PRIMARY pipeline: ModularCharacter dressed for the mission (field
+		# colors; rifle slung + sidearm for military).
+		var mc: Node3D = CharacterFactoryRef.build_modular(display_name)
+		_model.add_child(mc)
+		CharacterFactoryRef.dress_modular(mc, display_name, CharacterFactoryRef.CTX_MISSION)
+		_anim = _find_anim(mc)
+	else:
+		# Legacy mini fallback for unregistered characters.
+		_model.scale = Vector3(2.2, 2.2, 2.2)
+		var resolved: String = CharacterFactoryRef.model_for(display_name, glb_path)
+		var glb: PackedScene = load(resolved) as PackedScene if ResourceLoader.exists(resolved) else null
+		if glb != null:
+			var inst: Node = glb.instantiate()
+			_model.add_child(inst)
+			_anim = _find_anim(inst)
+		CharacterFactoryRef.dress(self, _model, display_name, CharacterFactoryRef.CTX_MISSION, 2.2)
+		if tint != Color.WHITE:
+			_apply_tint(_model, tint)
+	_play_clip("idle")
 	var tag: Label3D = Label3D.new()
 	tag.text = display_name
 	tag.pixel_size = 0.0042
@@ -229,8 +232,17 @@ func _planar(a: Vector3, b: Vector3) -> float:
 func _play_clip(clip: String) -> void:
 	if _anim == null:
 		return
+	# The shared modular/VRM library has "run", not the mini GLBs' "sprint".
+	var want: String = "run" if clip == "sprint" and not _anim.has_animation("sprint") else clip
+	# Exact names first (incl. "body/<clip>" library form) — substring matching
+	# would hit "body/rifle_fire_walk" for "walk".
+	for cand in [want, "body/" + want]:
+		if _anim.has_animation(cand):
+			if _anim.current_animation != cand:
+				_anim.play(cand, 0.25)
+			return
 	for nm in _anim.get_animation_list():
-		if String(nm).to_lower().contains(clip):
+		if String(nm).to_lower().contains(want):
 			if _anim.current_animation != String(nm):
 				_anim.play(String(nm))
 			return

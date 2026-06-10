@@ -293,12 +293,19 @@ func _step_walk(delta: float) -> void:
 	_set_npc_clip("walk")
 
 
-# Switch the GLB AnimationPlayer to a clip whose name contains `clip` (walk /
-# idle). No-ops if the model or a matching clip is absent.
+# Switch the AnimationPlayer to `clip`. Exact names first (including the
+# modular crew's "body/<clip>" library form) so "walk" can't substring-match
+# "body/rifle_fire_walk"; substring matching remains as the legacy-GLB
+# fallback (mini clips are named exactly, VRoid/modular use the library).
 func _set_npc_clip(clip: String) -> void:
 	var ap: AnimationPlayer = _find_anim_player(self)
 	if ap == null:
 		return
+	for cand in [clip, "body/" + clip]:
+		if ap.has_animation(cand):
+			if ap.current_animation != cand:
+				ap.play(cand, 0.25)
+			return
 	for nm in ap.get_animation_list():
 		if String(nm).to_lower().contains(clip):
 			if ap.current_animation != String(nm):

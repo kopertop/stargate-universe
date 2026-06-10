@@ -180,26 +180,45 @@ const OUTFITS: Dictionary = {
 # camo + rifle + sidearm off-ship. Civilians: their own clothes on the ship,
 # unarmed fatigues on missions.
 # ---------------------------------------------------------------------------
-# Characters with a "vrm" key have a full VRoid body (models/vrm/) — the
-# VrmCharacter pipeline (expressions, retargeted animations, bone-snapped
-# gear). The mini "model" stays as the in-world fallback until spawn sites
-# migrate. Export more crew from VRoid Studio (~/Documents/VRM/*.vroid) to
-# extend the roster.
+# The PRIMARY in-game body is the Quaternius ModularCharacter ("mod" key:
+# gender + hairstyle; outfits resolve from the ship/mission outfit ids via
+# MODULAR_LOADOUTS). "vrm" = secondary VRoid body (expressions); "model" =
+# legacy mini fallback. Current outfit parts are the fantasy placeholders
+# (Peasant=civvies, Ranger=uniform) until SGU outfits are authored on the rig.
 const PROFILES: Dictionary = {
-	"Eli": {"model": "eli", "vrm": "res://models/vrm/eli.vrm", "ship": "civvies", "mission": "fatigues", "military": false},
-	"Dr Rush": {"model": "rush", "ship": "civvies", "mission": "fatigues", "military": false},
-	"Dr Park": {"model": "park", "ship": "civvies", "mission": "fatigues", "military": false},
-	"Dr James": {"model": "james", "ship": "civvies", "mission": "fatigues", "military": false},
-	"Chloe Armstrong": {"model": "chloe", "ship": "civvies", "mission": "fatigues", "military": false},
-	"Lt Scott": {"model": "scott", "vrm": "res://models/vrm/scott.vrm", "ship": "duty_black", "mission": "combat", "military": true},
+	"Eli": {"model": "eli", "vrm": "res://models/vrm/eli.vrm", "ship": "civvies", "mission": "fatigues", "military": false,
+		"mod": {"gender": "Male", "hair": "Hair_SimpleParted"}},
+	"Dr Rush": {"model": "rush", "ship": "civvies", "mission": "fatigues", "military": false,
+		"mod": {"gender": "Male", "hair": "Hair_Beard"}},
+	"Dr Park": {"model": "park", "ship": "civvies", "mission": "fatigues", "military": false,
+		"mod": {"gender": "Female", "hair": "Hair_Buns"}},
+	"Dr James": {"model": "james", "ship": "civvies", "mission": "fatigues", "military": false,
+		"mod": {"gender": "Female", "hair": "Hair_Long"}},
+	"Chloe Armstrong": {"model": "chloe", "ship": "civvies", "mission": "fatigues", "military": false,
+		"mod": {"gender": "Female", "hair": "Hair_Long"}},
+	"Lt Scott": {"model": "scott", "vrm": "res://models/vrm/scott.vrm", "ship": "duty_black", "mission": "combat", "military": true,
+		"mod": {"gender": "Male", "hair": "Hair_Buzzed"}},
 	# Greer's skin/hair recolors bake into every outfit (the old away-team
 	# hack tinted Scott's whole body brown; this is the parameterized version).
 	"Sgt Greer": {
 		"model": "greer", "ship": "duty_black", "mission": "combat", "military": true,
 		"skin": Color(0.46, 0.28, 0.18), "hair": Color(0.10, 0.09, 0.08),
+		"mod": {"gender": "Male", "hair": "Hair_Buzzed", "skin_tint": Color(0.55, 0.38, 0.28)},
 	},
-	"Colonel Young": {"model": "young", "ship": "duty_black", "mission": "combat", "military": true},
-	"Lt James": {"model": "lt_james", "ship": "duty_black", "mission": "combat", "military": true},
+	"Colonel Young": {"model": "young", "ship": "duty_black", "mission": "combat", "military": true,
+		"mod": {"gender": "Male", "hair": "Hair_Buzzed"}},
+	"Lt James": {"model": "lt_james", "ship": "duty_black", "mission": "combat", "military": true,
+		"mod": {"gender": "Female", "hair": "Hair_BuzzedFemale"}},
+}
+
+# Modular outfit loadouts per mini-outfit id: which Quaternius outfit family
+# dresses each context, the clothing tint (ship duty = blacks; field = the
+# parts' natural colors standing in for camo), and carried gear.
+const MODULAR_LOADOUTS: Dictionary = {
+	"civvies": {"outfit": "Peasant", "tint": Color.WHITE, "sidearm": false, "rifle": false},
+	"fatigues": {"outfit": "Peasant", "tint": Color(0.55, 0.58, 0.42), "sidearm": false, "rifle": false},
+	"duty_black": {"outfit": "Ranger", "tint": Color(0.30, 0.30, 0.34), "sidearm": true, "rifle": false},
+	"combat": {"outfit": "Ranger", "tint": Color.WHITE, "sidearm": true, "rifle": true},
 }
 
 # Baked outfit textures, keyed "model|outfit". Characters sharing a look share
@@ -252,6 +271,57 @@ static func model_for(character_name: String, fallback: String = "") -> String:
 static func outfit_id_for(character_name: String, context: String) -> String:
 	var profile: Dictionary = profile_for(character_name)
 	return String(profile.get(context, "civvies"))
+
+
+# --------------------------- modular crew bodies ----------------------------
+
+# Preloaded lazily to avoid a load-order cycle (modular_character preloads us
+# back for the gear builders).
+static var _modular_script: Script = null
+
+
+static func _modular() -> Script:
+	if _modular_script == null:
+		_modular_script = load("res://scripts/modular_character.gd")
+	return _modular_script
+
+
+# Build the PRIMARY in-game body for a character: a ModularCharacter with the
+# profile's gender/hair. Call dress_modular AFTER adding it to the tree (slot
+# equipment needs the skeleton, which exists post-_ready).
+static func build_modular(character_name: String) -> Node3D:
+	var mod: Dictionary = profile_for(character_name).get("mod", {"gender": "Male", "hair": ""})
+	var c: Node3D = _modular().call("create", String(mod.get("gender", "Male")))
+	c.name = "Mod_" + character_name.replace(" ", "")
+	return c
+
+
+# Outfit + gear for a context, resolved through the same outfit ids as the
+# mini pipeline (civvies / fatigues / duty_black / combat).
+static func dress_modular(c: Node3D, character_name: String, context: String = CTX_SHIP) -> void:
+	var profile: Dictionary = profile_for(character_name)
+	var mod: Dictionary = profile.get("mod", {})
+	var outfit_id: String = outfit_id_for(character_name, context)
+	var loadout: Dictionary = MODULAR_LOADOUTS.get(outfit_id, MODULAR_LOADOUTS["civvies"])
+	var gender: String = String(mod.get("gender", "Male"))
+	for slot in ["Body", "Arms", "Legs", "Feet"]:
+		c.call("set_slot", slot, _modular_part(slot, gender, String(loadout["outfit"])))
+	if String(mod.get("hair", "")) != "":
+		c.call("set_slot", "Hair", String(mod["hair"]))
+	var tint: Color = loadout["tint"]
+	if tint != Color.WHITE:
+		c.call("tint_clothing", tint)
+	c.call("set_sidearm", bool(loadout["sidearm"]), false)
+	c.call("set_rifle", bool(loadout["rifle"]), false)
+
+
+# Resolve a slot's part stem for an outfit family, tolerant of the pack's
+# naming variance (Male_Ranger_Feet_Boots vs Female_Ranger_Feet).
+static func _modular_part(slot: String, gender: String, outfit: String) -> String:
+	for stem in _modular().call("parts_for_slot", slot, gender):
+		if String(stem).contains("_" + outfit + "_"):
+			return String(stem)
+	return ""
 
 
 # ------------------------------- dressing ----------------------------------

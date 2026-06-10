@@ -173,6 +173,19 @@ func _play_split_dialogue() -> void:
 	if SceneRouter.instant_mode:
 		return
 	GameState.add_log("Lt Scott: Okay, let's split up. Greer and Eli, you head north. Park and I will head south.")
+	# Defer the dialog emit until the arrival transition has finished. The WoW
+	# dialog pauses the scene tree (dialog_screen.gd::start), and SceneRouter's
+	# fade-OUT is a tween bound to the (now-paused) autoload — opening the dialog
+	# mid-fade freezes the full-screen black fade rect up forever, so the planet
+	# "never loads" (it has; the black curtain just never lifts). gate_room.gd's
+	# _play_gate_dialog dodges this by waiting past the fade before emitting; do
+	# the same, polling the router rather than racing a hard-coded timer.
+	var guard: int = 0
+	while SceneRouter.is_transitioning and guard < 120:
+		await get_tree().process_frame
+		guard += 1
+	if not is_inside_tree():
+		return
 	var tree: Array = _split_dialog_tree()
 	var player: Node = get_tree().get_first_node_in_group("player")
 	GameState.dialog_started.emit(player, tree)

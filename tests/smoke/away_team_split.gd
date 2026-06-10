@@ -13,6 +13,11 @@ extends SceneTree
 #   6. log_entries contains the arrival dialogue log line.
 #   7. resource_count("lime") is unchanged across spawn (no add_resource).
 #   8. instant_mode=true → no companions spawn + no split/radio logs.
+#   9. REGRESSION (black-screen-on-arrival): _play_split_dialogue must DEFER its
+#      dialog_started emit until SceneRouter.is_transitioning clears. Emitting
+#      mid-transition opens the WoW dialog, which pauses the tree, which stalls
+#      SceneRouter's fade-OUT tween — freezing the full-screen black fade up
+#      forever (the planet "never loads"). The emit must wait for the fade.
 #
 # Run with:
 #   godot --headless --quit-after 900 -s res://tests/smoke/away_team_split.gd
@@ -46,10 +51,12 @@ func _run() -> void:
 
 	await _test_live_spawn(gs, router)
 	await _test_instant_mode_no_spawn(gs, router)
+	await _test_dialogue_deferred_during_transition(gs, router)
 
 	# Final cleanup
 	gs.call("reset")
 	router.set("instant_mode", false)
+	router.set("is_transitioning", false)
 
 	_report()
 
@@ -274,6 +281,70 @@ func _test_instant_mode_no_spawn(gs: Node, router: Node) -> void:
 	_expect(not has_radio,
 		"instant_mode: no radio log (spawn was skipped by _ready's guard)")
 
+	await _cleanup_planet(planet, player)
+
+
+# ── 3: regression — dialog emit is deferred past the arrival transition ──────
+# Reproduces the black-screen-on-arrival deadlock: in live play the planet's
+# _ready fires _play_split_dialogue WHILE SceneRouter is still mid-fade
+# (is_transitioning=true). The WoW dialog pauses the tree on open, and the
+# router's fade-OUT is a tween bound to the now-paused autoload — so the black
+# fade rect never lifts. The fix defers the emit until is_transitioning clears.
+# Against the pre-fix code (synchronous emit) the "deferred while transitioning"
+# assertion fails — exactly the regression we want guarded.
+func _test_dialogue_deferred_during_transition(gs: Node, router: Node) -> void:
+	print("\n--- regression: dialog deferred until transition completes ---")
+	# Arrange: live mode, but a scene transition is still in progress (mid-fade).
+	gs.call("reset")
+	router.set("instant_mode", false)
+	router.set("is_transitioning", true)
+	gs.set("quest_step", gs.QUEST_MINE_LIME)
+	gs.set("lime_planet_dialed", true)
+	gs.set("active_planet_spec", gs.call("build_air_lime_spec"))
+
+	var player: Node3D = _make_player(Vector3.ZERO)
+	root.add_child(player)
+
+	var planet_script: Script = load(PLANET_SCRIPT_PATH)
+	var planet: Node3D = Node3D.new()
+	planet.set_script(planet_script)
+	# add_child fires planet._ready, which aborts early on the bare node (no
+	# $World/$Player/$View) BEFORE any dialogue code — same harness pattern as
+	# _test_live_spawn. Let that settle, THEN connect the listener so only our
+	# explicit _play_split_dialogue call is measured.
+	root.add_child(planet)
+	await process_frame
+
+	# Count dialog_started emits via our own listener (HUD is a scene node, not an
+	# autoload, so nothing else is connected in this headless harness).
+	var emit_count: Array[int] = [0]
+	var on_emit: Callable = func(_npc: Variant, _tree: Variant) -> void:
+		emit_count[0] += 1
+	gs.connect("dialog_started", on_emit)
+
+	# Act 1: fire the split dialogue while the transition is still running. The
+	# coroutine should park on its is_transitioning poll and NOT emit yet.
+	planet.call("_play_split_dialogue")
+	for _i in 20:
+		await process_frame
+
+	# Assert 1: emit deferred while transitioning; tree never paused mid-fade.
+	_expect(emit_count[0] == 0,
+		"dialog_started NOT emitted while SceneRouter.is_transitioning (deferred past fade)")
+	_expect(not paused,
+		"tree not paused during the arrival transition (fade can complete)")
+
+	# Act 2: transition completes (fade-out done) — the deferred emit should fire.
+	router.set("is_transitioning", false)
+	for _i in 10:
+		await process_frame
+
+	# Assert 2: dialog emitted exactly once, now that the fade has cleared.
+	_expect(emit_count[0] == 1,
+		"dialog_started emitted once after the transition clears (got %d)" % emit_count[0])
+
+	if gs.is_connected("dialog_started", on_emit):
+		gs.disconnect("dialog_started", on_emit)
 	await _cleanup_planet(planet, player)
 
 

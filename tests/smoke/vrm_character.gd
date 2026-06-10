@@ -64,12 +64,18 @@ func _test_body_library() -> void:
 	if lib == null:
 		return
 	var clips: PackedStringArray = lib.get_animation_list()
-	_expect(clips.size() == 15, "library has 15 clips (got %d)" % clips.size())
-	for required in ["idle", "walk", "run", "rifle_walk", "rifle_draw", "death", "wave", "argue"]:
+	_expect(clips.size() == 16, "library has 16 clips (got %d)" % clips.size())
+	for required in ["idle", "walk", "run", "rifle_walk", "rifle_draw", "rifle_aim", "death", "wave", "argue"]:
 		_expect(lib.has_animation(required), "library has '%s'" % required)
 	var walk: Animation = lib.get_animation("walk")
 	_expect(walk.loop_mode == Animation.LOOP_LINEAR, "walk loops")
 	_expect(lib.get_animation("death").loop_mode == Animation.LOOP_NONE, "death does not loop")
+	# Regression: locomotion clips must be IN-PLACE — Mixamo root motion in the
+	# Hips track made characters slide out of frame ("walks away while aiming").
+	for loco in ["walk", "run", "rifle_walk", "rifle_run", "rifle_run_aim", "rifle_fire_walk", "rifle_aim"]:
+		var drift: Vector3 = _hips_drift(lib.get_animation(loco))
+		_expect(Vector2(drift.x, drift.z).length() < 0.05,
+			"'%s' has no net root drift (%.2fm)" % [loco, Vector2(drift.x, drift.z).length()])
 	var found_humanoid: bool = false
 	for t in range(walk.get_track_count()):
 		if String(walk.track_get_path(t)).begins_with("%GeneralSkeleton:Hips"):
@@ -177,6 +183,17 @@ func _find_mesh(node: Node, mesh_name: String) -> MeshInstance3D:
 		for ch in n.get_children():
 			stack.append(ch)
 	return null
+
+
+func _hips_drift(anim: Animation) -> Vector3:
+	for t in range(anim.get_track_count()):
+		if anim.track_get_type(t) == Animation.TYPE_POSITION_3D \
+				and String(anim.track_get_path(t)).ends_with(":Hips"):
+			var n: int = anim.track_get_key_count(t)
+			if n < 2:
+				return Vector3.ZERO
+			return (anim.track_get_key_value(t, n - 1) as Vector3) - (anim.track_get_key_value(t, 0) as Vector3)
+	return Vector3.ZERO
 
 
 func _mount_bone(skel: Skeleton3D, node_name: String) -> String:

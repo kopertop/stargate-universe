@@ -325,7 +325,7 @@ func _on_aim_toggled(on: bool) -> void:
 			_char.call("remove_gear", gear_id)
 			_char.call("attach_gear", gear_id, on and gear_id == _primary_weapon())
 	if on:
-		_char.call("play_clip", "rifle_run_aim" if bool(_char.call("has_gear", "rifle")) else "idle")
+		_char.call("play_clip", "rifle_aim" if bool(_char.call("has_gear", "rifle")) else "idle")
 
 
 func _primary_weapon() -> String:

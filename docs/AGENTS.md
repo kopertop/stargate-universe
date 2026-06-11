@@ -12,6 +12,9 @@ these docs are written for engineers, not designers.
 - `audio-inventory.md` — Catalogue of all SFX + music, by category, with
   source attribution.
 - `deployment-targets.md` — Planned platforms / build configurations.
+- `tts-dialogue.md` — Dynamic runtime voiced dialogue: the `TTSClient` node, the
+  LuxTTS sidecar, available character voices, and how to speak lines in-engine.
+  See also the `/speak` and `/tts` skills.
 
 ## Conventions
 

@@ -920,7 +920,7 @@ func _spawn_dr_rush() -> void:
 	rush.set("dialogue_tree", [
 		{
 			"speaker": "Eli",
-			"text": "Rush, don't push that — it could blow up the ship!",
+			"text": "Rush, don't! That thing could blow up the ship!",
 			"choices": [
 				{"text": "Step forward.", "next": 1},
 			],
@@ -947,15 +947,21 @@ func _spawn_dr_rush() -> void:
 		},
 		{
 			"speaker": "Dr Rush",
-			"text": "I've run the numbers. It won't blow up the ship.",
+			# action: Rush straightens off the console, rounds on Eli, and lets
+			# him have it — hands waving (centered camera, argue clip).
+			"action": "standoff_rush_talks",
+			"text": "Eli, you don't know what you're talking about. You only THINK you do, because I embedded a rudimentary version of Ancient into the game you played.",
 			"choices": [
 				{"text": "Watch as Rush presses the button anyway.", "next": 4},
 			],
 		},
 		{
 			"speaker": "Dr Rush",
-			# action: Rush shrugs the whole confrontation off and walks away.
+			# action: he turns back and STABS the control (the point/press
+			# reach), the button CLICKS, silence hangs, then he shrugs off and
+			# walks away. caption_delay holds his line through press + silence.
 			"action": "standoff_rush_leaves",
+			"caption_delay": 2.2,
 			"text": "Well. That's that, then.",
 			"choices": [
 				{"text": "Watch him go.", "next": 5},
@@ -1198,11 +1204,15 @@ func _standoff_restage() -> void:
 	_standoff_scott.rotation.y = face_rush
 
 
-# Eli's entrance: walk in from the south door to his mark, then square up to
-# Rush. auto_walk unlocks input on arrival — re-lock, the cutscene owns him.
+# Eli's entrance: he RUNS in from the south door to his mark shouting the
+# warning (cinematic dash = sprint clip, collision-free so he can't snag),
+# then squares up to Rush. The dash zeroes the body's collision layers —
+# restore them, the cutscene hands the body back at the end.
 func _standoff_eli_entrance() -> void:
 	var mark: Vector3 = _standoff_eli_mark()
-	player.call("auto_walk_to", mark, 2.8)
+	var prev_layer: int = int(player.get("collision_layer"))
+	var prev_mask: int = int(player.get("collision_mask"))
+	player.call("cinematic_dash_to", mark, 5.2)
 	var guard: int = 0
 	while guard < 360 and is_instance_valid(player) \
 			and player.position.distance_to(mark) > 0.35:
@@ -1210,6 +1220,8 @@ func _standoff_eli_entrance() -> void:
 		guard += 1
 	if not is_instance_valid(player):
 		return
+	player.set("collision_layer", prev_layer)
+	player.set("collision_mask", prev_mask)
 	player.call("set_input_locked", true)
 	player.rotation.y = atan2(-(_standoff_rush_pos.x - player.position.x),
 		-(_standoff_rush_pos.z - player.position.z))
@@ -1227,9 +1239,12 @@ func _run_standoff_cinematic(tree: Array) -> void:
 		return
 	_standoff_restage()
 	_standoff_cinema_begin(false)   # sequencer ends the camera, not dialog_closed
+	_standoff_shot_rush_intro()     # cold open ON Rush working — player off-frame
 	if player != null and player.has_method("set_input_locked"):
 		player.call("set_input_locked", true)
-	_standoff_eli_entrance()        # Eli storms in from the south, shouting
+	_standoff_eli_entrance()        # Eli RUNS in from the south, shouting
+	# Pull wide once the run-in is underway so the charge crosses the frame.
+	get_tree().create_timer(1.1, true).timeout.connect(_standoff_shot_wide)
 	var seq: Node = StandoffCinematicScript.new()
 	seq.name = "StandoffCinematic"
 	add_child(seq)
@@ -1272,6 +1287,8 @@ func _on_standoff_cue(action_id: String) -> void:
 			_standoff_advance_greer(instant)
 		"standoff_scott":
 			_standoff_enter_scott(instant)
+		"standoff_rush_talks":
+			_standoff_rush_talks(instant)
 		"standoff_rush_leaves":
 			_standoff_rush_leaves(instant)
 		"standoff_eli_console":
@@ -1295,6 +1312,9 @@ func _standoff_cinema_begin(hook_dialog_close: bool = true) -> void:
 	_standoff_cam = StandoffCameraScript.new()
 	_standoff_cam.name = "StandoffCamera"
 	add_child(_standoff_cam)
+	# Cutscene captions sit bottom-CENTER (no side panel) — subjects belong
+	# in the middle of the frame, not biased off-axis.
+	_standoff_cam.call("configure", 55.0, 0.0)
 	_standoff_cam.call("activate")
 	# Dialog path: the standoff plays inside ONE dialog; its close ends the
 	# scene. The cinematic path ends the camera itself instead.
@@ -1312,6 +1332,15 @@ func _standoff_cinema_end() -> void:
 
 func _standoff_cam_live() -> bool:
 	return _standoff_cam != null and is_instance_valid(_standoff_cam)
+
+
+# Cold open: Rush alone, hunched over his glowing console (also hides the
+# player's snap to the south door — he stays off-frame until the wide).
+func _standoff_shot_rush_intro() -> void:
+	if not _standoff_cam_live():
+		return
+	var look: Vector3 = _standoff_rush_pos + Vector3.UP * 1.2
+	_standoff_cam.call("frame", look + Vector3(-1.9, 0.5, -1.7), look, 0.1, 0.04)
 
 
 # Opening two-shot: the player and Rush from the open side, pulled WIDE
@@ -1371,6 +1400,23 @@ func _standoff_shot_scott() -> void:
 	_standoff_cam.call("frame", mid + (open["dir"] as Vector3) * d + Vector3.UP * 2.4, mid, 2.0, 0.05)
 
 
+# Rush rounding on Eli: dead-center portrait from Eli's side of the line.
+func _standoff_shot_rush_talks() -> void:
+	if not _standoff_cam_live():
+		return
+	var rush_node: Node3D = get_node_or_null("DrRush") as Node3D
+	if rush_node == null:
+		return
+	var look: Vector3 = rush_node.position + Vector3.UP * 1.3
+	var dir: Vector3 = _standoff_player_pos - rush_node.position
+	dir.y = 0.0
+	dir = dir.normalized() if dir.length() > 0.05 else Vector3.RIGHT
+	# BETWEEN the two and off the line (Eli stands ~2.3 m out — going the
+	# full distance parks the camera inside his head), Rush dead-center.
+	var side: Vector3 = dir.cross(Vector3.UP)
+	_standoff_cam.call("frame", look + dir * 1.8 + side * 0.9 + Vector3.UP * 0.3, look, 1.4, 0.0)
+
+
 # Rush walking off: frame his exit lane toward the south door so the shrug
 # and the walk-away read.
 func _standoff_shot_rush_leaves() -> void:
@@ -1388,12 +1434,13 @@ func _standoff_shot_rush_leaves() -> void:
 
 
 # Eli stepping up to the abandoned console: shot from the console's far side
-# looking back at him over the live screen.
+# looking back at him over the live screen. HARD CUT — a glide from the
+# exit-lane shot sweeps straight through the central pillar's glow.
 func _standoff_shot_eli_console() -> void:
 	if not _standoff_cam_live():
 		return
 	var look: Vector3 = _standoff_rush_pos + Vector3.UP * 1.25
-	_standoff_cam.call("frame", look + Vector3(-2.6, 0.55, -1.5), look, 1.6, 0.0)
+	_standoff_cam.call("frame", look + Vector3(-2.6, 0.55, -1.5), look, 0.05, 0.0)
 
 
 # Resolution: hold on Eli at the console (the emotional center now — Rush has
@@ -1539,13 +1586,42 @@ func _standoff_enter_scott(instant: bool) -> void:
 		_standoff_scott.rotation.y = face
 
 
-# Rush's cue: "Well. That's that, then." — he stops typing, shrugs the whole
-# confrontation off, and walks away from his console toward the south exit.
+# Rush's speaking cue: he straightens off the console, rounds on Eli, and
+# lets him have it — hands waving (argue clip), framed dead-center.
+func _standoff_rush_talks(instant: bool) -> void:
+	if instant:
+		return
+	var rush_node: Node3D = get_node_or_null("DrRush") as Node3D
+	if rush_node == null:
+		return
+	rush_node.rotation.y = atan2(-(_standoff_player_pos.x - rush_node.position.x),
+		-(_standoff_player_pos.z - rush_node.position.z))
+	var mc: Node = _modular_model(rush_node)
+	if mc != null:
+		mc.call("play_clip", "argue")
+	_standoff_shot_rush_talks()
+
+
+# Rush's exit cue: he turns back to the console and STABS the control (the
+# point/press reach), the button CLICKS, a beat of silence hangs (his
+# "Well. That's that, then." is caption-delayed to match), then he shrugs
+# the whole confrontation off and walks toward the south exit.
 func _standoff_rush_leaves(instant: bool) -> void:
 	if instant:
 		return   # presentation only — quest state already flipped at interact
 	var rush_node: Node3D = get_node_or_null("DrRush") as Node3D
 	if rush_node == null:
+		return
+	rush_node.rotation.y = PI * 0.5   # back to the console (-X)
+	var mc: Node = _modular_model(rush_node)
+	if mc != null:
+		mc.call("play_clip", "interact")   # the pointed press
+	await get_tree().create_timer(0.7, true).timeout
+	if not is_instance_valid(rush_node) or not is_inside_tree():
+		return
+	Audio.play("res://sounds/menu_click.ogg")   # the button press
+	await get_tree().create_timer(1.5, true).timeout   # ...nothing happens
+	if not is_instance_valid(rush_node) or not is_inside_tree():
 		return
 	_standoff_shot_rush_leaves()
 	var door_spot: Vector3 = _south_door_spot()

@@ -37,19 +37,24 @@ func _run() -> void:
 		get_tree().quit()
 		return
 
-	# Gameplay beat: Eli walks across the room toward Rush.
-	player.position = Vector3(-2.0, 0.0, 1.2)
-	player.rotation.y = -PI * 0.5
+	# Cold open: we walk in through the SOUTH door and find Rush at his
+	# console — the cutscene takes over right there.
+	var door_spot: Vector3 = room.call("_south_door_spot")
+	var pl_pos: Vector3 = door_spot + Vector3(0.0, 0.0, 0.9)
+	player.position = pl_pos
+	# Face Rush's console (he stands at ~(5, 0, 0)) as we step through.
+	player.rotation.y = atan2(-(5.0 - pl_pos.x), -(0.0 - pl_pos.z))
 	var view: Node = room.get_node_or_null("View")
 	if view != null and view.has_method("snap_to_target"):
 		view.call("snap_to_target")
 	await _wait(0.8)
-	player.call("auto_walk_to", Vector3(3.3, 0.0, 0.0), 3.4)
+	var step_in: Vector3 = door_spot + Vector3(0.0, 0.0, -1.2)
+	player.call("auto_walk_to", step_in, 2.2)
 	var guard: int = 0
-	while guard < 300 and player.position.distance_to(Vector3(3.3, 0.0, 0.0)) > 0.3:
+	while guard < 240 and player.position.distance_to(step_in) > 0.3:
 		await get_tree().process_frame
 		guard += 1
-	await _wait(0.6)
+	await _wait(0.5)
 
 	# The confrontation: first interact triggers the standoff cutscene.
 	rush.call("interact", player)

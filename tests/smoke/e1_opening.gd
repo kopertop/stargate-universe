@@ -98,7 +98,7 @@ func _test_standoff_tree_structure(gs: Node) -> void:
 	rush.set("dialogue_tree", [
 		{
 			"speaker": "Eli",
-			"text": "Rush, don't push that — it could blow up the ship!",
+			"text": "Rush, don't! That thing could blow up the ship!",
 			"choices": [{"text": "Step forward.", "next": 1}],
 		},
 		{
@@ -116,12 +116,14 @@ func _test_standoff_tree_structure(gs: Node) -> void:
 		},
 		{
 			"speaker": "Dr Rush",
-			"text": "I've run the numbers. It won't blow up the ship.",
+			"action": "standoff_rush_talks",
+			"text": "Eli, you don't know what you're talking about. You only THINK you do, because I embedded a rudimentary version of Ancient into the game you played.",
 			"choices": [{"text": "Watch as Rush presses the button anyway.", "next": 4}],
 		},
 		{
 			"speaker": "Dr Rush",
 			"action": "standoff_rush_leaves",
+			"caption_delay": 2.2,
 			"text": "Well. That's that, then.",
 			"choices": [{"text": "Watch him go.", "next": 5}],
 		},
@@ -171,8 +173,8 @@ func _test_standoff_tree_structure(gs: Node) -> void:
 	# room.gd::_on_standoff_cue dispatches on. Without these the actors
 	# never move (regression guard for the "Greer talks but isn't in the room" bug).
 	var expected_actions: Dictionary = {
-		1: "standoff_greer", 2: "standoff_scott", 4: "standoff_rush_leaves",
-		5: "standoff_eli_console", 6: "standoff_clear",
+		1: "standoff_greer", 2: "standoff_scott", 3: "standoff_rush_talks",
+		4: "standoff_rush_leaves", 5: "standoff_eli_console", 6: "standoff_clear",
 	}
 	for idx in expected_actions:
 		var want: String = expected_actions[idx]

@@ -52,11 +52,21 @@ func play(tree: Array) -> void:
 	var first: bool = true
 	for raw in tree:
 		var node: Dictionary = raw
-		Cinematic.set_caption(_caption_for(node, first))
-		first = false
 		var action: String = String(node.get("action", ""))
-		if action != "":
-			GameState.dialog_action.emit(action)
+		# Optional staging silence: the cue fires (the button CLICKS) but the
+		# spoken line holds back for caption_delay seconds.
+		var delay: float = float(node.get("caption_delay", 0.0))
+		if delay > 0.0:
+			Cinematic.set_caption("")
+			if action != "":
+				GameState.dialog_action.emit(action)
+			await get_tree().create_timer(delay, true).timeout
+			Cinematic.set_caption(_caption_for(node, first))
+		else:
+			Cinematic.set_caption(_caption_for(node, first))
+			if action != "":
+				GameState.dialog_action.emit(action)
+		first = false
 		if node.get("hold", false) == true:
 			await GameState.dialog_release
 		await _wait_advance()

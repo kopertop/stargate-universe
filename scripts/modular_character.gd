@@ -274,9 +274,13 @@ func set_rifle(carried: bool, aimed: bool = false) -> void:
 		rifle.position = Vector3(0.0, 0.08, 0.07)
 		rifle.rotation = Vector3(-1.57, 1.57, 3.14)
 	else:
-		# Slung diagonally across the upper back, barrel toward the ground.
-		rifle.position = Vector3(-0.04, 0.16, -0.17)
-		rifle.rotation = Vector3(1.25, 0.0, 0.85)
+		# Slung UP the back (reference-matched via tests/capture/
+		# sling_tune_grid.gd, Karpathy rounds 1-3): muzzle just above the
+		# shoulder, stock at the hip, slight diagonal, tucked tight. KEY
+		# FACT from round 1: the rifle model's long axis is X — Rx spins it
+		# about its own barrel; vertical carry comes from Rz ≈ -90°.
+		rifle.position = Vector3(-0.04, -0.12, -0.20)
+		rifle.rotation = Vector3(0.15, 0.0, -1.45)
 	mount.add_child(rifle)
 
 

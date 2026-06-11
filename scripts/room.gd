@@ -1171,23 +1171,48 @@ func _standoff_reposition(npc: Node3D, _tree: Array) -> void:
 	_standoff_cinema_begin()
 
 
+# Where Eli ends up for the confrontation: a couple of metres behind-right
+# of Rush, watching across real distance (user: nobody crowds anybody).
+func _standoff_eli_mark() -> Vector3:
+	return _standoff_rush_pos + Vector3(2.0, 0.0, -1.1)
+
+
 func _standoff_restage() -> void:
-	# Eli steps RIGHT behind Rush, looking over his shoulder at the console
-	# (Rush faces -X at the east console; behind him = +X). The cutscene
-	# camera takes over immediately, so the snap is invisible.
-	var eli_mark: Vector3 = _standoff_rush_pos + Vector3(0.62, 0.0, -0.42)
-	player.position = eli_mark
-	player.rotation.y = PI * 0.5   # forward = -X, over Rush's shoulder
+	# Everyone enters from the SOUTH: Eli starts just inside the door (his
+	# walk-in is kicked off by the cutscene runner); the soldiers hold at
+	# the doorway until their cues.
+	var door_spot: Vector3 = _south_door_spot()
+	var eli_mark: Vector3 = _standoff_eli_mark()
+	var sr: Node = get_node_or_null("/root/SceneRouter")
+	if not (sr != null and sr.get("instant_mode")):
+		player.position = door_spot + Vector3(0.0, 0.0, -0.7)
+		player.rotation.y = atan2(-(eli_mark.x - player.position.x),
+			-(eli_mark.z - player.position.z))
 	_standoff_player_pos = eli_mark
 	_standoff_player_fwd = Vector3(-1.0, 0.0, 0.0)
-	# Soldiers hold at the south door until their cues.
-	var door_spot: Vector3 = _south_door_spot()
 	var face_rush: float = atan2(-(_standoff_rush_pos.x - door_spot.x),
 		-(_standoff_rush_pos.z - door_spot.z))
-	_standoff_greer.position = door_spot + Vector3(0.5, 0.0, 0.0)
+	_standoff_greer.position = door_spot + Vector3(0.6, 0.0, 0.2)
 	_standoff_greer.rotation.y = face_rush
-	_standoff_scott.position = door_spot + Vector3(-0.5, 0.0, 0.3)
+	_standoff_scott.position = door_spot + Vector3(-0.6, 0.0, 0.4)
 	_standoff_scott.rotation.y = face_rush
+
+
+# Eli's entrance: walk in from the south door to his mark, then square up to
+# Rush. auto_walk unlocks input on arrival — re-lock, the cutscene owns him.
+func _standoff_eli_entrance() -> void:
+	var mark: Vector3 = _standoff_eli_mark()
+	player.call("auto_walk_to", mark, 2.8)
+	var guard: int = 0
+	while guard < 360 and is_instance_valid(player) \
+			and player.position.distance_to(mark) > 0.35:
+		await get_tree().process_frame
+		guard += 1
+	if not is_instance_valid(player):
+		return
+	player.call("set_input_locked", true)
+	player.rotation.y = atan2(-(_standoff_rush_pos.x - player.position.x),
+		-(_standoff_rush_pos.z - player.position.z))
 
 
 # Play the cold-open standoff as a true CUTSCENE (user direction: it offers
@@ -1204,6 +1229,7 @@ func _run_standoff_cinematic(tree: Array) -> void:
 	_standoff_cinema_begin(false)   # sequencer ends the camera, not dialog_closed
 	if player != null and player.has_method("set_input_locked"):
 		player.call("set_input_locked", true)
+	_standoff_eli_entrance()        # Eli storms in from the south, shouting
 	var seq: Node = StandoffCinematicScript.new()
 	seq.name = "StandoffCinematic"
 	add_child(seq)
@@ -1341,8 +1367,8 @@ func _standoff_shot_scott() -> void:
 		mid += p
 	mid = mid / float(pts.size()) + Vector3.UP * 1.1
 	var open: Dictionary = _standoff_open_side(mid, _standoff_rush_pos - _standoff_player_pos)
-	var d: float = clampf(float(open["clear"]) - 0.8, 5.5, 8.5)
-	_standoff_cam.call("frame", mid + (open["dir"] as Vector3) * d + Vector3.UP * 3.6, mid, 2.0, 0.08)
+	var d: float = clampf(float(open["clear"]) - 0.8, 4.5, 6.0)
+	_standoff_cam.call("frame", mid + (open["dir"] as Vector3) * d + Vector3.UP * 2.4, mid, 2.0, 0.05)
 
 
 # Rush walking off: frame his exit lane toward the south door so the shrug
@@ -1454,11 +1480,10 @@ func _clear_spot(want: Vector3, ignore: Array = []) -> Vector3:
 # until GameState.dialog_release fires here — i.e. until Greer has actually
 # arrived and aimed.
 func _standoff_advance_greer(instant: bool) -> void:
-	# Behind Rush's back (he faces -X; behind = +X) with the gun levelled —
-	# close enough to menace, far enough that the raised pistol leaves
-	# visible air between the muzzle and Rush (user: not TOO close).
+	# Well behind Rush (he faces -X; behind = +X) with the gun levelled
+	# across real distance — review note: nobody crowds anybody.
 	var anchor: Vector3 = _clear_spot(
-		Vector3(_standoff_rush_pos.x + 1.4, 0.0, _standoff_rush_pos.z + 0.25),
+		Vector3(_standoff_rush_pos.x + 2.6, 0.0, _standoff_rush_pos.z + 0.45),
 		[_standoff_greer, _standoff_scott, get_node_or_null("DrRush")])
 	var face: float = atan2(-(_standoff_rush_pos.x - anchor.x), -(_standoff_rush_pos.z - anchor.z))
 	if instant:
@@ -1492,10 +1517,10 @@ func _standoff_advance_greer(instant: bool) -> void:
 # Scott's cue: walk in from behind, stepping up beside the player toward the
 # confrontation. His sidearm stays holstered — he's de-escalating, not aiming.
 func _standoff_enter_scott(instant: bool) -> void:
-	# Behind Greer and off to one side — backing him up, not boxing Rush in.
-	# (Greer's mark is ~1.4 m behind Rush along +X.)
+	# Behind Greer and well off to one side — backing him up from distance.
+	# (Greer's mark is ~2.6 m behind Rush along +X.)
 	var anchor: Vector3 = _clear_spot(
-		Vector3(_standoff_rush_pos.x + 2.2, 0.0, _standoff_rush_pos.z + 1.0),
+		Vector3(_standoff_rush_pos.x + 4.0, 0.0, _standoff_rush_pos.z + 1.6),
 		[_standoff_greer, _standoff_scott, get_node_or_null("DrRush")])
 	if instant:
 		_standoff_scott.position = anchor

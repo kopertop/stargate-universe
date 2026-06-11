@@ -293,11 +293,12 @@ func set_sidearm(carried: bool, aimed: bool = false) -> void:
 		"RightHand" if aimed else "Hips")
 	var gun: Node3D = _gun(PISTOL_GLTF, "Sidearm")
 	if aimed:
-		# The pistol model's forward differs from the rifle's by 90° yaw —
-		# with the rifle's Ry(+90) it pointed RIGHT of the aim line (user
-		# render report). Ry 0 sends the barrel down the aim pose's forearm.
+		# Picked from tests/capture/pistol_grip_grid.gd — the pistol model's
+		# frame shares NOTHING with the rifle's (rifle values pointed it
+		# right; a single-axis "fix" pointed it up). Candidate #6 runs the
+		# barrel flat down the aim line.
 		gun.position = Vector3(0.0, 0.06, 0.02)
-		gun.rotation = Vector3(-1.57, 0.0, 3.14)
+		gun.rotation = Vector3(0.0, -1.57, 0.0)
 	else:
 		gun.position = Vector3(0.19, 0.02, 0.02)
 		gun.rotation = Vector3(-1.57, 0.0, 0.0)   # barrel down along the thigh

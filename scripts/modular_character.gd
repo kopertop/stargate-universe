@@ -293,8 +293,11 @@ func set_sidearm(carried: bool, aimed: bool = false) -> void:
 		"RightHand" if aimed else "Hips")
 	var gun: Node3D = _gun(PISTOL_GLTF, "Sidearm")
 	if aimed:
+		# The pistol model's forward differs from the rifle's by 90° yaw —
+		# with the rifle's Ry(+90) it pointed RIGHT of the aim line (user
+		# render report). Ry 0 sends the barrel down the aim pose's forearm.
 		gun.position = Vector3(0.0, 0.06, 0.02)
-		gun.rotation = Vector3(-1.57, 1.57, 3.14)
+		gun.rotation = Vector3(-1.57, 0.0, 3.14)
 	else:
 		gun.position = Vector3(0.19, 0.02, 0.02)
 		gun.rotation = Vector3(-1.57, 0.0, 0.0)   # barrel down along the thigh
@@ -442,6 +445,68 @@ func freeze_pose() -> void:
 		_pending.append(["freeze_pose", []])
 		return
 	_anim.pause()
+
+
+# Play a clip LOOPED even if the library authored it one-shot. The clip is
+# duplicated into an instance-local "extra" library with looping enabled, so
+# the shared crew_body resource is never mutated.
+func play_clip_looped(clip: String) -> void:
+	if _anim == null:
+		_pending.append(["play_clip_looped", [clip]])
+		return
+	var full: String = "extra/" + clip
+	if not _anim.has_animation(full):
+		if not _anim.has_animation("body/" + clip):
+			return
+		var anim: Animation = _anim.get_animation("body/" + clip).duplicate()
+		anim.loop_mode = Animation.LOOP_LINEAR
+		if not _anim.has_animation_library("extra"):
+			_anim.add_animation_library("extra", AnimationLibrary.new())
+		_anim.get_animation_library("extra").add_animation(clip, anim)
+	_anim.play(full, 0.3)
+
+
+# Hold a clip frozen at `fraction` of its length — a posing tool for working
+# NPCs. The paused AnimationPlayer stops re-applying poses, so callers may
+# adjust bones afterward.
+func freeze_clip_at(clip: String, fraction: float) -> void:
+	if _anim == null:
+		_pending.append(["freeze_clip_at", [clip, fraction]])
+		return
+	var full: String = "body/" + clip
+	if not _anim.has_animation(full):
+		return
+	var length: float = _anim.get_animation(full).length
+	_anim.play(full)
+	_anim.seek(clampf(fraction, 0.0, 1.0) * length, true)
+	_anim.pause()
+
+
+# Console-work pose (Rush at his station): the pickup reach frozen mid-bend
+# — slightly hunched, head down — with the LEFT arm mirrored from the right
+# so BOTH hands sit forward over the controls. No two-handed work clip
+# exists in the library; mirroring the frozen pose builds one. Local-pose
+# mirror across the sagittal plane = negate the quaternion's y/z.
+func pose_console_work() -> void:
+	if _skel == null:
+		_pending.append(["pose_console_work", []])
+		return
+	freeze_clip_at("pickup", 0.40)
+	for pair in [["RightUpperArm", "LeftUpperArm"], ["RightLowerArm", "LeftLowerArm"],
+			["RightHand", "LeftHand"]]:
+		var src: int = _skel.find_bone(String(pair[0]))
+		var dst: int = _skel.find_bone(String(pair[1]))
+		if src < 0 or dst < 0:
+			continue
+		var q: Quaternion = _skel.get_bone_pose_rotation(src)
+		_skel.set_bone_pose_rotation(dst, Quaternion(q.x, -q.y, -q.z, q.w))
+	# Deepen the lean — the raw freeze reads "standing sad" from the front.
+	for lean in [["Spine", 0.22], ["Chest", 0.16]]:
+		var idx: int = _skel.find_bone(String(lean[0]))
+		if idx < 0:
+			continue
+		var add: Quaternion = Quaternion(Vector3.RIGHT, float(lean[1]))
+		_skel.set_bone_pose_rotation(idx, _skel.get_bone_pose_rotation(idx) * add)
 
 
 func clip_names() -> PackedStringArray:

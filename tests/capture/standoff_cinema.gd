@@ -73,7 +73,15 @@ func _run() -> void:
 	await _settle(40)
 	await _shot("rush_numbers")
 
-	_advance(room)                       # -> node 4: stand-down + walk-out
+	_advance(room)                       # -> node 4: Rush "That's that" + walks off
+	await _settle(110)
+	await _shot("rush_leaves")
+
+	_advance(room)                       # -> node 5: Eli steps to the console
+	await _settle(110)
+	await _shot("eli_console")
+
+	_advance(room)                       # -> node 6: everyone disperses
 	await _settle(90)
 	await _shot("stand_down")
 

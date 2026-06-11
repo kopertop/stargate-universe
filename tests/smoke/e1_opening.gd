@@ -121,22 +121,35 @@ func _test_standoff_tree_structure(gs: Node) -> void:
 		},
 		{
 			"speaker": "Dr Rush",
+			"action": "standoff_rush_leaves",
+			"text": "Well. That's that, then.",
+			"choices": [{"text": "Watch him go.", "next": 5}],
+		},
+		{
+			"speaker": "Eli",
+			"action": "standoff_eli_console",
+			"text": "Apparently… that did nothing?",
+			"choices": [{"text": "Stare at the readout.", "next": 6}],
+		},
+		{
+			"speaker": "Eli",
 			"action": "standoff_clear",
-			"text": "Nothing. There — nothing happened. Now stop hovering, Wallace. I don't care where you go — just go be useful somewhere else. I have work to do.",
-			"choices": [{"text": "Fine.", "next": "exit"}],
+			"text": "And everyone's just… walking away. Okay. I need to find somewhere to cool off.",
+			"choices": [{"text": "Go find your quarters.", "next": "exit"}],
 		},
 	])
 	rush.set("met_flag", "met_rush")
 	rush.set("first_meet_recompute_objective", true)
 
 	var tree: Array = rush.get("dialogue_tree")
-	_expect(tree.size() >= 5, "standoff tree has at least 5 nodes")
+	_expect(tree.size() >= 7, "standoff tree has at least 7 nodes")
 	if tree.is_empty():
 		rush.free()
 		return
 
-	# Verify speaker order: Eli → Sgt Greer → Lt Scott → Dr Rush → Dr Rush
-	var expected_speakers: Array[String] = ["Eli", "Sgt Greer", "Lt Scott", "Dr Rush", "Dr Rush"]
+	# Verify speaker order: the confrontation ends on RUSH shrugging off and
+	# ELI working the console + deciding to go cool off.
+	var expected_speakers: Array[String] = ["Eli", "Sgt Greer", "Lt Scott", "Dr Rush", "Dr Rush", "Eli", "Eli"]
 	for i in expected_speakers.size():
 		if i < tree.size():
 			var nd: Variant = tree[i]
@@ -154,10 +167,13 @@ func _test_standoff_tree_structure(gs: Node) -> void:
 	_expect("blow up" in eli_text,
 		"Eli's opening line contains 'blow up' (got: '%s')" % eli_text)
 
-	# Choreography cues: the Greer/Scott/resolution nodes must carry the action
-	# ids that room.gd::_on_standoff_cue dispatches on. Without these the actors
+	# Choreography cues: every staged beat must carry the action id that
+	# room.gd::_on_standoff_cue dispatches on. Without these the actors
 	# never move (regression guard for the "Greer talks but isn't in the room" bug).
-	var expected_actions: Dictionary = {1: "standoff_greer", 2: "standoff_scott", 4: "standoff_clear"}
+	var expected_actions: Dictionary = {
+		1: "standoff_greer", 2: "standoff_scott", 4: "standoff_rush_leaves",
+		5: "standoff_eli_console", 6: "standoff_clear",
+	}
 	for idx in expected_actions:
 		var want: String = expected_actions[idx]
 		var got: String = ""
@@ -170,14 +186,20 @@ func _test_standoff_tree_structure(gs: Node) -> void:
 		and (tree[1] as Dictionary).get("hold", false) == true
 	_expect(greer_holds, "Greer's standoff node holds the dialog until he arrives")
 
-	# Rush's dismissal must NOT direct Eli to his quarters — he brushes him off.
-	var final_text: String = ""
+	# Rush shrugs the confrontation off and leaves; Eli closes the scene by
+	# deciding HIMSELF to go cool off (the quest objective handles "quarters").
+	var rush_exit_text: String = ""
 	if tree.size() >= 5 and tree[4] is Dictionary:
-		final_text = String((tree[4] as Dictionary).get("text", "")).to_lower()
-	_expect(not ("quarters" in final_text),
-		"Rush's dismissal doesn't mention 'quarters' (got: '%s')" % final_text)
-	_expect("useful somewhere else" in final_text,
-		"Rush's dismissal brushes Eli off ('useful somewhere else')")
+		rush_exit_text = String((tree[4] as Dictionary).get("text", "")).to_lower()
+	_expect("that's that" in rush_exit_text,
+		"Rush shrugs off with 'that's that' (got: '%s')" % rush_exit_text)
+	var eli_final_text: String = ""
+	if tree.size() >= 7 and tree[6] is Dictionary:
+		eli_final_text = String((tree[6] as Dictionary).get("text", "")).to_lower()
+	_expect(not ("quarters" in eli_final_text),
+		"Eli's closer doesn't hardcode 'quarters' (got: '%s')" % eli_final_text)
+	_expect("cool off" in eli_final_text,
+		"Eli decides to go cool off")
 
 	rush.free()
 
@@ -209,11 +231,11 @@ func _test_standoff_actors_spawn(gs: Node) -> void:
 		_expect(int(greer.get("collision_layer")) == 0,
 			"Greer is off the interact layer (collision_layer == 0)")
 		_expect(_has_snapped_gear(greer, "Sidearm"), "Greer carries a Sidearm snapped to a bone")
-		_expect(_has_snapped_gear(greer, "Helmet"), "Greer wears a combat Helmet (military dress)")
+		_expect(not _has_snapped_gear(greer, "Helmet"), "Greer is bareheaded (no helmets aboard ship)")
 	if scott != null:
 		_expect(scott.get("enabled") == false, "Scott is non-interactable (enabled == false)")
 		_expect(_has_snapped_gear(scott, "Sidearm"), "Scott also always carries a Sidearm")
-		_expect(_has_snapped_gear(scott, "Helmet"), "Scott wears a combat Helmet (military dress)")
+		_expect(not _has_snapped_gear(scott, "Helmet"), "Scott is bareheaded (no helmets aboard ship)")
 
 	# Everyone renders on the Quaternius pipeline now: Rush was the last
 	# hand-rolled mini in the control room, and the player avatar swapped from

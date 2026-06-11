@@ -22,6 +22,12 @@ var _http: HTTPRequest
 
 
 func _ready() -> void:
+	_ensure_http()
+
+
+func _ensure_http() -> void:
+	if _http != null:
+		return
 	_http = HTTPRequest.new()
 	add_child(_http)
 	_http.request_completed.connect(_on_request_completed)
@@ -29,6 +35,7 @@ func _ready() -> void:
 
 ## Request synthesis. seed < 0 = random prosody; >= 0 = reproducible.
 func say(voice: String, text: String, seed: int = -1) -> void:
+	_ensure_http()  # robust if called before _ready (e.g. headless SceneTree timing)
 	var url := "%s/synthesize?voice=%s&text=%s" % [server_url, voice.uri_encode(), text.uri_encode()]
 	if seed >= 0:
 		url += "&seed=%d" % seed

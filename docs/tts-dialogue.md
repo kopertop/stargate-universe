@@ -119,6 +119,10 @@ pipeline and the all-native GDExtension plan.
 | `unknown voice 'x'` | Not in `voices/`; check `/health` list, enroll it (§5). |
 | `Failed to decode WAV` | Need Godot **4.4+** (`AudioStreamWAV.load_from_buffer`). |
 | First line very slow | Cold model load (~10 s); subsequent lines ~1.8 s. |
+| `HTTPRequest ... ERR_UNCONFIGURED` in a `-s` SceneTree test | Node not in tree yet — `await process_frame` after `add_child` before `say()`. In-game (normal nodes) this isn't needed. |
+
+> **Verified** (2026-06-11): Godot 4.6.3 → sidecar → decoded a 4.52 s dynamic
+> line in-engine (`tools/tts-onnx-poc/godot/test_tts_roundtrip.gd`).
 
 ## File map
 

@@ -8,13 +8,18 @@ extends SceneTree
 ## (player name injected at runtime) in the pre-computed "rush" voice, writes the
 ## decoded audio to user:// and prints stats, then quits with 0/1.
 
-func _init() -> void:
+# preload (not class_name) so this runs via --script without a project class-cache scan
+const TTSClientScript := preload("res://scripts/tts_client.gd")
+
+
+func _initialize() -> void:  # not _init — root must be ready for add_child/_ready
 	_run()
 
 
 func _run() -> void:
-	var tts := TTSClient.new()
-	get_root().add_child(tts)
+	var tts := TTSClientScript.new()
+	root.add_child(tts)
+	await process_frame  # let tts + its HTTPRequest actually enter the tree (-s mode)
 
 	var player_name := "Chris"  # pretend this came from save data / char creation
 	var line := "Ah, %s. The Kino's picked up something on deck three. Do try to keep up." % player_name

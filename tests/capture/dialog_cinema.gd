@@ -53,18 +53,22 @@ func _run() -> void:
 	for i in range(2):
 		await process_frame
 	rush.call("interact", pl)
-	await _settle(40)   # screen spawns, cinema glides to the responder shot
+	await _settle(40)   # screen spawns; BEAT 1 holds on the speaker (Rush)
 
 	var screen: Node = _find_dialog_screen(root)
 	print("[dialog] screen=%s" % (screen != null))
-	# Node 0 has 2 choices -> camera frames ELI with the floating list.
-	await _shot("responder_choices")
+	_dump_facing(pl, rush)
+	await _shot("beat1_speaker_rush")
 
-	# Pick "Go where?" (index 1) -> node 1 (single choice) -> the camera
-	# should now frame RUSH speaking over Eli's shoulder.
+	# After the reading delay the choices reveal WITH a cut to Eli (beat 2).
+	await _settle(170)
+	await _shot("beat2_responder_choices")
+
+	# Pick "Go where?" (index 1) -> node 1 (single choice) -> camera back on
+	# Rush; his continue shows immediately.
 	_press_choice(screen, 1)
-	await _settle(60)
-	await _shot("speaker_rush")
+	await _settle(50)
+	await _shot("speaker_rush_node1")
 
 	# Exit ("Yes, sir.") -> gameplay camera restored.
 	_press_choice(_find_dialog_screen(root), 0)
@@ -74,6 +78,18 @@ func _run() -> void:
 
 	print("=== done: %d shots ===" % _shots)
 	quit()
+
+
+# Both participants must face each other during the conversation (dot of
+# body-forward onto the to-other vector; ~1.0 = squared up).
+func _dump_facing(pl: Node3D, rush: Node) -> void:
+	var r3: Node3D = rush as Node3D
+	var to_rush: Vector3 = r3.global_position - pl.global_position
+	to_rush.y = 0.0
+	var p_fwd: Vector3 = Vector3(-sin(pl.rotation.y), 0.0, -cos(pl.rotation.y))
+	var r_fwd: Vector3 = Vector3(-sin(r3.rotation.y), 0.0, -cos(r3.rotation.y))
+	print("[facing] player->rush=%.2f rush->player=%.2f" % [
+		p_fwd.dot(to_rush.normalized()), r_fwd.dot(-to_rush.normalized())])
 
 
 func _press_choice(screen: Node, idx: int) -> void:

@@ -114,10 +114,34 @@ func _render_node() -> void:
 	var choices: Array = node.get("choices", [])
 	if choices.is_empty():
 		choices = [{"text": "Goodbye.", "next": "exit"}]
-	# Camera: a real decision (>= 2 options) frames ELI with the choices
-	# floating beside him; narration beats frame the speaker OTS.
+	# Fable rhythm, two beats: the camera holds on the SPEAKER while their
+	# line reads; for a real decision (>= 2 options) the choices then reveal
+	# WITH a cut to Eli after a reading delay. Single-continue nodes keep the
+	# speaker framed and show their continue immediately. Without cinema
+	# (instant_mode/headless/radio) choices appear at once — structural tests
+	# press them right after start().
 	if _cinema != null and is_instance_valid(_cinema):
-		_cinema.call("frame_node", speaker, choices.size() >= 2)
+		_cinema.call("frame_node", speaker, false)
+		if choices.size() >= 2:
+			_reveal_choices_after_read(choices, String(node.get("text", "")))
+			return
+	_lay_out_choices(choices)
+
+
+# Beat 2: after the line has had reading time, cut to the responder (Eli)
+# and float the choices in. A token cancels stale reveals if the node
+# advances or the screen closes mid-delay.
+var _reveal_token: int = 0
+
+func _reveal_choices_after_read(choices: Array, line: String) -> void:
+	_reveal_token += 1
+	var token: int = _reveal_token
+	var delay: float = clampf(0.7 + float(line.length()) * 0.025, 0.9, 3.0)
+	await get_tree().create_timer(delay, true).timeout
+	if token != _reveal_token or not is_inside_tree():
+		return
+	if _cinema != null and is_instance_valid(_cinema):
+		_cinema.call("frame_node", "Eli", true)
 	_lay_out_choices(choices)
 
 # Resolve a speaker display name to the portrait Texture2D defined in

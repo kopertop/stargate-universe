@@ -85,7 +85,10 @@ func frame_node(speaker_name: String, decision: bool) -> void:
 	# a head filling the frame — at conversation range (~1.6 m) the offsets
 	# matter more than at cinema-set distances.
 	var pos: Vector3 = l_head + away * 0.9 + side * 0.9 + Vector3.UP * 0.25
-	_rig.call("frame", pos, s_head + Vector3.UP * 0.05, 0.8, 0.03)
+	# orbit = 0: conversation shots HOLD. The standoff's slow pan accumulates
+	# forever — a player reading for a minute ended up looking at the backs
+	# of both heads (live-play bug).
+	_rig.call("frame", pos, s_head + Vector3.UP * 0.05, 0.8, 0.0)
 	_last_speaker = speaker
 
 

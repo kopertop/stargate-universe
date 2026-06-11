@@ -178,6 +178,9 @@ func _ready() -> void:
 	GameState.log_added.connect(_on_log_added)
 	GameState.dialogue_shown.connect(_on_dialogue_shown)
 	GameState.dialog_started.connect(_on_dialog_started)
+	# The interact prompt ("[E] Talk to …") must not linger under an open
+	# conversation — it collides with the dialog subtitle (live-play bug).
+	GameState.dialog_closed.connect(_on_dialog_closed_restore_prompt)
 	# Toast fires on DECIPHER (the on-foot player walked in), not on remote Kino
 	# discovery — the decode animation celebrates physically reaching a room.
 	# Rooms a drone merely finds stay encrypted on the Kino map until entered.
@@ -820,6 +823,8 @@ func _hide_dialog_panel() -> void:
 func _on_dialog_started(npc: Node3D, tree: Array) -> void:
 	if tree.is_empty() or npc == null:
 		return
+	if _interact_label != null:
+		_interact_label.visible = false
 	var scene: PackedScene = load("res://objects/dialog_screen.tscn")
 	if scene == null:
 		return
@@ -827,6 +832,11 @@ func _on_dialog_started(npc: Node3D, tree: Array) -> void:
 	add_child(screen)
 	# DialogScreen.start() shares world_3d + frames the portrait camera.
 	screen.call("start", npc, tree)
+
+
+func _on_dialog_closed_restore_prompt() -> void:
+	if _interact_label != null:
+		_interact_label.visible = true
 
 
 func _on_log_added(line: String) -> void:

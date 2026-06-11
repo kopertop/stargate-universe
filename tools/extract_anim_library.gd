@@ -23,7 +23,7 @@ const MANIFEST: Dictionary = {
 	"nod": {"src": "hardheadnodyes", "loop": false},
 	"point": {"src": "pointingwitharmbent", "loop": false},
 	"argue": {"src": "standingarguingwithanotherperson", "loop": true},
-	"rifle_walk": {"src": "riflewalkforward", "loop": true, "in_place": true},
+	"rifle_walk": {"src": "riflewalkforward", "loop": true, "in_place": true, "yaw_rebase": true},
 	"rifle_run": {"src": "runningwithrifledown", "loop": true, "in_place": true},
 	"rifle_run_aim": {"src": "runningwithrifleaimed", "loop": true, "in_place": true},
 	"rifle_draw": {"src": "standingtoreadyposegrabbingriflefromtheback", "loop": false},
@@ -31,7 +31,7 @@ const MANIFEST: Dictionary = {
 	"death": {"src": "deathfromstandingidle", "loop": false},
 	# Stationary aim: the settled hold at the tail of the stop-running clip.
 	"rifle_aim": {"src": "stoprunningtoaimingrifleidle", "loop": true,
-		"in_place": true, "rebase": true, "slice": [1.70, 2.85]},
+		"in_place": true, "rebase": true, "slice": [1.70, 2.85], "yaw_rebase": 53.0},
 	# ---- Quaternius Universal Animation Library (first-party, same rig) ----
 	"talk": {"lib": "UAL1_Standard", "clip": "Idle_Talking", "loop": true},
 	"sit_enter": {"lib": "UAL1_Standard", "clip": "Sitting_Enter", "loop": false},
@@ -98,6 +98,22 @@ func _run() -> void:
 			_remove_root_drift(anim)
 		if bool(def.get("rebase", false)):
 			_rebase_to_origin(anim)
+		# Capture the rig's reference stance yaw from idle (first MANIFEST
+		# entry), then normalize flagged clips against it — some Mixamo
+		# sources bake a hips yaw (rifle_aim: -34°), which makes a character
+		# visually aim ~side-on while their NODE faces the target dead-on.
+		if clip_name == "idle":
+			_ref_hips_yaw = _hips_first_yaw(anim)
+		# yaw_rebase: true = normalize hips to idle's stance yaw (walks).
+		# A NUMBER = manual extra degrees, for clips whose AIM LINE is what
+		# must face node-forward (rifle_aim's source turns ~90° to aim — the
+		# hips blade hard, so hips-normalization alone leaves the barrel
+		# off-axis; tuned via tests/capture/greer_aim_proof.gd).
+		var yr: Variant = def.get("yaw_rebase", false)
+		if yr is bool and yr == true:
+			_rebase_yaw(anim, clip_name, 0.0)
+		elif yr is float or yr is int:
+			_rebase_yaw(anim, clip_name, deg_to_rad(float(yr)))
 		anim.loop_mode = Animation.LOOP_LINEAR if bool(def["loop"]) else Animation.LOOP_NONE
 		lib.add_animation(clip_name, anim)
 		ok += 1
@@ -163,6 +179,53 @@ func _hips_pos_track(anim: Animation) -> int:
 				and String(anim.track_get_path(t)).ends_with(":Hips"):
 			return t
 	return -1
+
+
+func _hips_rot_track(anim: Animation) -> int:
+	for t in range(anim.get_track_count()):
+		if anim.track_get_type(t) == Animation.TYPE_ROTATION_3D \
+				and String(anim.track_get_path(t)).ends_with(":Hips"):
+			return t
+	return -1
+
+
+# Reference stance yaw, captured from the idle clip's first hips key.
+var _ref_hips_yaw: float = 0.0
+
+
+# Projected yaw of a hips rotation key (consistent formula for reference and
+# clip, so the DELTA is meaningful even if the bone's local axes are exotic).
+func _yaw_of(q: Quaternion) -> float:
+	var fwd: Vector3 = q * Vector3(0, 0, -1)
+	return atan2(-fwd.x, -fwd.z)
+
+
+func _hips_first_yaw(anim: Animation) -> float:
+	var t: int = _hips_rot_track(anim)
+	if t < 0 or anim.track_get_key_count(t) == 0:
+		return 0.0
+	return _yaw_of(anim.track_get_key_value(t, 0))
+
+
+# Remove a clip's BAKED hips yaw: rotate every hips rotation key (and the
+# paired position keys) so the first frame's stance yaw matches idle's.
+# Without this, a character playing rifle_aim visually aims ~34° off the
+# direction their node faces (the "aiming where he WAS facing" bug).
+func _rebase_yaw(anim: Animation, clip_name: String, extra: float = 0.0) -> void:
+	var rt: int = _hips_rot_track(anim)
+	if rt < 0 or anim.track_get_key_count(rt) == 0:
+		return
+	var delta: float = _ref_hips_yaw - _hips_first_yaw(anim) + extra
+	var fix: Quaternion = Quaternion(Vector3.UP, delta)
+	for i in range(anim.track_get_key_count(rt)):
+		var q: Quaternion = anim.track_get_key_value(rt, i)
+		anim.track_set_key_value(rt, i, fix * q)
+	var pt: int = _hips_pos_track(anim)
+	if pt >= 0:
+		for i in range(anim.track_get_key_count(pt)):
+			var v: Vector3 = anim.track_get_key_value(pt, i)
+			anim.track_set_key_value(pt, i, fix * v)
+	print("[extract]   yaw-rebase %s by %.1f deg" % [clip_name, rad_to_deg(delta)])
 
 
 # Copy a [from_t, to_t] window of every position/rotation track into a new

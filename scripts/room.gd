@@ -441,12 +441,11 @@ func _spawn_interactables() -> void:
 			# holds the actuator). The Phase C seal mini-quest lives here.
 			_spawn_shuttle_dock()
 		"control_interface_room":
-			# Pre-crisis: Rush is at his console. Once the air crisis starts he
-			# has left to chase the fault elsewhere — the player arrives to an
-			# empty control room, radios Scott, and works the terminal alone
-			# (see _trigger_rush_absent_beat). Young, James, Park are in the
-			# gate room with the unconscious-Young tableau.
-			if not GameState.air_crisis_started:
+			# Rush works his console ONLY until the standoff: after "Well.
+			# That's that, then." he leaves the room for good (user direction)
+			# and isn't seen again until the scrubber beat in the south
+			# corridor. Post-crisis returns hit _trigger_rush_absent_beat.
+			if not GameState.air_crisis_started and not GameState.met_rush:
 				_spawn_dr_rush()
 			# Floor 2 access-code terminal: always present in the control room
 			# (a data terminal the player can examine). Disabled once collected.
@@ -1687,6 +1686,12 @@ func _standoff_clear(instant: bool) -> void:
 
 func _despawn_standoff() -> void:
 	_standoff_cinema_end()
+	# Rush has left the building: he walked out during the resolution and is
+	# not talkable again until the scrubber beat (re-entry won't respawn him
+	# either — _spawn_interactables gates on met_rush).
+	var rush_node: Node3D = get_node_or_null("DrRush") as Node3D
+	if rush_node != null:
+		rush_node.queue_free()
 	if GameState.dialog_action.is_connected(_on_standoff_cue):
 		GameState.dialog_action.disconnect(_on_standoff_cue)
 	if GameState.dialog_started.is_connected(_standoff_reposition):

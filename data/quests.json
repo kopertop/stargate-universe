@@ -21,8 +21,8 @@
 			},
 			{
 				"id": "find_rest",
-				"label": "Find a place to rest",
-				"objective": "Find a place to rest. Try your quarters.",
+				"label": "Explore the ship",
+				"objective": "Cool off. Explore the ship — find your way to the Kino room.",
 				"target": { "room": "eli_quarters", "anchor": "" },
 				"complete_when": "eli_quarters_visited"
 			},

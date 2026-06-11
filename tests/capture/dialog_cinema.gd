@@ -53,19 +53,15 @@ func _run() -> void:
 	for i in range(2):
 		await process_frame
 	rush.call("interact", pl)
-	await _settle(40)   # screen spawns; BEAT 1 holds on the speaker (Rush)
+	await _settle(45)   # screen spawns; camera locks on the speaker (Rush)
 
 	var screen: Node = _find_dialog_screen(root)
 	print("[dialog] screen=%s" % (screen != null))
 	_dump_facing(pl, rush)
-	await _shot("beat1_speaker_rush")
+	# Camera on Rush with the choices ALREADY floating beside him.
+	await _shot("speaker_rush_with_choices")
 
-	# After the reading delay the choices reveal WITH a cut to Eli (beat 2).
-	await _settle(170)
-	await _shot("beat2_responder_choices")
-
-	# Pick "Go where?" (index 1) -> node 1 (single choice) -> camera back on
-	# Rush; his continue shows immediately.
+	# Pick "Go where?" (index 1) -> node 1 -> camera stays on Rush.
 	_press_choice(screen, 1)
 	await _settle(50)
 	await _shot("speaker_rush_node1")

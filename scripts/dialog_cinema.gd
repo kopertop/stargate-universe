@@ -57,20 +57,20 @@ func begin(npc: Node3D, player: Node3D) -> void:
 	_rig.call("activate")
 
 
-# Frame the right party for the node being rendered. `decision` = the player
-# is being offered a real choice (>= 2 options) → frame ELI with the floating
-# list beside him (the Fable responder shot). Otherwise frame the named
-# speaker over the listener's shoulder.
-func frame_node(speaker_name: String, decision: bool) -> void:
+# Frame the node's SPEAKER over the listener's shoulder. The camera stays
+# locked on them while the player's options float beside the frame — no cut
+# to Eli for decisions (user direction 2026-06-11: choices appear over the
+# speaker immediately).
+func frame_node(speaker_name: String) -> void:
 	if _rig == null:
 		return
-	var speaker: Node3D = _player if decision else _resolve_speaker(speaker_name)
+	var speaker: Node3D = _resolve_speaker(speaker_name)
 	if speaker == null:
 		speaker = _npc
 	var listener: Node3D = _npc if speaker == _player else _player
 	if speaker == null or listener == null or speaker == listener:
 		return
-	_swap_talk_clips(speaker if not decision else _resolve_speaker(speaker_name))
+	_swap_talk_clips(speaker)
 	var s_head: Vector3 = _head_of(speaker)
 	var l_head: Vector3 = _head_of(listener)
 	var away: Vector3 = l_head - s_head   # speaker -> listener

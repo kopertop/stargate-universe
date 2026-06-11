@@ -26,16 +26,26 @@ outline_color = Color(0, 0, 0, 0.85)
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_window"]
 
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_btn"]
-content_margin_left = 10.0
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn"]
+bg_color = Color(0, 0, 0, 0.32)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+content_margin_left = 12.0
 content_margin_top = 6.0
-content_margin_right = 10.0
+content_margin_right = 12.0
 content_margin_bottom = 6.0
 
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_btn_focus"]
-content_margin_left = 10.0
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_focus"]
+bg_color = Color(0, 0, 0, 0.5)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+content_margin_left = 12.0
 content_margin_top = 6.0
-content_margin_right = 10.0
+content_margin_right = 12.0
 content_margin_bottom = 6.0
 
 [sub_resource type="Theme" id="Theme_choices"]
@@ -46,10 +56,10 @@ Button/colors/font_hover_color = Color(1, 0.84, 0.42, 1)
 Button/colors/font_pressed_color = Color(1, 0.92, 0.6, 1)
 Button/colors/font_outline_color = Color(0, 0, 0, 0.85)
 Button/constants/outline_size = 7
-Button/styles/normal = SubResource("StyleBoxEmpty_btn")
-Button/styles/hover = SubResource("StyleBoxEmpty_btn_focus")
-Button/styles/pressed = SubResource("StyleBoxEmpty_btn_focus")
-Button/styles/focus = SubResource("StyleBoxEmpty_btn_focus")
+Button/styles/normal = SubResource("StyleBoxFlat_btn")
+Button/styles/hover = SubResource("StyleBoxFlat_btn_focus")
+Button/styles/pressed = SubResource("StyleBoxFlat_btn_focus")
+Button/styles/focus = SubResource("StyleBoxFlat_btn_focus")
 
 [node name="DialogScreen" type="Control"]
 process_mode = 3

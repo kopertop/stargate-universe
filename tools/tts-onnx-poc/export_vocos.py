@@ -41,6 +41,10 @@ class DecodeWrapper(nn.Module):
 	def __init__(self, vocos):
 		super().__init__()
 		self.vocos = vocos
+		from onnx_istft import OnnxISTFT
+
+		# head_48k config: n_fft=1024, hop_length=256 (vocoder config.yaml).
+		self.istft = OnnxISTFT(n_fft=1024, hop_length=256, win_length=1024)
 
 	def forward(self, features):  # noqa: D401
 		# Single-head 48kHz path: backbone -> upsampler -> head_48k. This is a
@@ -50,10 +54,20 @@ class DecodeWrapper(nn.Module):
 		# which can't be symbolically traced for ONNX export with dynamic length.
 		# The crossover is a phase-polish post-step, not core synthesis, and can
 		# be re-added in numpy/GDScript later (rfft -> static mask -> irfft).
+		#
+		# head_48k's forward is inlined here with our ONNX-exportable iSTFT in
+		# place of torch.istft (which has a broadcast bug under onnxruntime).
 		v = self.vocos
 		features_b = v.backbone(features).transpose(1, 2)
 		upsampled = v.upsampler(features_b).transpose(1, 2)
-		return v.head_48k(upsampled)
+
+		h = v.head_48k
+		x = h.out(upsampled).transpose(1, 2)  # (B, n_fft+2, L)
+		mag, p = x.chunk(2, dim=1)
+		mag = torch.clip(torch.exp(mag), max=1e2)
+		real = mag * torch.cos(p)
+		imag = mag * torch.sin(p)
+		return self.istft(real, imag)
 
 
 def main() -> int:

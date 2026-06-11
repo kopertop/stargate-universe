@@ -104,6 +104,50 @@ The compute is proven portable. Remaining work is engine plumbing:
    `PackedFloat32Array` into an `AudioStreamGenerator`. Cache to `user://` for
    bake-on-demand (generate once, reuse forever).
 
+## Sidecar architecture (dynamic lines in-engine, shipping NOW)
+
+For **fully dynamic runtime text** (player names, unplanned conditions) with
+**pre-computed voices**, the engine calls a resident LuxTTS sidecar over HTTP.
+This works today — no native build — and uses the real espeak tokenizer, so any
+text synthesizes at full quality. Voices are fixed `.voice.pt` embeddings.
+
+```
+Godot (TTSClient, HTTPRequest) ──GET /synthesize?voice=rush&text=…──► tts_server.py (model resident)
+        ◄────────────────── 48kHz WAV bytes ──────────────────────────┘
+   AudioStreamWAV.load_from_buffer() → AudioStreamPlayer
+```
+
+- **Server:** `tts_server.py` — loads LuxTTS once, caches voice embeddings,
+  `/health` + `/synthesize`. Launch: `./run_server.sh` (uses committed `voices/`).
+- **Client:** `scripts/tts_client.gd` (`TTSClient` node) — `say(voice, text, seed)`,
+  emits `line_ready(stream)` / `line_failed(reason)`.
+- **Latency:** ~1.8 s for a ~4.5 s line on MPS, model warm. Run on a worker so
+  the game doesn't block; cache results to `user://` for replays.
+
+### Run the round-trip (proves Godot drives it end-to-end)
+
+```bash
+# 1) start the sidecar
+tools/tts-onnx-poc/run_server.sh
+# 2) headless Godot round-trip (set GODOT_BIN if 'godot' isn't on PATH)
+GODOT_BIN=/path/to/Godot
+"$GODOT_BIN" --headless --path . \
+    --script res://tools/tts-onnx-poc/godot/test_tts_roundtrip.gd
+```
+
+Server side is verified (curl + audible output, ~1.8 s warm). The headless Godot
+test was **not run here** — Godot isn't installed on this machine (the
+`/Applications/Godot.app` alias is stale) — but `tts_client.gd` +
+`test_tts_roundtrip.gd` are ready to run once `GODOT_BIN` points at a Godot 4.6+.
+
+### Productionizing the sidecar (later)
+
+- Ship the venv+model with desktop builds, or convert the server to the torch-free
+  ONNX pipeline (smaller). Launch it from Godot on game start; health-check before use.
+- Desktop-only. For other platforms, the all-native GDExtension path (linking
+  onnxruntime + espeak-ng) is the eventual answer — see commit history / the
+  GDScript scaffold for that route.
+
 ## Open items / honest gaps
 
 - Tokenizer not ported (dev-time precompute used instead).

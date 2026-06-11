@@ -37,6 +37,16 @@ func _ready() -> void:
 	add_child(_cam)
 
 
+# Per-use lens setup (call after add_child): the standoff uses a wide lens
+# with subjects biased right; conversation OTS shots want a tighter lens with
+# the speaker biased LEFT (choices float on the right). POSITIVE h_offset
+# moves the camera right → subject appears LEFT of frame centre.
+func configure(fov: float, h_offset: float) -> void:
+	if _cam != null:
+		_cam.fov = fov
+		_cam.h_offset = h_offset
+
+
 # Remember the gameplay camera so release() can hand control back.
 func activate() -> void:
 	if _active:

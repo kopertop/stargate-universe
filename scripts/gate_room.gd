@@ -1560,35 +1560,53 @@ func _build_tableau_npc(
 
 	var model_holder: Node3D = Node3D.new()
 	model_holder.name = "Model"
+	var modular: bool = CharacterFactoryRef.profile_for(character).has("mod")
 	if pose == "down":
 		# Lay character on their back: tip the holder forward 90° so what was up
 		# (head along +Y) now extends along +Z away from the feet anchor.
 		# Lift slightly so the back doesn't z-fight with the floor.
 		model_holder.rotation = Vector3(-PI * 0.5, PI, 0.0)
-		model_holder.position = Vector3(0.0, 0.18, 0.7)
-		model_holder.scale = Vector3(2.6, 2.6, 2.6)
+		model_holder.position = Vector3(0.0, 0.15, 0.0) if modular else Vector3(0.0, 0.18, 0.7)
+		if not modular:
+			model_holder.scale = Vector3(2.6, 2.6, 2.6)
 	elif pose == "kneel":
-		# Compress the standing model vertically — reads as crouched/kneeling
-		# without needing a separate rig. Slight forward tilt sells the lean.
-		model_holder.rotation = Vector3(deg_to_rad(-20.0), PI, 0.0)
-		model_holder.position = Vector3(0.0, 0.0, 0.0)
-		model_holder.scale = Vector3(2.6, 1.5, 2.6)
+		if modular:
+			# Real rig: the kneeling-repair clip replaces the legacy Y-squash.
+			model_holder.rotation = Vector3(0.0, PI, 0.0)
+		else:
+			# Compress the standing model vertically — reads as crouched/kneeling
+			# without needing a separate rig. Slight forward tilt sells the lean.
+			model_holder.rotation = Vector3(deg_to_rad(-20.0), PI, 0.0)
+			model_holder.scale = Vector3(2.6, 1.5, 2.6)
 	else:
 		model_holder.rotation.y = PI
-		model_holder.scale = Vector3(2.6, 2.6, 2.6)
+		if not modular:
+			model_holder.scale = Vector3(2.6, 2.6, 2.6)
 
-	var glb: PackedScene = load(glb_path)
-	if glb != null:
-		var inst: Node = glb.instantiate()
-		model_holder.add_child(inst)
-		var colormap: Texture2D = load("res://models/characters/Textures/colormap.png")
-		Npc.apply_kenney_colormap(inst, colormap)
-		# Down characters DON'T idle-loop — the breathe-anim makes "unconscious"
-		# read as "stretching." Kneelers do, so they feel busy with their hands.
-		if pose != "down":
-			Npc.play_idle_animation(inst)
 	body.add_child(model_holder)
-	if face_override != "":
+	if modular:
+		var mc: Node3D = CharacterFactoryRef.build_modular(character)
+		model_holder.add_child(mc)
+		CharacterFactoryRef.dress_modular(mc, character, CharacterFactoryRef.CTX_SHIP)
+		if pose == "kneel":
+			mc.call("play_clip", "repair")   # kneeling, hands working — medic triage
+		elif pose == "down":
+			# Freeze the idle pose: an unconscious body shouldn't breathe-sway.
+			mc.call("freeze_pose")
+	else:
+		var glb: PackedScene = load(glb_path)
+		if glb != null:
+			var inst: Node = glb.instantiate()
+			model_holder.add_child(inst)
+			var colormap: Texture2D = load("res://models/characters/Textures/colormap.png")
+			Npc.apply_kenney_colormap(inst, colormap)
+			# Down characters DON'T idle-loop — the breathe-anim makes "unconscious"
+			# read as "stretching." Kneelers do, so they feel busy with their hands.
+			if pose != "down":
+				Npc.play_idle_animation(inst)
+	# The face-override plane is positioned for the mini head; modular bodies
+	# have a real face, so the X-eyed sticker would float mid-air — skip it.
+	if face_override != "" and not modular:
 		_add_face_override(body, face_override, pose)
 
 	var tag: Label3D = Label3D.new()

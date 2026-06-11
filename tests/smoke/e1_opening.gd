@@ -215,6 +215,21 @@ func _test_standoff_actors_spawn(gs: Node) -> void:
 		_expect(_has_snapped_gear(scott, "Sidearm"), "Scott also always carries a Sidearm")
 		_expect(_has_snapped_gear(scott, "Helmet"), "Scott wears a combat Helmet (military dress)")
 
+	# Everyone renders on the Quaternius pipeline now: Rush was the last
+	# hand-rolled mini in the control room, and the player avatar swapped from
+	# the kit chibi to modular Eli (red tee = torso garment + cleared Arms slot).
+	var rush_npc: Node = inst.get_node_or_null("DrRush")
+	_expect(rush_npc != null and _modular_body(rush_npc) != null,
+		"Dr Rush renders as a ModularCharacter (no more chibi mini)")
+	var player_body: Node = inst.get_node_or_null("Player")
+	var pmc: Node = _modular_body(player_body) if player_body != null else null
+	_expect(pmc != null, "player avatar renders as a ModularCharacter")
+	if pmc != null:
+		_expect(String(pmc.call("equipped", "Body")) != "",
+			"player wears a torso garment (the red tee)")
+		_expect(String(pmc.call("equipped", "Arms")) == "",
+			"player Arms slot cleared (bare arms = t-shirt silhouette)")
+
 	# Cue dispatch should not crash and should leave actors valid (instant_mode
 	# snaps the staging). standoff_clear despawns both.
 	gs.emit_signal("dialog_action", "standoff_greer")
@@ -229,6 +244,19 @@ func _test_standoff_actors_spawn(gs: Node) -> void:
 
 	root.remove_child(inst)
 	inst.free()
+
+
+# The ModularCharacter under an actor, duck-typed via set_slot (class_name
+# lookup is unreliable under -s). Null = legacy mini body.
+func _modular_body(actor: Node) -> Node:
+	var stack: Array = [actor]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n.has_method("set_slot"):
+			return n
+		for c in n.get_children():
+			stack.append(c)
+	return null
 
 
 # Gear now snaps to skeleton bones via BoneAttachment3D, not to the body root.

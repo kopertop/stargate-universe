@@ -44,6 +44,10 @@ func _ready() -> void:
 	# _ready already ran (child first) and only set the metal default.
 	if is_instance_valid(_player) and _player.has_method("set_footstep_surface"):
 		_player.call("set_footstep_surface", FootstepLib.surface_for_spec(spec))
+	# Off-ship dress code: the modular avatar swaps the ship civvies for
+	# mission fatigues (same context switch the away-team NPCs use).
+	if is_instance_valid(_player) and _player.has_method("set_dress_context"):
+		_player.call("set_dress_context", "mission")
 	if GameState.pending_spawn_position != null:
 		_player.global_position = GameState.pending_spawn_position
 		_player.rotation.y = GameState.pending_spawn_yaw

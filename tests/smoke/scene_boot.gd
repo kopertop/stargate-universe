@@ -205,8 +205,15 @@ func _check_gate_room_tableau(inst: Node) -> void:
 	if String(james.get("met_flag")) != "":
 		_fail("res://scenes/gate_room.tscn", "Lt James should not write undefined quest flags")
 		return
-	if young.get_node_or_null("FaceOverride") == null:
+	# Unconscious read: modular bodies lie frozen with a real face (no sticker);
+	# the legacy mini fallback still needs its X_X face-override plane.
+	var young_modular: bool = _has_modular_body(young)
+	if not young_modular and young.get_node_or_null("FaceOverride") == null:
 		_fail("res://scenes/gate_room.tscn", "Colonel Young X_X face override missing")
+		return
+	if young_modular and young.get_node_or_null("FaceOverride") != null:
+		_fail("res://scenes/gate_room.tscn",
+			"modular Colonel Young should not carry the mini-era X_X sticker")
 		return
 	var to_young: Vector3 = young.global_position - james.global_position
 	to_young.y = 0.0
@@ -941,6 +948,19 @@ func _load_connections() -> Dictionary:
 	var parsed: Variant = JSON.parse_string(f.get_as_text())
 	f.close()
 	return parsed if parsed is Dictionary else {}
+
+
+# True when an NPC body carries a Quaternius ModularCharacter (duck-typed via
+# its set_slot method — class_name lookup is unreliable under -s).
+func _has_modular_body(actor: Node) -> bool:
+	var stack: Array = [actor]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n.has_method("set_slot"):
+			return true
+		for c in n.get_children():
+			stack.append(c)
+	return false
 
 
 func _fail(scene: String, reason: String) -> void:

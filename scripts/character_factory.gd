@@ -186,8 +186,16 @@ const OUTFITS: Dictionary = {
 # legacy mini fallback. Current outfit parts are the fantasy placeholders
 # (Peasant=civvies, Ranger=uniform) until SGU outfits are authored on the rig.
 const PROFILES: Dictionary = {
+	# Eli reads "shorter stubby guy in a red t-shirt": a non-uniform build scale
+	# (wider, shorter) + a ship style that clears the Arms slot (bare arms = tee)
+	# and tints the torso red over jeans. Mission fatigues dress him like the rest.
 	"Eli": {"model": "eli", "vrm": "res://models/vrm/eli.vrm", "ship": "civvies", "mission": "fatigues", "military": false,
-		"mod": {"gender": "Male", "hair": "Hair_SimpleParted", "hair_color": Color(0.28, 0.18, 0.10)}},
+		"mod": {"gender": "Male", "hair": "Hair_SimpleParted", "hair_color": Color(0.22, 0.14, 0.08),
+			"build": Vector3(1.12, 0.92, 1.12),
+			"style_ship": {
+				"parts": {"Arms": ""},
+				"tints": {"Body": Color(0.72, 0.13, 0.12), "Legs": Color(0.23, 0.27, 0.36), "Feet": Color(0.32, 0.31, 0.30)},
+			}}},
 	"Dr Rush": {"model": "rush", "ship": "civvies", "mission": "fatigues", "military": false,
 		"mod": {"gender": "Male", "hair": "Hair_Beard", "hair_color": Color(0.30, 0.24, 0.18)}},
 	"Dr Park": {"model": "park", "ship": "civvies", "mission": "fatigues", "military": false,
@@ -233,10 +241,40 @@ static func profile_for(character_name: String) -> Dictionary:
 		return PROFILES[character_name]
 	if ALIASES.has(character_name):
 		return PROFILES[ALIASES[character_name]]
-	# Generic spawn labels ("Soldier 2") fall back by keyword.
+	# Generic spawn labels ("Soldier 2") fall back by keyword. They get a
+	# deterministic modular body too — EVERY character renders on the
+	# Quaternius pipeline; the mini "model" stem remains only as a last-resort
+	# fallback for sites that bypass the modular branch.
 	if is_military(character_name):
-		return {"model": "scott", "ship": "duty_black", "mission": "combat", "military": true}
-	return {"model": "", "ship": "civvies", "mission": "fatigues", "military": false}
+		return {"model": "scott", "ship": "duty_black", "mission": "combat", "military": true,
+			"mod": _generic_mod(character_name, true)}
+	return {"model": "", "ship": "civvies", "mission": "fatigues", "military": false,
+		"mod": _generic_mod(character_name, false)}
+
+
+# Hair/gender pools for unregistered characters. Deterministic per NAME (String
+# hash is stable in Godot 4) so "Soldier 2" looks the same every scene/run, and
+# two background crew in one room don't render as clones.
+const GENERIC_HAIR_MALE: Array[String] = ["Hair_Buzzed", "Hair_SimpleParted", "Hair_Beard"]
+const GENERIC_HAIR_FEMALE: Array[String] = ["Hair_BuzzedFemale", "Hair_Buns", "Hair_Long"]
+const GENERIC_HAIR_COLORS: Array[Color] = [
+	Color(0.10, 0.08, 0.07), Color(0.26, 0.16, 0.09), Color(0.38, 0.28, 0.16),
+	Color(0.50, 0.38, 0.22), Color(0.18, 0.18, 0.19),
+]
+
+
+static func _generic_mod(character_name: String, military: bool) -> Dictionary:
+	var h: int = character_name.hash()
+	# Soldiers skew male/buzzed (duty look); civilians mix freely.
+	var female: bool = (h >> 3) % (4 if military else 2) == 0
+	var gender: String = "Female" if female else "Male"
+	var pool: Array[String] = GENERIC_HAIR_FEMALE if female else GENERIC_HAIR_MALE
+	var hair: String = pool[0] if military else pool[(h >> 5) % pool.size()]
+	return {
+		"gender": gender,
+		"hair": hair,
+		"hair_color": GENERIC_HAIR_COLORS[(h >> 8) % GENERIC_HAIR_COLORS.size()],
+	}
 
 
 # Label variants resolve to the canonical profile so "Greer" (planet away
@@ -293,25 +331,40 @@ static func build_modular(character_name: String) -> Node3D:
 	var mod: Dictionary = profile_for(character_name).get("mod", {"gender": "Male", "hair": ""})
 	var c: Node3D = _modular().call("create", String(mod.get("gender", "Male")))
 	c.name = "Mod_" + character_name.replace(" ", "")
+	# Optional per-character silhouette: non-uniform scale on the wrapper node
+	# (NOT on bones — Godot 4 anim tracks tolerate this; bones would skew).
+	# Eli's stubby build lives here.
+	var build: Variant = mod.get("build", null)
+	if build is Vector3:
+		c.scale = build
 	return c
 
 
 # Outfit + gear for a context, resolved through the same outfit ids as the
-# mini pipeline (civvies / fatigues / duty_black / combat).
+# mini pipeline (civvies / fatigues / duty_black / combat). A profile's
+# optional "style_<context>" dict then personalizes the result: "parts"
+# overrides slots (empty string CLEARS one — bare arms = t-shirt) and "tints"
+# recolors single slots (Eli's red tee over jeans).
 static func dress_modular(c: Node3D, character_name: String, context: String = CTX_SHIP) -> void:
 	var profile: Dictionary = profile_for(character_name)
 	var mod: Dictionary = profile.get("mod", {})
 	var outfit_id: String = outfit_id_for(character_name, context)
 	var loadout: Dictionary = MODULAR_LOADOUTS.get(outfit_id, MODULAR_LOADOUTS["civvies"])
 	var gender: String = String(mod.get("gender", "Male"))
+	var style: Dictionary = mod.get("style_" + context, {})
+	var part_overrides: Dictionary = style.get("parts", {})
 	for slot in ["Body", "Arms", "Legs", "Feet"]:
-		c.call("set_slot", slot, _modular_part(slot, gender, String(loadout["outfit"])))
+		var stem: String = String(part_overrides[slot]) if part_overrides.has(slot) \
+			else _modular_part(slot, gender, String(loadout["outfit"]))
+		c.call("set_slot", slot, stem)
 	if String(mod.get("hair", "")) != "":
 		c.call("set_slot", "Hair", String(mod["hair"]))
 		c.call("set_hair_color", mod.get("hair_color", Color(0.32, 0.22, 0.14)))
 	var tint: Color = loadout["tint"]
 	if tint != Color.WHITE:
 		c.call("tint_clothing", tint)
+	for slot in style.get("tints", {}):
+		c.call("tint_slot", String(slot), style["tints"][slot])
 	if String(mod.get("skin", "")) != "":
 		c.call("set_skin_variant", String(mod["skin"]))
 	c.call("set_sidearm", bool(loadout["sidearm"]), false)

@@ -34,7 +34,42 @@ func _run() -> void:
 	_test_part_scan()
 	_test_rifle_mounts()
 	_test_animation()
+	_test_factory_profiles()
 	_report()
+
+
+# Every character — registered OR generic — resolves to a modular profile, and
+# per-character styling (Eli's red tee / stubby build) round-trips the factory.
+func _test_factory_profiles() -> void:
+	var factory: Script = load("res://scripts/character_factory.gd")
+
+	# Generic fallbacks now carry a "mod" key (the chibi-mini regression: any
+	# unregistered name used to silently fall back to the Kenney pipeline).
+	var soldier: Dictionary = factory.profile_for("Soldier 7")
+	_expect(soldier.has("mod"), "generic military profile carries a modular body")
+	var civvy: Dictionary = factory.profile_for("Random Crewman")
+	_expect(civvy.has("mod"), "generic civilian profile carries a modular body")
+	_expect(factory.profile_for("Soldier 7") == factory.profile_for("Soldier 7"),
+		"generic modular identity is deterministic per name")
+
+	# Eli: stubby build + ship style (red torso tint, cleared Arms = t-shirt).
+	var eli_mod: Dictionary = factory.profile_for("Eli").get("mod", {})
+	_expect(eli_mod.get("build", Vector3.ONE) != Vector3.ONE,
+		"Eli profile carries a non-default build (stubby silhouette)")
+	var style: Dictionary = eli_mod.get("style_ship", {})
+	_expect(style.get("parts", {}).get("Arms", "x") == "",
+		"Eli ship style clears the Arms slot")
+	_expect(style.get("tints", {}).has("Body"),
+		"Eli ship style tints the torso (red tee)")
+
+	# Dressed-through check: build + dress an Eli and verify the styled slots.
+	var c: Node3D = factory.build_modular("Eli")
+	root.add_child(c)
+	factory.dress_modular(c, "Eli", "ship")
+	_expect(String(c.call("equipped", "Body")) != "", "dressed Eli wears a torso garment")
+	_expect(String(c.call("equipped", "Arms")) == "", "dressed Eli has bare arms (tee)")
+	_expect(c.scale != Vector3.ONE, "built Eli applies the stubby build scale")
+	c.queue_free()
 
 
 func _make(gender: String = "Male") -> Node3D:

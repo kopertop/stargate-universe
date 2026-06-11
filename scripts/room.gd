@@ -36,6 +36,7 @@ const AssignmentConsoleScript: Script = preload("res://scripts/assignment_consol
 const SalvagePanelScript: Script = preload("res://scripts/salvage_panel.gd")
 const BridgeConsoleScript: Script = preload("res://scripts/bridge_console.gd")
 const RepairConsoleScript: Script = preload("res://scripts/repair_console.gd")
+const StandoffCameraScript: Script = preload("res://scripts/standoff_camera.gd")
 # Single source of truth for crew appearance (base model + military fatigues +
 # sidearm). Keeps a character looking the same in every room.
 const CharacterFactoryRef: Script = preload("res://scripts/character_factory.gd")
@@ -95,6 +96,9 @@ var _standoff_rush_pos: Vector3 = Vector3.ZERO
 # behind the player THEN, since the player walks up to Rush well after _ready).
 var _standoff_player_pos: Vector3 = Vector3.ZERO
 var _standoff_player_fwd: Vector3 = Vector3.FORWARD
+# Pause-immune cinematic camera live during the standoff dialog (live play
+# only — never created under instant_mode).
+var _standoff_cam: Node3D = null
 
 
 func _ready() -> void:
@@ -981,23 +985,27 @@ func _spawn_dr_rush() -> void:
 	cs.position = Vector3(0.0, 0.88, 0.0)
 	rush.add_child(cs)
 
-	# Visual body — Kenney "Mini Characters 1" GLB (character-male-f), distinct
-	# from Scott's character-male-d so the two NPCs read differently at a glance.
+	# Visual body — primary Quaternius ModularCharacter (same branch as
+	# _spawn_npc; Rush was the last hand-rolled mini in the control room).
 	var model_holder: Node3D = Node3D.new()
 	model_holder.name = "Model"
-	model_holder.position = Vector3(0.0, 0.0, 0.0)
-	model_holder.scale = Vector3(2.6, 2.6, 2.6)
-	# Kenney mini characters export with +Z forward; rotate 180° so the model
-	# faces the same direction as its parent StaticBody3D's -Z forward.
+	# Models export +Z forward; rotate 180° so the body faces the parent
+	# StaticBody3D's -Z forward.
 	model_holder.rotation.y = PI
-	var rush_glb: PackedScene = load("res://models/characters/rush.glb")
-	if rush_glb != null:
-		var rush_model: Node = rush_glb.instantiate()
-		model_holder.add_child(rush_model)
-		var colormap: Texture2D = load("res://models/characters/Textures/colormap.png")
-		Npc.apply_kenney_colormap(rush_model, colormap)
-		Npc.play_idle_animation(rush_model)
 	rush.add_child(model_holder)
+	if CharacterFactoryRef.profile_for("Dr Rush").has("mod"):
+		var rush_mc: Node3D = CharacterFactoryRef.build_modular("Dr Rush")
+		model_holder.add_child(rush_mc)
+		CharacterFactoryRef.dress_modular(rush_mc, "Dr Rush", CharacterFactoryRef.CTX_SHIP)
+	else:
+		model_holder.scale = Vector3(2.6, 2.6, 2.6)
+		var rush_glb: PackedScene = load("res://models/characters/rush.glb")
+		if rush_glb != null:
+			var rush_model: Node = rush_glb.instantiate()
+			model_holder.add_child(rush_model)
+			var colormap: Texture2D = load("res://models/characters/Textures/colormap.png")
+			Npc.apply_kenney_colormap(rush_model, colormap)
+			Npc.play_idle_animation(rush_model)
 
 	var tag: Label3D = Label3D.new()
 	tag.name = "Nametag"
@@ -1073,10 +1081,11 @@ func _standoff_reposition(npc: Node3D, _tree: Array) -> void:
 	var face: float = atan2(-fwd.x, -fwd.z)
 	_standoff_player_pos = p_pos
 	_standoff_player_fwd = fwd
-	_standoff_greer.position = p_pos - fwd * 1.6 + right * 0.5
+	_standoff_greer.position = _clear_spot(p_pos - fwd * 1.6 + right * 0.5, [_standoff_greer, _standoff_scott])
 	_standoff_greer.rotation.y = face
-	_standoff_scott.position = p_pos - fwd * 3.0 - right * 0.3
+	_standoff_scott.position = _clear_spot(p_pos - fwd * 3.0 - right * 0.3, [_standoff_greer, _standoff_scott])
 	_standoff_scott.rotation.y = face
+	_standoff_cinema_begin()
 
 
 # A silent standoff actor: a normal NPC (so it inherits the CharacterFactory
@@ -1120,13 +1129,155 @@ func _on_standoff_cue(action_id: String) -> void:
 			_standoff_clear(instant)
 
 
+# --- Standoff cinema (#136 polish) -------------------------------------------
+# The standoff used to play entirely behind the open dialog panel — the camera
+# stayed in gameplay framing, so Greer's charge and the drawn sidearm were
+# invisible. A pause-immune StandoffCamera now pulls back at dialog-open and
+# re-frames on every cue. Presentation only: instant_mode never creates it.
+
+func _standoff_cinema_begin() -> void:
+	var sr: Node = get_node_or_null("/root/SceneRouter")
+	if sr != null and sr.get("instant_mode"):
+		return
+	if _standoff_cam != null and is_instance_valid(_standoff_cam):
+		return
+	_standoff_cam = StandoffCameraScript.new()
+	_standoff_cam.name = "StandoffCamera"
+	add_child(_standoff_cam)
+	_standoff_cam.call("activate")
+	# The standoff plays inside ONE dialog; its close ends the scene.
+	GameState.dialog_closed.connect(_standoff_cinema_end, CONNECT_ONE_SHOT)
+	_standoff_shot_wide()
+
+
+func _standoff_cinema_end() -> void:
+	if _standoff_cam != null and is_instance_valid(_standoff_cam):
+		_standoff_cam.call("release")
+		_standoff_cam.queue_free()
+	_standoff_cam = null
+
+
+func _standoff_cam_live() -> bool:
+	return _standoff_cam != null and is_instance_valid(_standoff_cam)
+
+
+# Opening two-shot: the player and Rush from the side, slowly panning.
+func _standoff_shot_wide() -> void:
+	if not _standoff_cam_live():
+		return
+	var eli_p: Vector3 = _standoff_player_pos + Vector3.UP * 1.2
+	var rush_p: Vector3 = _standoff_rush_pos + Vector3.UP * 1.2
+	var mid: Vector3 = (eli_p + rush_p) * 0.5
+	var side: Vector3 = _flat_side(rush_p - eli_p)
+	_standoff_cam.call("frame", mid + side * 4.8 + Vector3.UP * 1.5, mid, 2.0, 0.10)
+
+
+# Greer's charge: frame the lane between Greer and Rush so the rush-in and the
+# drawn sidearm cross the open (right) half of the screen.
+func _standoff_shot_greer() -> void:
+	if not _standoff_cam_live() or not is_instance_valid(_standoff_greer):
+		return
+	var a: Vector3 = _standoff_greer.position + Vector3.UP * 1.1
+	var b: Vector3 = _standoff_rush_pos + Vector3.UP * 1.25
+	var mid: Vector3 = (a + b) * 0.5
+	var side: Vector3 = _flat_side(b - a)
+	_standoff_cam.call("frame", mid + side * 4.2 + Vector3.UP * 1.2, mid, 1.5, 0.14)
+
+
+# Once Greer has actually arrived and leveled the sidearm: tight two-shot of
+# him squared off against Rush (the cue-time shot framed the charge lane; by
+# arrival he has crossed it).
+func _standoff_shot_greer_aim() -> void:
+	if not _standoff_cam_live() or not is_instance_valid(_standoff_greer):
+		return
+	var a: Vector3 = _standoff_greer.position + Vector3.UP * 1.25
+	var b: Vector3 = _standoff_rush_pos + Vector3.UP * 1.25
+	var mid: Vector3 = (a + b) * 0.5
+	var side: Vector3 = _flat_side(b - a)
+	_standoff_cam.call("frame", mid - side * 3.4 + Vector3.UP * 0.6, mid, 1.4, 0.12)
+
+
+# Scott's entrance: pull wide enough to hold all three actors plus the player.
+# Same proven side axis as the opening wide shot, steeper so the long view
+# clears the console cluster around the central pillar.
+func _standoff_shot_scott() -> void:
+	if not _standoff_cam_live():
+		return
+	var pts: Array = [_standoff_player_pos, _standoff_rush_pos]
+	for actor in [_standoff_greer, _standoff_scott]:
+		if actor != null and is_instance_valid(actor):
+			pts.append((actor as Node3D).position)
+	var mid: Vector3 = Vector3.ZERO
+	for p in pts:
+		mid += p
+	mid = mid / float(pts.size()) + Vector3.UP * 1.1
+	var side: Vector3 = _flat_side(_standoff_rush_pos - _standoff_player_pos)
+	_standoff_cam.call("frame", mid + side * 5.0 + Vector3.UP * 3.2, mid, 2.0, 0.08)
+
+
+# Resolution: drift up and back as Greer holsters and the soldiers walk out.
+func _standoff_shot_clear() -> void:
+	if not _standoff_cam_live():
+		return
+	var exit_pt: Vector3 = Vector3(_standoff_rush_pos.x - 10.0, 0.0, 0.0)
+	var mid: Vector3 = (_standoff_rush_pos + exit_pt) * 0.5 + Vector3.UP * 1.0
+	var side: Vector3 = _flat_side(exit_pt - _standoff_rush_pos)
+	_standoff_cam.call("frame", mid + side * 5.2 + Vector3.UP * 2.8, mid, 2.4, 0.05)
+
+
+# Horizontal unit vector perpendicular to `axis` — the camera's "stand to the
+# side of the action" direction. Falls back to +X for degenerate axes.
+func _flat_side(axis: Vector3) -> Vector3:
+	axis.y = 0.0
+	if axis.length() < 0.01:
+		return Vector3.RIGHT
+	return axis.normalized().cross(Vector3.UP)
+
+
+# Nudge a staging spot off any geometry it would intersect (consoles, walls,
+# other bodies): capsule-probe the candidate, then spiral outward in 8
+# directions until clear. `ignore` bodies (the actors being staged) don't
+# block their own spots.
+func _clear_spot(want: Vector3, ignore: Array = []) -> Vector3:
+	var w3d: World3D = get_world_3d()
+	if w3d == null:
+		return want
+	var space: PhysicsDirectSpaceState3D = w3d.direct_space_state
+	if space == null:
+		return want
+	var shape: CapsuleShape3D = CapsuleShape3D.new()
+	shape.radius = 0.34
+	shape.height = 1.6
+	var params: PhysicsShapeQueryParameters3D = PhysicsShapeQueryParameters3D.new()
+	params.shape = shape
+	params.collision_mask = 1 | 4
+	var excludes: Array[RID] = []
+	for body in ignore:
+		if body is CollisionObject3D and is_instance_valid(body):
+			excludes.append((body as CollisionObject3D).get_rid())
+	if player is CollisionObject3D:
+		excludes.append((player as CollisionObject3D).get_rid())
+	params.exclude = excludes
+	for radius in [0.0, 0.5, 1.0, 1.5, 2.0]:
+		for k in range(8 if radius > 0.0 else 1):
+			var ang: float = TAU * float(k) / 8.0
+			var candidate: Vector3 = want + Vector3(cos(ang), 0.0, sin(ang)) * radius
+			params.transform = Transform3D(Basis.IDENTITY, candidate + Vector3.UP * 0.9)
+			if space.intersect_shape(params, 1).is_empty():
+				return candidate
+	return want
+
+
 # Greer's cue: CHARGE in to the right of Rush (behind him), square off, and level
 # the sidearm to aim at him. The dialogue node is held (player can't continue)
 # until GameState.dialog_release fires here — i.e. until Greer has actually
 # arrived and aimed.
 func _standoff_advance_greer(instant: bool) -> void:
 	# Behind-right of Rush: +X is behind his back (he faces -X); -Z is his right.
-	var anchor: Vector3 = Vector3(_standoff_rush_pos.x + 1.55, 0.0, _standoff_rush_pos.z - 1.35)
+	# _clear_spot keeps the anchor out of the console cluster around Rush.
+	var anchor: Vector3 = _clear_spot(
+		Vector3(_standoff_rush_pos.x + 1.55, 0.0, _standoff_rush_pos.z - 1.35),
+		[_standoff_greer, _standoff_scott])
 	var face: float = atan2(-(_standoff_rush_pos.x - anchor.x), -(_standoff_rush_pos.z - anchor.z))
 	if instant:
 		_standoff_greer.position = anchor
@@ -1134,6 +1285,7 @@ func _standoff_advance_greer(instant: bool) -> void:
 		_standoff_aim(_standoff_greer, true)     # sidearm to hand, leveled at Rush
 		GameState.dialog_release.emit()
 		return
+	_standoff_shot_greer()
 	_standoff_greer.call("walk_to", anchor, 6.0, 0.0)   # charge
 	# Poll arrival — process_frame fires even while the dialog has the tree paused.
 	# Frame ceiling guards against a soft-lock if he can't reach the anchor.
@@ -1146,6 +1298,7 @@ func _standoff_advance_greer(instant: bool) -> void:
 		return
 	_standoff_greer.rotation.y = face            # square off at Rush
 	_standoff_aim(_standoff_greer, true)         # draw + level the sidearm at Rush
+	_standoff_shot_greer_aim()                   # tighten on the drawn weapon
 	GameState.dialog_release.emit()              # now the player may continue
 
 
@@ -1153,10 +1306,13 @@ func _standoff_advance_greer(instant: bool) -> void:
 # confrontation. His sidearm stays holstered — he's de-escalating, not aiming.
 func _standoff_enter_scott(instant: bool) -> void:
 	var right: Vector3 = _standoff_player_fwd.cross(Vector3.UP)
-	var anchor: Vector3 = _standoff_player_pos + _standoff_player_fwd * 1.2 + right * 1.2
+	var anchor: Vector3 = _clear_spot(
+		_standoff_player_pos + _standoff_player_fwd * 1.2 + right * 1.2,
+		[_standoff_greer, _standoff_scott])
 	if instant:
 		_standoff_scott.position = anchor
 		return
+	_standoff_shot_scott()
 	_standoff_scott.call("walk_to", anchor, 3.4, 0.0)   # quick — he's urgent
 
 
@@ -1166,6 +1322,7 @@ func _standoff_clear(instant: bool) -> void:
 	if instant:
 		_despawn_standoff()
 		return
+	_standoff_shot_clear()
 	_standoff_aim(_standoff_greer, false)        # holster the sidearm, stand down
 	var exit_pt: Vector3 = Vector3(_standoff_rush_pos.x - 10.0, 0.0, 0.0)
 	_standoff_greer.call("walk_to", exit_pt + Vector3(0.0, 0.0, 1.0), 2.6, 0.2)
@@ -1177,6 +1334,7 @@ func _standoff_clear(instant: bool) -> void:
 
 
 func _despawn_standoff() -> void:
+	_standoff_cinema_end()
 	if GameState.dialog_action.is_connected(_on_standoff_cue):
 		GameState.dialog_action.disconnect(_on_standoff_cue)
 	if GameState.dialog_started.is_connected(_standoff_reposition):
@@ -1555,7 +1713,13 @@ func _spawn_infirmary_ward() -> void:
 	var ym: Node3D = young.get_node_or_null("Model") as Node3D
 	if ym != null:
 		ym.rotation = Vector3(-PI * 0.5, PI, 0.0)
-		ym.position = Vector3(0.0, 0.18, 0.7)
+		# Modular bodies are real-height (~1.7 m): slide the feet toward the
+		# bed's -Z end so the whole body lands on the mattress. The mini
+		# fallback keeps its original tuck.
+		if _modular_model(young) != null:
+			ym.position = Vector3(0.0, 0.15, -0.55)
+		else:
+			ym.position = Vector3(0.0, 0.18, 0.7)
 
 	# Desk against the +X wall.
 	var desk_pos: Vector3 = Vector3(half_x - 1.2, 0.0, -half_z + 2.4)

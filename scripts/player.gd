@@ -84,15 +84,56 @@ var _footstep_base_volume_db: float = 0.0
 # shared StandardMaterial3D to every surface in the character hierarchy.
 const _COLORMAP_MAT: Material = preload("res://models/colormap.tres")
 const _EQUIPMENT_MOUNT_SCRIPT: Script = preload("res://scripts/equipment_mount.gd")
+const _CHARACTER_FACTORY: Script = preload("res://scripts/character_factory.gd")
+
+# Kit animation names -> modular crew_body.res clips. The library has no
+# airborne clip, so jump/fall borrow the jog cycle; "holding-both" (Kino
+# remote piloting) reads as Eli working the device via the talking gestures.
+const MODULAR_CLIP: Dictionary = {
+	"idle": "idle", "walk": "walk", "sprint": "sprint",
+	"jump": "jog", "fall": "jog",
+	"holding-both": "talk",
+}
 
 # Renders equipped gear (#72) on the character. Lives under $Character so its
 # BoneAttachment3D sockets can find the Skeleton3D inside $Character/Model.
 var _equipment_mount: Node3D = null
+# The player's ModularCharacter body (primary pipeline). Null only if the Eli
+# profile ever loses its "mod" key — then the legacy kit chibi stays.
+var _mc: Node3D = null
 
 func _ready() -> void:
-	_apply_colormap(_model)
+	_setup_modular_avatar()
+	if _mc == null:
+		_apply_colormap(_model)
 	_setup_equipment_mount()
 	_init_footsteps()
+
+
+# Replace the kit chibi (eli.glb mini at 1.6x) with the Quaternius modular
+# body every other character already uses: stubby build + red tee on the
+# ship (profile-driven), fatigues on missions via set_dress_context().
+func _setup_modular_avatar() -> void:
+	if _model == null or not _CHARACTER_FACTORY.profile_for("Eli").has("mod"):
+		return
+	for c in _model.get_children():
+		_model.remove_child(c)
+		c.queue_free()
+	# The kit wrapper bakes a 1.6x chibi scale + 180° flip; the modular body
+	# is real-scale and supplies its own flip.
+	_model.transform = Transform3D.IDENTITY
+	_mc = _CHARACTER_FACTORY.build_modular("Eli")
+	_mc.rotation.y = PI
+	_model.add_child(_mc)
+	_CHARACTER_FACTORY.dress_modular(_mc, "Eli", _CHARACTER_FACTORY.CTX_SHIP)
+	_animation = _find_animation_player(_model)
+
+
+# Re-dress the avatar for a context ("ship"/"mission"). Planet scenes push
+# "mission" after placing the player, so Eli wears fatigues off-ship.
+func set_dress_context(context: String) -> void:
+	if _mc != null:
+		_CHARACTER_FACTORY.dress_modular(_mc, "Eli", context)
 
 func _setup_equipment_mount() -> void:
 	if _model == null:
@@ -264,6 +305,12 @@ func _emit_footstep() -> void:
 
 func _play_anim(name: String, blend: float) -> void:
 	if _animation == null:
+		return
+	if _mc != null:
+		var clip: String = String(MODULAR_CLIP.get(name, name))
+		if _animation.current_animation == "body/" + clip:
+			return
+		_mc.call("play_clip", clip, blend)
 		return
 	if not _animation.has_animation(name):
 		return

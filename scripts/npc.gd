@@ -155,7 +155,9 @@ func _process(delta: float) -> void:
 		_on_interact(player)
 		return
 	var step: float = min(auto_greet_speed * delta, dist - auto_greet_distance * 0.95)
-	global_position += to_player.normalized() * step
+	var greet_dir: Vector3 = _steer_clear(to_player.normalized(), step)
+	if greet_dir != Vector3.ZERO:
+		global_position += greet_dir * step
 	# Face the way we're walking so the model doesn't moonwalk.
 	look_at(Vector3(player.global_position.x, global_position.y, player.global_position.z), Vector3.UP)
 
@@ -284,6 +286,11 @@ func _step_walk(delta: float) -> void:
 		return
 	var dir: Vector3 = to_t.normalized()
 	var step: float = min(_walk_speed * delta, dist)
+	dir = _steer_clear(dir, step)
+	if dir == Vector3.ZERO:
+		# Boxed in this frame — hold rather than clip through whatever blocks us.
+		_set_npc_clip("idle")
+		return
 	global_position += dir * step
 	# Face travel direction (Kenney mini-char convention handled by look_at).
 	var look: Vector3 = global_position + dir
@@ -291,6 +298,29 @@ func _step_walk(delta: float) -> void:
 	if global_position.distance_to(look) > 0.01:
 		look_at(look, Vector3.UP)
 	_set_npc_clip("walk")
+
+
+# Obstacle-aware steering for scripted walks (the standoff charge used to lerp
+# straight THROUGH consoles): probe the direct heading with a chest-height ray,
+# then fan out left/right and take the first clear bearing. Mask 1|4 covers
+# walls/props (1) and console/NPC interactables (4); the actor's own body is
+# excluded. Returns ZERO when every bearing is blocked.
+func _steer_clear(dir: Vector3, step: float) -> Vector3:
+	var w3d: World3D = get_world_3d()
+	if w3d == null:
+		return dir
+	var space: PhysicsDirectSpaceState3D = w3d.direct_space_state
+	if space == null:
+		return dir
+	var origin: Vector3 = global_position + Vector3.UP * 0.6
+	for ang in [0.0, 0.55, -0.55, 1.05, -1.05]:
+		var d: Vector3 = dir.rotated(Vector3.UP, float(ang))
+		var q: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(
+			origin, origin + d * (step + 0.45), 1 | 4)
+		q.exclude = [get_rid()]
+		if space.intersect_ray(q).is_empty():
+			return d
+	return Vector3.ZERO
 
 
 # Switch the AnimationPlayer to `clip`. Exact names first (including the

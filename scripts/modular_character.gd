@@ -398,32 +398,66 @@ func tint_clothing(tint: Color) -> void:
 	for slot in _equipped:
 		if slot == "Hair":
 			continue
-		for n in _equipped[slot]["nodes"]:
-			if not (is_instance_valid(n) and n is MeshInstance3D):
-				continue
-			var mi: MeshInstance3D = n
-			for s in range(mi.mesh.get_surface_count()):
-				var src: Material = mi.mesh.surface_get_material(s)
-				if src is BaseMaterial3D:
-					var mat: BaseMaterial3D = (src as BaseMaterial3D).duplicate()
-					mat.albedo_color = tint
-					mi.set_surface_override_material(s, mat)
+		_tint_slot_nodes(String(slot), tint)
+
+
+# Tint ONE slot's garment (per-character looks: Eli's red tee over civvies).
+func tint_slot(slot: String, tint: Color) -> void:
+	if _skel == null:
+		_pending.append(["tint_slot", [slot, tint]])
+		return
+	_tint_slot_nodes(slot, tint)
+
+
+func _tint_slot_nodes(slot: String, tint: Color) -> void:
+	for n in _equipped.get(slot, {}).get("nodes", []):
+		if not (is_instance_valid(n) and n is MeshInstance3D):
+			continue
+		var mi: MeshInstance3D = n
+		for s in range(mi.mesh.get_surface_count()):
+			var src: Material = mi.mesh.surface_get_material(s)
+			if src is BaseMaterial3D:
+				var mat: BaseMaterial3D = (src as BaseMaterial3D).duplicate()
+				mat.albedo_color = tint
+				mi.set_surface_override_material(s, mat)
 
 
 # ------------------------------- animation -----------------------------------
 
 func play_clip(clip: String, blend: float = 0.3) -> void:
 	if _anim == null:
+		# Pre-tree (spawners pose before add_child) — replayed in _ready, after
+		# the default idle, so the requested clip wins.
+		_pending.append(["play_clip", [clip, blend]])
 		return
 	var full: String = "body/" + clip
 	if _anim.has_animation(full):
 		_anim.play(full, blend)
 
 
+# Freeze the current pose (tableau bodies — the unconscious shouldn't
+# breathe-sway). Pre-tree calls queue like equipment does.
+func freeze_pose() -> void:
+	if _anim == null:
+		_pending.append(["freeze_pose", []])
+		return
+	_anim.pause()
+
+
 func clip_names() -> PackedStringArray:
 	if _anim != null and _anim.has_animation_library("body"):
 		return _anim.get_animation_library("body").get_animation_list()
 	return PackedStringArray()
+
+
+func has_clip(clip: String) -> bool:
+	return _anim != null and _anim.has_animation("body/" + clip)
+
+
+# The internal AnimationPlayer — for callers that need speed_scale / pause
+# (player locomotion pitch, tableau "unconscious" pose freeze).
+func anim_player() -> AnimationPlayer:
+	return _anim
 
 
 func skeleton() -> Skeleton3D:

@@ -2195,12 +2195,15 @@ func _attach_remote_prop(player: Node3D) -> void:
 		return
 	var prop: Node3D = Node3D.new()
 	prop.name = "KinoRemoteProp"
-	# Between the hands, forward of the chest. Tuned against the holding-both pose
-	# at the character's 1.6x model scale (hands land ~0.7 m up, ~0.4 m forward).
-	# +X rotation tilts +Y toward +Z (Godot right-hand rule) — i.e. the screen
-	# face tips up and BACK toward Eli, so the player looking down sees the
-	# screen but a front-on camera sees the back of the device.
-	prop.position = Vector3(0.0, 0.72, -0.42)
+	# Between the hands, forward of the chest. +X rotation tilts +Y toward +Z
+	# (Godot right-hand rule) — i.e. the screen face tips up and BACK toward
+	# Eli, so the player looking down sees the screen but a front-on camera
+	# sees the back of the device. Height depends on the body: the modular
+	# avatar's hands sit ~1.0 m up; the legacy chibi's at ~0.7 m.
+	if player.get("_mc") != null:
+		prop.position = Vector3(0.0, 1.02, -0.45)
+	else:
+		prop.position = Vector3(0.0, 0.72, -0.42)
 	prop.rotation_degrees = Vector3(45.0, 0.0, 0.0)
 	player.add_child(prop)
 

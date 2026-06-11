@@ -233,6 +233,7 @@ func _test_standoff_actors_spawn(gs: Node) -> void:
 		_expect(int(greer.get("collision_layer")) == 0,
 			"Greer is off the interact layer (collision_layer == 0)")
 		_expect(_has_snapped_gear(greer, "Sidearm"), "Greer carries a Sidearm snapped to a bone")
+		_expect(_has_snapped_gear(greer, "Rifle"), "Greer arrives with his rifle slung (grid-verified mount)")
 		_expect(not _has_snapped_gear(greer, "Helmet"), "Greer is bareheaded (no helmets aboard ship)")
 	if scott != null:
 		_expect(scott.get("enabled") == false, "Scott is non-interactable (enabled == false)")

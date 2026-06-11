@@ -1098,7 +1098,11 @@ func _light_rush_console() -> void:
 	text_mat.emission_enabled = true
 	text_mat.emission = text_color
 	text_mat.emission_energy_multiplier = 2.6
-	text_mat.no_depth_test = true
+	# DEPTH-TESTED: no_depth_test (the gate-console default) draws the glyphs
+	# THROUGH anyone standing at the console (user screenshot — text floating
+	# over Rush's back). The 12 mm lift off the plate already prevents
+	# z-fighting, so real occlusion is safe here.
+	text_mat.no_depth_test = false
 	var text_mi: MeshInstance3D = MeshInstance3D.new()
 	text_mi.name = "AncientReadout"
 	text_mi.mesh = tm
@@ -1143,6 +1147,11 @@ func _spawn_standoff_actors() -> void:
 		"StandoffGreer", "Sgt Greer", door_spot + Vector3(0.5, 0.0, 0.0), face_rush)
 	_standoff_scott = _spawn_standoff_soldier(
 		"StandoffScott", "Lt Scott", door_spot + Vector3(-0.5, 0.0, 0.3), face_rush)
+	# Greer arrives already carrying his rifle slung — its aimed mount is the
+	# grid-verified one (the pistol never read right on camera).
+	var greer_mc: Node = _modular_model(_standoff_greer)
+	if greer_mc != null:
+		greer_mc.call("set_rifle", true, false)
 
 	if not GameState.dialog_action.is_connected(_on_standoff_cue):
 		GameState.dialog_action.connect(_on_standoff_cue)
@@ -1243,8 +1252,8 @@ func _run_standoff_cinematic(tree: Array) -> void:
 	if player != null and player.has_method("set_input_locked"):
 		player.call("set_input_locked", true)
 	_standoff_eli_entrance()        # Eli RUNS in from the south, shouting
-	# Pull wide once the run-in is underway so the charge crosses the frame.
-	get_tree().create_timer(1.1, true).timeout.connect(_standoff_shot_wide)
+	# Track the run-in once it's underway — the camera FOLLOWS him to Rush.
+	get_tree().create_timer(1.0, true).timeout.connect(_standoff_shot_eli_run)
 	var seq: Node = StandoffCinematicScript.new()
 	seq.name = "StandoffCinematic"
 	add_child(seq)
@@ -1356,17 +1365,28 @@ func _standoff_shot_wide() -> void:
 	_standoff_cam.call("frame", mid + (open["dir"] as Vector3) * d + Vector3.UP * (0.8 + 0.4 * d), mid, 2.0, 0.10)
 
 
-# Greer's charge: frame the lane between Greer and Rush so the rush-in and the
-# drawn sidearm cross the open (right) half of the screen.
+# Eli's run-in: TRACK him across the room so he stays centred all the way
+# to Rush (static lane shots let walkers leave the frame — user note).
+func _standoff_shot_eli_run() -> void:
+	if not _standoff_cam_live() or player == null:
+		return
+	var open: Dictionary = _standoff_open_side(player.position + Vector3.UP * 1.1,
+		_standoff_rush_pos - player.position)
+	var d: float = clampf(float(open["clear"]) - 0.8, 4.0, 5.5)
+	_standoff_cam.call("follow", player,
+		(open["dir"] as Vector3) * d + Vector3.UP * (0.6 + 0.3 * d), 1.2)
+
+
+# Greer's charge: TRACK him from the door to his mark behind Rush.
 func _standoff_shot_greer() -> void:
 	if not _standoff_cam_live() or not is_instance_valid(_standoff_greer):
 		return
 	var a: Vector3 = _standoff_greer.position + Vector3.UP * 1.1
 	var b: Vector3 = _standoff_rush_pos + Vector3.UP * 1.25
-	var mid: Vector3 = (a + b) * 0.5
-	var open: Dictionary = _standoff_open_side(mid, b - a)
-	var d: float = clampf(float(open["clear"]) - 0.8, 4.0, 6.0)
-	_standoff_cam.call("frame", mid + (open["dir"] as Vector3) * d + Vector3.UP * (0.6 + 0.35 * d), mid, 1.5, 0.14)
+	var open: Dictionary = _standoff_open_side((a + b) * 0.5, b - a)
+	var d: float = clampf(float(open["clear"]) - 0.8, 4.0, 5.5)
+	_standoff_cam.call("follow", _standoff_greer,
+		(open["dir"] as Vector3) * d + Vector3.UP * (0.6 + 0.3 * d), 1.3)
 
 
 # Once Greer has actually arrived and leveled the sidearm: closer two-shot of
@@ -1382,22 +1402,15 @@ func _standoff_shot_greer_aim() -> void:
 	_standoff_cam.call("frame", mid + (open["dir"] as Vector3) * 3.6 + Vector3.UP * 1.3, mid, 1.4, 0.12)
 
 
-# Scott's entrance: pull wide enough to hold all three actors plus the player,
-# high and steep so the long view clears the console cluster.
-func _standoff_shot_scott() -> void:
-	if not _standoff_cam_live():
+# Scott's entrance: TRACK him from the door to his backup mark.
+func _standoff_shot_scott(anchor: Vector3) -> void:
+	if not _standoff_cam_live() or not is_instance_valid(_standoff_scott):
 		return
-	var pts: Array = [_standoff_player_pos, _standoff_rush_pos]
-	for actor in [_standoff_greer, _standoff_scott]:
-		if actor != null and is_instance_valid(actor):
-			pts.append((actor as Node3D).position)
-	var mid: Vector3 = Vector3.ZERO
-	for p in pts:
-		mid += p
-	mid = mid / float(pts.size()) + Vector3.UP * 1.1
-	var open: Dictionary = _standoff_open_side(mid, _standoff_rush_pos - _standoff_player_pos)
-	var d: float = clampf(float(open["clear"]) - 0.8, 4.5, 6.0)
-	_standoff_cam.call("frame", mid + (open["dir"] as Vector3) * d + Vector3.UP * 2.4, mid, 2.0, 0.05)
+	var a: Vector3 = _standoff_scott.position + Vector3.UP * 1.1
+	var open: Dictionary = _standoff_open_side((a + anchor + Vector3.UP * 1.1) * 0.5, anchor - a)
+	var d: float = clampf(float(open["clear"]) - 0.8, 4.0, 5.5)
+	_standoff_cam.call("follow", _standoff_scott,
+		(open["dir"] as Vector3) * d + Vector3.UP * (0.6 + 0.3 * d), 1.3)
 
 
 # Rush rounding on Eli: dead-center portrait from Eli's side of the line.
@@ -1417,8 +1430,8 @@ func _standoff_shot_rush_talks() -> void:
 	_standoff_cam.call("frame", look + dir * 1.8 + side * 0.9 + Vector3.UP * 0.3, look, 1.4, 0.0)
 
 
-# Rush walking off: frame his exit lane toward the south door so the shrug
-# and the walk-away read.
+# Rush walking off: TRACK him out toward the south door so the shrug and the
+# walk-away stay centred.
 func _standoff_shot_rush_leaves() -> void:
 	if not _standoff_cam_live():
 		return
@@ -1427,10 +1440,10 @@ func _standoff_shot_rush_leaves() -> void:
 		return
 	var a: Vector3 = rush_node.position + Vector3.UP * 1.25
 	var b: Vector3 = _south_door_spot() + Vector3.UP * 1.1
-	var mid: Vector3 = a.lerp(b, 0.35)
-	var open: Dictionary = _standoff_open_side(mid, b - a)
-	var d: float = clampf(float(open["clear"]) - 0.8, 4.0, 6.0)
-	_standoff_cam.call("frame", mid + (open["dir"] as Vector3) * d + Vector3.UP * 1.6, mid, 1.8, 0.0)
+	var open: Dictionary = _standoff_open_side(a.lerp(b, 0.35), b - a)
+	var d: float = clampf(float(open["clear"]) - 0.8, 3.6, 5.0)
+	_standoff_cam.call("follow", rush_node,
+		(open["dir"] as Vector3) * d + Vector3.UP * 1.5, 1.8)
 
 
 # Eli stepping up to the abandoned console: shot from the console's far side
@@ -1572,7 +1585,7 @@ func _standoff_enter_scott(instant: bool) -> void:
 	if instant:
 		_standoff_scott.position = anchor
 		return
-	_standoff_shot_scott()
+	_standoff_shot_scott(anchor)
 	_standoff_scott.call("walk_to", anchor, 3.4, 0.0)   # quick — he's urgent
 	# Square off at Rush once he lands (walk_to faces travel direction).
 	var face: float = atan2(-(_standoff_rush_pos.x - anchor.x), -(_standoff_rush_pos.z - anchor.z))
@@ -1584,6 +1597,9 @@ func _standoff_enter_scott(instant: bool) -> void:
 	if is_instance_valid(_standoff_scott):
 		_standoff_scott.call("stop_walk")
 		_standoff_scott.rotation.y = face
+	# The order lands: Greer LOWERS the rifle (slings it, stands down) the
+	# moment Scott is on station.
+	_standoff_aim(_standoff_greer, false)
 
 
 # Rush's speaking cue: he straightens off the console, rounds on Eli, and
@@ -1682,15 +1698,16 @@ func _despawn_standoff() -> void:
 	_standoff_scott = null
 
 
-# Raise/holster a standoff actor's sidearm by moving it between the belt and
-# hand bone mounts and switching to the matching pose. Safe under instant_mode.
+# Raise/lower a standoff actor's RIFLE between the back sling and the aimed
+# hand mount (the rifle's hand transform is the grid-verified one — the
+# pistol's never read right on camera). Safe under instant_mode.
 func _standoff_aim(actor: Node3D, aimed: bool) -> void:
 	if actor == null or not is_instance_valid(actor):
 		return
 	var mc: Node = _modular_model(actor)
 	if mc != null:
-		mc.call("set_sidearm", true, aimed)
-		mc.call("play_clip", "pistol_aim" if aimed else "idle")
+		mc.call("set_rifle", true, aimed)
+		mc.call("play_clip", "rifle_aim" if aimed else "idle")
 		return
 	# Legacy mini path.
 	var holder: Node = actor.get_node_or_null("Model")

@@ -8,8 +8,13 @@ extends Node
 #   3. re-interact -> the Fable conversation (camera locked on Rush, floating
 #      gold choices) walks two nodes and closes
 #
+# Movie Maker records at the PROJECT VIEWPORT size — `--resolution` only
+# moves the window and the movie stays 1280x720. Record full-aspect via a
+# temporary override.cfg (DELETE it after — it affects every launch):
+#   printf '[display]\nwindow/size/viewport_width=1920\nwindow/size/viewport_height=1200\nwindow/size/mode=0\n' > override.cfg
 #   godot --path . --write-movie out/raw/rush_confrontation.avi \
-#     --fixed-fps 30 --resolution 1280x720 tools/showcase/rush_confrontation.tscn
+#     --fixed-fps 30 tools/showcase/rush_confrontation.tscn
+#   rm override.cfg
 #
 # Deterministic under fixed-fps: timers tick in movie time (create_timer's
 # process_always default keeps them alive through the dialog pause).

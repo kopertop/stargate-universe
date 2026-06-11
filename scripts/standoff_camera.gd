@@ -24,6 +24,11 @@ var _shot_dur: float = 1.0
 var _orbit_speed: float = 0.0
 var _orbit_angle: float = 0.0
 var _active: bool = false
+# Tracking shot: while set, the shot destination re-anchors to this actor
+# every frame (walkers stay centred instead of strolling out of frame).
+var _track_target: Node3D = null
+var _track_offset: Vector3 = Vector3.ZERO
+var _track_look_height: float = 1.25
 
 
 func _ready() -> void:
@@ -71,6 +76,7 @@ func release() -> void:
 func frame(pos: Vector3, look: Vector3, dur: float = 1.8, orbit: float = 0.1) -> void:
 	if _cam == null or not _active:
 		return
+	_track_target = null
 	var first: bool = not _cam.current
 	_from_pos = pos if first else _cam.global_position
 	_from_look = look if first else _last_look
@@ -84,9 +90,25 @@ func frame(pos: Vector3, look: Vector3, dur: float = 1.8, orbit: float = 0.1) ->
 	_apply(1.0 if first else 0.0)
 
 
+# Tracking shot: glide to `target + offset` and then FOLLOW — destination
+# re-anchors to the actor every frame, so a walking character stays centred
+# instead of leaving the frame (user note from the charge beat).
+func follow(target: Node3D, offset: Vector3, dur: float = 1.2, look_height: float = 1.25) -> void:
+	if target == null or not is_instance_valid(target):
+		return
+	frame(target.global_position + offset,
+		target.global_position + Vector3.UP * look_height, dur, 0.0)
+	_track_target = target
+	_track_offset = offset
+	_track_look_height = look_height
+
+
 func _process(delta: float) -> void:
 	if not _active or _cam == null or not _cam.current:
 		return
+	if _track_target != null and is_instance_valid(_track_target):
+		_shot_pos = _track_target.global_position + _track_offset
+		_shot_look = _track_target.global_position + Vector3.UP * _track_look_height
 	_shot_t += delta
 	_orbit_angle += _orbit_speed * delta
 	_apply(clampf(_shot_t / _shot_dur, 0.0, 1.0))

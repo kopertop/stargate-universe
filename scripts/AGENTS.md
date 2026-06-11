@@ -25,6 +25,12 @@ extension. Most have an adjacent `.uid` sidecar (Godot 4.6 resource UID).
 - `test_capture.gd` — Headless screenshot harness.
 - `episode_wrap.gd` — Episode completion overlay.
 
+### Dialogue / voice
+- `tts_client.gd` — `TTSClient` node for runtime voiced dialogue. `say(voice,
+  text, seed)` calls the resident LuxTTS sidecar over HTTP and emits
+  `line_ready(AudioStreamWAV)`. Dynamic text, pre-computed character voices.
+  Full guide: `docs/tts-dialogue.md`; server lives in `tools/tts-onnx-poc/`.
+
 ### Scene scripts
 - `gate_room.gd` — Hand-authored gate hall layout + arrival cinematic.
 - `room.gd` — Generic data-driven room scene. Stamps doors, dispatches to

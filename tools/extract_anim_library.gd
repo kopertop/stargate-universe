@@ -32,6 +32,32 @@ const MANIFEST: Dictionary = {
 	# Stationary aim: the settled hold at the tail of the stop-running clip.
 	"rifle_aim": {"src": "stoprunningtoaimingrifleidle", "loop": true,
 		"in_place": true, "rebase": true, "slice": [1.70, 2.85]},
+	# ---- Quaternius Universal Animation Library (first-party, same rig) ----
+	"talk": {"lib": "UAL1_Standard", "clip": "Idle_Talking", "loop": true},
+	"sit_enter": {"lib": "UAL1_Standard", "clip": "Sitting_Enter", "loop": false},
+	"sit": {"lib": "UAL1_Standard", "clip": "Sitting_Idle", "loop": true},
+	"sit_talk": {"lib": "UAL1_Standard", "clip": "Sitting_Talking", "loop": true},
+	"sit_exit": {"lib": "UAL1_Standard", "clip": "Sitting_Exit", "loop": false},
+	"interact": {"lib": "UAL1_Standard", "clip": "Interact", "loop": false},
+	"repair": {"lib": "UAL1_Standard", "clip": "Fixing_Kneeling", "loop": true},
+	"pickup": {"lib": "UAL1_Standard", "clip": "PickUp_Table", "loop": false},
+	"pistol_idle": {"lib": "UAL1_Standard", "clip": "Pistol_Idle", "loop": true},
+	"pistol_aim": {"lib": "UAL1_Standard", "clip": "Pistol_Aim_Neutral", "loop": true},
+	"pistol_shoot": {"lib": "UAL1_Standard", "clip": "Pistol_Shoot", "loop": false},
+	"pistol_reload": {"lib": "UAL1_Standard", "clip": "Pistol_Reload", "loop": false},
+	"jog": {"lib": "UAL1_Standard", "clip": "Jog_Fwd", "loop": true},
+	"sprint": {"lib": "UAL1_Standard", "clip": "Sprint", "loop": true},
+	"crouch_idle": {"lib": "UAL1_Standard", "clip": "Crouch_Idle", "loop": true},
+	"crouch_walk": {"lib": "UAL1_Standard", "clip": "Crouch_Fwd", "loop": true},
+	"hit": {"lib": "UAL1_Standard", "clip": "Hit_Chest", "loop": false},
+	"death2": {"lib": "UAL1_Standard", "clip": "Death01", "loop": false},
+	"dance": {"lib": "UAL1_Standard", "clip": "Dance", "loop": true},
+	"idle_arms_folded": {"lib": "UAL2_Standard", "clip": "Idle_FoldArms", "loop": true},
+	"shake_no": {"lib": "UAL2_Standard", "clip": "Idle_No", "loop": false},
+	"nod_yes": {"lib": "UAL2_Standard", "clip": "Yes", "loop": false},
+	"knockback": {"lib": "UAL2_Standard", "clip": "Hit_Knockback", "loop": false},
+	"consume": {"lib": "UAL2_Standard", "clip": "Consume", "loop": false},
+	"walk_carry": {"lib": "UAL2_Standard", "clip": "Walk_Carry", "loop": true},
 }
 
 
@@ -44,18 +70,27 @@ func _run() -> void:
 	var ok: int = 0
 	for clip_name in MANIFEST:
 		var def: Dictionary = MANIFEST[clip_name]
-		var stem: String = String(def["src"])
-		var packed: PackedScene = load("res://models/vrm/anim_src/%s.fbx" % stem)
+		var src_path: String
+		var src_clip: String
+		if def.has("lib"):
+			# Quaternius Universal Animation Library GLB (many named clips).
+			src_path = "res://models/quaternius/anim_lib/%s.glb" % String(def["lib"])
+			src_clip = String(def["clip"])
+		else:
+			src_path = "res://models/vrm/anim_src/%s.fbx" % String(def["src"])
+			src_clip = "mixamo_com"
+		var packed: PackedScene = load(src_path)
 		if packed == null:
-			print("[extract] MISSING %s.fbx" % stem)
+			print("[extract] MISSING %s" % src_path)
 			continue
 		var inst: Node = packed.instantiate()
 		var ap: AnimationPlayer = _find_anim(inst)
-		if ap == null or not ap.has_animation("mixamo_com"):
-			print("[extract] no mixamo_com clip in %s" % stem)
+		if ap == null or not ap.has_animation(src_clip):
+			print("[extract] no '%s' clip in %s" % [src_clip, src_path.get_file()])
 			inst.free()
 			continue
-		var anim: Animation = ap.get_animation("mixamo_com").duplicate(true)
+		var anim: Animation = ap.get_animation(src_clip).duplicate(true)
+		var stem: String = src_path.get_file()
 		if def.has("slice"):
 			anim = _slice(anim, float(def["slice"][0]), float(def["slice"][1]))
 		var drift: Vector3 = _hips_drift(anim)

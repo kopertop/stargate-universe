@@ -1196,7 +1196,7 @@ func _standoff_aim(actor: Node3D, aimed: bool) -> void:
 	var mc: Node = _modular_model(actor)
 	if mc != null:
 		mc.call("set_sidearm", true, aimed)
-		mc.call("play_clip", "rifle_aim" if aimed else "idle")
+		mc.call("play_clip", "pistol_aim" if aimed else "idle")
 		return
 	# Legacy mini path.
 	var holder: Node = actor.get_node_or_null("Model")

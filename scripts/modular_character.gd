@@ -24,6 +24,9 @@ const BASE_DIR: String = "res://models/quaternius/base"
 const PARTS_DIR: String = "res://models/quaternius/parts"
 const HAIR_DIR: String = "res://models/quaternius/hair"
 const BODY_LIB: String = "res://models/vrm/anim/crew_body.res"
+# Real gun props (Quaternius Sci-Fi Essentials) — replace the procedural kit.
+const RIFLE_GLTF: String = "res://models/quaternius/guns/Gun_Rifle.gltf"
+const PISTOL_GLTF: String = "res://models/quaternius/guns/Gun_Pistol.gltf"
 
 const SLOTS: Array[String] = ["Body", "Arms", "Legs", "Feet", "Head", "Acc", "Hair"]
 
@@ -263,18 +266,16 @@ func set_rifle(carried: bool, aimed: bool = false) -> void:
 		return
 	var mount: BoneAttachment3D = _mount("RifleHand" if aimed else "RifleBack",
 		"RightHand" if aimed else "Chest")
-	var rifle: Node3D = FactoryRef.build_rifle()
-	rifle.name = "Rifle"
+	var rifle: Node3D = _gun(RIFLE_GLTF, "Rifle")
 	if aimed:
-		# Hand-bone axes are rig-specific; tuned via rifle_grip_tune capture:
-		# Rx(-90) alone = sideways, +Ry(90) = on the aim line but inverted,
-		# +Rz(180) = scope up; z+0.07 centers the receiver on the hands.
-		# Don't reason about axes — render the candidate grid.
+		# Hand-bone axes are rig-specific; tuned via rifle_grip_tune capture
+		# (symptom ladder: backwards = flip Rx; sideways = add Ry90;
+		# upside-down = add Rz180). Don't reason about axes — render the grid.
 		rifle.position = Vector3(0.0, 0.08, 0.07)
 		rifle.rotation = Vector3(-1.57, 1.57, 3.14)
 	else:
-		# Slung diagonally across the back, barrel toward the ground.
-		rifle.position = Vector3(-0.04, 0.10, -0.18)
+		# Slung diagonally across the upper back, barrel toward the ground.
+		rifle.position = Vector3(-0.04, 0.16, -0.17)
 		rifle.rotation = Vector3(1.25, 0.0, 0.85)
 	mount.add_child(rifle)
 
@@ -290,14 +291,12 @@ func set_sidearm(carried: bool, aimed: bool = false) -> void:
 		return
 	var mount: BoneAttachment3D = _mount("SidearmHand" if aimed else "SidearmHip",
 		"RightHand" if aimed else "Hips")
-	var gun: Node3D = FactoryRef.build_sidearm()
-	gun.name = "Sidearm"
-	gun.scale = Vector3.ONE * 0.5   # mini-proportioned mesh on a human frame
+	var gun: Node3D = _gun(PISTOL_GLTF, "Sidearm")
 	if aimed:
 		gun.position = Vector3(0.0, 0.06, 0.02)
 		gun.rotation = Vector3(-1.57, 1.57, 3.14)
 	else:
-		gun.position = Vector3(0.16, 0.02, -0.03)
+		gun.position = Vector3(0.19, 0.02, 0.02)
 		gun.rotation = Vector3(-1.57, 0.0, 0.0)   # barrel down along the thigh
 	mount.add_child(gun)
 
@@ -318,6 +317,17 @@ func set_helmet(worn: bool) -> void:
 	mount.add_child(helmet)
 
 
+# Instantiate a gun prop scene under a named pivot (so mount code can address
+# it as "Rifle"/"Sidearm" regardless of the prop's internal node names).
+func _gun(path: String, gun_name: String) -> Node3D:
+	var pivot: Node3D = Node3D.new()
+	pivot.name = gun_name
+	var packed: PackedScene = load(path)
+	if packed != null:
+		pivot.add_child(packed.instantiate())
+	return pivot
+
+
 func _mount(mount_name: String, bone: String) -> BoneAttachment3D:
 	var mount: BoneAttachment3D = BoneAttachment3D.new()
 	mount.name = mount_name
@@ -332,6 +342,51 @@ func _clear_mounts(names: Array) -> void:
 		if old != null:
 			old.name = mount_name + "_retired"
 			old.queue_free()
+
+
+# Color the equipped hairstyle (hair gltfs arrive with unbound/white
+# materials — also how crew get distinct hair colors).
+func set_hair_color(color: Color) -> void:
+	if _skel == null:
+		_pending.append(["set_hair_color", [color]])
+		return
+	for n in _equipped.get("Hair", {}).get("nodes", []):
+		if not (is_instance_valid(n) and n is MeshInstance3D):
+			continue
+		var mi: MeshInstance3D = n
+		for s in range(mi.mesh.get_surface_count()):
+			var mat: StandardMaterial3D = StandardMaterial3D.new()
+			mat.albedo_color = color
+			mat.roughness = 0.75
+			mi.set_surface_override_material(s, mat)
+
+
+# Swap the base body's albedo texture to a pack-shipped skin variant
+# ("Dark" — e.g. T_Superhero_Male_Dark.png). Applies to all split regions.
+func set_skin_variant(variant: String) -> void:
+	if _skel == null:
+		_pending.append(["set_skin_variant", [variant]])
+		return
+	var candidates: Array = [
+		"%s/T_Superhero_%s_%s_BaseColor.png" % [BASE_DIR, gender, variant],
+		"%s/T_Superhero_%s_%s.png" % [BASE_DIR, gender, variant],
+	]
+	var tex: Texture2D = null
+	for path in candidates:
+		if ResourceLoader.exists(path):
+			tex = load(path)
+			break
+	if tex == null:
+		push_warning("set_skin_variant: no texture for '%s' (%s)" % [variant, candidates])
+		return
+	for region in _region_meshes:
+		var mi: MeshInstance3D = _region_meshes[region]
+		for s in range(mi.mesh.get_surface_count()):
+			var src: Material = mi.mesh.surface_get_material(s)
+			if src is BaseMaterial3D:
+				var mat: BaseMaterial3D = (src as BaseMaterial3D).duplicate()
+				mat.albedo_texture = tex
+				mi.set_surface_override_material(s, mat)
 
 
 # Multiply a tint over every equipped garment's albedo (ship duty blacks vs

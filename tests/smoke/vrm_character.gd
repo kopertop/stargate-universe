@@ -64,8 +64,9 @@ func _test_body_library() -> void:
 	if lib == null:
 		return
 	var clips: PackedStringArray = lib.get_animation_list()
-	_expect(clips.size() == 16, "library has 16 clips (got %d)" % clips.size())
-	for required in ["idle", "walk", "run", "rifle_walk", "rifle_draw", "rifle_aim", "death", "wave", "argue"]:
+	_expect(clips.size() >= 41, "library has 41+ clips (got %d)" % clips.size())
+	for required in ["idle", "walk", "run", "rifle_walk", "rifle_draw", "rifle_aim", "death", "wave", "argue",
+			"talk", "sit", "repair", "pistol_aim", "pistol_shoot", "idle_arms_folded"]:
 		_expect(lib.has_animation(required), "library has '%s'" % required)
 	var walk: Animation = lib.get_animation("walk")
 	_expect(walk.loop_mode == Animation.LOOP_LINEAR, "walk loops")

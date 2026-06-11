@@ -187,28 +187,28 @@ const OUTFITS: Dictionary = {
 # (Peasant=civvies, Ranger=uniform) until SGU outfits are authored on the rig.
 const PROFILES: Dictionary = {
 	"Eli": {"model": "eli", "vrm": "res://models/vrm/eli.vrm", "ship": "civvies", "mission": "fatigues", "military": false,
-		"mod": {"gender": "Male", "hair": "Hair_SimpleParted"}},
+		"mod": {"gender": "Male", "hair": "Hair_SimpleParted", "hair_color": Color(0.28, 0.18, 0.10)}},
 	"Dr Rush": {"model": "rush", "ship": "civvies", "mission": "fatigues", "military": false,
-		"mod": {"gender": "Male", "hair": "Hair_Beard"}},
+		"mod": {"gender": "Male", "hair": "Hair_Beard", "hair_color": Color(0.30, 0.24, 0.18)}},
 	"Dr Park": {"model": "park", "ship": "civvies", "mission": "fatigues", "military": false,
-		"mod": {"gender": "Female", "hair": "Hair_Buns"}},
+		"mod": {"gender": "Female", "hair": "Hair_Buns", "hair_color": Color(0.08, 0.07, 0.07)}},
 	"Dr James": {"model": "james", "ship": "civvies", "mission": "fatigues", "military": false,
-		"mod": {"gender": "Female", "hair": "Hair_Long"}},
+		"mod": {"gender": "Female", "hair": "Hair_Long", "hair_color": Color(0.42, 0.27, 0.14)}},
 	"Chloe Armstrong": {"model": "chloe", "ship": "civvies", "mission": "fatigues", "military": false,
-		"mod": {"gender": "Female", "hair": "Hair_Long"}},
+		"mod": {"gender": "Female", "hair": "Hair_Long", "hair_color": Color(0.45, 0.32, 0.16)}},
 	"Lt Scott": {"model": "scott", "vrm": "res://models/vrm/scott.vrm", "ship": "duty_black", "mission": "combat", "military": true,
-		"mod": {"gender": "Male", "hair": "Hair_Buzzed"}},
+		"mod": {"gender": "Male", "hair": "Hair_Buzzed", "hair_color": Color(0.24, 0.16, 0.09)}},
 	# Greer's skin/hair recolors bake into every outfit (the old away-team
 	# hack tinted Scott's whole body brown; this is the parameterized version).
 	"Sgt Greer": {
 		"model": "greer", "ship": "duty_black", "mission": "combat", "military": true,
 		"skin": Color(0.46, 0.28, 0.18), "hair": Color(0.10, 0.09, 0.08),
-		"mod": {"gender": "Male", "hair": "Hair_Buzzed", "skin_tint": Color(0.55, 0.38, 0.28)},
+		"mod": {"gender": "Male", "hair": "Hair_Buzzed", "skin": "Dark", "hair_color": Color(0.05, 0.05, 0.05)},
 	},
 	"Colonel Young": {"model": "young", "ship": "duty_black", "mission": "combat", "military": true,
-		"mod": {"gender": "Male", "hair": "Hair_Buzzed"}},
+		"mod": {"gender": "Male", "hair": "Hair_Buzzed", "hair_color": Color(0.35, 0.30, 0.26)}},
 	"Lt James": {"model": "lt_james", "ship": "duty_black", "mission": "combat", "military": true,
-		"mod": {"gender": "Female", "hair": "Hair_BuzzedFemale"}},
+		"mod": {"gender": "Female", "hair": "Hair_BuzzedFemale", "hair_color": Color(0.10, 0.08, 0.07)}},
 }
 
 # Modular outfit loadouts per mini-outfit id: which Quaternius outfit family
@@ -308,9 +308,12 @@ static func dress_modular(c: Node3D, character_name: String, context: String = C
 		c.call("set_slot", slot, _modular_part(slot, gender, String(loadout["outfit"])))
 	if String(mod.get("hair", "")) != "":
 		c.call("set_slot", "Hair", String(mod["hair"]))
+		c.call("set_hair_color", mod.get("hair_color", Color(0.32, 0.22, 0.14)))
 	var tint: Color = loadout["tint"]
 	if tint != Color.WHITE:
 		c.call("tint_clothing", tint)
+	if String(mod.get("skin", "")) != "":
+		c.call("set_skin_variant", String(mod["skin"]))
 	c.call("set_sidearm", bool(loadout["sidearm"]), false)
 	c.call("set_rifle", bool(loadout["rifle"]), false)
 

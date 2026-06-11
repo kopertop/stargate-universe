@@ -128,7 +128,7 @@ func _test_rifle_mounts() -> void:
 func _test_animation() -> void:
 	var c: Node3D = _make("Male")
 	var clips: PackedStringArray = c.call("clip_names")
-	_expect(clips.size() == 16, "shared crew library on Quaternius rig (16 clips, got %d)" % clips.size())
+	_expect(clips.size() >= 41, "shared crew library on Quaternius rig (41+ clips, got %d)" % clips.size())
 	c.call("play_clip", "walk")
 	var ap: AnimationPlayer = _find_anim(c)
 	_expect(ap != null and ap.current_animation == "body/walk",

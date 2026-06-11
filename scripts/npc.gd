@@ -125,6 +125,14 @@ func walk_to(target: Vector3, speed: float = 2.5, delay: float = 0.0) -> void:
 	set_process(true)
 
 
+# Cancel a scripted walk immediately. Callers that pose the NPC at a precise
+# spot/facing (the standoff draw-and-aim) MUST stop the walker first — its
+# remaining arrival steps keep stomping rotation (look_at travel) and the
+# clip ("walk" then "idle") for a few frames, wiping the authored pose.
+func stop_walk() -> void:
+	_walking_to = false
+
+
 func _process(delta: float) -> void:
 	if _walking_to:
 		_step_walk(delta)

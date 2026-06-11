@@ -1,0 +1,86 @@
+extends Node
+
+# Space-advanced cutscene sequencer for the E1 cold-open standoff (#136
+# follow-up). Plays the SAME dialogue tree the WoW-dialog path uses, but as
+# letterboxed captions (Cinematic autoload) while the choreography cues fire
+# underneath — the standoff has no real choices, so it plays out as a scene
+# instead of a dialog window. Presentation only: quest/met state is flipped
+# by standoff_rush.gd before play() begins, and instant_mode never builds
+# this node (it keeps the classic dialog path the suites assert against).
+#
+#   var seq: Node = StandoffCinematicScript.new()
+#   room.add_child(seq)
+#   seq.call("play", tree)
+#   await Signal(seq, "finished")
+#
+# Advance = Space (jump) / E (interact) / ui_accept / left click. A node with
+# "hold": true also waits for GameState.dialog_release before it may advance
+# (Greer's charge must land before the scene moves on). Cues emit on
+# GameState.dialog_action exactly like DialogScreen renders them.
+
+signal finished
+
+# A caption must be on screen this long before an advance press counts —
+# prevents one eager Space press from machine-gunning through two beats.
+const MIN_CAPTION_TIME: float = 0.35
+
+var _advance_requested: bool = false
+
+
+func _ready() -> void:
+	set_process_unhandled_input(true)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("jump") \
+			or event.is_action_pressed("interact") \
+			or event.is_action_pressed("ui_accept"):
+		_advance_requested = true
+	elif event is InputEventMouseButton:
+		var mb: InputEventMouseButton = event
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+			_advance_requested = true
+
+
+# Deterministic advance for capture harnesses/tests (no faked InputEvents).
+func request_advance() -> void:
+	_advance_requested = true
+
+
+func play(tree: Array) -> void:
+	await Cinematic.letterbox_in()
+	var first: bool = true
+	for raw in tree:
+		var node: Dictionary = raw
+		Cinematic.set_caption(_caption_for(node, first))
+		first = false
+		var action: String = String(node.get("action", ""))
+		if action != "":
+			GameState.dialog_action.emit(action)
+		if node.get("hold", false) == true:
+			await GameState.dialog_release
+		await _wait_advance()
+	Cinematic.set_caption("")
+	await Cinematic.letterbox_out()
+	finished.emit()
+
+
+func _wait_advance() -> void:
+	_advance_requested = false
+	var shown: float = 0.0
+	while true:
+		await get_tree().process_frame
+		shown += get_process_delta_time()
+		if _advance_requested and shown >= MIN_CAPTION_TIME:
+			return
+
+
+func _caption_for(node: Dictionary, first: bool) -> String:
+	var speaker: String = String(node.get("speaker", ""))
+	var text: String = String(node.get("text", ""))
+	var line: String = text
+	if speaker != "":
+		line = "%s — \"%s\"" % [speaker.to_upper(), text]
+	if first:
+		line += "\n[Space]"
+	return line

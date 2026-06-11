@@ -37,6 +37,8 @@ const SalvagePanelScript: Script = preload("res://scripts/salvage_panel.gd")
 const BridgeConsoleScript: Script = preload("res://scripts/bridge_console.gd")
 const RepairConsoleScript: Script = preload("res://scripts/repair_console.gd")
 const StandoffCameraScript: Script = preload("res://scripts/standoff_camera.gd")
+const StandoffRushScript: Script = preload("res://scripts/standoff_rush.gd")
+const StandoffCinematicScript: Script = preload("res://scripts/standoff_cinematic.gd")
 # Single source of truth for crew appearance (base model + military fatigues +
 # sidearm). Keeps a character looking the same in every room.
 const CharacterFactoryRef: Script = preload("res://scripts/character_factory.gd")
@@ -899,15 +901,19 @@ func _spawn_dr_rush() -> void:
 	const CONSOLE_OFFSET: float = 4.0
 	var pos: Vector3 = Vector3(CONSOLE_OFFSET + 1.0, 0.0, 0.0)
 	var rush: StaticBody3D = StaticBody3D.new()
-	rush.set_script(NpcScript)
+	rush.set_script(StandoffRushScript)
 	rush.name = "DrRush"
 	rush.position = pos
 	rush.rotation.y = PI * 0.5  # Forward = -X (toward console + pillar at room centre).
 	rush.set("character_name", "Dr Rush")
 	rush.set("prompt", "Talk to Dr Rush")
+	# In live play the first meet routes through _run_standoff_cinematic
+	# (letterboxed, Space-advanced cutscene built from this same tree).
+	rush.set("standoff_runner", Callable(self, "_run_standoff_cinematic"))
 	# Cold-open standoff. Speakers in order: Eli → Greer → Scott → Rush (pushes
-	# button, no-op) → dismissal. The standoff plays via the standard WoW-style
-	# dialog path (GameState.dialog_started), which is instant_mode-safe.
+	# button, no-op) → dismissal. Under instant_mode (and on repeat talks) the
+	# standoff plays via the standard WoW-style dialog path
+	# (GameState.dialog_started) — the headless suites assert that path.
 	# met_rush flips synchronously in Npc._handle_first_meet BEFORE dialog emits,
 	# so the playthrough can assert immediately after interact() without awaiting.
 	# GDD ref: issue #136 "E1 opening beat: the 'don't push the button' standoff".
@@ -1075,6 +1081,11 @@ func _standoff_reposition(npc: Node3D, _tree: Array) -> void:
 		return
 	if npc == null or npc.name != "DrRush":
 		return
+	_standoff_restage()
+	_standoff_cinema_begin()
+
+
+func _standoff_restage() -> void:
 	var p_pos: Vector3 = player.position
 	var fwd: Vector3 = Vector3(-sin(player.rotation.y), 0.0, -cos(player.rotation.y))
 	var right: Vector3 = fwd.cross(Vector3.UP)
@@ -1085,7 +1096,31 @@ func _standoff_reposition(npc: Node3D, _tree: Array) -> void:
 	_standoff_greer.rotation.y = face
 	_standoff_scott.position = _clear_spot(p_pos - fwd * 3.0 - right * 0.3, [_standoff_greer, _standoff_scott])
 	_standoff_scott.rotation.y = face
-	_standoff_cinema_begin()
+
+
+# Play the cold-open standoff as a true CUTSCENE (user direction: it offers
+# only one course forward, so no dialog box) — letterbox + Space-advanced
+# captions from the same tree, choreography cues + StandoffCamera shots
+# underneath. Invoked by standoff_rush.gd on the live first meet only;
+# instant_mode/repeat talks keep the classic dialog path.
+func _run_standoff_cinematic(tree: Array) -> void:
+	if _standoff_greer == null or not is_instance_valid(_standoff_greer):
+		# Actors missing (edge: reload mid-beat) — fall back to the dialog.
+		GameState.dialog_started.emit(get_node_or_null("DrRush") as Node3D, tree)
+		return
+	_standoff_restage()
+	_standoff_cinema_begin(false)   # sequencer ends the camera, not dialog_closed
+	if player != null and player.has_method("set_input_locked"):
+		player.call("set_input_locked", true)
+	var seq: Node = StandoffCinematicScript.new()
+	seq.name = "StandoffCinematic"
+	add_child(seq)
+	seq.call("play", tree)
+	await Signal(seq, "finished")
+	if player != null and is_instance_valid(player) and player.has_method("set_input_locked"):
+		player.call("set_input_locked", false)
+	_standoff_cinema_end()
+	seq.queue_free()
 
 
 # A silent standoff actor: a normal NPC (so it inherits the CharacterFactory
@@ -1135,7 +1170,7 @@ func _on_standoff_cue(action_id: String) -> void:
 # invisible. A pause-immune StandoffCamera now pulls back at dialog-open and
 # re-frames on every cue. Presentation only: instant_mode never creates it.
 
-func _standoff_cinema_begin() -> void:
+func _standoff_cinema_begin(hook_dialog_close: bool = true) -> void:
 	var sr: Node = get_node_or_null("/root/SceneRouter")
 	if sr != null and sr.get("instant_mode"):
 		return
@@ -1145,8 +1180,10 @@ func _standoff_cinema_begin() -> void:
 	_standoff_cam.name = "StandoffCamera"
 	add_child(_standoff_cam)
 	_standoff_cam.call("activate")
-	# The standoff plays inside ONE dialog; its close ends the scene.
-	GameState.dialog_closed.connect(_standoff_cinema_end, CONNECT_ONE_SHOT)
+	# Dialog path: the standoff plays inside ONE dialog; its close ends the
+	# scene. The cinematic path ends the camera itself instead.
+	if hook_dialog_close:
+		GameState.dialog_closed.connect(_standoff_cinema_end, CONNECT_ONE_SHOT)
 	_standoff_shot_wide()
 
 
@@ -1161,15 +1198,17 @@ func _standoff_cam_live() -> bool:
 	return _standoff_cam != null and is_instance_valid(_standoff_cam)
 
 
-# Opening two-shot: the player and Rush from the side, slowly panning.
+# Opening two-shot: the player and Rush from the open side, pulled WIDE
+# (user note: the old framing was too tight to read the scene).
 func _standoff_shot_wide() -> void:
 	if not _standoff_cam_live():
 		return
 	var eli_p: Vector3 = _standoff_player_pos + Vector3.UP * 1.2
 	var rush_p: Vector3 = _standoff_rush_pos + Vector3.UP * 1.2
 	var mid: Vector3 = (eli_p + rush_p) * 0.5
-	var side: Vector3 = _flat_side(rush_p - eli_p)
-	_standoff_cam.call("frame", mid + side * 4.8 + Vector3.UP * 1.5, mid, 2.0, 0.10)
+	var open: Dictionary = _standoff_open_side(mid, rush_p - eli_p)
+	var d: float = clampf(float(open["clear"]) - 0.8, 4.5, 7.5)
+	_standoff_cam.call("frame", mid + (open["dir"] as Vector3) * d + Vector3.UP * (0.8 + 0.4 * d), mid, 2.0, 0.10)
 
 
 # Greer's charge: frame the lane between Greer and Rush so the rush-in and the
@@ -1180,11 +1219,12 @@ func _standoff_shot_greer() -> void:
 	var a: Vector3 = _standoff_greer.position + Vector3.UP * 1.1
 	var b: Vector3 = _standoff_rush_pos + Vector3.UP * 1.25
 	var mid: Vector3 = (a + b) * 0.5
-	var side: Vector3 = _flat_side(b - a)
-	_standoff_cam.call("frame", mid + side * 4.2 + Vector3.UP * 1.2, mid, 1.5, 0.14)
+	var open: Dictionary = _standoff_open_side(mid, b - a)
+	var d: float = clampf(float(open["clear"]) - 0.8, 4.0, 6.0)
+	_standoff_cam.call("frame", mid + (open["dir"] as Vector3) * d + Vector3.UP * (0.6 + 0.35 * d), mid, 1.5, 0.14)
 
 
-# Once Greer has actually arrived and leveled the sidearm: tight two-shot of
+# Once Greer has actually arrived and leveled the sidearm: closer two-shot of
 # him squared off against Rush (the cue-time shot framed the charge lane; by
 # arrival he has crossed it).
 func _standoff_shot_greer_aim() -> void:
@@ -1193,13 +1233,12 @@ func _standoff_shot_greer_aim() -> void:
 	var a: Vector3 = _standoff_greer.position + Vector3.UP * 1.25
 	var b: Vector3 = _standoff_rush_pos + Vector3.UP * 1.25
 	var mid: Vector3 = (a + b) * 0.5
-	var side: Vector3 = _flat_side(b - a)
-	_standoff_cam.call("frame", mid - side * 3.4 + Vector3.UP * 0.6, mid, 1.4, 0.12)
+	var open: Dictionary = _standoff_open_side(mid, b - a)
+	_standoff_cam.call("frame", mid + (open["dir"] as Vector3) * 3.6 + Vector3.UP * 1.3, mid, 1.4, 0.12)
 
 
-# Scott's entrance: pull wide enough to hold all three actors plus the player.
-# Same proven side axis as the opening wide shot, steeper so the long view
-# clears the console cluster around the central pillar.
+# Scott's entrance: pull wide enough to hold all three actors plus the player,
+# high and steep so the long view clears the console cluster.
 func _standoff_shot_scott() -> void:
 	if not _standoff_cam_live():
 		return
@@ -1211,18 +1250,21 @@ func _standoff_shot_scott() -> void:
 	for p in pts:
 		mid += p
 	mid = mid / float(pts.size()) + Vector3.UP * 1.1
-	var side: Vector3 = _flat_side(_standoff_rush_pos - _standoff_player_pos)
-	_standoff_cam.call("frame", mid + side * 5.0 + Vector3.UP * 3.2, mid, 2.0, 0.08)
+	var open: Dictionary = _standoff_open_side(mid, _standoff_rush_pos - _standoff_player_pos)
+	var d: float = clampf(float(open["clear"]) - 0.8, 5.5, 8.5)
+	_standoff_cam.call("frame", mid + (open["dir"] as Vector3) * d + Vector3.UP * 3.6, mid, 2.0, 0.08)
 
 
-# Resolution: drift up and back as Greer holsters and the soldiers walk out.
+# Resolution: hold on Rush delivering the dismissal while Greer holsters and
+# the soldiers walk out behind him. (Framing the walk-out midpoint put the
+# central pillar dead-center of the shot — the room's worst look target.)
 func _standoff_shot_clear() -> void:
 	if not _standoff_cam_live():
 		return
-	var exit_pt: Vector3 = Vector3(_standoff_rush_pos.x - 10.0, 0.0, 0.0)
-	var mid: Vector3 = (_standoff_rush_pos + exit_pt) * 0.5 + Vector3.UP * 1.0
-	var side: Vector3 = _flat_side(exit_pt - _standoff_rush_pos)
-	_standoff_cam.call("frame", mid + side * 5.2 + Vector3.UP * 2.8, mid, 2.4, 0.05)
+	var look: Vector3 = _standoff_rush_pos + Vector3.UP * 1.25
+	var open: Dictionary = _standoff_open_side(look, _standoff_rush_pos - _standoff_player_pos)
+	var d: float = clampf(float(open["clear"]) - 0.8, 3.2, 4.5)
+	_standoff_cam.call("frame", look + (open["dir"] as Vector3) * d + Vector3.UP * 1.0, look, 2.4, 0.06)
 
 
 # Horizontal unit vector perpendicular to `axis` — the camera's "stand to the
@@ -1232,6 +1274,31 @@ func _flat_side(axis: Vector3) -> Vector3:
 	if axis.length() < 0.01:
 		return Vector3.RIGHT
 	return axis.normalized().cross(Vector3.UP)
+
+
+# Pick whichever perpendicular of `axis` has more open space (chest-height ray
+# from the action midpoint, world layer 1) so shots pull back into the room
+# instead of into the nearest console/wall — the "zoomed in too much" fix.
+# Returns {"dir": Vector3, "clear": float}.
+func _standoff_open_side(mid: Vector3, axis: Vector3) -> Dictionary:
+	var base: Vector3 = _flat_side(axis)
+	var best_dir: Vector3 = base
+	var best_clear: float = 3.0
+	var w3d: World3D = get_world_3d()
+	var space: PhysicsDirectSpaceState3D = w3d.direct_space_state if w3d != null else null
+	for s in [1.0, -1.0]:
+		var d: Vector3 = base * s
+		var clear: float = 12.0
+		if space != null:
+			var q: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(
+				mid + Vector3.UP * 0.3, mid + Vector3.UP * 0.3 + d * 12.0, 1)
+			var hit: Dictionary = space.intersect_ray(q)
+			if hit.has("position"):
+				clear = mid.distance_to(hit["position"] as Vector3)
+		if clear > best_clear:
+			best_clear = clear
+			best_dir = d
+	return {"dir": best_dir, "clear": best_clear}
 
 
 # Nudge a staging spot off any geometry it would intersect (consoles, walls,
@@ -1296,6 +1363,11 @@ func _standoff_advance_greer(instant: bool) -> void:
 		guard += 1
 	if not is_instance_valid(_standoff_greer):
 		return
+	# Kill the walker BEFORE posing: its remaining arrival steps re-face the
+	# travel direction and stomp the clip back to walk/idle, which is how
+	# Greer ended up beside Rush, unposed, facing nowhere (live-play bug).
+	_standoff_greer.call("stop_walk")
+	_standoff_greer.position = anchor            # clean final mark (spot is pre-cleared)
 	_standoff_greer.rotation.y = face            # square off at Rush
 	_standoff_aim(_standoff_greer, true)         # draw + level the sidearm at Rush
 	_standoff_shot_greer_aim()                   # tighten on the drawn weapon

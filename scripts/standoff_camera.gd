@@ -30,7 +30,8 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_cam = Camera3D.new()
 	_cam.name = "CinematicCamera"
-	_cam.fov = 45.0
+	# Wider lens — the first cut at 45° read "zoomed in too much" in play.
+	_cam.fov = 55.0
 	# Compose the look target right of centre, clear of the dialog window.
 	_cam.h_offset = -0.85
 	add_child(_cam)
@@ -115,6 +116,6 @@ func _pull_clear(pos: Vector3, look: Vector3) -> Vector3:
 	if hit.has("position"):
 		var hp: Vector3 = hit["position"]
 		var tucked: Vector3 = hp + (look - hp).normalized() * 0.35
-		if tucked.distance_to(look) >= 2.2 and tucked.y >= 1.4:
+		if tucked.distance_to(look) >= 3.2 and tucked.y >= 1.4:
 			return tucked
 	return pos

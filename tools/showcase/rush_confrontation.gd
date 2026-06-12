@@ -45,7 +45,10 @@ func _run() -> void:
 	# Cold open: we walk in through the SOUTH door and find Rush at his
 	# console — the cutscene takes over right there.
 	var door_spot: Vector3 = room.call("_south_door_spot")
-	var pl_pos: Vector3 = door_spot + Vector3(0.0, 0.0, 0.9)
+	# Keep the player's settled Y (the room placed him at proper floor height
+	# — forcing y=0 made him visibly drop on frame one) and start far enough
+	# inside the room that the follow camera isn't trapped in the doorway.
+	var pl_pos: Vector3 = Vector3(door_spot.x, player.position.y, door_spot.z - 0.6)
 	player.position = pl_pos
 	# Face Rush's console (he stands at ~(5, 0, 0)) as we step through.
 	player.rotation.y = atan2(-(5.0 - pl_pos.x), -(0.0 - pl_pos.z))
@@ -53,7 +56,7 @@ func _run() -> void:
 	if view != null and view.has_method("snap_to_target"):
 		view.call("snap_to_target")
 	await _wait(0.8)
-	var step_in: Vector3 = door_spot + Vector3(0.0, 0.0, -1.2)
+	var step_in: Vector3 = door_spot + Vector3(0.0, 0.0, -2.0)
 	player.call("auto_walk_to", step_in, 2.2)
 	var guard: int = 0
 	while guard < 240 and player.position.distance_to(step_in) > 0.3:
@@ -75,40 +78,11 @@ func _run() -> void:
 		await _wait(4.5)
 		if is_instance_valid(seq) and seq.is_inside_tree():
 			seq.call("request_advance")
-	# Soldiers walk out; let the room breathe.
-	await _wait(4.0)
-
-	# Aftermath: talk to Rush again — the Fable conversation view.
-	rush.call("interact", player)
-	await _wait(3.4)
-	_press_choice(1)   # "Go where?"
-	await _wait(3.6)
-	_press_choice(0)   # "Right." -> exit
-	await _wait(2.0)
+	# Rush has left for good (he despawns at the clear beat — that IS the
+	# story now); the soldiers walk out, Eli stands at the live console.
+	# Let the room breathe on the gameplay camera, then cut.
+	await _wait(4.5)
 	get_tree().quit()
-
-
-func _press_choice(idx: int) -> void:
-	var screen: Node = _find_dialog_screen(get_tree().root)
-	if screen == null:
-		push_error("no dialog screen for choice %d" % idx)
-		return
-	var box: Node = screen.get_node_or_null("Window/Margin/VBox/ChoicesVBox")
-	if box == null or idx >= box.get_child_count():
-		push_error("choice %d missing" % idx)
-		return
-	(box.get_child(idx) as Button).emit_signal("pressed")
-
-
-func _find_dialog_screen(node: Node) -> Node:
-	var script: Script = node.get_script() as Script
-	if script != null and script.resource_path.ends_with("dialog_screen.gd"):
-		return node
-	for child in node.get_children():
-		var found: Node = _find_dialog_screen(child)
-		if found != null:
-			return found
-	return null
 
 
 func _wait(seconds: float) -> void:

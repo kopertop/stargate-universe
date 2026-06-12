@@ -1199,7 +1199,9 @@ func _standoff_restage() -> void:
 	var eli_mark: Vector3 = _standoff_eli_mark()
 	var sr: Node = get_node_or_null("/root/SceneRouter")
 	if not (sr != null and sr.get("instant_mode")):
-		player.position = door_spot + Vector3(0.0, 0.0, -0.7)
+		# Keep his settled Y — snapping to y=0 dropped him a few inches onto
+		# the floor collider in plain view (user render note).
+		player.position = Vector3(door_spot.x, player.position.y, door_spot.z - 0.7)
 		player.rotation.y = atan2(-(eli_mark.x - player.position.x),
 			-(eli_mark.z - player.position.z))
 	_standoff_player_pos = eli_mark
@@ -1220,6 +1222,7 @@ func _standoff_eli_entrance() -> void:
 	var mark: Vector3 = _standoff_eli_mark()
 	var prev_layer: int = int(player.get("collision_layer"))
 	var prev_mask: int = int(player.get("collision_mask"))
+	var settled_y: float = player.position.y   # flat room — reuse on arrival
 	player.call("cinematic_dash_to", mark, 5.2)
 	var guard: int = 0
 	while guard < 360 and is_instance_valid(player) \
@@ -1230,6 +1233,10 @@ func _standoff_eli_entrance() -> void:
 		return
 	player.set("collision_layer", prev_layer)
 	player.set("collision_mask", prev_mask)
+	# The dash's ground ray lands on the grate mesh top, a few inches above
+	# the floor collider — restore the settled height so he doesn't visibly
+	# drop when physics resumes (user render note).
+	player.position.y = settled_y
 	player.call("set_input_locked", true)
 	player.rotation.y = atan2(-(_standoff_rush_pos.x - player.position.x),
 		-(_standoff_rush_pos.z - player.position.z))

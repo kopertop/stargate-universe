@@ -22,8 +22,11 @@ const PLANET_GATE_SCRIPT: Script = preload("res://scripts/planet_gate.gd")
 const QuestWaypointScript: Script = preload("res://scripts/quest_waypoint.gd")
 const CompanionScript: Script = preload("res://scripts/companion.gd")
 const KinoDroneScript: Script = preload("res://scripts/kino_drone.gd")
+# Shared crew-appearance source of truth (base models, outfits per context, gear).
+const CharacterFactoryRef: Script = preload("res://scripts/character_factory.gd")
 # Preload bypasses class_name registration timing — same reason as room.gd.
 const ShipAlertScript: Script = preload("res://scripts/ship_alert.gd")
+const DOOR_SCENE: PackedScene = preload("res://objects/door.tscn")
 const QUEST_WAYPOINT_ANCHOR_HEIGHT: float = 2.4
 const QUEST_WAYPOINT_DOOR_HEIGHT: float = 1.8
 # Z of the gate-control / FTL consoles (and the Phase E crew clustered around
@@ -106,6 +109,11 @@ func _ready() -> void:
 
 	# Place the spawn markers now that the room geometry is in place.
 	_create_spawn_markers()
+
+	# D1: stamp the always-open Upper Deck door at the right stair-top landing,
+	# and create the matching return-trip arrival marker. Floor 2 is generated on
+	# demand so the room.gd target always exists before the transition fires.
+	_build_upper_deck_stairs_door()
 
 	# Returning through the gate from the lime planet: the away team came back
 	# WITH the player — spawn them standing just behind the FromPlanet landing.
@@ -201,6 +209,49 @@ func _create_spawn_markers() -> void:
 	from_planet.position = Vector3(0.0, 0.05, room_size.y * 0.5 - 12.0)
 	from_planet.rotation = Vector3.ZERO  # -Z forward = into the room / toward the exit
 	add_child(from_planet)
+
+# D1: Stamp a transition door at the right stair-top landing (x=+12, y=5, z=-10)
+# pointing to the Floor-2 Observation Deck entry room. Generates Floor 2 on demand
+# so the target room exists before any transition fires. Also creates the
+# "FromObservationDeck" arrival Marker3D so the return trip (obs-deck → gate room)
+# lands the player at this stair-top landing facing into the room (+Z toward gate).
+func _build_upper_deck_stairs_door() -> void:
+	# Ensure Floor 2 is generated so floor2_obs_entry_id() returns a valid id.
+	ProceduralShip.ensure_floor_generated(2)
+	var obs_id: String = ProceduralShip.floor2_obs_entry_id()
+	if obs_id == "":
+		push_warning("gate_room: floor 2 not generated — upper deck door skipped")
+		return
+
+	# Stair-top position: right stair (side_sign=+1) top lands at
+	#   x = +(half_x - mezzanine_depth) = +12, y = mezzanine_height = 5, z = STAIR_Z_CENTER = -10
+	var half_x: float = room_size.x * 0.5
+	var stair_top: Vector3 = Vector3(half_x - mezzanine_depth, mezzanine_height, STAIR_Z_CENTER)
+
+	# The door faces -X from the right mezzanine wall (face_yaw = +PI*0.5 = face left/inward).
+	# Place it flush with the inner edge of the right mezzanine strip.
+	var door: Node = DOOR_SCENE.instantiate()
+	door.name = "UpperDeckDoor"
+	door.position = stair_top + Vector3(0.0, 0.0, 0.0)
+	door.rotation.y = PI * 0.5   # Face -X (door is on the right wall, opens inward)
+	door.set("target_room_id", obs_id)
+	door.set("source_room_id", "gate_room")
+	door.set("target_spawn", ProceduralShip.STAIRS_OBS_SPAWN)
+	door.set("plaque_label", "Upper Deck — Observation")
+	door.set("open_prompt", "Step up to Upper Deck")
+	door.set("transition_prompt", "Step up to Upper Deck")
+	door.add_to_group("interactable")
+	_world.add_child(door)
+
+	# Return-trip arrival marker: player landing back from the Observation Deck
+	# appears 1.2 m inward (toward -X) from the door, facing +X into the room.
+	var marker: Marker3D = Marker3D.new()
+	marker.name = ProceduralShip.STAIRS_GATE_SPAWN   # "FromObservationDeck"
+	# 1.2 m inward from the stair-top door, still on the mezzanine level (y=5).
+	marker.position = stair_top + Vector3(-1.2, 0.0, 0.0)
+	marker.rotation.y = -PI * 0.5  # face +X into room (away from wall)
+	add_child(marker)
+
 
 func _apply_pending_save_spawn() -> void:
 	if _player == null:
@@ -367,14 +418,13 @@ func _assemble_away_team_at_gate() -> void:
 	var gate_z: float = room_size.y * 0.5 - 3.8
 	var line_z: float = gate_z - 2.4         # ≈ +9.8 — a couple metres south of the event horizon
 	var line_y: float = 1.05
-	const SCOTT_GLB: String = "res://models/characters/scott.glb"
-	const GREER_TINT: Color = Color(0.66, 0.50, 0.38)
 	# Roster order matches the planet-side spawn (Greer left, Park centre,
-	# Scott right) and the cutscene's group "away_team" muster.
+	# Scott right) and the cutscene's group "away_team" muster. Appearance
+	# (models, fatigues, Greer's skin tone) comes from CharacterFactory.
 	var roster: Array = [
-		{"name": "Greer", "glb": SCOTT_GLB, "tint": GREER_TINT, "x": -1.6},
-		{"name": "Park", "glb": "res://models/characters/park.glb", "tint": Color.WHITE, "x": 0.0},
-		{"name": "Lt Scott", "glb": SCOTT_GLB, "tint": Color.WHITE, "x": 1.6},
+		{"name": "Greer", "glb": "res://models/characters/greer.glb", "x": -1.6},
+		{"name": "Park", "glb": "res://models/characters/park.glb", "x": 0.0},
+		{"name": "Lt Scott", "glb": "res://models/characters/scott.glb", "x": 1.6},
 	]
 	for i in roster.size():
 		var entry: Dictionary = roster[i]
@@ -384,7 +434,7 @@ func _assemble_away_team_at_gate() -> void:
 		_world.add_child(c)
 		c.position = Vector3(float(entry["x"]), line_y, line_z)
 		c.rotation.y = 0.0    # model holder is internally flipped 180° → visible front faces +Z (the gate)
-		c.call("setup", String(entry["name"]), String(entry["glb"]), i, entry["tint"])
+		c.call("setup", String(entry["name"]), String(entry["glb"]), i)
 		_gate_team.append(c)
 	# Lock the player out of the gate until the team has walked through.
 	_gate_player_locked = true
@@ -436,19 +486,18 @@ func _spawn_returned_away_team() -> void:
 	for child in _world.get_children():
 		if String(child.name).begins_with("ReturnTeam_"):
 			return
-	const SCOTT_GLB: String = "res://models/characters/scott.glb"
-	const GREER_TINT: Color = Color(0.66, 0.50, 0.38)
 	# Spawn line: on the dais top (y=1.05) a couple metres south of the event
 	# horizon, mirroring the departure muster. Home line: down on the main floor
 	# (y=0.05), gate-side of the FromPlanet landing so the player lands behind
 	# them and watches them spread out. Slight per-member X spread at each end.
+	# Appearance comes from CharacterFactory (glb is fallback-only).
 	var gate_z: float = room_size.y * 0.5 - 3.8
 	var spawn_z: float = gate_z - 2.4               # ≈ +9.8 on the dais
 	var home_z: float = room_size.y * 0.5 - 10.5    # ≈ +5.5 on the main floor
 	var roster: Array = [
-		{"name": "Greer", "glb": SCOTT_GLB, "tint": GREER_TINT, "x": -2.4, "kind": "greer"},
+		{"name": "Greer", "glb": "res://models/characters/greer.glb", "tint": Color.WHITE, "x": -2.4, "kind": "greer"},
 		{"name": "Park", "glb": "res://models/characters/park.glb", "tint": Color.WHITE, "x": 0.0, "kind": "park"},
-		{"name": "Lt Scott", "glb": SCOTT_GLB, "tint": Color.WHITE, "x": 2.4, "kind": "scott"},
+		{"name": "Lt Scott", "glb": "res://models/characters/scott.glb", "tint": Color.WHITE, "x": 2.4, "kind": "scott"},
 	]
 	for i in roster.size():
 		var entry: Dictionary = roster[i]
@@ -510,21 +559,27 @@ func _build_returned_crew_npc(display_name: String, kind: String, glb_path: Stri
 	cs.position = Vector3(0.0, 0.9, 0.0)
 	body.add_child(cs)
 
-	# Visual body — Kenney mini-char GLB, flipped 180° (export +Z forward).
+	# Visual body — flipped 180° (models export +Z forward).
 	var model_holder: Node3D = Node3D.new()
 	model_holder.name = "Model"
-	model_holder.scale = Vector3(2.6, 2.6, 2.6)
 	model_holder.rotation.y = PI
-	var glb: PackedScene = load(glb_path)
-	if glb != null:
-		var inst: Node = glb.instantiate()
-		model_holder.add_child(inst)
-		var colormap: Texture2D = load("res://models/characters/Textures/colormap.png")
-		Npc.apply_kenney_colormap(inst, colormap)
-		if tint != Color.WHITE:
-			_tint_kenney_model(inst, tint)
-		Npc.play_idle_animation(inst)
 	body.add_child(model_holder)
+	if CharacterFactoryRef.profile_for(display_name).has("mod"):
+		var mc: Node3D = CharacterFactoryRef.build_modular(display_name)
+		model_holder.add_child(mc)
+		# Back aboard: ship dress code (duty tint + sidearm for military).
+		CharacterFactoryRef.dress_modular(mc, display_name, CharacterFactoryRef.CTX_SHIP)
+	else:
+		model_holder.scale = Vector3(2.6, 2.6, 2.6)
+		var glb: PackedScene = load(CharacterFactoryRef.model_for(display_name, glb_path))
+		if glb != null:
+			var inst: Node = glb.instantiate()
+			model_holder.add_child(inst)
+			Npc.play_idle_animation(inst)
+		CharacterFactoryRef.dress(body, model_holder, display_name, CharacterFactoryRef.CTX_SHIP)
+		if tint != Color.WHITE:
+			# Legacy per-instance tint for unregistered characters.
+			_tint_kenney_model(model_holder, tint)
 
 	var tag: Label3D = Label3D.new()
 	tag.name = "Nametag"
@@ -1323,23 +1378,14 @@ func _build_npcs() -> void:
 	var model_holder: Node3D = Node3D.new()
 	model_holder.name = "Model"
 	model_holder.position = Vector3(0.0, 0.0, 0.0)
-	model_holder.scale = Vector3(2.6, 2.6, 2.6)
-	# Kenney mini characters export with +Z forward (look at the spine in the
-	# import preview), so rotate 180° to align with Godot's -Z forward
-	# convention — otherwise Scott walks/auto-greets facing the wrong way.
+	# Models export with +Z forward; rotate 180° to Godot's -Z forward —
+	# otherwise Scott walks/auto-greets facing the wrong way.
 	model_holder.rotation.y = PI
-	var scott_glb: PackedScene = load("res://models/characters/scott.glb")
-	if scott_glb != null:
-		var scott_model: Node = scott_glb.instantiate()
-		model_holder.add_child(scott_model)
-		# Kenney GLBs reference an external colormap.png that the Godot importer
-		# doesn't bind to the material — without this override Scott renders as
-		# a solid white silhouette. (See feedback-kenney-mini-chars-colormap.)
-		var colormap: Texture2D = load("res://models/characters/Textures/colormap.png")
-		Npc.apply_kenney_colormap(scott_model, colormap)
-		# Start the GLB's idle animation so Scott isn't a statue.
-		Npc.play_idle_animation(scott_model)
 	scott.add_child(model_holder)
+	# Ship dress code: duty tint + sidearm, consistent with everywhere else.
+	var scott_mc: Node3D = CharacterFactoryRef.build_modular("Lt Scott")
+	model_holder.add_child(scott_mc)
+	CharacterFactoryRef.dress_modular(scott_mc, "Lt Scott", CharacterFactoryRef.CTX_SHIP)
 
 	# Floating nametag billboard so the player can ID him from across the room.
 	var tag: Label3D = Label3D.new()
@@ -1514,35 +1560,53 @@ func _build_tableau_npc(
 
 	var model_holder: Node3D = Node3D.new()
 	model_holder.name = "Model"
+	var modular: bool = CharacterFactoryRef.profile_for(character).has("mod")
 	if pose == "down":
 		# Lay character on their back: tip the holder forward 90° so what was up
 		# (head along +Y) now extends along +Z away from the feet anchor.
 		# Lift slightly so the back doesn't z-fight with the floor.
 		model_holder.rotation = Vector3(-PI * 0.5, PI, 0.0)
-		model_holder.position = Vector3(0.0, 0.18, 0.7)
-		model_holder.scale = Vector3(2.6, 2.6, 2.6)
+		model_holder.position = Vector3(0.0, 0.15, 0.0) if modular else Vector3(0.0, 0.18, 0.7)
+		if not modular:
+			model_holder.scale = Vector3(2.6, 2.6, 2.6)
 	elif pose == "kneel":
-		# Compress the standing model vertically — reads as crouched/kneeling
-		# without needing a separate rig. Slight forward tilt sells the lean.
-		model_holder.rotation = Vector3(deg_to_rad(-20.0), PI, 0.0)
-		model_holder.position = Vector3(0.0, 0.0, 0.0)
-		model_holder.scale = Vector3(2.6, 1.5, 2.6)
+		if modular:
+			# Real rig: the kneeling-repair clip replaces the legacy Y-squash.
+			model_holder.rotation = Vector3(0.0, PI, 0.0)
+		else:
+			# Compress the standing model vertically — reads as crouched/kneeling
+			# without needing a separate rig. Slight forward tilt sells the lean.
+			model_holder.rotation = Vector3(deg_to_rad(-20.0), PI, 0.0)
+			model_holder.scale = Vector3(2.6, 1.5, 2.6)
 	else:
 		model_holder.rotation.y = PI
-		model_holder.scale = Vector3(2.6, 2.6, 2.6)
+		if not modular:
+			model_holder.scale = Vector3(2.6, 2.6, 2.6)
 
-	var glb: PackedScene = load(glb_path)
-	if glb != null:
-		var inst: Node = glb.instantiate()
-		model_holder.add_child(inst)
-		var colormap: Texture2D = load("res://models/characters/Textures/colormap.png")
-		Npc.apply_kenney_colormap(inst, colormap)
-		# Down characters DON'T idle-loop — the breathe-anim makes "unconscious"
-		# read as "stretching." Kneelers do, so they feel busy with their hands.
-		if pose != "down":
-			Npc.play_idle_animation(inst)
 	body.add_child(model_holder)
-	if face_override != "":
+	if modular:
+		var mc: Node3D = CharacterFactoryRef.build_modular(character)
+		model_holder.add_child(mc)
+		CharacterFactoryRef.dress_modular(mc, character, CharacterFactoryRef.CTX_SHIP)
+		if pose == "kneel":
+			mc.call("play_clip", "repair")   # kneeling, hands working — medic triage
+		elif pose == "down":
+			# Freeze the idle pose: an unconscious body shouldn't breathe-sway.
+			mc.call("freeze_pose")
+	else:
+		var glb: PackedScene = load(glb_path)
+		if glb != null:
+			var inst: Node = glb.instantiate()
+			model_holder.add_child(inst)
+			var colormap: Texture2D = load("res://models/characters/Textures/colormap.png")
+			Npc.apply_kenney_colormap(inst, colormap)
+			# Down characters DON'T idle-loop — the breathe-anim makes "unconscious"
+			# read as "stretching." Kneelers do, so they feel busy with their hands.
+			if pose != "down":
+				Npc.play_idle_animation(inst)
+	# The face-override plane is positioned for the mini head; modular bodies
+	# have a real face, so the X-eyed sticker would float mid-air — skip it.
+	if face_override != "" and not modular:
 		_add_face_override(body, face_override, pose)
 
 	var tag: Label3D = Label3D.new()

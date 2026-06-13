@@ -175,6 +175,9 @@ func _ready() -> void:
 	# loop while the remote is open — without this, the readout staled the
 	# moment the panel was opened mid-decay.
 	GameState.scrubber_level_changed.connect(_on_scrubber_level_changed)
+	# Live-refresh the STATUS page when a tracked resource changes (consumption
+	# tick, planet loot, spend). Mirrors the oxygen_changed connection above.
+	GameState.resource_changed.connect(_on_resource_changed)
 	# Live-refresh the inventory page when any carried item changes while the
 	# remote is open (picked up a fuse, spent lime, …).
 	if Inventory.has_signal("changed"):
@@ -184,6 +187,13 @@ func _ready() -> void:
 func _on_inventory_changed() -> void:
 	if _open:
 		_refresh_inventory()
+
+
+# Refresh the STATUS page whenever a tracked resource count changes (consumption
+# drain, planet loot, manual spend). Mirrors the scrubber_level handler above.
+func _on_resource_changed(_type: String, _count: int) -> void:
+	if _open:
+		_refresh_status()
 
 
 func _on_room_discovered(_room_id: String) -> void:
@@ -425,6 +435,22 @@ func _build_status_page(parent: Control) -> void:
 	r.name = "LimeLabel"
 	var scan: Label = _label(page, "  Planet scan: —", 14, Color(0.82, 0.92, 1.0, 0.9))
 	scan.name = "PlanetScanLabel"
+	# Scarcity block (issue #134): one row per tracked resource, scarcest first.
+	# Rows are built once and updated by _refresh_status via node names
+	# "Scarcity_<id>" so the list never names a resource in code.
+	page.add_child(HSeparator.new())
+	_label(page, "RESOURCES", 16, Color(0.55, 0.85, 1.0, 1.0))
+	var gs: Node = _scarcity_autoload()
+	var ids: Array = gs.call("tracked_resource_ids") if gs != null else []
+	for id in ids:
+		var row_label: Label = _label(page, "  %s: —" % id.capitalize(), 14, Color.WHITE)
+		row_label.name = "Scarcity_%s" % id
+
+func _scarcity_autoload() -> Node:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	if tree == null or tree.root == null:
+		return null
+	return tree.root.get_node_or_null("GameState")
 
 func _build_quest_page(parent: Control) -> void:
 	var page: VBoxContainer = VBoxContainer.new()
@@ -918,7 +944,7 @@ func _refresh_map() -> void:
 func _active_floor() -> int:
 	if _active_floor_override >= 0:
 		return _active_floor_override
-	var room: Dictionary = ShipLayout.room(GameState.current_room_id)
+	var room: Dictionary = ProceduralShip.room(GameState.current_room_id)
 	if not room.is_empty():
 		return int(room.get("floor", 0))
 	return 0
@@ -938,7 +964,7 @@ func _rebuild_level_bar() -> void:
 	# descending so floor 1 (upper) sits above floor 0 (main).
 	var floors: Array = []
 	for room_id in GameState.rooms_discovered:
-		var r: Dictionary = ShipLayout.room(room_id)
+		var r: Dictionary = ProceduralShip.room(room_id)
 		if r.is_empty():
 			continue
 		var f: int = int(r.get("floor", 0))
@@ -1016,7 +1042,7 @@ func _visible_room_ids() -> Array:
 		return GameState.rooms_discovered
 	var ids: Array = []
 	var floor_id: int = _active_floor()
-	for r in ShipLayout.all_rooms():
+	for r in ProceduralShip.all_known_rooms():
 		if int(r.get("floor", 0)) == floor_id:
 			ids.append(String(r.get("id", "")))
 	return ids
@@ -1025,7 +1051,7 @@ func _visible_room_ids() -> Array:
 func _is_room_visible(room_id: String) -> bool:
 	if not _console_mode:
 		return GameState.rooms_discovered.has(room_id)
-	var r: Dictionary = ShipLayout.room(room_id)
+	var r: Dictionary = ProceduralShip.room(room_id)
 	return not r.is_empty() and int(r.get("floor", 0)) == _active_floor()
 
 
@@ -1045,7 +1071,7 @@ func _compute_deck_transforms() -> void:
 	var aabb: Rect2 = Rect2()
 	var has_any: bool = false
 	for room_id in _visible_room_ids():
-		var room: Dictionary = ShipLayout.room(room_id)
+		var room: Dictionary = ProceduralShip.room(room_id)
 		if room.is_empty() or int(room.get("floor", 0)) != floor_id:
 			continue
 		var sx: float = float(room["startX"])
@@ -1107,7 +1133,7 @@ func _screen_to_world(screen_pt: Vector2) -> Variant:
 
 # Centre of a room in MapView pixel space, or null if not on a fitted deck.
 func _room_to_px(room_id: String) -> Variant:
-	var room: Dictionary = ShipLayout.room(room_id)
+	var room: Dictionary = ProceduralShip.room(room_id)
 	if room.is_empty():
 		return null
 	var floor_id: int = int(room.get("floor", 0))
@@ -1120,7 +1146,7 @@ func _room_to_px(room_id: String) -> Variant:
 
 # Pixel-space room Rect2 for a given room, or null if not on a fitted deck.
 func _room_rect_px(room_id: String) -> Variant:
-	var room: Dictionary = ShipLayout.room(room_id)
+	var room: Dictionary = ProceduralShip.room(room_id)
 	if room.is_empty():
 		return null
 	var floor_id: int = int(room.get("floor", 0))
@@ -1466,13 +1492,13 @@ func _draw_elevator_glyph(canvas: CanvasItem, centre: Vector2, radius: float, co
 # top of room fills, and connection lines sit behind pips.
 func _draw_deck_geometry(canvas: CanvasItem, floor_id: int, _rect: Rect2) -> void:
 	for room_id in _visible_room_ids():
-		var room: Dictionary = ShipLayout.room(room_id)
+		var room: Dictionary = ProceduralShip.room(room_id)
 		if room.is_empty() or int(room.get("floor", 0)) != floor_id:
 			continue
 		_draw_room_outline(canvas, room)
 	_draw_connection_lines(canvas, floor_id)
 	for room_id in _visible_room_ids():
-		var room: Dictionary = ShipLayout.room(room_id)
+		var room: Dictionary = ProceduralShip.room(room_id)
 		if room.is_empty() or int(room.get("floor", 0)) != floor_id:
 			continue
 		_draw_door_pips_for_room(canvas, room)
@@ -1557,10 +1583,10 @@ func _draw_room_outline(canvas: CanvasItem, room: Dictionary) -> void:
 func _draw_connection_lines(canvas: CanvasItem, floor_id: int) -> void:
 	var seen: Dictionary = {}
 	for room_id in _visible_room_ids():
-		var room: Dictionary = ShipLayout.room(room_id)
+		var room: Dictionary = ProceduralShip.room(room_id)
 		if room.is_empty() or int(room.get("floor", 0)) != floor_id:
 			continue
-		for edge in ShipLayout.outgoing_edges(room_id):
+		for edge in ProceduralShip.outgoing_edges(room_id):
 			var e: Dictionary = edge
 			var to_id: String = String(e.get("to", ""))
 			if to_id == "" or not _is_room_visible(to_id):
@@ -1569,7 +1595,7 @@ func _draw_connection_lines(canvas: CanvasItem, floor_id: int) -> void:
 			if seen.has(key):
 				continue
 			seen[key] = true
-			var to_room: Dictionary = ShipLayout.room(to_id)
+			var to_room: Dictionary = ProceduralShip.room(to_id)
 			if to_room.is_empty() or int(to_room.get("floor", 0)) != floor_id:
 				continue
 			var a: Variant = _room_to_px(room_id)
@@ -1588,7 +1614,7 @@ func _draw_door_pips_for_room(canvas: CanvasItem, room: Dictionary) -> void:
 	var rect: Rect2 = rect_var
 	# Group outgoing edges by direction so we can stagger them along the wall.
 	var by_dir: Dictionary = {}
-	for edge in ShipLayout.outgoing_edges(room_id):
+	for edge in ProceduralShip.outgoing_edges(room_id):
 		var e: Dictionary = edge
 		var dir: String = String(e.get("dir", ""))
 		if dir == "":
@@ -1612,7 +1638,7 @@ func _draw_door_pips_for_room(canvas: CanvasItem, room: Dictionary) -> void:
 # Pip state machine. Order matters: hard-lock > kino-lock > power-lock >
 # traversed > open.
 func _pip_state(source_id: String, target_id: String, dir: String) -> String:
-	var target_room: Dictionary = ShipLayout.room(target_id)
+	var target_room: Dictionary = ProceduralShip.room(target_id)
 	if not target_room.is_empty() and target_room.get("locked", false):
 		return "hardlock"
 	if dir == "elevator" and not GameState.elevator_repaired:
@@ -1718,7 +1744,7 @@ func _draw_route(canvas: CanvasItem) -> void:
 	var target_id: String = _active_route_target()
 	if target_id == "":
 		return
-	var path: PackedStringArray = ShipLayout.path_through_rooms(GameState.current_room_id, target_id)
+	var path: PackedStringArray = ProceduralShip.path_through_rooms(GameState.current_room_id, target_id)
 	var dot_color: Color = CUSTOM_TARGET_COLOR if _placed_marker != null else QUEST_TARGET_COLOR
 	for i in range(path.size() - 1):
 		var a_var: Variant = _room_to_px(path[i])
@@ -1899,7 +1925,7 @@ func _placed_marker_room() -> String:
 	var world: Vector2 = m["world"]
 	var floor_id: int = int(m.get("floor", 0))
 	for room_id in GameState.rooms_discovered:
-		var r: Dictionary = ShipLayout.room(room_id)
+		var r: Dictionary = ProceduralShip.room(room_id)
 		if r.is_empty() or int(r.get("floor", 0)) != floor_id:
 			continue
 		var rect_world: Rect2 = Rect2(
@@ -1935,6 +1961,25 @@ func _refresh_status() -> void:
 			scan.text = "  Planet scan: viable address pending gate dial"
 		else:
 			scan.text = "  Planet scan: no active offworld scan"
+	# Scarcity rows (issue #134): iterate registry order from resource_scarcity()
+	# so the scarcest resource floats to the top. Tag LOW when deficit > 0.
+	var scarcity: Array = GameState.resource_scarcity()
+	for row in scarcity:
+		var id: String = String((row as Dictionary).get("id", ""))
+		var node_name: String = "Scarcity_%s" % id
+		var lbl: Label = page.get_node_or_null(node_name) as Label
+		if lbl == null:
+			continue
+		var amount: int = int((row as Dictionary).get("amount", 0))
+		var threshold: int = int((row as Dictionary).get("threshold", 0))
+		var deficit: int = int((row as Dictionary).get("deficit", 0))
+		var label_text: String = String((row as Dictionary).get("label", id.capitalize()))
+		if deficit > 0:
+			lbl.text = "  %s: %d  [LOW]" % [label_text, amount]
+			lbl.add_theme_color_override("font_color", Color(1.0, 0.45, 0.35, 1.0))
+		else:
+			lbl.text = "  %s: %d / %d" % [label_text, amount, threshold]
+			lbl.add_theme_color_override("font_color", Color.WHITE)
 
 func _refresh_ship_systems() -> void:
 	var page: Node = _pages[PAGE_SHIP_SYSTEMS]
@@ -1986,7 +2031,7 @@ func _refresh_quest() -> void:
 		if room_id == "":
 			hint.text = "  —"
 		else:
-			var room_data: Dictionary = ShipLayout.room(room_id)
+			var room_data: Dictionary = ProceduralShip.room(room_id)
 			var room_name: String = String(room_data.get("name", room_id))
 			var anchor: String = String(target.get("anchor", ""))
 			if anchor == "":
@@ -2150,12 +2195,15 @@ func _attach_remote_prop(player: Node3D) -> void:
 		return
 	var prop: Node3D = Node3D.new()
 	prop.name = "KinoRemoteProp"
-	# Between the hands, forward of the chest. Tuned against the holding-both pose
-	# at the character's 1.6x model scale (hands land ~0.7 m up, ~0.4 m forward).
-	# +X rotation tilts +Y toward +Z (Godot right-hand rule) — i.e. the screen
-	# face tips up and BACK toward Eli, so the player looking down sees the
-	# screen but a front-on camera sees the back of the device.
-	prop.position = Vector3(0.0, 0.72, -0.42)
+	# Between the hands, forward of the chest. +X rotation tilts +Y toward +Z
+	# (Godot right-hand rule) — i.e. the screen face tips up and BACK toward
+	# Eli, so the player looking down sees the screen but a front-on camera
+	# sees the back of the device. Height depends on the body: the modular
+	# avatar's hands sit ~1.0 m up; the legacy chibi's at ~0.7 m.
+	if player.get("_mc") != null:
+		prop.position = Vector3(0.0, 1.02, -0.45)
+	else:
+		prop.position = Vector3(0.0, 0.72, -0.42)
 	prop.rotation_degrees = Vector3(45.0, 0.0, 0.0)
 	player.add_child(prop)
 

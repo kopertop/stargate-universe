@@ -125,6 +125,14 @@ func walk_to(target: Vector3, speed: float = 2.5, delay: float = 0.0) -> void:
 	set_process(true)
 
 
+# Cancel a scripted walk immediately. Callers that pose the NPC at a precise
+# spot/facing (the standoff draw-and-aim) MUST stop the walker first — its
+# remaining arrival steps keep stomping rotation (look_at travel) and the
+# clip ("walk" then "idle") for a few frames, wiping the authored pose.
+func stop_walk() -> void:
+	_walking_to = false
+
+
 func _process(delta: float) -> void:
 	if _walking_to:
 		_step_walk(delta)
@@ -155,7 +163,9 @@ func _process(delta: float) -> void:
 		_on_interact(player)
 		return
 	var step: float = min(auto_greet_speed * delta, dist - auto_greet_distance * 0.95)
-	global_position += to_player.normalized() * step
+	var greet_dir: Vector3 = _steer_clear(to_player.normalized(), step)
+	if greet_dir != Vector3.ZERO:
+		global_position += greet_dir * step
 	# Face the way we're walking so the model doesn't moonwalk.
 	look_at(Vector3(player.global_position.x, global_position.y, player.global_position.z), Vector3.UP)
 
@@ -284,6 +294,11 @@ func _step_walk(delta: float) -> void:
 		return
 	var dir: Vector3 = to_t.normalized()
 	var step: float = min(_walk_speed * delta, dist)
+	dir = _steer_clear(dir, step)
+	if dir == Vector3.ZERO:
+		# Boxed in this frame — hold rather than clip through whatever blocks us.
+		_set_npc_clip("idle")
+		return
 	global_position += dir * step
 	# Face travel direction (Kenney mini-char convention handled by look_at).
 	var look: Vector3 = global_position + dir
@@ -293,12 +308,42 @@ func _step_walk(delta: float) -> void:
 	_set_npc_clip("walk")
 
 
-# Switch the GLB AnimationPlayer to a clip whose name contains `clip` (walk /
-# idle). No-ops if the model or a matching clip is absent.
+# Obstacle-aware steering for scripted walks (the standoff charge used to lerp
+# straight THROUGH consoles): probe the direct heading with a chest-height ray,
+# then fan out left/right and take the first clear bearing. Mask 1|4 covers
+# walls/props (1) and console/NPC interactables (4); the actor's own body is
+# excluded. Returns ZERO when every bearing is blocked.
+func _steer_clear(dir: Vector3, step: float) -> Vector3:
+	var w3d: World3D = get_world_3d()
+	if w3d == null:
+		return dir
+	var space: PhysicsDirectSpaceState3D = w3d.direct_space_state
+	if space == null:
+		return dir
+	var origin: Vector3 = global_position + Vector3.UP * 0.6
+	for ang in [0.0, 0.55, -0.55, 1.05, -1.05]:
+		var d: Vector3 = dir.rotated(Vector3.UP, float(ang))
+		var q: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(
+			origin, origin + d * (step + 0.45), 1 | 4)
+		q.exclude = [get_rid()]
+		if space.intersect_ray(q).is_empty():
+			return d
+	return Vector3.ZERO
+
+
+# Switch the AnimationPlayer to `clip`. Exact names first (including the
+# modular crew's "body/<clip>" library form) so "walk" can't substring-match
+# "body/rifle_fire_walk"; substring matching remains as the legacy-GLB
+# fallback (mini clips are named exactly, VRoid/modular use the library).
 func _set_npc_clip(clip: String) -> void:
 	var ap: AnimationPlayer = _find_anim_player(self)
 	if ap == null:
 		return
+	for cand in [clip, "body/" + clip]:
+		if ap.has_animation(cand):
+			if ap.current_animation != cand:
+				ap.play(cand, 0.25)
+			return
 	for nm in ap.get_animation_list():
 		if String(nm).to_lower().contains(clip):
 			if ap.current_animation != String(nm):

@@ -326,10 +326,23 @@ func _find_return_gate() -> Node3D:
 	return null
 
 
-# Departure-window length for the active biome (issue #87). Heat biomes return a
-# shorter window than the temperate baseline; falls back to DURATION when no spec
-# is set (direct boot / smoke test).
+# Departure-window length for the current run (issue #87 + #130).
+# Priority:
+#   1. Loop planet phase (FtlLoop already called start_gate_window before this
+#      scene loaded — gate_window_active is true and start_gate_window is
+#      idempotent, so our call below will be a no-op and the loop duration wins).
+#   2. E1 biome-scaled window from the active planet spec.
+#   3. Fallback: authored DURATION constant (direct boot / smoke test).
 func _biome_gate_window() -> float:
+	# When the loop has pre-armed the window, gate_window_remaining is already
+	# the authoritative rolled duration — return it so our start_gate_window
+	# call is idempotent and the loop window is preserved.
+	if GameState.gate_window_active:
+		return GameState.gate_window_remaining
+	# Post-episode but FtlLoop hasn't opened the window yet: use the tunable base.
+	if GameState.episode_complete:
+		return GameState.planet_window_base_seconds()
+	# E1 path (byte-identical): biome-scaled window from the planet spec.
 	var spec: Dictionary = GameState.active_planet_spec
 	if spec is Dictionary and not spec.is_empty():
 		return PlanetGenerator.gate_window_for(spec)

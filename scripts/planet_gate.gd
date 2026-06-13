@@ -99,10 +99,19 @@ func _travel(body: Node) -> void:
 			GameState.add_log("The planet gate is active, but leaving without enough lime will not fix the scrubber.")
 			return
 		_transitioning = true
-		# The away team comes home WITH the player exactly ONCE — the first crossing
-		# back. `return_from_lime_planet()` is the one-shot story latch (quest advance
-		# + team-home); flag the return spawn only while that latch is still unset so
-		# repeated solo crossings on an open gate don't re-muster / double-spawn crew.
+		if GameState.episode_complete:
+			# Post-E1 loop path: close the window + emit planet_run_ended so FtlLoop
+			# re-arms the ship phase. No quest advance needed (E1 is done).
+			GameState.gate_window_active = false
+			GameState.gate_window_remaining = 0.0
+			GameState.planet_run_ended.emit()
+			await SceneRouter.change_to(target_scene, target_spawn)
+			return
+		# E1 path (byte-identical): the away team comes home WITH the player exactly
+		# ONCE — the first crossing back. `return_from_lime_planet()` is the one-shot
+		# story latch (quest advance + team-home); flag the return spawn only while
+		# that latch is still unset so repeated solo crossings on an open gate don't
+		# re-muster / double-spawn crew.
 		if not GameState.returned_from_lime_planet:
 			# gate_room consumes this flag and lands the team past the platform
 			# alongside the player.

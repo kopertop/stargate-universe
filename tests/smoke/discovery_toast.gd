@@ -86,10 +86,10 @@ func _run_checks() -> void:
 	_expect(not toast.visible, "boot Gate Room decipher shows NO toast")
 
 	# --- 2. First player-driven decipher shows the toast + resolved name. ---
-	_game.decipher_room("engineering_bay")
+	_game.decipher_room("aft_storage_hall")
 	await process_frame
-	var expected: String = String(_layout.room("engineering_bay").get("name", "engineering_bay"))
-	_expect(expected == "Engineering Bay", "ShipLayout resolves engineering_bay → 'Engineering Bay'")
+	var expected: String = String(_layout.room("aft_storage_hall").get("name", "aft_storage_hall"))
+	_expect(expected == "Aft Storage Hall", "ShipLayout resolves aft_storage_hall → 'Aft Storage Hall'")
 	# Under instant_mode the toast resolves + hides on the same frame, but the
 	# RoomName label must have been assigned the resolved name (parsed = visible
 	# text without bbcode tags).

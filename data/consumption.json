@@ -1,0 +1,9 @@
+{
+  "cycle_seconds": 1800,
+  "rates": {
+    "water": { "base": 2, "per_crew": 0.5, "per_section": 0.3 },
+    "food":  { "base": 2, "per_crew": 0.4, "per_section": 0.2 },
+    "parts": { "base": 1, "per_crew": 0.1, "per_section": 0.3 },
+    "lime":  { "base": 0, "per_crew": 0.0, "per_section": 0.0 }
+  }
+}

@@ -146,8 +146,10 @@ const DISCOVERY_DECODE_SECS_PER_CHAR: float = 0.08
 const DISCOVERY_ACCENT: Color = Color(SKIN_ACCENT.r, SKIN_ACCENT.g, SKIN_ACCENT.b, 1.0)
 const DISCOVERY_STING_SOUND: String = "res://sounds/discovery_stinger.ogg"
 # Special "magical discovery" cue for KEY rooms (Control Interface Room, Kino
-# Room, …). Which rooms count as "key" is owned by a separate work stream and
-# read ONLY via ShipLayout.is_key_room() — see the big coordination note there.
+# Room, Bridge, Infirmary, …). Which rooms count as "key" is read ONLY via
+# ProceduralShip.is_key_room() — the facade delegates base ids to
+# ShipLayout.is_key_room() and resolves generated rooms from the room-type
+# catalog's key_room flag, keeping a single key-room query.
 const DISCOVERY_STING_KEY_SOUND: String = "res://sounds/discovery_stinger_key.ogg"
 var _discovery_root: Control = null
 var _discovery_name: Node = null      # RichTextLabel (per-char decode) — duck-typed.
@@ -176,6 +178,9 @@ func _ready() -> void:
 	GameState.log_added.connect(_on_log_added)
 	GameState.dialogue_shown.connect(_on_dialogue_shown)
 	GameState.dialog_started.connect(_on_dialog_started)
+	# The interact prompt ("[E] Talk to …") must not linger under an open
+	# conversation — it collides with the dialog subtitle (live-play bug).
+	GameState.dialog_closed.connect(_on_dialog_closed_restore_prompt)
 	# Toast fires on DECIPHER (the on-foot player walked in), not on remote Kino
 	# discovery — the decode animation celebrates physically reaching a room.
 	# Rooms a drone merely finds stay encrypted on the Kino map until entered.
@@ -443,7 +448,7 @@ func _on_room_deciphered(room_id: String) -> void:
 	# ShipLayout.is_key_room — owned by a separate work stream) get the special
 	# "magical discovery" cue; everything else gets the standard stinger.
 	if not SceneRouter.instant_mode and has_node("/root/Audio"):
-		var sting: String = DISCOVERY_STING_KEY_SOUND if ShipLayout.is_key_room(room_id) else DISCOVERY_STING_SOUND
+		var sting: String = DISCOVERY_STING_KEY_SOUND if ProceduralShip.is_key_room(room_id) else DISCOVERY_STING_SOUND
 		get_node("/root/Audio").call("play", sting)
 
 	# Under instant_mode the toast resolves + hides immediately (no tween wait).
@@ -818,6 +823,8 @@ func _hide_dialog_panel() -> void:
 func _on_dialog_started(npc: Node3D, tree: Array) -> void:
 	if tree.is_empty() or npc == null:
 		return
+	if _interact_label != null:
+		_interact_label.visible = false
 	var scene: PackedScene = load("res://objects/dialog_screen.tscn")
 	if scene == null:
 		return
@@ -825,6 +832,12 @@ func _on_dialog_started(npc: Node3D, tree: Array) -> void:
 	add_child(screen)
 	# DialogScreen.start() shares world_3d + frames the portrait camera.
 	screen.call("start", npc, tree)
+
+
+func _on_dialog_closed_restore_prompt() -> void:
+	if _interact_label != null:
+		_interact_label.visible = true
+
 
 func _on_log_added(line: String) -> void:
 	var lbl: Label = Label.new()

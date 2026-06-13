@@ -3,8 +3,9 @@ extends Node3D
 @export_group("Properties")
 @export var target: Node3D
 # Vertical offset added to the target position when placing the view rig — keeps
-# the camera framed on the character's chest instead of its feet.
-@export var follow_height: float = 0.9
+# the camera framed on the character's chest instead of its feet. Tuned for the
+# real-scale modular avatar (~1.6 m); the old kit chibi used 0.9.
+@export var follow_height: float = 1.15
 
 @export_group("Zoom")
 @export var zoom_minimum: float = 16.0

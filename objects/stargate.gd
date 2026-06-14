@@ -24,6 +24,9 @@ extends Node3D
 var _horizon: MeshInstance3D
 var _horizon_ripples: Array[MeshInstance3D] = []
 var _horizon_light: OmniLight3D
+# True only during the kawoosh burst, so the idle surface pulse in _process
+# doesn't fight the burst tween animating _horizon.scale.
+var _kawooshing: bool = false
 
 func _ready() -> void:
 	_build_outer_ring()
@@ -35,12 +38,37 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if not active:
 		return
-	if _horizon != null:
+	if _horizon != null and not _kawooshing:
 		var pulse: float = 1.0 + sin(Time.get_ticks_msec() * 0.006) * 0.015
 		_horizon.scale = Vector3(pulse, pulse, 1.0)
 	for i in _horizon_ripples.size():
 		var ripple: MeshInstance3D = _horizon_ripples[i]
 		ripple.rotation.z += delta * (0.25 + float(i) * 0.18)
+
+
+# The unstable-vortex "kawoosh": the event horizon erupts outward then settles
+# back into the ring. Call the instant the chevrons lock and the wormhole forms.
+# Self-contained on the gate (the surrounding ring spin is driven by the room).
+func kawoosh() -> void:
+	active = true
+	if _horizon == null:
+		return
+	_kawooshing = true
+	# Burst: the puddle punches out past the rim, then settles to steady state.
+	_horizon.scale = Vector3(0.05, 0.05, 1.0)
+	var t: Tween = create_tween()
+	t.tween_property(_horizon, "scale", Vector3(1.22, 1.22, 1.0), 0.16) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.tween_property(_horizon, "scale", Vector3(1.0, 1.0, 1.0), 0.30) \
+		.set_trans(Tween.TRANS_SINE)
+	t.tween_callback(func() -> void: _kawooshing = false)
+	# Light flare that decays to the steady glow.
+	if _horizon_light != null:
+		var base_energy: float = 4.6
+		_horizon_light.light_energy = 18.0
+		var lt: Tween = create_tween()
+		lt.tween_property(_horizon_light, "light_energy", base_energy, 0.55) \
+			.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
 
 func _set_horizon_visible(is_visible: bool) -> void:
 	if _horizon != null:

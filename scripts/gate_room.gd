@@ -8,8 +8,10 @@ extends Node3D
 #   • 32 m × 32 m footprint, 9 m ceiling, mezzanine deck at y = 5 m on three
 #     sides (back, left, right) — open on the +Z side so you can look down on
 #     the gate from the back balcony.
-#   • Gate platform: stepped bronze dais 8 m × 6 m × 1 m at +Z end. Stargate
-#     mounted at y ≈ 4 m on top of it.
+#   • Gate platform: raised circular platform prop (from the Stargate hero
+#     asset pack) with real metal staircase steps on the room side so the
+#     player can walk up the base of the gate without jumping. Stargate ring
+#     (detailed prop) mounted at the back, horizon centered inside it.
 #   • Lighting: amber floor uplights washing the upper walls, cyan accents
 #     along the mezzanine rail, and an emissive strip ringing the ceiling.
 
@@ -29,6 +31,43 @@ const ShipAlertScript: Script = preload("res://scripts/ship_alert.gd")
 const DOOR_SCENE: PackedScene = preload("res://objects/door.tscn")
 const QUEST_WAYPOINT_ANCHOR_HEIGHT: float = 2.4
 const QUEST_WAYPOINT_DOOR_HEIGHT: float = 1.8
+
+# New cinematic Stargate hero props (Asset Pack) for matching the reference
+# gate-room look-and-feel. These replace the old simple stepped dais and provide
+# real, walkable metal stairs so the player can climb the gate platform base
+# without jumping.
+#
+# Props are referenced by PATH and loaded at runtime through `_prop_scene()`
+# (NOT const preload): a fresh checkout whose `.glb`s have no `.import` sidecar
+# yet would HARD parse-error on preload and take the whole scene down with it.
+# Runtime load + a null guard degrades a missing asset to "prop absent" instead.
+# Run `godot --headless --import` once after copying the glbs so Godot generates
+# the sidecars and the props actually appear.
+const PROP_DIR: String = "res://models/sci-fi/stargate-props/"
+const GATE_RING_PROP_PATH: String = PROP_DIR + "sci-fi-stargate-props-stargate-portal-ring.glb"
+# NEW hero gate: a clean gunmetal ring with NO baked-in portal and NO base/platform
+# (decompressed from Draco). It is floor-pinned and walkable straight through — no
+# dais, no stairs. Native (scale 1) AABB: thin on X (depth 0.291), circle in the YZ
+# plane (Ø 0.998); measured inner radius 0.353, outer radius 0.505 (ratio 0.70).
+const GATE_RING_NEW_PATH: String = PROP_DIR + "gunmetal-gate-no-glyphs.glb"
+const GATE_DEPTH_SCALE: float = 0.33   # X (ring thickness/depth) — user spec
+const GATE_DIAM_SCALE: float = 8.5     # Y/Z (diameter) — user spec ">= 2.0", hero-sized
+const GATE_RING_INNER_NATIVE: float = 0.353
+const GATE_RING_OUTER_NATIVE: float = 0.505
+# Z of the gate plane (a few metres in front of the +Z back wall).
+const GATE_Z: float = 12.2
+# Sink the ring so the bottom of its INNER hole sits just below the floor: the
+# centre is one inner-radius up, minus a small margin so the walk-through opening
+# is already player-width at floor level (no step, no jump). The lower ring arc
+# tucks under the deck.
+const GATE_FLOOR_MARGIN: float = 0.2
+const GATE_PLATFORM_PROP_PATH: String = PROP_DIR + "sci-fi-stargate-props-raised-circular-platform.glb"
+const GATE_STAIRS_PROP_PATH: String = PROP_DIR + "sci-fi-stargate-props-metal-staircase-steps.glb"
+const GATE_CONSOLE_PROP_PATH: String = PROP_DIR + "sci-fi-stargate-props-operator-control-console.glb"
+const OVERHEAD_RING_PROP_PATH: String = PROP_DIR + "sci-fi-stargate-props-overhead-ceiling-ring-structure.glb"
+const SPOTLIGHT_PROP_PATH: String = PROP_DIR + "sci-fi-stargate-props-spotlight-ceiling-light.glb"
+const INDUSTRIAL_COLUMN_PROP_PATH: String = PROP_DIR + "sci-fi-stargate-props-industrial-wall-column.glb"
+const CATWALK_RAILING_PROP_PATH: String = PROP_DIR + "sci-fi-stargate-props-catwalk-railing-segment.glb"
 # Z of the gate-control / FTL consoles (and the Phase E crew clustered around
 # them). The Stargate sits at +Z (room_size.y*0.5 - 3.8 ≈ +12.2); putting the
 # consoles well into the -Z half keeps the operators back by the staircases
@@ -64,8 +103,25 @@ const STAIR_Z_CENTER: float = -10.0
 @onready var _ambient_sfx: AudioStreamPlayer = $AmbientHum
 @onready var _gate_loop_sfx: AudioStreamPlayer = $GateActiveLoop
 @onready var _gate_shutdown_sfx: AudioStreamPlayer = $GateShutdown
+@onready var _gate_kawoosh_sfx: AudioStreamPlayer = $GateKawoosh
+@onready var _gate_hum_sfx: AudioStreamPlayer = $GateHum
 
 var _stargate: Node3D
+# The visible gunmetal ring GLB (separate from the procedural _stargate, which now
+# only owns the event horizon). Cached so the dial sequence can spin it.
+var _gate_ring: Node3D = null
+# Dial/spin state. While _dialing, _process spins the ring about its facing axis
+# (world Z) with an accelerating ramp — the "stargate dialing" read.
+var _dialing: bool = false
+var _dial_elapsed: float = 0.0
+# Latch: keep the gate open after a dial/cinematic regardless of story flags.
+var _gate_forced_open: bool = false
+const DIAL_TIME: float = 3.2          # seconds the ring spins before lock + kawoosh
+# Fixed chevron-glow markers ringing the gate. They light up one-by-one while the
+# ring spins (the dialing read), then all lock just before the portal flushes open.
+var _chevron_glows: Array[MeshInstance3D] = []
+const CHEVRON_COUNT: int = 9
+const CHEVRON_ENERGY: float = 4.0
 var _from_gate_marker: Marker3D
 var _from_corridor_marker: Marker3D
 var _from_east_connector_marker: Marker3D
@@ -78,6 +134,8 @@ var _quest_waypoint: Node3D = null
 var _gate_team: Array[Node3D] = []
 var _gate_player_locked: bool = false
 var _team_walkthrough_running: bool = false
+# One-time cache for runtime-loaded hero props (see PROP_DIR consts above).
+var _prop_cache: Dictionary = {}
 
 func _ready() -> void:
 	# Tell the save system this is a real gameplay scene.
@@ -89,6 +147,7 @@ func _ready() -> void:
 	_build_mezzanine()
 	_build_staircases()
 	_build_gate_platform()
+	_build_structural_columns()
 	_build_consoles()
 	_build_npcs()
 	_build_lighting_props()
@@ -99,13 +158,45 @@ func _ready() -> void:
 	if ShipAlertScript.is_alert_active():
 		ShipAlertScript.apply_to_scene(self)
 
-	# Spawn the gate model on the dais.
+	# Spawn the procedural Stargate node — we keep ONLY its animated event horizon
+	# (+ ripples + light + activation logic); the visible ring is the new gunmetal
+	# GLB. Floor-pinned: centre one inner-radius up so the hole reaches the deck.
+	var gate_center_y: float = _gate_center_y()
 	_stargate = STARGATE_SCENE.instantiate()
 	_stargate.name = "Stargate"
-	# Gate diameter 6 m → centre at y = 4 means bottom rim at y = 1 (on the dais).
-	_stargate.position = Vector3(0.0, 4.0, room_size.y * 0.5 - 3.8)
+	_stargate.position = Vector3(0.0, gate_center_y, GATE_Z)
 	_world.add_child(_stargate)
 	_build_ship_gate_portal()
+
+	# === NEW gunmetal hero ring — floor-pinned, walkable, NO platform ===
+	# Native ring lies in the YZ plane (thin X). Rotate 90° about Y so the thin
+	# (facing) axis points along Z toward the room. Scale: X = depth, Y/Z = Ø.
+	var ring: Node3D = _instance_prop(GATE_RING_NEW_PATH)
+	if ring != null:
+		ring.name = "GateRing"
+		ring.position = Vector3(0.0, gate_center_y, GATE_Z)
+		ring.scale = Vector3(GATE_DEPTH_SCALE, GATE_DIAM_SCALE, GATE_DIAM_SCALE)
+		ring.rotation.y = PI * 0.5
+		_world.add_child(ring)
+		_gate_ring = ring
+		_build_chevron_glows()
+		# Trimesh collider follows the ring (incl. the hole), so you can't clip the
+		# metal but the central opening — and the sunk lower arc — stay walkable.
+		_add_prop_collider(ring)
+		# Hide the procedural Stargate's own ring/chevrons; the GLB is the ring now.
+		for n in ["OuterRing", "GlyphBand"]:
+			var old := _stargate.get_node_or_null(n)
+			if old != null:
+				old.visible = false
+		for i in 9:
+			var ch := _stargate.get_node_or_null("Chevron%d" % i)
+			if ch != null:
+				ch.visible = false
+		# Match the horizon disc (native radius ~2.32) to the new ring's inner
+		# radius so the puddle fills the hole flush with the rim.
+		var inner_r: float = GATE_RING_INNER_NATIVE * GATE_DIAM_SCALE
+		var horizon_scale: float = inner_r / 2.32
+		_stargate.scale = Vector3(horizon_scale, horizon_scale, 1.0)
 
 	# Place the spawn markers now that the room geometry is in place.
 	_create_spawn_markers()
@@ -178,15 +269,110 @@ func _ready() -> void:
 			_stargate.active = false
 		_start_ambient()
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	# While dialing: spin the ring (accelerating, about its facing axis = world Z)
+	# and light the fixed chevrons one-by-one as it locks them in. Runs before
+	# _refresh_gate_state so the dial sequence owns the gate state while active.
+	if _dialing and _gate_ring != null and is_instance_valid(_gate_ring):
+		_dial_elapsed += delta
+		var ramp: float = clampf(_dial_elapsed / DIAL_TIME, 0.0, 1.0)
+		var spin_speed: float = TAU * (0.35 + 1.6 * ramp)   # rev/s, speeds up
+		_gate_ring.rotate(Vector3(0.0, 0.0, 1.0), spin_speed * delta)
+		# Chevrons light progressively across the dial (the "locking" read).
+		_light_chevrons(int(ramp * float(CHEVRON_COUNT)))
+		return
 	_refresh_gate_state()
+
+
+# Build the 9 fixed chevron-glow markers around the ring face (world XY plane,
+# centre at the gate). Dark until the dial lights them. Amber so a "locked"
+# chevron reads instantly against the gate's icy blue.
+func _build_chevron_glows() -> void:
+	var cy: float = _gate_center_y()
+	var outer_r: float = GATE_RING_OUTER_NATIVE * GATE_DIAM_SCALE
+	var r: float = outer_r * 0.84
+	for i in CHEVRON_COUNT:
+		var ang: float = float(i) * TAU / float(CHEVRON_COUNT)   # i=0 at top
+		var mat: StandardMaterial3D = StandardMaterial3D.new()
+		mat.albedo_color = Color(0.5, 0.28, 0.1, 1.0)
+		mat.emission_enabled = true
+		mat.emission = Color(1.0, 0.55, 0.16, 1.0)
+		mat.emission_energy_multiplier = 0.0   # dark until locked
+		var mi: MeshInstance3D = MeshInstance3D.new()
+		mi.name = "ChevronGlow%d" % i
+		var prism: PrismMesh = PrismMesh.new()
+		prism.size = Vector3(0.55, 0.5, 0.14)
+		mi.mesh = prism
+		mi.material_override = mat
+		mi.position = Vector3(r * sin(ang), cy + r * cos(ang), GATE_Z - 0.14)
+		mi.rotation.z = PI - ang   # point the prism apex inward toward the centre
+		_world.add_child(mi)
+		_chevron_glows.append(mi)
+
+
+# Light the first `count` chevrons (0..CHEVRON_COUNT); the rest stay dark.
+func _light_chevrons(count: int) -> void:
+	for i in _chevron_glows.size():
+		var mi: MeshInstance3D = _chevron_glows[i]
+		if mi == null or not is_instance_valid(mi):
+			continue
+		var mat: StandardMaterial3D = mi.material_override as StandardMaterial3D
+		if mat != null:
+			mat.emission_energy_multiplier = CHEVRON_ENERGY if i < count else 0.0
+
+
+# Reusable dial choreography, in the exact beats the design calls for:
+#   1) the ring SPINS up (stargate-style),
+#   2) the CHEVRONS light up one-by-one as it locks them (driven in _process),
+#   3) the centre portal FLUSHES open (kawoosh) and the ring STOPS spinning,
+#   4) the portal STABILISES (shimmering) and is then walkable.
+# `with_sfx` plays the dial rumble + whoosh (skipped for silent/headless captures).
+# Awaitable so cinematics can sequence around it.
+func dial_and_open(with_sfx: bool = true) -> void:
+	if _dialing:
+		return
+	_dialing = true
+	_dial_elapsed = 0.0
+	_light_chevrons(0)
+	# (1)+(2) Dial rumble (chevron-incoming) while the ring spins and chevrons lock.
+	if with_sfx and _gate_loop_sfx != null and _gate_loop_sfx.stream != null:
+		_gate_loop_sfx.play()
+	await get_tree().create_timer(DIAL_TIME).timeout
+	# Ring STOPS spinning; all chevrons locked.
+	_dialing = false
+	_light_chevrons(CHEVRON_COUNT)
+	# Keep the gate lit after lock so _refresh_gate_state doesn't snap it back off.
+	_gate_forced_open = true
+	# (3) The centre portal FLUSHES open — kawoosh burst on the gate itself.
+	if _stargate != null and _stargate.has_method("kawoosh"):
+		_stargate.call("kawoosh")
+	elif _stargate != null and "active" in _stargate:
+		_stargate.active = true
+	# WHOOSH on open (the kawoosh), then settle into the steady energy hum.
+	if with_sfx:
+		if _gate_loop_sfx != null and _gate_loop_sfx.playing:
+			_gate_loop_sfx.stop()
+		if _gate_kawoosh_sfx != null and _gate_kawoosh_sfx.stream != null:
+			_gate_kawoosh_sfx.play()
+		if _gate_hum_sfx != null and _gate_hum_sfx.stream != null:
+			_gate_hum_sfx.play()
+	# (4) Let the puddle stabilise (the shader's shimmer settles) before callers
+	# treat it as walkable.
+	await get_tree().create_timer(0.6).timeout
+
+# Floor-pinned gate centre: one inner-radius up, minus a margin so the hole's
+# bottom dips just below the deck and the opening is player-width at floor level
+# (walk straight through — no step, no jump). The lower ring arc tucks under.
+func _gate_center_y() -> float:
+	return GATE_RING_INNER_NATIVE * GATE_DIAM_SCALE - GATE_FLOOR_MARGIN
 
 # ----- spawn -----------------------------------------------------------------
 
 func _create_spawn_markers() -> void:
-	# "FromGate" — player just stepped through the portal, on the dais, facing -Z.
+	# "FromGate" — player just stepped through the (floor-pinned) gate, on the deck
+	# just in front of the ring, facing -Z into the room. No dais now → floor height.
 	_from_gate_marker = $FromGate
-	_from_gate_marker.position = Vector3(0.0, 1.05, room_size.y * 0.5 - 5.5)
+	_from_gate_marker.position = Vector3(0.0, 0.05, room_size.y * 0.5 - 5.5)
 	_from_gate_marker.rotation = Vector3.ZERO  # -Z forward = facing the room
 	# "FromCorridor" — re-enters from the exit archway, facing +Z toward the gate.
 	# y=0.05 keeps the capsule bottom (player.y + 0.05) just above the main floor.
@@ -270,23 +456,322 @@ func _apply_pending_save_spawn() -> void:
 
 func _run_arrival() -> void:
 	_arrival_running = true
-	# Player spawns on the dais facing outward; gate active behind them.
 	GameState.set_objective("Talk to Lt Scott.")
 	GameState.add_log("Eli: Okay… where am I?")
 	GameState.add_log("Lt Scott: Hey — over here. We need to figure out where we are.")
 	if _player != null and _player.has_method("set_input_locked"):
 		_player.set_input_locked(true)
-	if _stargate != null and "active" in _stargate:
-		_stargate.active = true
-	if _gate_loop_sfx != null and _gate_loop_sfx.stream != null:
-		_gate_loop_sfx.play()
 
-	# Hold on the active portal so the player registers the cyan glow behind them.
-	await get_tree().create_timer(arrival_hold).timeout
+	# Headless / scripted runs (e1_playthrough) skip the cinematic spectacle and
+	# settle straight to the gameplay state — the cinematic uses tweens/timers and
+	# a temp camera that those tests neither tick nor want.
+	var sr: Node = get_node_or_null("/root/SceneRouter")
+	if sr != null and sr.get("instant_mode"):
+		if _stargate != null and "active" in _stargate:
+			_stargate.active = false
+		_gate_forced_open = false
+		_start_ambient()
+		if _player != null and _player.has_method("set_input_locked"):
+			_player.set_input_locked(false)
+		_arrival_running = false
+		return
 
-	# Collapse: shut the portal, play the whoosh, hand control back.
+	await _play_prologue_cinematic()
+
+	_start_ambient()
+	if _player != null and _player.has_method("set_input_locked"):
+		_player.set_input_locked(false)
+	_arrival_running = false
+
+
+# The cold open. Beats:
+#   • The gate DIALS (spin → chevrons lock → portal flushes open → stabilises).
+#   • WAVE 1: Lt Scott is flung through first, rolls clear, gets to his feet and
+#     radios that it's safe to send the rest.
+#   • WAVE 2: the others are hurled through hard — Colonel Young is thrown the
+#     FARTHEST and lands badly (his injury); Eli (the player) is tossed about half
+#     that distance; Rush and James land between. Eli ends up sprawled, then
+#     groggily climbs to his feet.
+#   • The gate collapses; James kneels to triage Young; Scott walks over to talk.
+func _play_prologue_cinematic() -> void:
+	_set_arrival_crew_visible(false)
+	# Hold Scott's auto-greet until the cold open is over — otherwise he walks up
+	# and triggers the dialog camera mid-cinematic, hijacking the gate framing.
+	_set_scott_autogreet(false)
+	# Eli arrives in WAVE 2 — park his rig at his eventual landing spot, prone and
+	# hidden, until his ragdoll toss "delivers" him there.
+	var eli_land: Vector3 = Vector3(0.6, 0.05, GATE_Z - 4.6)   # ~half Young's throw
+	_place_player_for_toss(eli_land)
+
+	# Head-on cinematic camera framing the gate (concept "Central Approach").
+	var cam: Camera3D = _make_cinematic_camera()
+
+	# DIAL: ring spins → chevrons light up → portal flushes open → stabilises.
+	await get_tree().create_timer(0.8).timeout
+	await dial_and_open(true)
+
+	# WAVE 1 — Scott first. Flung out, but rolls clear and stands.
+	var scott_rag: RigidBody3D = _launch_ragdoll("Lt Scott", Vector3(1.4, 0.05, GATE_Z - 3.4))
+	GameState.add_log("Lt Scott is thrown through the gate!")
+	await get_tree().create_timer(1.5).timeout
+	if is_instance_valid(scott_rag):
+		scott_rag.queue_free()
+	_reveal_crew_member("LtScott")     # Scott picks himself up where he landed
+	GameState.add_log("Lt Scott: It's clear! Send the rest through!")
+	await get_tree().create_timer(0.9).timeout
+
+	# WAVE 2 — the rest + Eli, hurled hard toward authored landing spots. Colonel
+	# Young is thrown the FARTHEST (onto the medic-tableau spot — that's his injury);
+	# Eli lands about HALF that distance; the others scatter between.
+	var land: Dictionary = {
+		"Colonel Young": Vector3(-4.0, 0.05, 2.0),         # farthest (medic spot)
+		"Dr Park":       Vector3(-3.2, 0.05, GATE_Z - 5.6),
+		"Dr Volker":     Vector3(3.4, 0.05, GATE_Z - 5.6),
+		"Lt James":      Vector3(1.6, 0.05, GATE_Z - 4.8),
+		"Dr Rush":       Vector3(3.0, 0.05, GATE_Z - 7.0),
+		"Dr Brody":      Vector3(-2.4, 0.05, GATE_Z - 6.6),
+		"Eli":           eli_land,                          # ~half Young's distance
+	}
+	var order: Array = ["Colonel Young", "Dr Park", "Dr Volker", "Lt James", "Dr Rush", "Dr Brody", "Eli"]
+	var bodies: Array[RigidBody3D] = []
+	for nm in order:
+		bodies.append(_launch_ragdoll(String(nm), land[nm]))
+		await get_tree().create_timer(0.14).timeout
+	GameState.add_log("The crew are hurled through and slam into the deck!")
+
+	# They tumble, then STAY where they fell — freeze them in place for a beat.
+	await get_tree().create_timer(2.0).timeout
+	for rb in bodies:
+		if is_instance_valid(rb):
+			rb.freeze = true
+	await get_tree().create_timer(1.1).timeout
+
+	# Eli's body is "delivered" — reveal the (prone) player rig at the landing spot.
+	_show_player_model(true)
+	# Hand the throwaway bodies off to the persistent crew that take over the room.
+	for rb in bodies:
+		if is_instance_valid(rb):
+			rb.queue_free()
+
+	# Beat, then the gate collapses behind everyone.
+	await get_tree().create_timer(0.5).timeout
+	_collapse_gate()
+
+	# Persistent outcome: Young stays down (injured) where he landed, James kneels
+	# to triage him, Scott is already up. Park & Volker pick themselves up and man
+	# the operator consoles; the rest get to their feet and file out the corridor.
+	_set_arrival_crew_visible(true)     # Scott + medic tableau (Young prone, James kneel)
+	_recover_crew(land)
+	# Hold on the room while Park & Volker walk over and take the consoles.
+	await get_tree().create_timer(2.6).timeout
+
+	# Eli stirs and climbs to his feet.
+	await get_tree().create_timer(0.5).timeout
+	_lay_player_prone(false)
+	await get_tree().create_timer(1.4).timeout
+
+	# Hand the camera back to the player rig, then release Scott — he walks over
+	# (auto_greet) to talk: "Eli! Hey — you alright?"
+	_restore_player_camera(cam)
+	_set_scott_autogreet(true)
+
+
+# Move the player rig to its WAVE-2 landing spot, lay it prone, and hide the body
+# until the ragdoll toss "delivers" Eli there.
+func _place_player_for_toss(spot: Vector3) -> void:
+	if _player == null:
+		return
+	_player.global_position = spot
+	_lay_player_prone(true)
+	_show_player_model(false)
+
+
+func _show_player_model(vis: bool) -> void:
+	if _player == null:
+		return
+	var model: Node = _player.get_node_or_null("Character")
+	if model is Node3D:
+		(model as Node3D).visible = vis
+
+
+func _reveal_crew_member(node_name: String) -> void:
+	var n: Node = _world.get_node_or_null(node_name)
+	if n is Node3D:
+		(n as Node3D).visible = true
+
+
+# After the crew have landed and lain there, they recover: Dr Park and Dr Volker
+# pick themselves up and walk over to man the two operator consoles (and stay);
+# everyone else who isn't a keeper (Young/James/Scott/Eli stay put) gets to their
+# feet and files out the exit corridor. `land` maps name → where each fell.
+func _recover_crew(land: Dictionary) -> void:
+	var half_z: float = room_size.y * 0.5
+	var console_l: Vector3 = Vector3(-6.6, 0.05, GATE_Z - 2.8)   # at the left operator console
+	var console_r: Vector3 = Vector3(6.6, 0.05, GATE_Z - 2.8)    # at the right operator console
+	var exit_pos: Vector3 = Vector3(0.0, 0.05, -half_z + 3.2)    # toward the corridor door
+	_recover_walker("Dr Park", "park", land.get("Dr Park", console_l), console_l, false)
+	_recover_walker("Dr Volker", "volker", land.get("Dr Volker", console_r), console_r, false)
+	_recover_walker("Dr Rush", "rush", land.get("Dr Rush", exit_pos), exit_pos, true)
+	_recover_walker("Dr Brody", "brody", land.get("Dr Brody", exit_pos), exit_pos, true)
+
+
+# Spawn one recovered crew member at where they landed and walk them to a post.
+# `leave` = true means they're heading out (despawn once they reach the corridor);
+# false means they stay (e.g. manning a console). Reuses the returned-crew NPC
+# builder so they're full Quaternius, talkable bodies.
+func _recover_walker(display_name: String, kind: String, from: Vector3, to: Vector3, leave: bool) -> void:
+	var npc: StaticBody3D = _build_returned_crew_npc(
+		display_name, kind, "res://models/characters/scott.glb", Color.WHITE)
+	# Anyone the returned-crew builder didn't author a line for gets a placeholder
+	# so interacting can't error.
+	var tree: Variant = npc.get("dialogue_tree")
+	if tree == null or (tree is Array and (tree as Array).is_empty()):
+		var generic: Array = [{"speaker": display_name,
+			"text": "Still shaking that off. Give me a second.",
+			"choices": [{"text": "(nod)", "next": "exit"}]}]
+		npc.set("dialogue_tree", generic)
+		npc.set("repeat_dialogue_tree", generic)
+	npc.position = from
+	npc.rotation.y = 0.0
+	_world.add_child(npc)
+	if npc.has_method("walk_to"):
+		npc.call("walk_to", to, 2.4, 0.2)
+	if leave:
+		# Walked off down the corridor — remove once they've had time to reach it.
+		await get_tree().create_timer(6.0).timeout
+		if is_instance_valid(npc):
+			npc.queue_free()
+
+
+# Launch one throwaway ragdoll on a ballistic arc from the event horizon toward a
+# landing spot (so Young can be thrown demonstrably farther than Eli). Gravity +
+# the tumble spin do the rest. Returns the body so the caller can free it once it
+# has settled.
+func _launch_ragdoll(character: String, target: Vector3) -> RigidBody3D:
+	var rb: RigidBody3D = _make_ragdoll(character)
+	_world.add_child(rb)
+	var origin: Vector3 = Vector3(0.0, _gate_center_y(), GATE_Z - 0.4)
+	rb.global_position = origin
+	var g: float = float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
+	var flight: float = 1.0
+	var disp: Vector3 = target - origin
+	# Ballistic solve: reach target.y at t=flight under gravity.
+	var vy: float = (disp.y + 0.5 * g * flight * flight) / flight
+	rb.linear_velocity = Vector3(disp.x / flight, vy, disp.z / flight)
+	# Hard tumble — magnitude scales with throw distance (deterministic, no RNG).
+	var spin: float = 4.0 + absf(disp.z) * 0.6
+	rb.angular_velocity = Vector3(spin, spin * 0.5, spin * 0.7)
+	return rb
+
+
+# Toggle Lt Scott's walk-up auto-greet (held off during the cold open so the
+# dialog camera can't hijack the cinematic; released once Eli is on his feet).
+func _set_scott_autogreet(on: bool) -> void:
+	var scott: Node = _world.get_node_or_null("LtScott")
+	if scott == null:
+		return
+	if on:
+		if not GameState.met_scott:
+			scott.set("auto_greet", true)
+	else:
+		scott.set("auto_greet", false)
+
+
+# Temp head-on Camera3D under the room, made current for the cold open. The
+# player's SpringArm camera is restored by _restore_player_camera().
+func _make_cinematic_camera() -> Camera3D:
+	var cam: Camera3D = Camera3D.new()
+	cam.name = "PrologueCam"
+	cam.fov = 58.0
+	add_child(cam)
+	cam.global_position = Vector3(0.0, 2.6, GATE_Z - 15.2)
+	cam.look_at(Vector3(0.0, 2.6, GATE_Z), Vector3.UP)
+	cam.make_current()
+	return cam
+
+
+func _restore_player_camera(cam: Camera3D) -> void:
+	var pcam: Camera3D = get_node_or_null("View/SpringArm/Camera")
+	if pcam != null:
+		pcam.make_current()
+		if _view != null and _view.has_method("snap_to_target"):
+			_view.snap_to_target()
+	if cam != null and is_instance_valid(cam):
+		cam.queue_free()
+
+
+# Tip the player's visual body onto its back (prone) or stand it upright. Only
+# the Character model is rotated — the physics capsule stays vertical so nothing
+# downstream (camera target, idle facing) is disturbed.
+func _lay_player_prone(prone: bool) -> void:
+	if _player == null:
+		return
+	var model: Node3D = _player.get_node_or_null("Character")
+	if model == null:
+		return
+	if prone:
+		# Snap flat instantly (Eli is already down when the scene opens).
+		model.rotation.x = -PI * 0.5
+		model.position.y = 0.1
+	else:
+		# Groggily push up to standing.
+		var t: Tween = create_tween().set_parallel(true)
+		t.tween_property(model, "rotation:x", 0.0, 1.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		t.tween_property(model, "position:y", 0.0, 1.1)
+
+
+# One throwaway ragdoll: RigidBody3D + capsule + the character's Quaternius body
+# (limp). Collides with the deck/walls (layer 1) but not the player.
+func _make_ragdoll(character: String) -> RigidBody3D:
+	var rb: RigidBody3D = RigidBody3D.new()
+	rb.name = "Ragdoll_" + character.replace(" ", "")
+	rb.collision_layer = 0
+	rb.collision_mask = 1            # fall onto the floor/walls, ignore the player
+	rb.mass = 70.0
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var cap: CapsuleShape3D = CapsuleShape3D.new()
+	cap.radius = 0.32
+	cap.height = 1.7
+	cs.shape = cap
+	rb.add_child(cs)
+	var holder: Node3D = Node3D.new()
+	holder.name = "Model"
+	holder.rotation.y = PI
+	holder.position = Vector3(0.0, -0.85, 0.0)   # feet near the capsule bottom
+	rb.add_child(holder)
+	var mc: Node3D = CharacterFactoryRef.build_modular(character)
+	if mc != null:
+		holder.add_child(mc)
+		CharacterFactoryRef.dress_modular(mc, character, CharacterFactoryRef.CTX_SHIP)
+		# Stop any autoplay so the body tumbles limp (a played clip on the modular
+		# rig triggers "Invalid array format for surface" — see CharacterFactory).
+		_stop_anim(mc)
+	return rb
+
+
+# Halt the first AnimationPlayer under `root` so a tumbling ragdoll body stays
+# limp (no walking/idle motion fighting the physics tumble).
+func _stop_anim(root: Node) -> void:
+	var stack: Array = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is AnimationPlayer:
+			(n as AnimationPlayer).stop()
+			return
+		for c in n.get_children():
+			stack.append(c)
+
+
+# Shut the wormhole: drop the forced-open latch, kill the horizon, play the
+# collapse whoosh + fade the dial loop. Returns the room to its dormant, empty,
+# walk-through state for normal gameplay.
+func _collapse_gate() -> void:
+	_gate_forced_open = false
+	_light_chevrons(0)
 	if _stargate != null and "active" in _stargate:
 		_stargate.active = false
+	if _gate_hum_sfx != null and _gate_hum_sfx.playing:
+		_gate_hum_sfx.stop()
 	if _gate_loop_sfx != null and _gate_loop_sfx.playing:
 		var t: Tween = create_tween()
 		t.tween_property(_gate_loop_sfx, "volume_db", -60.0, arrival_fade)
@@ -294,16 +779,22 @@ func _run_arrival() -> void:
 	if _gate_shutdown_sfx != null and _gate_shutdown_sfx.stream != null:
 		_gate_shutdown_sfx.play()
 
-	_start_ambient()
-	if _player != null and _player.has_method("set_input_locked"):
-		_player.set_input_locked(false)
-	_arrival_running = false
+
+# Show/hide the crew that arrive through the gate during the cold open, so the
+# ragdoll burst isn't pre-empted by them standing at their posts.
+func _set_arrival_crew_visible(vis: bool) -> void:
+	for node_name in ["LtScott", "ColonelYoung", "LtJames", "GateBrody", "GateRush", "GatePark"]:
+		var n: Node = _world.get_node_or_null(node_name)
+		if n is Node3D:
+			(n as Node3D).visible = vis
 
 func _build_ship_gate_portal() -> void:
 	_gate_portal = Area3D.new()
 	_gate_portal.set_script(PLANET_GATE_SCRIPT)
 	_gate_portal.name = "ShipGatePortal"
-	_gate_portal.position = Vector3(0.0, 2.35, room_size.y * 0.5 - 3.8)
+	# Center the interaction volume inside the floor-pinned ring's opening so the
+	# player steps "into" the puddle naturally while walking through at floor level.
+	_gate_portal.position = Vector3(0.0, _gate_center_y(), GATE_Z)
 	_gate_portal.set("mode", "to_planet")
 	_gate_portal.set("target_scene", "res://scenes/planet.tscn")
 	_gate_portal.set("target_spawn", "FromShipGate")
@@ -354,7 +845,9 @@ func _start_kino_arrival() -> void:
 func _refresh_gate_state() -> void:
 	if _arrival_running:
 		return
-	var gate_open: bool = GameState.is_gate_open()
+	# A cinematic/dial may force the gate open (e.g. the prologue wormhole the crew
+	# tumble through) independent of the story's is_gate_open() flags.
+	var gate_open: bool = GameState.is_gate_open() or _gate_forced_open
 	if _stargate != null and "active" in _stargate:
 		_stargate.active = gate_open
 	if _gate_portal != null:
@@ -412,12 +905,10 @@ func _assemble_away_team_at_gate() -> void:
 	var sr: Node = get_node_or_null("/root/SceneRouter")
 	if sr != null and sr.get("instant_mode"):
 		return
-	# Stand them on the dais facing the gate. Gate is at z = room_size.y*0.5-3.8
-	# (≈+12.2); the FromGate marker sits at y=1.05 z≈+10.5, so y=1.05 is the
-	# right floor height. Spread the trio along X.
+	# Line them up on the deck just in front of the floor-pinned gate.
 	var gate_z: float = room_size.y * 0.5 - 3.8
-	var line_z: float = gate_z - 2.4         # ≈ +9.8 — a couple metres south of the event horizon
-	var line_y: float = 1.05
+	var line_z: float = gate_z - 2.4         # a couple metres south of the event horizon
+	var line_y: float = 0.05                 # main floor (no dais now)
 	# Roster order matches the planet-side spawn (Greer left, Park centre,
 	# Scott right) and the cutscene's group "away_team" muster. Appearance
 	# (models, fatigues, Greer's skin tone) comes from CharacterFactory.
@@ -486,14 +977,11 @@ func _spawn_returned_away_team() -> void:
 	for child in _world.get_children():
 		if String(child.name).begins_with("ReturnTeam_"):
 			return
-	# Spawn line: on the dais top (y=1.05) a couple metres south of the event
-	# horizon, mirroring the departure muster. Home line: down on the main floor
-	# (y=0.05), gate-side of the FromPlanet landing so the player lands behind
-	# them and watches them spread out. Slight per-member X spread at each end.
-	# Appearance comes from CharacterFactory (glb is fallback-only).
+	# Spawn line: on the deck a couple metres in front of the gate. Home line: down
+	# on the main floor, gate-side of the FromPlanet landing. Appearance from CF.
 	var gate_z: float = room_size.y * 0.5 - 3.8
-	var spawn_z: float = gate_z - 2.4               # ≈ +9.8 on the dais
-	var home_z: float = room_size.y * 0.5 - 10.5    # ≈ +5.5 on the main floor
+	var spawn_z: float = gate_z - 2.4               # just in front of the ring
+	var home_z: float = room_size.y * 0.5 - 10.5    # main floor (y≈0.05)
 	var roster: Array = [
 		{"name": "Greer", "glb": "res://models/characters/greer.glb", "tint": Color.WHITE, "x": -2.4, "kind": "greer"},
 		{"name": "Park", "glb": "res://models/characters/park.glb", "tint": Color.WHITE, "x": 0.0, "kind": "park"},
@@ -504,9 +992,9 @@ func _spawn_returned_away_team() -> void:
 		var npc: StaticBody3D = _build_returned_crew_npc(
 			String(entry["name"]), String(entry["kind"]),
 			String(entry["glb"]), entry["tint"])
-		# Stand on the dais facing the room (-Z forward), then stroll to the home
-		# post. rotation.y=0 → -Z forward (toward the player landing south).
-		npc.position = Vector3(float(entry["x"]), 1.05, spawn_z)
+		# Stand in front of the gate facing the room (-Z forward), then stroll to the
+		# home post. rotation.y=0 → -Z forward (toward the player landing south).
+		npc.position = Vector3(float(entry["x"]), 0.05, spawn_z)
 		npc.rotation.y = 0.0
 		_world.add_child(npc)
 		# Fan out: each member targets its home post with a small stagger so they
@@ -807,12 +1295,12 @@ func _build_floor() -> void:
 
 	# Inlay: bronze ring of light tiles around the gate dais (visual interest).
 	var inlay_mat: StandardMaterial3D = StandardMaterial3D.new()
-	inlay_mat.albedo_color = Color(0.18, 0.13, 0.06, 1.0)
+	inlay_mat.albedo_color = Color(0.07, 0.10, 0.16, 1.0)
 	inlay_mat.metallic = 0.7
 	inlay_mat.roughness = 0.35
 	inlay_mat.emission_enabled = true
-	inlay_mat.emission = Color(1.0, 0.45, 0.12, 1.0)
-	inlay_mat.emission_energy_multiplier = 0.6
+	inlay_mat.emission = Color(0.22, 0.5, 0.95, 1.0)
+	inlay_mat.emission_energy_multiplier = 0.7
 	var inlay: MeshInstance3D = MeshInstance3D.new()
 	var ring: TorusMesh = TorusMesh.new()
 	ring.inner_radius = 5.0
@@ -879,13 +1367,13 @@ func _build_walls_and_ceiling() -> void:
 	_add_wall_segment(ceil_body, dark_mat, Vector3(0.0, ceiling_height + wall_thickness * 0.5, 0.0),
 		Vector3(room_size.x, wall_thickness, room_size.y))
 
-	# Edge glow strips — emissive amber boxes hugging the top of every wall.
-	# Creates the "ring of light at the top of the wall" the reference image shows.
+	# Edge glow strips — emissive boxes hugging the top of every wall. Cool blue
+	# to match the reference's icy industrial lighting (was warm amber).
 	var glow_mat: StandardMaterial3D = StandardMaterial3D.new()
-	glow_mat.albedo_color = Color(1.0, 0.55, 0.18, 1.0)
+	glow_mat.albedo_color = Color(0.30, 0.55, 0.95, 1.0)
 	glow_mat.emission_enabled = true
-	glow_mat.emission = Color(1.0, 0.55, 0.18, 1.0)
-	glow_mat.emission_energy_multiplier = 4.0
+	glow_mat.emission = Color(0.32, 0.58, 1.0, 1.0)
+	glow_mat.emission_energy_multiplier = 2.6
 	glow_mat.metallic = 0.0
 	glow_mat.roughness = 0.4
 	var strip_thickness: float = 0.18
@@ -923,6 +1411,60 @@ func _add_decorative_box(pos: Vector3, size: Vector3, mat: Material) -> void:
 	mi.material_override = mat
 	mi.position = pos
 	_world.add_child(mi)
+
+# Runtime-load a prop scene with a null guard + one-time cache. Returns null if
+# the asset is missing or not yet imported, so a single bad prop can never take
+# the whole gate-room scene down with a parse/preload error.
+func _prop_scene(path: String) -> PackedScene:
+	if _prop_cache.has(path):
+		return _prop_cache[path]
+	var ps: PackedScene = load(path) as PackedScene
+	if ps == null:
+		push_warning("gate_room: prop failed to load (run `godot --headless --import`?): " + path)
+	_prop_cache[path] = ps
+	return ps
+
+
+# Instantiate a hero prop by path, or null if it couldn't load. The caller is
+# responsible for positioning/scaling and adding it to the tree.
+func _instance_prop(path: String) -> Node3D:
+	var ps: PackedScene = _prop_scene(path)
+	if ps == null:
+		return null
+	return ps.instantiate() as Node3D
+
+
+# Helper for the new hero props: attach a trimesh StaticBody collider so the
+# player can walk on the raised platform and (critically) the real metal
+# staircase steps without having to jump the base of the gate.
+func _add_prop_collider(parent: Node3D) -> void:
+	if parent == null:
+		return
+	# Find the main visual mesh (props are usually a single MeshInstance3D or
+	# have one prominent child with the geometry).
+	var mi: MeshInstance3D = null
+	if parent is MeshInstance3D and parent.mesh != null:
+		mi = parent
+	else:
+		for c in parent.get_children():
+			if c is MeshInstance3D and c.mesh != null:
+				mi = c
+				break
+			for gc in c.get_children():
+				if gc is MeshInstance3D and gc.mesh != null:
+					mi = gc
+					break
+	if mi == null or mi.mesh == null:
+		return
+	var body := StaticBody3D.new()
+	body.name = "Collider"
+	body.collision_layer = 1 | 2
+	body.collision_mask = 0
+	parent.add_child(body)
+	var cs := CollisionShape3D.new()
+	# Accurate trimesh collision for steps and platform top (hero room, one-time cost is fine).
+	cs.shape = mi.mesh.create_trimesh_shape()
+	body.add_child(cs)
 
 
 func _build_mezzanine() -> void:
@@ -1243,60 +1785,117 @@ func _build_stair_railing(x_bot: float, x_top: float, rail_z: float, slope_angle
 
 
 func _build_gate_platform() -> void:
-	# Stepped pedestal on the +Z side: 8 × 6 × 1 main slab + two 0.3 m steps
-	# in front so the player visibly climbs onto the dais.
+	# The gate is now a floor-pinned, walk-through ring (NO dais, NO stairs) — the
+	# user can walk straight through it without jumping. We keep only the framing
+	# furniture from the hero prop pack: flanking operator consoles, the overhead
+	# ceiling ring, and the cinematic spotlights, all matching the concept art.
 	var half_z: float = room_size.y * 0.5
 	var platform_z: float = half_z - 3.8
-	# Shared Ancient-metal panel material so the dais + ramp match the Stargate
-	# and consoles (was a warm-brown emissive slab). Fall back if missing.
-	var dais_mat: Material = load("res://shaders/ancient_metal_panel.tres")
-	if dais_mat == null:
-		var fb: StandardMaterial3D = StandardMaterial3D.new()
-		fb.albedo_color = Color(0.22, 0.22, 0.26, 1.0)
-		fb.metallic = 0.65
-		fb.roughness = 0.45
-		dais_mat = fb
 
-	# Main slab — kept as a collider so the player stands on the dais top.
-	var slab: StaticBody3D = StaticBody3D.new()
-	slab.name = "GatePlatform"
-	slab.collision_layer = 1 | 2
-	slab.collision_mask = 0
-	_world.add_child(slab)
-	_add_wall_segment(slab, dais_mat, Vector3(0.0, 0.5, platform_z), Vector3(10.0, 1.0, 6.0))
+	# === Operator consoles (left + right at floor level, matching reference) ===
+	var console_left: Node3D = _instance_prop(GATE_CONSOLE_PROP_PATH)
+	if console_left != null:
+		console_left.scale = Vector3(2.6, 2.6, 2.6)
+		console_left.position = Vector3(-7.5, 0.0, platform_z - 2.5)
+		console_left.rotation.y = 0.7
+		_world.add_child(console_left)
+		_add_prop_collider(console_left)
 
-	# Front ceremonial steps — visual only. Their tops (0.33 m, 0.66 m) are
-	# too tall for CharacterBody3D to step up; the ramp collider below handles
-	# the actual climb so the visible steps stay decorative.
-	_add_decorative_box(Vector3(0.0, 0.33, platform_z - 3.6), Vector3(8.0, 0.66, 1.2), dais_mat)
-	_add_decorative_box(Vector3(0.0, 0.165, platform_z - 4.8), Vector3(6.0, 0.33, 1.2), dais_mat)
+	var console_right: Node3D = _instance_prop(GATE_CONSOLE_PROP_PATH)
+	if console_right != null:
+		console_right.scale = Vector3(2.6, 2.6, 2.6)
+		console_right.position = Vector3(7.5, 0.0, platform_z - 2.5)
+		console_right.rotation.y = -0.7
+		_world.add_child(console_right)
+		_add_prop_collider(console_right)
 
-	# Hidden ramp collider: from (y=0, z=front-of-step-2) up to (y=1, z=front-of-slab).
-	# Step #2 front: platform_z - 4.8 - 0.6 = platform_z - 5.4
-	# Slab front:    platform_z - 3.0
-	# Run = 2.4 m, rise = 1.0 m → slope ≈ 22.6° (well under floor_max_angle).
-	var ramp_run: float = 2.4
-	var ramp_rise: float = 1.0
-	var ramp_len: float = sqrt(ramp_run * ramp_run + ramp_rise * ramp_rise)
-	var ramp_angle: float = atan2(ramp_rise, ramp_run)
-	var dais_ramp: StaticBody3D = StaticBody3D.new()
-	dais_ramp.name = "DaisRamp"
-	dais_ramp.collision_layer = 1 | 2
-	dais_ramp.collision_mask = 0
-	_world.add_child(dais_ramp)
-	var ramp_cs: CollisionShape3D = CollisionShape3D.new()
-	var ramp_shape: BoxShape3D = BoxShape3D.new()
-	ramp_shape.size = Vector3(8.0, 0.2, ramp_len)
-	ramp_cs.shape = ramp_shape
-	ramp_cs.position = Vector3(0.0, ramp_rise * 0.5, platform_z - 3.0 - ramp_run * 0.5)
-	ramp_cs.rotation = Vector3(-ramp_angle, 0.0, 0.0)
-	dais_ramp.add_child(ramp_cs)
+	# === Overhead ceiling ring structure (dramatic circular architecture above gate) ===
+	# Native disc normal points along X (AABB thin on X); rotate 90° about Z so the
+	# face points up and the ring lies flat against the ceiling above the gate.
+	var overhead: Node3D = _instance_prop(OVERHEAD_RING_PROP_PATH)
+	if overhead != null:
+		overhead.scale = Vector3(14.0, 14.0, 14.0)
+		overhead.rotation = Vector3(0.0, 0.0, PI * 0.5)
+		overhead.position = Vector3(0.0, ceiling_height - 0.4, platform_z)
+		_world.add_child(overhead)
+
+	# === Spotlights for the cinematic god-ray / volumetric beams in the reference ===
+	var spot_l: Node3D = _instance_prop(SPOTLIGHT_PROP_PATH)
+	if spot_l != null:
+		spot_l.scale = Vector3(2.2, 2.2, 2.2)
+		spot_l.position = Vector3(-4.5, ceiling_height - 1.0, platform_z + 1.5)
+		_world.add_child(spot_l)
+	var spot_r: Node3D = _instance_prop(SPOTLIGHT_PROP_PATH)
+	if spot_r != null:
+		spot_r.scale = Vector3(2.2, 2.2, 2.2)
+		spot_r.position = Vector3(4.5, ceiling_height - 1.0, platform_z + 1.5)
+		_world.add_child(spot_r)
+
+	# (The old inlay ring and simple slab are superseded by the new props.
+	# Any ancient_metal materials on the new GLBs will be used as authored.)
+
+
+# Industrial wall columns: tall vertical structures that frame the gate (the
+# angular "wings" either side of it in the reference) and march along the side
+# walls for the cathedral-of-machinery read. Prop is normalized to a 1-unit box
+# (tall axis = Y), so scale.y ≈ height in metres.
+func _build_structural_columns() -> void:
+	var half_x: float = room_size.x * 0.5
+	var gate_z: float = room_size.y * 0.5 - 3.8
+	var col_scale: Vector3 = Vector3(4.0, ceiling_height, 4.0)
+	# Two columns flanking the gate (the reference's framing wings).
+	for sx in [-1.0, 1.0]:
+		var flank: Node3D = _instance_prop(INDUSTRIAL_COLUMN_PROP_PATH)
+		if flank != null:
+			flank.scale = col_scale
+			flank.position = Vector3(sx * 7.0, 0.0, gate_z - 0.5)
+			_world.add_child(flank)
+	# A row marching down each side wall.
+	for sx in [-1.0, 1.0]:
+		for cz in [-8.0, 0.0, 8.0]:
+			var col: Node3D = _instance_prop(INDUSTRIAL_COLUMN_PROP_PATH)
+			if col != null:
+				col.scale = col_scale
+				col.position = Vector3(sx * (half_x - 0.8), 0.0, cz)
+				_world.add_child(col)
+
+
+# Attach a crew member's visual body under `model_holder` (already 180°-flipped
+# so the model faces the body's -Z). PRIMARY path is the Quaternius
+# ModularCharacter dressed via CharacterFactory — each crew member is uniquely
+# styled (gender / hair / skin tone + duty blacks + sidearm for military, civvies
+# for science staff). Falls back to the legacy Kenney mini GLB (2.6× + shared
+# colormap + outfit recolor) only when the profile has no modular spec or the
+# modular base fails to load. Returns the visual node that was added.
+func _attach_crew_body(model_holder: Node3D, character: String, fallback_glb: String,
+		context: String = "") -> Node:
+	var ctx: String = context if context != "" else CharacterFactoryRef.CTX_SHIP
+	if CharacterFactoryRef.profile_for(character).has("mod"):
+		var mc: Node3D = CharacterFactoryRef.build_modular(character)
+		if mc != null:
+			model_holder.add_child(mc)
+			CharacterFactoryRef.dress_modular(mc, character, ctx)
+			return mc
+	# Legacy fallback: Kenney mini at 2.6× with the shared colormap + dressing.
+	model_holder.scale = Vector3(2.6, 2.6, 2.6)
+	var glb: PackedScene = load(CharacterFactoryRef.model_for(character, fallback_glb))
+	if glb == null:
+		return null
+	var inst: Node = glb.instantiate()
+	model_holder.add_child(inst)
+	var colormap: Texture2D = load("res://models/characters/Textures/colormap.png")
+	if colormap != null:
+		Npc.apply_kenney_colormap(inst, colormap)
+	Npc.play_idle_animation(inst)
+	if model_holder.get_parent() is Node3D:
+		CharacterFactoryRef.dress(model_holder.get_parent(), model_holder, character, ctx)
+	return inst
 
 
 # Lt Scott waits down the dais ramp from the arrival platform and walks up to
-# the player to brief them. The body uses Kenney "Mini Characters 1" so Scott
-# reads as a different humanoid than the platformer-mascot player. Collision
-# capsule + Label3D nametag are still procedural — the GLB is purely visual.
+# the player to brief them. His body is the Quaternius ModularCharacter (ship
+# duty dress) so he reads as a distinct crew member. Collision capsule + Label3D
+# nametag are still procedural — the model is purely visual.
 func _build_npcs() -> void:
 	var half_z: float = room_size.y * 0.5
 	var spawn: Vector3 = Vector3(1.5, 0.0, half_z - 9.0)
@@ -1382,10 +1981,11 @@ func _build_npcs() -> void:
 	# otherwise Scott walks/auto-greets facing the wrong way.
 	model_holder.rotation.y = PI
 	scott.add_child(model_holder)
-	# Ship dress code: duty tint + sidearm, consistent with everywhere else.
-	var scott_mc: Node3D = CharacterFactoryRef.build_modular("Lt Scott")
-	model_holder.add_child(scott_mc)
-	CharacterFactoryRef.dress_modular(scott_mc, "Lt Scott", CharacterFactoryRef.CTX_SHIP)
+	# PRIMARY: Quaternius ModularCharacter, uniquely dressed for ship duty (duty
+	# blacks + sidearm for military). Mirrors _build_returned_crew_npc so the
+	# whole gate-room crew shares one styling code path. Falls back to the legacy
+	# mini GLB only if the profile has no modular spec or the base fails to load.
+	_attach_crew_body(model_holder, "Lt Scott", "res://models/characters/scott.glb")
 
 	# Floating nametag billboard so the player can ID him from across the room.
 	var tag: Label3D = Label3D.new()
@@ -1468,12 +2068,13 @@ func _build_gate_phase_e_crew() -> void:
 	)
 
 
-# Medic vignette near the -X wall, behind the staircases:
+# Medic vignette down-range from the gate where Colonel Young was thrown:
 #   • Young lying face-up on the floor, unconscious and not interactable.
 #   • Lt James kneeling on the gate-side of him, facing Young.
-# James is the only talkable NPC in this cluster.
+# James is the only talkable NPC in this cluster. The spot is also where the
+# prologue's "Young thrown farthest" ragdoll lands, so the reveal is seamless.
 func _build_medic_tableau() -> void:
-	var tableau_center: Vector3 = Vector3(-9.0, 0.0, -6.0)
+	var tableau_center: Vector3 = Vector3(-4.0, 0.0, 2.0)
 
 	# --- Colonel Young — laid out on his back ----
 	_build_tableau_npc(
@@ -1560,6 +2161,10 @@ func _build_tableau_npc(
 
 	var model_holder: Node3D = Node3D.new()
 	model_holder.name = "Model"
+	# PRIMARY for EVERY pose now: the Quaternius ModularCharacter, uniquely dressed
+	# by CharacterFactory (goal: all crew are Quaternius, incl. the prone Young and
+	# kneeling James). The "Invalid array format for surface" push_error is benign
+	# garment-surface stripping noise that the standing modular crew already emit.
 	var modular: bool = CharacterFactoryRef.profile_for(character).has("mod")
 	if pose == "down":
 		# Lay character on their back: tip the holder forward 90° so what was up
@@ -1599,7 +2204,8 @@ func _build_tableau_npc(
 			var inst: Node = glb.instantiate()
 			model_holder.add_child(inst)
 			var colormap: Texture2D = load("res://models/characters/Textures/colormap.png")
-			Npc.apply_kenney_colormap(inst, colormap)
+			if colormap != null:
+				Npc.apply_kenney_colormap(inst, colormap)
 			# Down characters DON'T idle-loop — the breathe-anim makes "unconscious"
 			# read as "stretching." Kneelers do, so they feel busy with their hands.
 			if pose != "down":
@@ -1727,9 +2333,9 @@ func _build_lighting_props() -> void:
 	]
 	for p in uplight_positions:
 		var l: OmniLight3D = OmniLight3D.new()
-		l.light_color = Color(1.0, 0.55, 0.20, 1.0)
-		l.light_energy = 2.4
-		l.omni_range = 11.0
+		l.light_color = Color(0.42, 0.58, 0.95, 1.0)   # cool blue wash (was amber)
+		l.light_energy = 1.6
+		l.omni_range = 12.0
 		l.omni_attenuation = 1.6
 		l.position = p
 		_world.add_child(l)
@@ -1738,11 +2344,11 @@ func _build_lighting_props() -> void:
 	# look_at() requires the node to already be inside the tree, so add_child
 	# before re-orienting; otherwise the call quietly errors and the spotlight
 	# points along its default axis.
-	var gate_center: Vector3 = Vector3(0.0, 4.0, half_z - 3.8)
-	# Front spot
+	var gate_center: Vector3 = Vector3(0.0, _gate_center_y(), GATE_Z)
+	# Front spot — cool, to pick the gate ring out of the dark (was warm).
 	var front_spot: SpotLight3D = SpotLight3D.new()
-	front_spot.light_color = Color(1.0, 0.65, 0.25, 1.0)
-	front_spot.light_energy = 6.0
+	front_spot.light_color = Color(0.55, 0.7, 1.0, 1.0)
+	front_spot.light_energy = 3.5
 	front_spot.spot_range = 14.0
 	front_spot.spot_angle = 35.0
 	front_spot.position = Vector3(0.0, 1.2, gate_center.z - 5.5)
@@ -1751,8 +2357,8 @@ func _build_lighting_props() -> void:
 	# Side spots
 	for sx in [-1.0, 1.0]:
 		var side: SpotLight3D = SpotLight3D.new()
-		side.light_color = Color(1.0, 0.55, 0.18, 1.0)
-		side.light_energy = 4.0
+		side.light_color = Color(0.5, 0.66, 1.0, 1.0)
+		side.light_energy = 2.4
 		side.spot_range = 12.0
 		side.spot_angle = 32.0
 		side.position = Vector3(sx * 5.5, 1.2, gate_center.z - 1.5)
@@ -1763,10 +2369,10 @@ func _build_lighting_props() -> void:
 	# from above" feel even without a volumetric pass.
 	var key: DirectionalLight3D = DirectionalLight3D.new()
 	key.name = "KeyLight"
-	key.light_color = Color(0.82, 0.88, 1.0, 1.0)
-	key.light_energy = 0.85
+	key.light_color = Color(0.78, 0.85, 1.0, 1.0)
+	key.light_energy = 1.4
 	key.shadow_enabled = true
-	key.shadow_opacity = 0.5
+	key.shadow_opacity = 0.45
 	# Tilt to come "from above and front" (-Y mostly, slight +Z).
 	key.rotation = Vector3(deg_to_rad(-72.0), deg_to_rad(15.0), 0.0)
 	_world.add_child(key)
@@ -1785,9 +2391,9 @@ func _build_lighting_props() -> void:
 	]
 	for p in fill_positions:
 		var fill: OmniLight3D = OmniLight3D.new()
-		fill.light_color = Color(0.86, 0.90, 1.0, 1.0)
-		fill.light_energy = 2.2
-		fill.omni_range = 14.0
+		fill.light_color = Color(0.62, 0.72, 0.95, 1.0)
+		fill.light_energy = 1.5
+		fill.omni_range = 15.0
 		fill.omni_attenuation = 1.4
 		fill.position = p
 		_world.add_child(fill)

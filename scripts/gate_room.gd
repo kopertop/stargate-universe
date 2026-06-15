@@ -527,106 +527,132 @@ func _play_prologue_cinematic() -> void:
 	# Hold Scott's auto-greet until the cold open is over — otherwise he walks up
 	# and triggers the dialog camera mid-cinematic, hijacking the gate framing.
 	_set_scott_autogreet(false)
-	# Eli arrives in WAVE 2 — park his rig at his eventual landing spot, prone and
-	# hidden, until his ragdoll toss "delivers" him there.
-	var eli_land: Vector3 = Vector3(0.6, 0.05, -1.6)   # ~half Young's throw (13.4 m from gate)
-	_place_player_for_toss(eli_land)
+	# The player body stays hidden until his wave delivers him.
+	_show_player_model(false)
 
-	# Head-on cinematic camera framing the gate (concept "Central Approach").
+	# Wide, pulled-back cinematic camera so we see the whole gate room + where
+	# everyone lands (the body that flies through BECOMES the character there).
 	var cam: Camera3D = _make_cinematic_camera()
 
 	# DIAL: ring spins → chevrons light up → portal flushes open → stabilises.
 	await get_tree().create_timer(0.8).timeout
 	await dial_and_open(true)
 
-	# WAVE 1 — Scott first. Flung through OFF TO THE SIDE (clear of the portal mouth
-	# so he isn't standing inside the gate when he gets up), lands crumpled, rises.
-	var scott_rag: Node3D = _launch_ragdoll("Lt Scott", Vector3(4.0, 0.05, GATE_Z - 6.0))
-	GameState.add_log("Lt Scott is thrown through the gate!")
-	await get_tree().create_timer(1.6).timeout
-	# Read where the body actually came to rest (the hips bone, not the static root)
-	# so the NPC appears exactly where he fell, then swap the throwaway ragdoll out.
-	var scott_rest: Vector3 = Vector3(4.0, 0.05, GATE_Z - 6.0)
-	if is_instance_valid(scott_rag):
-		scott_rest = _ragdoll_rest_pos(scott_rag)
-		scott_rag.queue_free()
-	_place_crew_prone("LtScott", scott_rest)    # NPC crumpled at rest position
-	await get_tree().create_timer(SCOTT_GETUP_DELAY).timeout
-	_stand_crew_member("LtScott")               # Scott groggily gets up
+	# Crew are HURLED through, never more than TWO in the air at once. Each ragdoll
+	# is handed off to the persistent character AT ITS RESTING SPOT in the same
+	# frame it's freed — no vanish/replace pop.
+
+	# WAVE 1 — Scott (solo): lands clear of the gate, picks himself up, radios.
+	var r_scott: Node3D = _launch_ragdoll("Lt Scott", Vector3(2.6, 0.05, GATE_Z - 5.5))
+	GameState.add_log("Lt Scott is hurled through the gate!")
+	await get_tree().create_timer(1.7).timeout
+	_place_crew_prone("LtScott", _ragdoll_rest_pos(r_scott))   # reveal Scott where he fell
+	if is_instance_valid(r_scott): r_scott.queue_free()        # free SAME frame → seamless
+	await get_tree().create_timer(1.2).timeout
+	_stand_crew_member("LtScott")
 	GameState.add_log("Lt Scott: It's clear! Send the rest through!")
-	await get_tree().create_timer(0.6).timeout
+	await get_tree().create_timer(0.9).timeout
 
-	# WAVE 2 — the rest + Eli, hurled hard toward authored landing spots. Colonel
-	# Young is thrown the FARTHEST (onto the medic-tableau spot — that's his injury);
-	# Eli lands about HALF that distance; the others scatter between.
-	var land: Dictionary = {
-		"Colonel Young": Vector3(-3.0, 0.05, -15.0),       # far wall slam (26.8 m from gate)
-		"Dr Park":       Vector3(-5.5, 0.05, -5.0),        # mid-room left scatter
-		"Dr Volker":     Vector3(5.2, 0.05, -4.0),         # mid-room right scatter
-		"Lt James":      Vector3(2.8, 0.05, -7.5),         # centre-right, past midpoint
-		"Dr Rush":       Vector3(-1.5, 0.05, -9.0),        # deep centre-left
-		"Dr Brody":      Vector3(3.5, 0.05, -11.0),        # deep right, behind Rush
-		"Eli":           eli_land,                          # ~half Young's distance (-1.6 z)
-	}
-	var order: Array = ["Colonel Young", "Dr Park", "Dr Volker", "Lt James", "Dr Rush", "Dr Brody", "Eli"]
-	var bodies: Array[Node3D] = []
-	for nm in order:
-		bodies.append(_launch_ragdoll(String(nm), land[nm]))
-		await get_tree().create_timer(0.14).timeout
-	GameState.add_log("The crew are hurled through and slam into the deck!")
+	# WAVE 2 — Colonel Young + Lt James (2): Young thrown deep, stays DOWN (injured);
+	# James lands beside him and comes up as the medic.
+	var r_young: Node3D = _launch_ragdoll("Colonel Young", Vector3(-1.5, 0.05, -6.5))
+	await get_tree().create_timer(0.35).timeout
+	var r_james: Node3D = _launch_ragdoll("Lt James", Vector3(0.8, 0.05, -5.5))
+	await get_tree().create_timer(1.8).timeout
+	_handoff_tableau(r_young, "ColonelYoung")   # stays prone (injured), reposed to rest spot
+	_handoff_tableau(r_james, "LtJames")        # comes up kneeling beside Young
+	GameState.add_log("Colonel Young's down — Lt James is on him!")
+	await get_tree().create_timer(0.9).timeout
 
-	# Let them tumble and settle into a crumpled heap on the deck (the bones keep
-	# simulating — they're damped, so they come to rest where they fell).
-	await get_tree().create_timer(2.0).timeout
-	# Panic beats — the disoriented crew, scattered and coughing in the still air.
-	GameState.add_log("The crew lie scattered across the deck, coughing in the disturbed air.")
-	await get_tree().create_timer(1.4).timeout
-	GameState.add_log("Lt Scott: Medic! We need a medic over here — Colonel Young's down!")
+	# WAVE 3 — Dr Park + Dr Volker (2): land at the consoles, get up, man them.
+	var r_park: Node3D = _launch_ragdoll("Dr Park", Vector3(-3.5, 0.05, GATE_CONSOLE_Z - 1.0))
+	await get_tree().create_timer(0.35).timeout
+	var r_volker: Node3D = _launch_ragdoll("Dr Volker", Vector3(3.5, 0.05, GATE_CONSOLE_Z - 1.0))
+	await get_tree().create_timer(1.8).timeout
+	var park_npc: Node3D = _spawn_crew_prone("Dr Park", "park", _ragdoll_rest_pos(r_park))
+	if is_instance_valid(r_park): r_park.queue_free()
+	var volker_npc: Node3D = _spawn_crew_prone("Dr Volker", "volker", _ragdoll_rest_pos(r_volker))
+	if is_instance_valid(r_volker): r_volker.queue_free()
+	await get_tree().create_timer(1.5).timeout
+	_stand_npc(park_npc)
+	await get_tree().create_timer(0.8).timeout
+	_stand_npc(volker_npc)
+	await get_tree().create_timer(1.2).timeout
 
-	# Capture ragdoll rest positions (the hips bone, since the root never moves) so
-	# each persistent NPC spawns exactly where its body came to rest.
-	var rest_positions: Dictionary = {}
-	for i in order.size():
-		var nm: String = String(order[i])
-		var rb: Node3D = bodies[i]
-		if is_instance_valid(rb):
-			rest_positions[nm] = _ragdoll_rest_pos(rb)
-		else:
-			rest_positions[nm] = land[nm]
-	# Young stays at his tableau position regardless of where physics placed him,
-	# so the persistent ColonelYoung NPC (already at tableau_center) reads seamlessly.
-	rest_positions["Colonel Young"] = Vector3(-3.0, 0.05, -15.0)
+	# WAVE 4 — Eli (solo, the player): lands last, groggily climbs to his feet.
+	var r_eli: Node3D = _launch_ragdoll("Eli", Vector3(-0.6, 0.05, GATE_Z - 6.5))
+	GameState.add_log("Eli is hurled through and slams into the deck!")
+	await get_tree().create_timer(1.8).timeout
+	var eli_pos: Vector3 = _ragdoll_rest_pos(r_eli)
+	if _player != null:
+		_player.global_position = eli_pos
+		_lay_player_prone(true)
+		_show_player_model(true)
+	if is_instance_valid(r_eli): r_eli.queue_free()
 
-	# Eli's body is "delivered" — reveal the (prone) player rig at the landing spot.
-	_show_player_model(true)
-	# Hand the throwaway bodies off to the persistent crew that take over the room.
-	for rb in bodies:
-		if is_instance_valid(rb):
-			rb.queue_free()
-
-	# Beat, then the gate collapses behind everyone.
-	await get_tree().create_timer(0.5).timeout
+	# Gate collapses behind the last arrival.
+	await get_tree().create_timer(0.7).timeout
 	_collapse_gate()
 
-	# Persistent outcome: Young stays down (injured) where he landed, James kneels
-	# to triage him. LtScott is already visible and positioned (handled in Wave 1
-	# above). Park & Volker pick themselves up and man the consoles; Rush & Brody
-	# get to their feet and file out the corridor. Eli is last.
-	_set_arrival_crew_visible(true)     # ColonelYoung + LtJames medic tableau
-	_recover_crew(rest_positions)
-	# Hold on the room while the dazed crew stagger to their feet one at a time
-	# (longest get-up now ~5.6s delay + 1.8s stand).
-	await get_tree().create_timer(7.6).timeout
-
-	# Eli stirs and climbs to his feet last.
-	await get_tree().create_timer(0.3).timeout
+	# Eli groggily climbs to his feet.
+	await get_tree().create_timer(0.6).timeout
 	_lay_player_prone(false)
-	await get_tree().create_timer(1.4).timeout
+	await get_tree().create_timer(1.7).timeout
 
 	# Hand the camera back to the player rig, then release Scott — he walks over
 	# (auto_greet) to talk: "Eli! Hey — you alright?"
 	_restore_player_camera(cam)
 	_set_scott_autogreet(true)
+
+
+# Hand a flying-through ragdoll off to a PRE-BUILT, PRE-POSED tableau NPC (Young
+# prone, James kneeling): reposition the NPC to the ragdoll's resting spot, reveal
+# it, then free the ragdoll the SAME frame so the body appears to settle into the
+# character (no vanish). Keeps the NPC's authored pose.
+func _handoff_tableau(rag: Node3D, node_name: String) -> void:
+	var pos: Vector3 = _ragdoll_rest_pos(rag) if is_instance_valid(rag) else Vector3.ZERO
+	var npc: Node3D = _world.get_node_or_null(node_name) as Node3D
+	if npc != null:
+		npc.global_position = pos
+		npc.visible = true
+		if "enabled" in npc:
+			npc.set("enabled", true)
+	if is_instance_valid(rag):
+		rag.queue_free()
+
+
+# Spawn a recovered crew NPC face-down at `pos` (where their ragdoll landed),
+# visible immediately. Returns the node so the caller can stand it up later.
+func _spawn_crew_prone(display_name: String, kind: String, pos: Vector3) -> StaticBody3D:
+	var npc: StaticBody3D = _build_returned_crew_npc(
+		display_name, kind, "res://models/characters/scott.glb", Color.WHITE)
+	var tree: Variant = npc.get("dialogue_tree")
+	if tree == null or (tree is Array and (tree as Array).is_empty()):
+		var generic: Array = [{"speaker": display_name,
+			"text": "Still shaking that off. Give me a second.",
+			"choices": [{"text": "(nod)", "next": "exit"}]}]
+		npc.set("dialogue_tree", generic)
+		npc.set("repeat_dialogue_tree", generic)
+	npc.position = pos
+	npc.rotation.y = 0.0
+	_world.add_child(npc)
+	var model: Node3D = npc.get_node_or_null("Model") as Node3D
+	if model != null:
+		model.rotation.x = PI * 0.5   # face-down
+		model.position.y = 0.1
+	return npc
+
+
+# Stand a spawned NPC up (groggy, unsteady) — push up from face-down.
+func _stand_npc(npc: Node3D) -> void:
+	if npc == null or not is_instance_valid(npc):
+		return
+	var model: Node3D = npc.get_node_or_null("Model") as Node3D
+	if model == null:
+		return
+	var t: Tween = create_tween().set_parallel(true)
+	t.tween_property(model, "rotation:x", 0.0, 1.8).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.tween_property(model, "position:y", 0.0, 1.8)
 
 
 # Move the player rig to its WAVE-2 landing spot, lay it prone, and hide the body
@@ -833,15 +859,18 @@ func _set_scott_autogreet(on: bool) -> void:
 func _make_cinematic_camera() -> Camera3D:
 	var cam: Camera3D = Camera3D.new()
 	cam.name = "PrologueCam"
-	cam.fov = 58.0
+	cam.fov = 62.0
 	add_child(cam)
-	var start_z: float = GATE_Z - 16.5
-	cam.global_position = Vector3(0.0, 2.5, start_z)
-	cam.look_at(Vector3(0.0, 2.7, GATE_Z), Vector3.UP)
+	# Pulled WAY back + elevated, near the rear of the room, looking toward the gate
+	# — a wide establishing shot so the whole cavernous room is in frame and we can
+	# see every crew member land where they come to rest. The kawoosh still erupts
+	# toward this camera. A very slow creep adds life without losing the wide read.
+	var start_z: float = GATE_Z - 24.0
+	cam.global_position = Vector3(0.0, 5.5, start_z)
+	cam.look_at(Vector3(0.0, 1.4, GATE_Z - 9.0), Vector3.UP)
 	cam.make_current()
-	# Slow dolly in: creep ~4.5 m toward the gate over the cinematic (~34s).
 	var t: Tween = create_tween()
-	t.tween_property(cam, "global_position:z", start_z + 4.5, 34.0) \
+	t.tween_property(cam, "global_position:z", start_z + 2.5, 34.0) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	return cam
 
@@ -2360,7 +2389,7 @@ func _build_gate_phase_e_crew() -> void:
 # James is the only talkable NPC in this cluster. The spot is also where the
 # prologue's "Young thrown farthest" ragdoll lands, so the reveal is seamless.
 func _build_medic_tableau() -> void:
-	var tableau_center: Vector3 = Vector3(-3.0, 0.0, -15.0)
+	var tableau_center: Vector3 = Vector3(-1.5, 0.0, -6.5)   # = Young's arrival landing spot
 
 	# --- Colonel Young — laid out on his back ----
 	_build_tableau_npc(

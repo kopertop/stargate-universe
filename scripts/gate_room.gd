@@ -576,7 +576,11 @@ func _play_prologue_cinematic() -> void:
 
 	# Let them tumble and settle into a crumpled heap on the deck (the bones keep
 	# simulating — they're damped, so they come to rest where they fell).
-	await get_tree().create_timer(3.4).timeout
+	await get_tree().create_timer(2.0).timeout
+	# Panic beats — the disoriented crew, scattered and coughing in the still air.
+	GameState.add_log("The crew lie scattered across the deck, coughing in the disturbed air.")
+	await get_tree().create_timer(1.4).timeout
+	GameState.add_log("Lt Scott: Medic! We need a medic over here — Colonel Young's down!")
 
 	# Capture ragdoll rest positions (the hips bone, since the root never moves) so
 	# each persistent NPC spawns exactly where its body came to rest.
@@ -609,8 +613,9 @@ func _play_prologue_cinematic() -> void:
 	# get to their feet and file out the corridor. Eli is last.
 	_set_arrival_crew_visible(true)     # ColonelYoung + LtJames medic tableau
 	_recover_crew(rest_positions)
-	# Hold on the room while crew stagger to their feet (longest get-up: ~3.9s).
-	await get_tree().create_timer(4.5).timeout
+	# Hold on the room while the dazed crew stagger to their feet one at a time
+	# (longest get-up now ~5.6s delay + 1.8s stand).
+	await get_tree().create_timer(7.6).timeout
 
 	# Eli stirs and climbs to his feet last.
 	await get_tree().create_timer(0.3).timeout
@@ -657,7 +662,7 @@ func _place_crew_prone(node_name: String, pos: Vector3) -> void:
 	npc.global_position = pos
 	var model: Node3D = npc.get_node_or_null("Model") as Node3D
 	if model != null:
-		model.rotation.x = -PI * 0.5
+		model.rotation.x = PI * 0.5   # face-DOWN (they get up by pushing off the deck)
 		model.position.y = 0.1
 	npc.visible = true
 
@@ -690,11 +695,12 @@ func _recover_crew(rest_positions: Dictionary) -> void:
 	var console_r: Vector3 = Vector3(3.5, 0.05, GATE_CONSOLE_Z - 1.1)    # FTLConsole
 	var exit_pos: Vector3 = Vector3(0.0, 0.05, -half_z + 3.2)    # toward the corridor door
 	# All four walkers are called without await so they run as concurrent coroutines.
-	# get_up_delay staggers when each one starts standing up (0-indexed from this call).
-	_recover_walker("Dr Park",  "park",  rest_positions.get("Dr Park",  console_l), console_l, false, 0.8)
-	_recover_walker("Dr Volker","volker",rest_positions.get("Dr Volker",console_r), console_r, false, 1.4)
-	_recover_walker("Dr Rush",  "rush",  rest_positions.get("Dr Rush",  exit_pos),  exit_pos,  true,  2.2)
-	_recover_walker("Dr Brody", "brody", rest_positions.get("Dr Brody", exit_pos),  exit_pos,  true,  2.8)
+	# get_up_delay staggers when each one starts standing up — long, uneven gaps so
+	# the crew read as dazed and disoriented, picking themselves up one at a time.
+	_recover_walker("Dr Park",  "park",  rest_positions.get("Dr Park",  console_l), console_l, false, 1.6)
+	_recover_walker("Dr Volker","volker",rest_positions.get("Dr Volker",console_r), console_r, false, 3.0)
+	_recover_walker("Dr Rush",  "rush",  rest_positions.get("Dr Rush",  exit_pos),  exit_pos,  true,  4.4)
+	_recover_walker("Dr Brody", "brody", rest_positions.get("Dr Brody", exit_pos),  exit_pos,  true,  5.6)
 
 
 # Spawn one recovered crew member at where they landed, crumpled on the floor.
@@ -721,7 +727,7 @@ func _recover_walker(display_name: String, kind: String, from: Vector3, to: Vect
 	_world.add_child(npc)
 	var model: Node3D = npc.get_node_or_null("Model") as Node3D
 	if model != null:
-		model.rotation.x = -PI * 0.5
+		model.rotation.x = PI * 0.5   # face-DOWN (they get up by pushing off the deck)
 		model.position.y = 0.1
 
 	# Stagger: wait for this character's personal get-up timer.
@@ -729,13 +735,13 @@ func _recover_walker(display_name: String, kind: String, from: Vector3, to: Vect
 	if not is_instance_valid(npc):
 		return
 
-	# Stand up groggily via tween (same logic as _lay_player_prone(false)).
+	# Stand up groggily — a slow, unsteady push to the feet (disoriented).
 	model = npc.get_node_or_null("Model") as Node3D
 	if model != null and is_instance_valid(model):
 		var t: Tween = create_tween().set_parallel(true)
-		t.tween_property(model, "rotation:x", 0.0, 1.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		t.tween_property(model, "position:y", 0.0, 1.1)
-	await get_tree().create_timer(1.1).timeout   # wait for stand tween to complete
+		t.tween_property(model, "rotation:x", 0.0, 1.8).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		t.tween_property(model, "position:y", 0.0, 1.8)
+	await get_tree().create_timer(1.8).timeout   # wait for stand tween to complete
 	if not is_instance_valid(npc):
 		return
 
@@ -853,13 +859,13 @@ func _lay_player_prone(prone: bool) -> void:
 		return
 	if prone:
 		# Snap flat instantly (Eli is already down when the scene opens).
-		model.rotation.x = -PI * 0.5
+		model.rotation.x = PI * 0.5   # face-DOWN (they get up by pushing off the deck)
 		model.position.y = 0.1
 	else:
-		# Groggily push up to standing.
+		# Groggily push up to standing — slow and unsteady (disoriented).
 		var t: Tween = create_tween().set_parallel(true)
-		t.tween_property(model, "rotation:x", 0.0, 1.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		t.tween_property(model, "position:y", 0.0, 1.1)
+		t.tween_property(model, "rotation:x", 0.0, 1.9).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		t.tween_property(model, "position:y", 0.0, 1.9)
 
 
 # One throwaway ragdoll: RigidBody3D root wrapper + Quaternius skeletal body.
@@ -926,19 +932,20 @@ func _setup_ragdoll_physics(root: Node3D, vel: Vector3, ang: Vector3) -> void:
 	# collision_layer=0 → bones are not hittable by raycasts.
 	# collision_mask=1 → bones collide with floor/walls (layer 1), not player (layer 2).
 	# Torso chain.
-	_make_physical_bone(sim, "Hips",       0.15, 0.30, PhysicalBone3D.JOINT_TYPE_CONE)
-	_make_physical_bone(sim, "Spine",      0.13, 0.28, PhysicalBone3D.JOINT_TYPE_CONE)
-	_make_physical_bone(sim, "Chest",      0.14, 0.28, PhysicalBone3D.JOINT_TYPE_CONE)
-	_make_physical_bone(sim, "UpperChest", 0.13, 0.22, PhysicalBone3D.JOINT_TYPE_CONE)
-	_make_physical_bone(sim, "Head",       0.12, 0.24, PhysicalBone3D.JOINT_TYPE_CONE)
-	# Arms.
-	_make_physical_bone(sim, "LeftUpperArm",  0.07, 0.28, PhysicalBone3D.JOINT_TYPE_CONE)
-	_make_physical_bone(sim, "RightUpperArm", 0.07, 0.28, PhysicalBone3D.JOINT_TYPE_CONE)
+	# Torso chain — TIGHT swing/twist so the spine can't fold backwards at the waist.
+	_make_physical_bone(sim, "Hips",       0.15, 0.30, PhysicalBone3D.JOINT_TYPE_CONE, 18.0, 12.0)
+	_make_physical_bone(sim, "Spine",      0.13, 0.28, PhysicalBone3D.JOINT_TYPE_CONE, 18.0, 12.0)
+	_make_physical_bone(sim, "Chest",      0.14, 0.28, PhysicalBone3D.JOINT_TYPE_CONE, 16.0, 12.0)
+	_make_physical_bone(sim, "UpperChest", 0.13, 0.22, PhysicalBone3D.JOINT_TYPE_CONE, 16.0, 12.0)
+	_make_physical_bone(sim, "Head",       0.12, 0.24, PhysicalBone3D.JOINT_TYPE_CONE, 30.0, 20.0)
+	# Arms — shoulders swing wide, elbows are one-way hinges.
+	_make_physical_bone(sim, "LeftUpperArm",  0.07, 0.28, PhysicalBone3D.JOINT_TYPE_CONE, 70.0, 30.0)
+	_make_physical_bone(sim, "RightUpperArm", 0.07, 0.28, PhysicalBone3D.JOINT_TYPE_CONE, 70.0, 30.0)
 	_make_physical_bone(sim, "LeftLowerArm",  0.06, 0.26, PhysicalBone3D.JOINT_TYPE_HINGE)
 	_make_physical_bone(sim, "RightLowerArm", 0.06, 0.26, PhysicalBone3D.JOINT_TYPE_HINGE)
-	# Legs.
-	_make_physical_bone(sim, "LeftUpperLeg",  0.10, 0.38, PhysicalBone3D.JOINT_TYPE_CONE)
-	_make_physical_bone(sim, "RightUpperLeg", 0.10, 0.38, PhysicalBone3D.JOINT_TYPE_CONE)
+	# Legs — hips swing moderately, knees are one-way hinges.
+	_make_physical_bone(sim, "LeftUpperLeg",  0.10, 0.38, PhysicalBone3D.JOINT_TYPE_CONE, 50.0, 20.0)
+	_make_physical_bone(sim, "RightUpperLeg", 0.10, 0.38, PhysicalBone3D.JOINT_TYPE_CONE, 50.0, 20.0)
 	_make_physical_bone(sim, "LeftLowerLeg",  0.08, 0.36, PhysicalBone3D.JOINT_TYPE_HINGE)
 	_make_physical_bone(sim, "RightLowerLeg", 0.08, 0.36, PhysicalBone3D.JOINT_TYPE_HINGE)
 
@@ -986,7 +993,9 @@ func _make_physical_bone(
 		p_bone_name: String,
 		cap_radius: float,
 		cap_height: float,
-		j_type: int) -> PhysicalBone3D:
+		j_type: int,
+		swing_deg: float = 40.0,
+		twist_deg: float = 25.0) -> PhysicalBone3D:
 	var pb: PhysicalBone3D = PhysicalBone3D.new()
 	pb.name = "PB_" + p_bone_name
 	pb.bone_name = p_bone_name
@@ -994,8 +1003,22 @@ func _make_physical_bone(
 	pb.collision_layer = 0
 	pb.collision_mask = 1
 	pb.mass = 4.0
-	pb.linear_damp = 0.5
-	pb.angular_damp = 0.8
+	# Heavier damping so the body settles into a believable heap instead of
+	# flailing/jittering into broken-looking poses.
+	pb.linear_damp = 1.2
+	pb.angular_damp = 2.0
+	# Joint limits keep the body in a HUMAN range of motion — no folding backwards
+	# at the waist or hyperextending elbows/knees (joint_constraints spans are in
+	# degrees on PhysicalBone3D).
+	if j_type == PhysicalBone3D.JOINT_TYPE_CONE:
+		pb.set("joint_constraints/swing_span", swing_deg)
+		pb.set("joint_constraints/twist_span", twist_deg)
+		pb.set("joint_constraints/relaxation", 1.0)
+	elif j_type == PhysicalBone3D.JOINT_TYPE_HINGE:
+		# Elbows/knees bend ONE way only (toward the body), never backwards.
+		pb.set("joint_constraints/angular_limit_enabled", true)
+		pb.set("joint_constraints/angular_limit_lower", -120.0)
+		pb.set("joint_constraints/angular_limit_upper", 2.0)
 	var bone_cs: CollisionShape3D = CollisionShape3D.new()
 	var bone_cap: CapsuleShape3D = CapsuleShape3D.new()
 	bone_cap.radius = cap_radius
@@ -2403,7 +2426,7 @@ func _build_tableau_npc(
 		# Lay character on their back: tip the holder forward 90° so what was up
 		# (head along +Y) now extends along +Z away from the feet anchor.
 		# Lift slightly so the back doesn't z-fight with the floor.
-		model_holder.rotation = Vector3(-PI * 0.5, PI, 0.0)
+		model_holder.rotation = Vector3(PI * 0.5, PI, 0.0)   # face-DOWN (injured, prone)
 		model_holder.position = Vector3(0.0, 0.15, 0.0) if modular else Vector3(0.0, 0.18, 0.7)
 		if not modular:
 			model_holder.scale = Vector3(2.6, 2.6, 2.6)

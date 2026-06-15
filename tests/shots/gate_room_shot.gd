@@ -71,10 +71,10 @@ func _run() -> void:
 	cam.fov = 58.0
 	inst.add_child(cam)
 	if cam_mode == "medic":
-		# Close-up on the medic tableau (Young prone + James kneeling) at (-9,0,-6).
-		cam.fov = 42.0
-		cam.global_position = Vector3(-5.5, 2.2, -8.6)
-		cam.look_at(Vector3(-9.0, 0.5, -6.0), Vector3.UP)
+		# Close-up on the medic tableau (Young prone + James kneeling) at (-3,0,-15).
+		cam.fov = 45.0
+		cam.global_position = Vector3(0.5, 2.2, -10.5)
+		cam.look_at(Vector3(-3.0, 0.4, -15.0), Vector3.UP)
 	elif cam_mode == "left":
 		cam.global_position = Vector3(-11.0, 3.4, -2.0)
 		cam.look_at(Vector3(0, 3.0, 12.0), Vector3.UP)

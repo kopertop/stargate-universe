@@ -26,9 +26,9 @@ func _run() -> void:
 	if hud is CanvasLayer:
 		(hud as CanvasLayer).visible = false
 
-	# Run long enough for the whole cinematic (dial + 2 waves + groggy staggered
-	# recovery ~33s) plus Scott's walk-up + first dialog beat. At 30fps ≈ 38s.
-	var frames: int = 1140
+	# Run long enough for the whole paired-wave cinematic (~23s) plus Scott's
+	# walk-up + first dialog beat. At --fixed-fps 30 that's ~31s → 930 frames.
+	var frames: int = 930
 	for i in frames:
 		await process_frame
 	quit(0)

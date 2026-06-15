@@ -721,7 +721,10 @@ func _settle_persistent_crew(npc: StaticBody3D, pose: String = "auto") -> void:
 	if mc != null and mc.has_method("play_clip"):
 		var clip: String = pose
 		if pose == "auto":
-			var pool: Array[String] = ["repair", "crouch_idle", "hit", "knockback"]
+			# Downed-crew pose pool (user-selected from the Animation Lab): kneel,
+			# low crouch, or sprawled flat. "hit" is a STANDING flinch — excluded,
+			# nobody stays upright after that crash.
+			var pool: Array[String] = ["repair", "crouch_idle", "knockback"]
 			clip = pool[absi(npc.name.hash()) % pool.size()]
 		mc.call("play_clip", clip)
 	_thud()   # body hits the deck

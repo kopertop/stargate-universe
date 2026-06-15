@@ -2123,6 +2123,28 @@ func _build_structural_columns() -> void:
 				col.position = Vector3(sx * (half_x - 0.8), 0.0, cz)
 				_world.add_child(col)
 
+	# Angular truss "wings": diagonal beams from each flanking column up toward the
+	# centre over the gate, framing it in an A-frame like the concept art.
+	var beam_mat: StandardMaterial3D = StandardMaterial3D.new()
+	beam_mat.albedo_color = Color(0.13, 0.14, 0.17, 1.0)
+	beam_mat.metallic = 0.55
+	beam_mat.roughness = 0.45
+	var base_xy: Vector2 = Vector2(7.0, 2.5)      # foot at the flank column
+	var apex_xy: Vector2 = Vector2(0.0, 11.2)     # both beams meet at a clean apex (A-frame)
+	var span: Vector2 = apex_xy - base_xy
+	var beam_len: float = span.length()
+	var beam_tilt: float = atan2(absf(span.x), span.y)   # lean from vertical
+	for sx in [-1.0, 1.0]:
+		var mid: Vector2 = (base_xy + apex_xy) * 0.5
+		var beam: MeshInstance3D = MeshInstance3D.new()
+		var bm: BoxMesh = BoxMesh.new()
+		bm.size = Vector3(0.5, beam_len, 0.5)
+		beam.mesh = bm
+		beam.material_override = beam_mat
+		beam.position = Vector3(sx * mid.x, mid.y, gate_z - 0.4)
+		beam.rotation.z = sx * beam_tilt    # top leans inward toward the centre
+		_world.add_child(beam)
+
 
 # Attach a crew member's visual body under `model_holder` (already 180°-flipped
 # so the model faces the body's -Z). PRIMARY path is the Quaternius

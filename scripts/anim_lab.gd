@@ -50,7 +50,9 @@ func _ready() -> void:
 
 	_build_grid()
 	_build_focus()
-	_set_focus_mode(false)
+	# Default to the FOCUS view — one large, clearly-readable actor (the grid of 40+
+	# clips is only an index). [G] switches to the grid, [F] back to focus.
+	_set_focus_mode(true)
 
 
 func _build_environment() -> void:
@@ -111,10 +113,12 @@ func _build_grid() -> void:
 		var z: float = -float(row) * SPACING
 		var holder: Node3D = Node3D.new()
 		holder.position = Vector3(x, 0.0, z)
-		holder.rotation.y = PI   # face -Z (toward the camera)
+		holder.rotation.y = 0.0   # face +Z toward the camera (which sits at +Z)
 		_grid_root.add_child(holder)
 		var body: Node3D = CF.build_modular(DEMO_NAME)
 		holder.add_child(body)
+		# Dress the body or it renders as just floating eyes (no body/clothing mesh).
+		CF.dress_modular(body, DEMO_NAME, CF.CTX_SHIP)
 		_grid_actors.append(body)
 		_play(body, clip)
 		var tag: Label3D = Label3D.new()
@@ -132,10 +136,11 @@ func _build_focus() -> void:
 	_focus_root.name = "Focus"
 	add_child(_focus_root)
 	var holder: Node3D = Node3D.new()
-	holder.rotation.y = PI
+	holder.rotation.y = 0.0   # face +Z toward the focus camera
 	_focus_root.add_child(holder)
 	_focus_actor = CF.build_modular(DEMO_NAME)
 	holder.add_child(_focus_actor)
+	CF.dress_modular(_focus_actor, DEMO_NAME, CF.CTX_SHIP)
 
 
 func _play(body: Node3D, clip: String) -> void:

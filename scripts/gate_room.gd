@@ -89,7 +89,7 @@ const STAIR_Z_CENTER: float = -10.0
 @export var tile_size: float = 2.0
 @export var deck1_height: float = 0.0
 @export var mezzanine_height: float = 5.0
-@export var ceiling_height: float = 9.0
+@export var ceiling_height: float = 13.0   # tall + cavernous — the vast empty-ship read
 @export var mezzanine_depth: float = 4.0     # how far the mezzanine extends inward from walls
 
 @export_group("Arrival")
@@ -539,13 +539,14 @@ func _play_prologue_cinematic() -> void:
 	await get_tree().create_timer(0.8).timeout
 	await dial_and_open(true)
 
-	# WAVE 1 — Scott first. Flung through, lands crumpled, then picks himself up.
-	var scott_rag: Node3D = _launch_ragdoll("Lt Scott", Vector3(1.4, 0.05, GATE_Z - 3.4))
+	# WAVE 1 — Scott first. Flung through OFF TO THE SIDE (clear of the portal mouth
+	# so he isn't standing inside the gate when he gets up), lands crumpled, rises.
+	var scott_rag: Node3D = _launch_ragdoll("Lt Scott", Vector3(4.0, 0.05, GATE_Z - 6.0))
 	GameState.add_log("Lt Scott is thrown through the gate!")
 	await get_tree().create_timer(1.6).timeout
 	# Read where the body actually came to rest (the hips bone, not the static root)
 	# so the NPC appears exactly where he fell, then swap the throwaway ragdoll out.
-	var scott_rest: Vector3 = Vector3(1.4, 0.05, GATE_Z - 3.4)
+	var scott_rest: Vector3 = Vector3(4.0, 0.05, GATE_Z - 6.0)
 	if is_instance_valid(scott_rag):
 		scott_rest = _ragdoll_rest_pos(scott_rag)
 		scott_rag.queue_free()

@@ -167,6 +167,15 @@ func _split_regions(body_mi: MeshInstance3D) -> Dictionary:
 		for region in region_indices:
 			var rarrays: Array = arrays.duplicate()
 			rarrays[Mesh.ARRAY_INDEX] = region_indices[region]
+			# Drop ARRAY_CUSTOM* channels before rebuilding. surface_get_arrays()
+			# returns them as float arrays, but add_surface_from_arrays(flags=0)
+			# expects custom slots to be PackedByteArray and aborts otherwise
+			# ("Invalid array format for surface") — leaving a 0-surface, invisible
+			# region mesh. The Female base ships CUSTOM0/CUSTOM1 the Male lacks, so
+			# without this every female-rigged crew member loses face/bare skin
+			# (renders as clothing + floating eyes). Region meshes don't use customs.
+			for custom_slot in [Mesh.ARRAY_CUSTOM0, Mesh.ARRAY_CUSTOM1, Mesh.ARRAY_CUSTOM2, Mesh.ARRAY_CUSTOM3]:
+				rarrays[custom_slot] = null
 			if not out.has(region):
 				out[region] = ArrayMesh.new()
 			var am: ArrayMesh = out[region]

@@ -100,6 +100,17 @@ func _test_base_and_regions() -> void:
 			if not (regions[r] as MeshInstance3D).visible:
 				all_visible = false
 		_expect(all_visible, "%s: all regions visible when naked" % gender)
+		# Regression (faceless-crew bug): a region MeshInstance can exist + be
+		# visible yet carry ZERO surfaces if add_surface_from_arrays rejected the
+		# rebuild (the Female base ships ARRAY_CUSTOM channels that broke it). The
+		# old count+visibility checks passed anyway — assert real geometry so an
+		# empty head/face region can never ship green again.
+		var all_have_geometry: bool = true
+		for r in regions:
+			var rmi: MeshInstance3D = regions[r]
+			if rmi.mesh == null or rmi.mesh.get_surface_count() == 0:
+				all_have_geometry = false
+		_expect(all_have_geometry, "%s: every region mesh has real geometry (no empty face)" % gender)
 		c.queue_free()
 
 

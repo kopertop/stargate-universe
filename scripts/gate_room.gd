@@ -683,8 +683,11 @@ func _stand_crew_member(node_name: String) -> void:
 # `rest_positions` maps character name → ragdoll rest position on the floor.
 func _recover_crew(rest_positions: Dictionary) -> void:
 	var half_z: float = room_size.y * 0.5
-	var console_l: Vector3 = Vector3(-6.6, 0.05, GATE_Z - 2.8)   # at the left operator console
-	var console_r: Vector3 = Vector3(6.6, 0.05, GATE_Z - 2.8)    # at the right operator console
+	# Stand the operators just in front of the ROOM's real consoles (GateControlConsole
+	# at x=-3.5, FTLConsole at x=+3.5, both at z=GATE_CONSOLE_Z), on the arrival (-Z)
+	# side where the controls face, looking back at the console.
+	var console_l: Vector3 = Vector3(-3.5, 0.05, GATE_CONSOLE_Z - 1.1)   # GateControlConsole
+	var console_r: Vector3 = Vector3(3.5, 0.05, GATE_CONSOLE_Z - 1.1)    # FTLConsole
 	var exit_pos: Vector3 = Vector3(0.0, 0.05, -half_z + 3.2)    # toward the corridor door
 	# All four walkers are called without await so they run as concurrent coroutines.
 	# get_up_delay staggers when each one starts standing up (0-indexed from this call).
@@ -1552,25 +1555,8 @@ func _build_floor() -> void:
 	cs.shape = shape
 	cs.position = Vector3(0.0, -0.1, 0.0)
 	body.add_child(cs)
-
-	# Inlay: bronze ring of light tiles around the gate dais (visual interest).
-	var inlay_mat: StandardMaterial3D = StandardMaterial3D.new()
-	inlay_mat.albedo_color = Color(0.07, 0.10, 0.16, 1.0)
-	inlay_mat.metallic = 0.7
-	inlay_mat.roughness = 0.35
-	inlay_mat.emission_enabled = true
-	inlay_mat.emission = Color(0.22, 0.5, 0.95, 1.0)
-	inlay_mat.emission_energy_multiplier = 0.7
-	var inlay: MeshInstance3D = MeshInstance3D.new()
-	var ring: TorusMesh = TorusMesh.new()
-	ring.inner_radius = 5.0
-	ring.outer_radius = 5.4
-	ring.ring_segments = 64
-	ring.rings = 8
-	inlay.mesh = ring
-	inlay.material_override = inlay_mat
-	inlay.position = Vector3(0.0, 0.02, half_z - 4.0)
-	_world.add_child(inlay)
+	# (Removed the glowing blue floor inlay ring around the gate — it read as a
+	# stray hexagon on the deck. The floor is clean grating now.)
 
 
 func _build_walls_and_ceiling() -> void:
@@ -2052,22 +2038,9 @@ func _build_gate_platform() -> void:
 	var half_z: float = room_size.y * 0.5
 	var platform_z: float = half_z - 3.8
 
-	# === Operator consoles (left + right at floor level, matching reference) ===
-	var console_left: Node3D = _instance_prop(GATE_CONSOLE_PROP_PATH)
-	if console_left != null:
-		console_left.scale = Vector3(2.6, 2.6, 2.6)
-		console_left.position = Vector3(-7.5, 0.0, platform_z - 2.5)
-		console_left.rotation.y = 0.7
-		_world.add_child(console_left)
-		_add_prop_collider(console_left)
-
-	var console_right: Node3D = _instance_prop(GATE_CONSOLE_PROP_PATH)
-	if console_right != null:
-		console_right.scale = Vector3(2.6, 2.6, 2.6)
-		console_right.position = Vector3(7.5, 0.0, platform_z - 2.5)
-		console_right.rotation.y = -0.7
-		_world.add_child(console_right)
-		_add_prop_collider(console_right)
+	# (Removed the extra prop operator-consoles that flanked the gate — the room's
+	# real consoles are GateControlConsole + FTLConsole, built by _build_consoles().
+	# Park & Volker man those.)
 
 	# === Overhead ceiling ring structure (dramatic circular architecture above gate) ===
 	# Native disc normal points along X (AABB thin on X); rotate 90° about Z so the

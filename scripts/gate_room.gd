@@ -117,9 +117,15 @@ var _dial_elapsed: float = 0.0
 # Latch: keep the gate open after a dial/cinematic regardless of story flags.
 var _gate_forced_open: bool = false
 const DIAL_TIME: float = 3.2          # seconds the ring spins before lock + kawoosh
+const SCOTT_GETUP_DELAY: float = 1.5  # seconds after Scott's ragdoll settles before he stands
 # Fixed chevron-glow markers ringing the gate. They light up one-by-one while the
 # ring spins (the dialing read), then all lock just before the portal flushes open.
 var _chevron_glows: Array[MeshInstance3D] = []
+# Unscaled pivot at the gate face centre that carries all 9 glow prisms as children.
+# Parented to _world (NOT to _gate_ring) so the ring's (0.33/8.5/8.5) scale does NOT
+# distort the prism meshes. Rotation is copied from the ring each frame so the glows
+# stay locked on the chevron wedges during the dial spin.
+var _chevron_rig: Node3D = null
 const CHEVRON_COUNT: int = 9
 const CHEVRON_ENERGY: float = 4.0
 var _from_gate_marker: Marker3D
@@ -276,27 +282,42 @@ func _process(delta: float) -> void:
 	if _dialing and _gate_ring != null and is_instance_valid(_gate_ring):
 		_dial_elapsed += delta
 		var ramp: float = clampf(_dial_elapsed / DIAL_TIME, 0.0, 1.0)
-		var spin_speed: float = TAU * (0.35 + 1.6 * ramp)   # rev/s, speeds up
+		var spin_speed: float = TAU * (0.12 + 0.5 * ramp)   # rev/s, slower: was (0.35 + 1.6*ramp)
 		_gate_ring.rotate(Vector3(0.0, 0.0, 1.0), spin_speed * delta)
+		# Spin the ChevronRig by the SAME world-Z delta so the glows stay locked to the
+		# moulded chevrons. Do NOT read _gate_ring.rotation.z — the ring sits at
+		# rotation.y = PI/2, the Euler-XYZ gimbal-lock singularity, so its .z channel is
+		# degenerate and would drift the rig. Identical incremental rotate() = perfect sync.
+		if _chevron_rig != null and is_instance_valid(_chevron_rig):
+			_chevron_rig.rotate(Vector3(0.0, 0.0, 1.0), spin_speed * delta)
 		# Chevrons light progressively across the dial (the "locking" read).
 		_light_chevrons(int(ramp * float(CHEVRON_COUNT)))
 		return
 	_refresh_gate_state()
 
 
-# Build the 9 fixed chevron-glow markers around the ring face (world XY plane,
-# centre at the gate). Dark until the dial lights them. Amber so a "locked"
-# chevron reads instantly against the gate's icy blue.
+# Build the 9 chevron-glow prisms on an unscaled pivot ("ChevronRig") at the gate
+# face centre. The rig lives as a child of _world (NOT _gate_ring) so the ring's
+# (0.33/8.5/8.5) scale does NOT distort the prism meshes — they stay round/correct.
+# During the dial spin, _process copies _gate_ring.rotation.z to _chevron_rig.rotation.z
+# each frame, keeping the amber glows locked on the molded chevron wedges.
 func _build_chevron_glows() -> void:
 	var cy: float = _gate_center_y()
 	var outer_r: float = GATE_RING_OUTER_NATIVE * GATE_DIAM_SCALE
-	var r: float = outer_r * 0.84
+	# ~3.69 m radius puts the centre of each glow on the moulded chevron bracket.
+	# (outer_native 0.505 * diam_scale 8.5 * 0.86 ≈ 3.69 m)
+	var r: float = outer_r * 0.86
+	# Unscaled pivot at the gate face centre. Children inherit NO scale from the ring.
+	_chevron_rig = Node3D.new()
+	_chevron_rig.name = "ChevronRig"
+	_chevron_rig.position = Vector3(0.0, cy, GATE_Z)
+	_world.add_child(_chevron_rig)
 	for i in CHEVRON_COUNT:
-		var ang: float = float(i) * TAU / float(CHEVRON_COUNT)   # i=0 at top
+		var ang: float = float(i) * TAU / float(CHEVRON_COUNT)   # i=0 at top → +Y
 		var mat: StandardMaterial3D = StandardMaterial3D.new()
-		mat.albedo_color = Color(0.5, 0.28, 0.1, 1.0)
+		mat.albedo_color = Color(0.12, 0.26, 0.5, 1.0)
 		mat.emission_enabled = true
-		mat.emission = Color(1.0, 0.55, 0.16, 1.0)
+		mat.emission = Color(0.35, 0.7, 1.0, 1.0)   # tech blue (was amber)
 		mat.emission_energy_multiplier = 0.0   # dark until locked
 		var mi: MeshInstance3D = MeshInstance3D.new()
 		mi.name = "ChevronGlow%d" % i
@@ -304,9 +325,11 @@ func _build_chevron_glows() -> void:
 		prism.size = Vector3(0.55, 0.5, 0.14)
 		mi.mesh = prism
 		mi.material_override = mat
-		mi.position = Vector3(r * sin(ang), cy + r * cos(ang), GATE_Z - 0.14)
-		mi.rotation.z = PI - ang   # point the prism apex inward toward the centre
-		_world.add_child(mi)
+		# Position is relative to the rig centre (which is already at (0, cy, GATE_Z)).
+		# ang=0 → top chevron at (0, r, -0.14). -0.14 on Z = 14 cm in front of ring face.
+		mi.position = Vector3(r * sin(ang), r * cos(ang), -0.14)
+		mi.rotation.z = PI - ang   # point the prism apex inward toward the gate centre
+		_chevron_rig.add_child(mi)
 		_chevron_glows.append(mi)
 
 
@@ -334,6 +357,12 @@ func dial_and_open(with_sfx: bool = true) -> void:
 	_dialing = true
 	_dial_elapsed = 0.0
 	_light_chevrons(0)
+	# Reset the ring + chevron rig to a known, in-sync pose so a repeat dial can't
+	# accumulate drift (ring base orientation = yaw +90°; the rig is unrotated).
+	if _gate_ring != null and is_instance_valid(_gate_ring):
+		_gate_ring.rotation = Vector3(0.0, PI * 0.5, 0.0)
+	if _chevron_rig != null and is_instance_valid(_chevron_rig):
+		_chevron_rig.rotation = Vector3.ZERO
 	# (1)+(2) Dial rumble (chevron-incoming) while the ring spins and chevrons lock.
 	if with_sfx and _gate_loop_sfx != null and _gate_loop_sfx.stream != null:
 		_gate_loop_sfx.play()
@@ -500,7 +529,7 @@ func _play_prologue_cinematic() -> void:
 	_set_scott_autogreet(false)
 	# Eli arrives in WAVE 2 — park his rig at his eventual landing spot, prone and
 	# hidden, until his ragdoll toss "delivers" him there.
-	var eli_land: Vector3 = Vector3(0.6, 0.05, GATE_Z - 4.6)   # ~half Young's throw
+	var eli_land: Vector3 = Vector3(0.6, 0.05, -1.6)   # ~half Young's throw (13.4 m from gate)
 	_place_player_for_toss(eli_land)
 
 	# Head-on cinematic camera framing the gate (concept "Central Approach").
@@ -510,41 +539,58 @@ func _play_prologue_cinematic() -> void:
 	await get_tree().create_timer(0.8).timeout
 	await dial_and_open(true)
 
-	# WAVE 1 — Scott first. Flung out, but rolls clear and stands.
-	var scott_rag: RigidBody3D = _launch_ragdoll("Lt Scott", Vector3(1.4, 0.05, GATE_Z - 3.4))
+	# WAVE 1 — Scott first. Flung through, lands crumpled, then picks himself up.
+	var scott_rag: Node3D = _launch_ragdoll("Lt Scott", Vector3(1.4, 0.05, GATE_Z - 3.4))
 	GameState.add_log("Lt Scott is thrown through the gate!")
-	await get_tree().create_timer(1.5).timeout
+	await get_tree().create_timer(1.6).timeout
+	# Read where the body actually came to rest (the hips bone, not the static root)
+	# so the NPC appears exactly where he fell, then swap the throwaway ragdoll out.
+	var scott_rest: Vector3 = Vector3(1.4, 0.05, GATE_Z - 3.4)
 	if is_instance_valid(scott_rag):
+		scott_rest = _ragdoll_rest_pos(scott_rag)
 		scott_rag.queue_free()
-	_reveal_crew_member("LtScott")     # Scott picks himself up where he landed
+	_place_crew_prone("LtScott", scott_rest)    # NPC crumpled at rest position
+	await get_tree().create_timer(SCOTT_GETUP_DELAY).timeout
+	_stand_crew_member("LtScott")               # Scott groggily gets up
 	GameState.add_log("Lt Scott: It's clear! Send the rest through!")
-	await get_tree().create_timer(0.9).timeout
+	await get_tree().create_timer(0.6).timeout
 
 	# WAVE 2 — the rest + Eli, hurled hard toward authored landing spots. Colonel
 	# Young is thrown the FARTHEST (onto the medic-tableau spot — that's his injury);
 	# Eli lands about HALF that distance; the others scatter between.
 	var land: Dictionary = {
-		"Colonel Young": Vector3(-4.0, 0.05, 2.0),         # farthest (medic spot)
-		"Dr Park":       Vector3(-3.2, 0.05, GATE_Z - 5.6),
-		"Dr Volker":     Vector3(3.4, 0.05, GATE_Z - 5.6),
-		"Lt James":      Vector3(1.6, 0.05, GATE_Z - 4.8),
-		"Dr Rush":       Vector3(3.0, 0.05, GATE_Z - 7.0),
-		"Dr Brody":      Vector3(-2.4, 0.05, GATE_Z - 6.6),
-		"Eli":           eli_land,                          # ~half Young's distance
+		"Colonel Young": Vector3(-3.0, 0.05, -15.0),       # far wall slam (26.8 m from gate)
+		"Dr Park":       Vector3(-5.5, 0.05, -5.0),        # mid-room left scatter
+		"Dr Volker":     Vector3(5.2, 0.05, -4.0),         # mid-room right scatter
+		"Lt James":      Vector3(2.8, 0.05, -7.5),         # centre-right, past midpoint
+		"Dr Rush":       Vector3(-1.5, 0.05, -9.0),        # deep centre-left
+		"Dr Brody":      Vector3(3.5, 0.05, -11.0),        # deep right, behind Rush
+		"Eli":           eli_land,                          # ~half Young's distance (-1.6 z)
 	}
 	var order: Array = ["Colonel Young", "Dr Park", "Dr Volker", "Lt James", "Dr Rush", "Dr Brody", "Eli"]
-	var bodies: Array[RigidBody3D] = []
+	var bodies: Array[Node3D] = []
 	for nm in order:
 		bodies.append(_launch_ragdoll(String(nm), land[nm]))
 		await get_tree().create_timer(0.14).timeout
 	GameState.add_log("The crew are hurled through and slam into the deck!")
 
-	# They tumble, then STAY where they fell — freeze them in place for a beat.
-	await get_tree().create_timer(2.0).timeout
-	for rb in bodies:
+	# Let them tumble and settle into a crumpled heap on the deck (the bones keep
+	# simulating — they're damped, so they come to rest where they fell).
+	await get_tree().create_timer(3.4).timeout
+
+	# Capture ragdoll rest positions (the hips bone, since the root never moves) so
+	# each persistent NPC spawns exactly where its body came to rest.
+	var rest_positions: Dictionary = {}
+	for i in order.size():
+		var nm: String = String(order[i])
+		var rb: Node3D = bodies[i]
 		if is_instance_valid(rb):
-			rb.freeze = true
-	await get_tree().create_timer(1.1).timeout
+			rest_positions[nm] = _ragdoll_rest_pos(rb)
+		else:
+			rest_positions[nm] = land[nm]
+	# Young stays at his tableau position regardless of where physics placed him,
+	# so the persistent ColonelYoung NPC (already at tableau_center) reads seamlessly.
+	rest_positions["Colonel Young"] = Vector3(-3.0, 0.05, -15.0)
 
 	# Eli's body is "delivered" — reveal the (prone) player rig at the landing spot.
 	_show_player_model(true)
@@ -558,15 +604,16 @@ func _play_prologue_cinematic() -> void:
 	_collapse_gate()
 
 	# Persistent outcome: Young stays down (injured) where he landed, James kneels
-	# to triage him, Scott is already up. Park & Volker pick themselves up and man
-	# the operator consoles; the rest get to their feet and file out the corridor.
-	_set_arrival_crew_visible(true)     # Scott + medic tableau (Young prone, James kneel)
-	_recover_crew(land)
-	# Hold on the room while Park & Volker walk over and take the consoles.
-	await get_tree().create_timer(2.6).timeout
+	# to triage him. LtScott is already visible and positioned (handled in Wave 1
+	# above). Park & Volker pick themselves up and man the consoles; Rush & Brody
+	# get to their feet and file out the corridor. Eli is last.
+	_set_arrival_crew_visible(true)     # ColonelYoung + LtJames medic tableau
+	_recover_crew(rest_positions)
+	# Hold on the room while crew stagger to their feet (longest get-up: ~3.9s).
+	await get_tree().create_timer(4.5).timeout
 
-	# Eli stirs and climbs to his feet.
-	await get_tree().create_timer(0.5).timeout
+	# Eli stirs and climbs to his feet last.
+	await get_tree().create_timer(0.3).timeout
 	_lay_player_prone(false)
 	await get_tree().create_timer(1.4).timeout
 
@@ -600,26 +647,60 @@ func _reveal_crew_member(node_name: String) -> void:
 		(n as Node3D).visible = true
 
 
+# Move a persistent NPC to `pos` and tip its Model node prone (rotation.x = -PI*0.5),
+# then make it visible. Used by Wave 1 so Scott crumples at his ragdoll rest spot
+# before standing up a moment later via _stand_crew_member.
+func _place_crew_prone(node_name: String, pos: Vector3) -> void:
+	var npc: Node3D = _world.get_node_or_null(node_name) as Node3D
+	if npc == null:
+		return
+	npc.global_position = pos
+	var model: Node3D = npc.get_node_or_null("Model") as Node3D
+	if model != null:
+		model.rotation.x = -PI * 0.5
+		model.position.y = 0.1
+	npc.visible = true
+
+
+# Tween a persistent NPC's Model node from prone back to upright (same tween
+# as _lay_player_prone(false)). Used after _place_crew_prone to animate standing.
+func _stand_crew_member(node_name: String) -> void:
+	var npc: Node3D = _world.get_node_or_null(node_name) as Node3D
+	if npc == null:
+		return
+	var model: Node3D = npc.get_node_or_null("Model") as Node3D
+	if model == null:
+		return
+	var t: Tween = create_tween().set_parallel(true)
+	t.tween_property(model, "rotation:x", 0.0, 1.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.tween_property(model, "position:y", 0.0, 1.1)
+
+
 # After the crew have landed and lain there, they recover: Dr Park and Dr Volker
-# pick themselves up and walk over to man the two operator consoles (and stay);
-# everyone else who isn't a keeper (Young/James/Scott/Eli stay put) gets to their
-# feet and files out the exit corridor. `land` maps name → where each fell.
-func _recover_crew(land: Dictionary) -> void:
+# pick themselves up (staggered) and walk over to man the two operator consoles;
+# Rush and Brody also get up (later) and file out the exit corridor.
+# Young stays permanently prone (injured); James stays kneeling (no walker for them).
+# `rest_positions` maps character name → ragdoll rest position on the floor.
+func _recover_crew(rest_positions: Dictionary) -> void:
 	var half_z: float = room_size.y * 0.5
 	var console_l: Vector3 = Vector3(-6.6, 0.05, GATE_Z - 2.8)   # at the left operator console
 	var console_r: Vector3 = Vector3(6.6, 0.05, GATE_Z - 2.8)    # at the right operator console
 	var exit_pos: Vector3 = Vector3(0.0, 0.05, -half_z + 3.2)    # toward the corridor door
-	_recover_walker("Dr Park", "park", land.get("Dr Park", console_l), console_l, false)
-	_recover_walker("Dr Volker", "volker", land.get("Dr Volker", console_r), console_r, false)
-	_recover_walker("Dr Rush", "rush", land.get("Dr Rush", exit_pos), exit_pos, true)
-	_recover_walker("Dr Brody", "brody", land.get("Dr Brody", exit_pos), exit_pos, true)
+	# All four walkers are called without await so they run as concurrent coroutines.
+	# get_up_delay staggers when each one starts standing up (0-indexed from this call).
+	_recover_walker("Dr Park",  "park",  rest_positions.get("Dr Park",  console_l), console_l, false, 0.8)
+	_recover_walker("Dr Volker","volker",rest_positions.get("Dr Volker",console_r), console_r, false, 1.4)
+	_recover_walker("Dr Rush",  "rush",  rest_positions.get("Dr Rush",  exit_pos),  exit_pos,  true,  2.2)
+	_recover_walker("Dr Brody", "brody", rest_positions.get("Dr Brody", exit_pos),  exit_pos,  true,  2.8)
 
 
-# Spawn one recovered crew member at where they landed and walk them to a post.
+# Spawn one recovered crew member at where they landed, crumpled on the floor.
+# After `get_up_delay` seconds they groggily stand, then walk to their post.
 # `leave` = true means they're heading out (despawn once they reach the corridor);
-# false means they stay (e.g. manning a console). Reuses the returned-crew NPC
-# builder so they're full Quaternius, talkable bodies.
-func _recover_walker(display_name: String, kind: String, from: Vector3, to: Vector3, leave: bool) -> void:
+# false means they stay (e.g. manning a console). Multiple callers fire this
+# concurrently (no await in _recover_crew), so each walker is its own coroutine.
+func _recover_walker(display_name: String, kind: String, from: Vector3, to: Vector3,
+		leave: bool, get_up_delay: float = 0.0) -> void:
 	var npc: StaticBody3D = _build_returned_crew_npc(
 		display_name, kind, "res://models/characters/scott.glb", Color.WHITE)
 	# Anyone the returned-crew builder didn't author a line for gets a placeholder
@@ -633,9 +714,31 @@ func _recover_walker(display_name: String, kind: String, from: Vector3, to: Vect
 		npc.set("repeat_dialogue_tree", generic)
 	npc.position = from
 	npc.rotation.y = 0.0
+	# Lay prone before adding to tree so the first visible frame is crumpled.
 	_world.add_child(npc)
+	var model: Node3D = npc.get_node_or_null("Model") as Node3D
+	if model != null:
+		model.rotation.x = -PI * 0.5
+		model.position.y = 0.1
+
+	# Stagger: wait for this character's personal get-up timer.
+	await get_tree().create_timer(get_up_delay).timeout
+	if not is_instance_valid(npc):
+		return
+
+	# Stand up groggily via tween (same logic as _lay_player_prone(false)).
+	model = npc.get_node_or_null("Model") as Node3D
+	if model != null and is_instance_valid(model):
+		var t: Tween = create_tween().set_parallel(true)
+		t.tween_property(model, "rotation:x", 0.0, 1.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		t.tween_property(model, "position:y", 0.0, 1.1)
+	await get_tree().create_timer(1.1).timeout   # wait for stand tween to complete
+	if not is_instance_valid(npc):
+		return
+
+	# Now walk to post.
 	if npc.has_method("walk_to"):
-		npc.call("walk_to", to, 2.4, 0.2)
+		npc.call("walk_to", to, 2.4, 0.0)
 	if leave:
 		# Walked off down the corridor — remove once they've had time to reach it.
 		await get_tree().create_timer(6.0).timeout
@@ -644,24 +747,60 @@ func _recover_walker(display_name: String, kind: String, from: Vector3, to: Vect
 
 
 # Launch one throwaway ragdoll on a ballistic arc from the event horizon toward a
-# landing spot (so Young can be thrown demonstrably farther than Eli). Gravity +
-# the tumble spin do the rest. Returns the body so the caller can free it once it
-# has settled.
-func _launch_ragdoll(character: String, target: Vector3) -> RigidBody3D:
-	var rb: RigidBody3D = _make_ragdoll(character)
-	_world.add_child(rb)
+# landing spot (so Young can be thrown demonstrably farther than Eli). The body's
+# PhysicalBone3D bones ARE the physics — they fall under their own gravity and
+# carry the launch velocity, tumbling limb-by-limb. The root Node3D stays at the
+# gate (the bones move in world space), so read the landed spot from the hips bone
+# via _ragdoll_rest_pos(). Returns the root so the caller can free it once settled.
+func _launch_ragdoll(character: String, target: Vector3) -> Node3D:
+	var root: Node3D = _make_ragdoll(character)
+	_world.add_child(root)
+	# Position the body at the event-horizon mouth BEFORE building the bones so they
+	# start simulating from the correct world position.
 	var origin: Vector3 = Vector3(0.0, _gate_center_y(), GATE_Z - 0.4)
-	rb.global_position = origin
-	var g: float = float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
-	var flight: float = 1.0
-	var disp: Vector3 = target - origin
+	root.global_position = origin
 	# Ballistic solve: reach target.y at t=flight under gravity.
+	var g: float = float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
+	var flight: float = 1.8
+	var disp: Vector3 = target - origin
 	var vy: float = (disp.y + 0.5 * g * flight * flight) / flight
-	rb.linear_velocity = Vector3(disp.x / flight, vy, disp.z / flight)
+	var launch_vel: Vector3 = Vector3(disp.x / flight, vy, disp.z / flight)
 	# Hard tumble — magnitude scales with throw distance (deterministic, no RNG).
 	var spin: float = 4.0 + absf(disp.z) * 0.6
-	rb.angular_velocity = Vector3(spin, spin * 0.5, spin * 0.7)
-	return rb
+	var launch_ang: Vector3 = Vector3(spin, spin * 0.5, spin * 0.7)
+	# Build the physical skeleton and start it WITH the launch velocity in the same
+	# frame, so every bone leaves the gate on one arc (no 1-frame free-fall gap).
+	_setup_ragdoll_physics(root, launch_vel, launch_ang)
+	return root
+
+
+# The RagdollSim simulator under a ragdoll root (or null).
+func _ragdoll_sim(root: Node3D) -> PhysicalBoneSimulator3D:
+	var model: Node3D = root.get_node_or_null("Model")
+	if model == null:
+		return null
+	var mc: Node3D = null
+	for c: Node in model.get_children():
+		mc = c as Node3D
+		break
+	if mc == null:
+		return null
+	var skel: Skeleton3D = _find_skel_in_mc(mc)
+	if skel == null:
+		return null
+	return skel.get_node_or_null("RagdollSim") as PhysicalBoneSimulator3D
+
+
+# Where the ragdoll actually came to rest — the hips bone's world position (the
+# root never moves; only the bones do). Falls back to the root position.
+func _ragdoll_rest_pos(root: Node3D) -> Vector3:
+	var sim: PhysicalBoneSimulator3D = _ragdoll_sim(root)
+	if sim != null:
+		var hips: Node = sim.get_node_or_null("PB_Hips")
+		if hips is Node3D:
+			var p: Vector3 = (hips as Node3D).global_position
+			return Vector3(p.x, 0.05, p.z)
+	return Vector3(root.global_position.x, 0.05, root.global_position.z)
 
 
 # Toggle Lt Scott's walk-up auto-greet (held off during the cold open so the
@@ -720,33 +859,148 @@ func _lay_player_prone(prone: bool) -> void:
 		t.tween_property(model, "position:y", 0.0, 1.1)
 
 
-# One throwaway ragdoll: RigidBody3D + capsule + the character's Quaternius body
-# (limp). Collides with the deck/walls (layer 1) but not the player.
-func _make_ragdoll(character: String) -> RigidBody3D:
-	var rb: RigidBody3D = RigidBody3D.new()
-	rb.name = "Ragdoll_" + character.replace(" ", "")
-	rb.collision_layer = 0
-	rb.collision_mask = 1            # fall onto the floor/walls, ignore the player
-	rb.mass = 70.0
-	var cs: CollisionShape3D = CollisionShape3D.new()
-	var cap: CapsuleShape3D = CapsuleShape3D.new()
-	cap.radius = 0.32
-	cap.height = 1.7
-	cs.shape = cap
-	rb.add_child(cs)
+# One throwaway ragdoll: RigidBody3D root wrapper + Quaternius skeletal body.
+# NOTE: the skeleton + PhysicalBone3D setup is deferred to _setup_ragdoll_physics,
+# which _launch_ragdoll calls after _world.add_child(rb) so that mc._ready() has
+# fired (ModularCharacter._ready builds _skel and the base gltf). If called before
+# the node is in the scene tree, mc._ready() does not fire, _skel stays null,
+# and _find_skel_in_mc returns null — hence the two-phase design.
+func _make_ragdoll(character: String) -> Node3D:
+	# Static root — the bones (PhysicalBone3D) own all motion in world space, so the
+	# root just anchors the initial pose at the gate mouth and never moves itself.
+	var root: Node3D = Node3D.new()
+	root.name = "Ragdoll_" + character.replace(" ", "")
+	root.set_meta("ragdoll_character", character)
+
+	# Visual + skeleton holder — models export +Z forward, flip to face the room.
 	var holder: Node3D = Node3D.new()
 	holder.name = "Model"
 	holder.rotation.y = PI
-	holder.position = Vector3(0.0, -0.85, 0.0)   # feet near the capsule bottom
-	rb.add_child(holder)
+	root.add_child(holder)
+
+	# Build the Quaternius modular body and attach it. mc._ready() fires once root
+	# is added to _world (in _launch_ragdoll), populating its Skeleton3D.
 	var mc: Node3D = CharacterFactoryRef.build_modular(character)
 	if mc != null:
 		holder.add_child(mc)
 		CharacterFactoryRef.dress_modular(mc, character, CharacterFactoryRef.CTX_SHIP)
-		# Stop any autoplay so the body tumbles limp (a played clip on the modular
-		# rig triggers "Invalid array format for surface" — see CharacterFactory).
-		_stop_anim(mc)
-	return rb
+	return root
+
+
+# Build the PhysicalBoneSimulator3D + 13 PhysicalBone3D limbs under the body's
+# Skeleton3D, start the simulation, and impart the launch velocity to every bone
+# in the SAME frame so the whole skeleton leaves the gate on one ballistic arc and
+# tumbles limb-by-limb. Called after _world.add_child(root) so mc._ready() has fired.
+func _setup_ragdoll_physics(root: Node3D, vel: Vector3, ang: Vector3) -> void:
+	var model: Node3D = root.get_node_or_null("Model")
+	if model == null:
+		return
+	var mc: Node3D = null
+	for c: Node in model.get_children():
+		mc = c as Node3D
+		break
+	if mc == null:
+		return
+
+	# mc._ready() has fired (root is in the tree) → _skel is populated. Stop the
+	# autoplay so bones start from the rest pose, not mid-walk.
+	_stop_anim(mc)
+
+	var skel: Skeleton3D = _find_skel_in_mc(mc)
+	if skel == null:
+		var char_name: String = String(root.get_meta("ragdoll_character", "?"))
+		push_warning("_setup_ragdoll_physics: Skeleton3D not found for '%s'" % char_name)
+		return
+
+	# Create the PhysicalBoneSimulator3D as a direct child of the Skeleton3D.
+	# Godot resolves bone IDs via Skeleton3D → PhysicalBoneSimulator3D → PhysicalBone3D.
+	var sim: PhysicalBoneSimulator3D = PhysicalBoneSimulator3D.new()
+	sim.name = "RagdollSim"
+	skel.add_child(sim)
+
+	# --- Major bones with capsule sizes for Quaternius humanoid proportions ---
+	# Base model is ~1.85 m at default scale; sizes are in world-space metres.
+	# collision_layer=0 → bones are not hittable by raycasts.
+	# collision_mask=1 → bones collide with floor/walls (layer 1), not player (layer 2).
+	# Torso chain.
+	_make_physical_bone(sim, "Hips",       0.15, 0.30, PhysicalBone3D.JOINT_TYPE_CONE)
+	_make_physical_bone(sim, "Spine",      0.13, 0.28, PhysicalBone3D.JOINT_TYPE_CONE)
+	_make_physical_bone(sim, "Chest",      0.14, 0.28, PhysicalBone3D.JOINT_TYPE_CONE)
+	_make_physical_bone(sim, "UpperChest", 0.13, 0.22, PhysicalBone3D.JOINT_TYPE_CONE)
+	_make_physical_bone(sim, "Head",       0.12, 0.24, PhysicalBone3D.JOINT_TYPE_CONE)
+	# Arms.
+	_make_physical_bone(sim, "LeftUpperArm",  0.07, 0.28, PhysicalBone3D.JOINT_TYPE_CONE)
+	_make_physical_bone(sim, "RightUpperArm", 0.07, 0.28, PhysicalBone3D.JOINT_TYPE_CONE)
+	_make_physical_bone(sim, "LeftLowerArm",  0.06, 0.26, PhysicalBone3D.JOINT_TYPE_HINGE)
+	_make_physical_bone(sim, "RightLowerArm", 0.06, 0.26, PhysicalBone3D.JOINT_TYPE_HINGE)
+	# Legs.
+	_make_physical_bone(sim, "LeftUpperLeg",  0.10, 0.38, PhysicalBone3D.JOINT_TYPE_CONE)
+	_make_physical_bone(sim, "RightUpperLeg", 0.10, 0.38, PhysicalBone3D.JOINT_TYPE_CONE)
+	_make_physical_bone(sim, "LeftLowerLeg",  0.08, 0.36, PhysicalBone3D.JOINT_TYPE_HINGE)
+	_make_physical_bone(sim, "RightLowerLeg", 0.08, 0.36, PhysicalBone3D.JOINT_TYPE_HINGE)
+
+	# Log any bones that failed to resolve — silent failure = no per-bone tumble.
+	var char_name2: String = String(root.get_meta("ragdoll_character", "?"))
+	for pb_child: Node in sim.get_children():
+		if pb_child is PhysicalBone3D:
+			var pb: PhysicalBone3D = pb_child as PhysicalBone3D
+			if pb.get_bone_id() < 0:
+				push_warning("_setup_ragdoll_physics: bone '%s' unresolved for '%s'" % [pb.bone_name, char_name2])
+
+	# Start the per-bone physics simulation, then immediately impart the throw so the
+	# whole skeleton leaves the gate on one ballistic arc and tumbles from there.
+	sim.physical_bones_start_simulation()
+	for pb_child2: Node in sim.get_children():
+		if pb_child2 is PhysicalBone3D:
+			(pb_child2 as PhysicalBone3D).linear_velocity = vel
+			(pb_child2 as PhysicalBone3D).angular_velocity = ang
+
+
+# Recursive depth-first search for the Skeleton3D inside a ModularCharacter node.
+# ModularCharacter.skeleton() returns _skel if mc has already entered the tree
+# (its _ready has fired). Falling back to a recursive walk handles edge cases where
+# the method is unavailable or returns null.
+func _find_skel_in_mc(mc: Node3D) -> Skeleton3D:
+	if mc.has_method("skeleton"):
+		var s: Variant = mc.call("skeleton")
+		if s is Skeleton3D:
+			return s as Skeleton3D
+	var stack: Array = [mc as Node]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is Skeleton3D:
+			return n as Skeleton3D
+		for c: Node in n.get_children():
+			stack.append(c)
+	return null
+
+
+# Create one PhysicalBone3D child of `sim`, assigned to `p_bone_name` on the
+# parent Skeleton3D, with a CapsuleShape3D collider. collision_layer=0 so the
+# bone is not a hittable target; collision_mask=1 so it reacts to floor/walls.
+func _make_physical_bone(
+		sim: PhysicalBoneSimulator3D,
+		p_bone_name: String,
+		cap_radius: float,
+		cap_height: float,
+		j_type: int) -> PhysicalBone3D:
+	var pb: PhysicalBone3D = PhysicalBone3D.new()
+	pb.name = "PB_" + p_bone_name
+	pb.bone_name = p_bone_name
+	pb.joint_type = j_type
+	pb.collision_layer = 0
+	pb.collision_mask = 1
+	pb.mass = 4.0
+	pb.linear_damp = 0.5
+	pb.angular_damp = 0.8
+	var bone_cs: CollisionShape3D = CollisionShape3D.new()
+	var bone_cap: CapsuleShape3D = CapsuleShape3D.new()
+	bone_cap.radius = cap_radius
+	bone_cap.height = cap_height
+	bone_cs.shape = bone_cap
+	pb.add_child(bone_cs)
+	sim.add_child(pb)
+	return pb
 
 
 # Halt the first AnimationPlayer under `root` so a tumbling ragdoll body stays
@@ -782,8 +1036,14 @@ func _collapse_gate() -> void:
 
 # Show/hide the crew that arrive through the gate during the cold open, so the
 # ragdoll burst isn't pre-empted by them standing at their posts.
+# When showing (vis=true) LtScott is excluded — he was already revealed and
+# stood up in Wave 1 via _place_crew_prone / _stand_crew_member, so re-showing
+# him here would reset his position to the authored spawn spot.
 func _set_arrival_crew_visible(vis: bool) -> void:
-	for node_name in ["LtScott", "ColonelYoung", "LtJames", "GateBrody", "GateRush", "GatePark"]:
+	var names: Array = ["LtScott", "ColonelYoung", "LtJames", "GateBrody", "GateRush", "GatePark"]
+	for node_name in names:
+		if vis and node_name == "LtScott":
+			continue   # Scott is already positioned by Wave 1 — skip
 		var n: Node = _world.get_node_or_null(node_name)
 		if n is Node3D:
 			(n as Node3D).visible = vis
@@ -2074,7 +2334,7 @@ func _build_gate_phase_e_crew() -> void:
 # James is the only talkable NPC in this cluster. The spot is also where the
 # prologue's "Young thrown farthest" ragdoll lands, so the reveal is seamless.
 func _build_medic_tableau() -> void:
-	var tableau_center: Vector3 = Vector3(-4.0, 0.0, 2.0)
+	var tableau_center: Vector3 = Vector3(-3.0, 0.0, -15.0)
 
 	# --- Colonel Young — laid out on his back ----
 	_build_tableau_npc(

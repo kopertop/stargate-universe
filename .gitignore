@@ -52,7 +52,7 @@ out/
 
 # In-game / debug screenshot dumps (committed reference shots stay tracked,
 # only the per-run output dir is ignored)
-screenshots/result/
+screenshots/
 
 # Local agent workspaces (per-developer skill/tooling caches — not project state)
 .agents/

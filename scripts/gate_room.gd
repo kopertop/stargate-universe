@@ -827,15 +827,22 @@ func _set_scott_autogreet(on: bool) -> void:
 
 
 # Temp head-on Camera3D under the room, made current for the cold open. The
-# player's SpringArm camera is restored by _restore_player_camera().
+# player's SpringArm camera is restored by _restore_player_camera(). A slow,
+# steady push-in toward the gate runs across the whole cinematic for cinematic
+# life (no handheld shake — that wasn't wanted).
 func _make_cinematic_camera() -> Camera3D:
 	var cam: Camera3D = Camera3D.new()
 	cam.name = "PrologueCam"
 	cam.fov = 58.0
 	add_child(cam)
-	cam.global_position = Vector3(0.0, 2.6, GATE_Z - 15.2)
-	cam.look_at(Vector3(0.0, 2.6, GATE_Z), Vector3.UP)
+	var start_z: float = GATE_Z - 16.5
+	cam.global_position = Vector3(0.0, 2.5, start_z)
+	cam.look_at(Vector3(0.0, 2.7, GATE_Z), Vector3.UP)
 	cam.make_current()
+	# Slow dolly in: creep ~4.5 m toward the gate over the cinematic (~34s).
+	var t: Tween = create_tween()
+	t.tween_property(cam, "global_position:z", start_z + 4.5, 34.0) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	return cam
 
 

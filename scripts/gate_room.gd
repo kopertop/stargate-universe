@@ -639,31 +639,81 @@ func _play_prologue_cinematic() -> void:
 	_set_scott_autogreet(true)
 
 
-# Throw a pair of background crew (and optionally a crate) head-first through the
-# gate, ≤2 in the air, then hand each off to a recovered NPC that gets up. Names
-# are real SGU cast. `crate_spot` (if non-zero) tumbles a crate in with them.
+# Throw a pair of crew (and optionally a crate) head-first through the gate, ≤2 in
+# the air. Each crew member is a REAL persistent interactable NPC whose own body is
+# the ragdoll that flies through — the SAME body lands, settles, and stays as the
+# character (no throwaway-then-spawn swap). Names are real SGU cast.
 func _extra_pair(a_name: String, a_kind: String, a_spot: Vector3,
 		b_name: String, b_kind: String, b_spot: Vector3,
 		crate_spot: Vector3 = Vector3.ZERO) -> void:
-	var ra: Node3D = _launch_ragdoll(a_name, a_spot)
+	var na: StaticBody3D = _throw_persistent_crew(a_name, a_kind, a_spot)
 	await get_tree().create_timer(0.35).timeout
-	var rb: Node3D = _launch_ragdoll(b_name, b_spot)
-	var crate: RigidBody3D = null
+	var nb: StaticBody3D = _throw_persistent_crew(b_name, b_kind, b_spot)
 	if crate_spot != Vector3.ZERO:
-		crate = _launch_crate(crate_spot)
-	await get_tree().create_timer(2.1).timeout
-	# Hand off at the EXACT aimed spots (where we expect them), not the mid-flight
-	# hips — keeps the crowd spread out instead of clustered at the gate.
-	var na: Node3D = _spawn_crew_prone(a_name, a_kind, a_spot)
-	if is_instance_valid(ra): ra.queue_free()
-	var nb: Node3D = _spawn_crew_prone(b_name, b_kind, b_spot)
-	if is_instance_valid(rb): rb.queue_free()
-	if crate != null:
-		_settle_crate(crate)
-	# Stagger them onto their feet (dazed crowd milling in the gate room).
-	_stand_after(na, 1.2)
-	_stand_after(nb, 2.0)
+		_launch_crate(crate_spot)
+	await get_tree().create_timer(2.3).timeout   # full flight + settle
+	# Stop the ragdoll on each body and leave THE SAME body, where it landed, in a
+	# beaten-up kneel/sit (nobody pops straight up after a hit like that).
+	_settle_persistent_crew(na)
+	_settle_persistent_crew(nb)
 	await get_tree().create_timer(0.6).timeout
+
+
+# Build a REAL interactable crew NPC, dive it HEAD-FIRST through the gate as a
+# ragdoll (its own skeleton is the physics body), and return it. After it lands,
+# call _settle_persistent_crew() to stop the sim and leave the same body in place.
+func _throw_persistent_crew(display_name: String, kind: String, spot: Vector3) -> StaticBody3D:
+	var npc: StaticBody3D = _build_returned_crew_npc(
+		display_name, kind, "res://models/characters/scott.glb", Color.WHITE)
+	var tree: Variant = npc.get("dialogue_tree")
+	if tree == null or (tree is Array and (tree as Array).is_empty()):
+		var generic: Array = [{"speaker": display_name,
+			"text": "Still shaking that off. Give me a second.",
+			"choices": [{"text": "(nod)", "next": "exit"}]}]
+		npc.set("dialogue_tree", generic)
+		npc.set("repeat_dialogue_tree", generic)
+	# Spawn clear of the ring collider so the body flies cleanly into the room.
+	var origin: Vector3 = Vector3(0.0, _gate_center_y(), GATE_Z - 2.0)
+	npc.position = origin
+	npc.set_meta("arrival_spot", spot)
+	_world.add_child(npc)
+	# Dive head-first: pitch the body horizontal, head leading toward the room.
+	var model: Node3D = npc.get_node_or_null("Model") as Node3D
+	if model != null:
+		model.rotation = Vector3(-PI * 0.5, PI, 0.0)
+	# Ballistic head-first throw toward the spot.
+	var g: float = float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
+	var flight: float = 1.45
+	var disp: Vector3 = spot - origin
+	var vy: float = (disp.y + 0.5 * g * flight * flight) / flight
+	var vel: Vector3 = Vector3(disp.x / flight, vy, disp.z / flight)
+	var spin: float = 4.0 + absf(disp.z) * 0.5
+	_setup_ragdoll_physics(npc, vel, Vector3(spin, spin * 0.5, spin * 0.7))
+	return npc
+
+
+# Stop a thrown crew member's ragdoll and leave THE SAME body where it landed, in
+# a beaten-up kneel/sit. No swap, no free — this is the persistent character.
+func _settle_persistent_crew(npc: StaticBody3D) -> void:
+	if npc == null or not is_instance_valid(npc):
+		return
+	var rest: Vector3 = _ragdoll_rest_pos(npc)
+	var sim: PhysicalBoneSimulator3D = _ragdoll_sim(npc)
+	if sim != null:
+		sim.physical_bones_stop_simulation()
+	npc.global_position = rest    # same body stays exactly where it came to rest
+	var model: Node3D = npc.get_node_or_null("Model") as Node3D
+	if model != null:
+		model.rotation = Vector3(0.0, PI, 0.0)
+	# Beaten-up pose: sit/crouch, hunched — they took a hard hit (ModularCharacter
+	# play_clip falls back gracefully if a clip is missing).
+	var mc: Node3D = null
+	if model != null:
+		for c: Node in model.get_children():
+			mc = c as Node3D
+			break
+	if mc != null and mc.has_method("play_clip"):
+		mc.call("play_clip", "sit")
 
 
 # Stand a spawned NPC up after `delay` seconds (fire-and-forget coroutine).
@@ -679,17 +729,22 @@ func _launch_crate(target: Vector3) -> RigidBody3D:
 	crate.name = "ArrivalCrate"
 	crate.collision_layer = 0
 	crate.collision_mask = 1            # land on the deck/walls, ignore the player
-	crate.mass = 40.0
-	crate.linear_damp = 0.6
-	crate.angular_damp = 0.9
+	# A real, heavy crate: weight + gravity make it tip onto a face and settle FLAT
+	# (we never freeze it mid-tumble). Strong angular damping kills residual spin so
+	# it doesn't come to rest on an edge/corner.
+	crate.mass = 80.0
+	crate.linear_damp = 0.3
+	crate.angular_damp = 3.0
+	# RECTANGULAR — longer than it is wide or tall (a footlocker/supply crate).
+	var crate_size: Vector3 = Vector3(1.4, 0.55, 0.85)
 	var cs: CollisionShape3D = CollisionShape3D.new()
 	var box: BoxShape3D = BoxShape3D.new()
-	box.size = Vector3(0.8, 0.8, 0.8)
+	box.size = crate_size
 	cs.shape = box
 	crate.add_child(cs)
 	var mi: MeshInstance3D = MeshInstance3D.new()
 	var bm: BoxMesh = BoxMesh.new()
-	bm.size = Vector3(0.8, 0.8, 0.8)
+	bm.size = crate_size
 	mi.mesh = bm
 	var mat: StandardMaterial3D = StandardMaterial3D.new()
 	mat.albedo_color = Color(0.32, 0.30, 0.26, 1.0)   # placeholder crate grey-brown
@@ -704,14 +759,15 @@ func _launch_crate(target: Vector3) -> RigidBody3D:
 	var flight: float = 1.6
 	var disp: Vector3 = target - origin
 	crate.linear_velocity = Vector3(disp.x / flight, (disp.y + 0.5 * g * flight * flight) / flight, disp.z / flight)
-	crate.angular_velocity = Vector3(5.0, 3.0, 4.0)
+	# Gentle tumble only — it lands and settles flat on a face under its own weight.
+	crate.angular_velocity = Vector3(1.6, 1.0, 1.2)
 	return crate
 
 
-# Stop a crate where it landed so it doesn't keep drifting.
-func _settle_crate(crate: RigidBody3D) -> void:
-	if crate != null and is_instance_valid(crate):
-		crate.freeze = true
+# Crates now settle flat under their own weight (gravity + angular damping); no
+# premature freeze that would lock them at an angle. Kept as a no-op hook.
+func _settle_crate(_crate: RigidBody3D) -> void:
+	pass
 
 
 # Hand a flying-through ragdoll off to a PRE-BUILT, PRE-POSED tableau NPC (Young

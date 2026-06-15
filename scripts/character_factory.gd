@@ -265,8 +265,9 @@ const GENERIC_HAIR_COLORS: Array[Color] = [
 
 static func _generic_mod(character_name: String, military: bool) -> Dictionary:
 	var h: int = character_name.hash()
-	# Soldiers skew male/buzzed (duty look); civilians mix freely.
-	var female: bool = (h >> 3) % (4 if military else 2) == 0
+	# Military default to MALE (Sgt/Lt/Col etc. — named female officers like Lt James
+	# have explicit profiles); civilians mix male/female deterministically.
+	var female: bool = false if military else ((h >> 3) % 2 == 0)
 	var gender: String = "Female" if female else "Male"
 	var pool: Array[String] = GENERIC_HAIR_FEMALE if female else GENERIC_HAIR_MALE
 	var hair: String = pool[0] if military else pool[(h >> 5) % pool.size()]
@@ -292,9 +293,23 @@ const ALIASES: Dictionary = {
 static func is_military(character_name: String) -> bool:
 	if PROFILES.has(character_name):
 		return bool(PROFILES[character_name]["military"])
+	# Rank prefixes are military (Sgt/Lt/Cpl/Pvt/Colonel/Major/Captain/...), plus the
+	# generic spawn keywords. "Dr"/civilian names fall through to non-military.
 	return character_name.contains("Greer") \
 		or character_name.contains("Scott") \
-		or character_name.contains("Soldier")
+		or character_name.contains("Soldier") \
+		or character_name.contains("Marine") \
+		or character_name.contains("Sgt") \
+		or character_name.contains("Sergeant") \
+		or character_name.contains("Lt ") \
+		or character_name.contains("Lieutenant") \
+		or character_name.contains("Cpl") \
+		or character_name.contains("Corporal") \
+		or character_name.contains("Pvt") \
+		or character_name.contains("Private") \
+		or character_name.contains("Colonel") \
+		or character_name.contains("Major") \
+		or character_name.contains("Captain")
 
 
 # Resolve a character's base model path, falling back to a per-site default

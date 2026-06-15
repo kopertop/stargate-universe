@@ -34,12 +34,12 @@ func _run() -> void:
 	# Snapshot marks (seconds) for the paired-wave cinematic (~23s): dial → Scott
 	# (solo) → Young+James → Park+Volker → Eli → settle.
 	var marks := [
-		[4.5,  prefix + "_2_flush.png"],        # kawoosh flush toward camera
-		[6.8,  prefix + "_3_scott.png"],        # Scott landed/standing (wave 1)
-		[11.0, prefix + "_4_young_james.png"],  # Young + James down (wave 2)
-		[15.5, prefix + "_5_park_volker.png"],  # Park + Volker at consoles (wave 3)
-		[20.5, prefix + "_6_eli.png"],          # Eli landed (wave 4)
-		[24.5, prefix + "_7_final.png"],        # settled room
+		[5.8,  prefix + "_2_scott_dive.png"],   # Scott diving/landed head-first
+		[9.5,  prefix + "_3_james.png"],         # James landed forward; Young off-screen
+		[14.0, prefix + "_4_park_crate.png"],    # Park + crate
+		[22.0, prefix + "_5_crowd.png"],         # extras pouring in (soldiers/scientists)
+		[30.0, prefix + "_6_eli.png"],           # Eli landing last
+		[36.0, prefix + "_7_final.png"],         # settled room, crowd milling
 	]
 	var elapsed := 0.0
 	for m in marks:

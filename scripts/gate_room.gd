@@ -538,54 +538,88 @@ func _play_prologue_cinematic() -> void:
 	await get_tree().create_timer(0.8).timeout
 	await dial_and_open(true)
 
-	# Crew are HURLED through, never more than TWO in the air at once. Each ragdoll
-	# is handed off to the persistent character AT ITS RESTING SPOT in the same
-	# frame it's freed — no vanish/replace pop.
+	# Crew come RUNNING through the gate (escaping a planet about to blow), so they
+	# dive HEAD-FIRST with limbs flailing behind, never more than TWO in the air at
+	# once. Each body is handed off to the persistent character AT ITS RESTING SPOT
+	# the same frame it's freed — no vanish/replace pop.
 
 	# WAVE 1 — Scott (solo): lands clear of the gate, picks himself up, radios.
-	var r_scott: Node3D = _launch_ragdoll("Lt Scott", Vector3(2.6, 0.05, GATE_Z - 5.5))
-	GameState.add_log("Lt Scott is hurled through the gate!")
-	await get_tree().create_timer(1.7).timeout
-	_place_crew_prone("LtScott", _ragdoll_rest_pos(r_scott))   # reveal Scott where he fell
-	if is_instance_valid(r_scott): r_scott.queue_free()        # free SAME frame → seamless
+	var scott_spot: Vector3 = Vector3(2.6, 0.05, GATE_Z - 5.5)
+	var r_scott: Node3D = _launch_ragdoll("Lt Scott", scott_spot)
+	GameState.add_log("Lt Scott comes barrelling through the gate!")
+	await get_tree().create_timer(1.9).timeout
+	# Reveal Scott at his exact landing spot (where we expect him), free the body
+	# the SAME frame → seamless, no clustering at the gate.
+	_place_crew_prone("LtScott", scott_spot)
+	if is_instance_valid(r_scott): r_scott.queue_free()
 	await get_tree().create_timer(1.2).timeout
 	_stand_crew_member("LtScott")
 	GameState.add_log("Lt Scott: It's clear! Send the rest through!")
-	await get_tree().create_timer(0.9).timeout
-
-	# WAVE 2 — Colonel Young + Lt James (2): Young thrown deep, stays DOWN (injured);
-	# James lands beside him and comes up as the medic.
-	var r_young: Node3D = _launch_ragdoll("Colonel Young", Vector3(-1.5, 0.05, -6.5))
-	await get_tree().create_timer(0.35).timeout
-	var r_james: Node3D = _launch_ragdoll("Lt James", Vector3(0.8, 0.05, -5.5))
-	await get_tree().create_timer(1.8).timeout
-	_handoff_tableau(r_young, "ColonelYoung")   # stays prone (injured), reposed to rest spot
-	_handoff_tableau(r_james, "LtJames")        # comes up kneeling beside Young
-	GameState.add_log("Colonel Young's down — Lt James is on him!")
-	await get_tree().create_timer(0.9).timeout
-
-	# WAVE 3 — Dr Park + Dr Volker (2): land at the consoles, get up, man them.
-	var r_park: Node3D = _launch_ragdoll("Dr Park", Vector3(-3.5, 0.05, GATE_CONSOLE_Z - 1.0))
-	await get_tree().create_timer(0.35).timeout
-	var r_volker: Node3D = _launch_ragdoll("Dr Volker", Vector3(3.5, 0.05, GATE_CONSOLE_Z - 1.0))
-	await get_tree().create_timer(1.8).timeout
-	var park_npc: Node3D = _spawn_crew_prone("Dr Park", "park", _ragdoll_rest_pos(r_park))
-	if is_instance_valid(r_park): r_park.queue_free()
-	var volker_npc: Node3D = _spawn_crew_prone("Dr Volker", "volker", _ragdoll_rest_pos(r_volker))
-	if is_instance_valid(r_volker): r_volker.queue_free()
-	await get_tree().create_timer(1.5).timeout
-	_stand_npc(park_npc)
 	await get_tree().create_timer(0.8).timeout
-	_stand_npc(volker_npc)
-	await get_tree().create_timer(1.2).timeout
 
-	# WAVE 4 — Eli (solo, the player): lands last, groggily climbs to his feet.
-	var r_eli: Node3D = _launch_ragdoll("Eli", Vector3(-0.6, 0.05, GATE_Z - 6.5))
+	# WAVE 2 — Colonel Young + Lt James. Young is thrown the HARDEST — he flies clean
+	# OFF-SCREEN (behind the camera) and stays down, injured. James lands forward in
+	# view, gets to her feet, and only THEN realises Young's down and hurries to him.
+	var young_spot: Vector3 = Vector3(-3.0, 0.05, -15.0)   # behind the camera = off-screen
+	var james_spot: Vector3 = Vector3(1.0, 0.05, -2.5)
+	var r_young: Node3D = _launch_ragdoll("Colonel Young", young_spot)
+	await get_tree().create_timer(0.35).timeout
+	var r_james: Node3D = _launch_ragdoll("Lt James", james_spot)
+	await get_tree().create_timer(2.1).timeout
+	_handoff_tableau(r_young, "ColonelYoung", young_spot)   # prone, off-screen, stays down
+	var james_npc: Node3D = _spawn_crew_prone("Lt James", "", james_spot)
+	if is_instance_valid(r_james): r_james.queue_free()
+	await get_tree().create_timer(1.7).timeout
+	_stand_npc(james_npc)                       # James pushes up to her feet...
+	await get_tree().create_timer(2.0).timeout  # ...a beat — she doesn't notice him yet
+	GameState.add_log("Lt James: ...Colonel? Colonel Young! — hang on, I'm coming!")
+	if james_npc != null and james_npc.has_method("walk_to"):
+		james_npc.call("walk_to", young_spot + Vector3(1.4, 0.0, 1.2), 2.8, 0.0)  # rushes to him
+	await get_tree().create_timer(0.8).timeout
+
+	# WAVE 3 — Dr Park + a supply crate: Park lands at her console, a crate tumbles in.
+	var park_spot: Vector3 = Vector3(-3.5, 0.05, GATE_CONSOLE_Z - 1.0)
+	var r_park: Node3D = _launch_ragdoll("Dr Park", park_spot)
+	await get_tree().create_timer(0.35).timeout
+	var c1: RigidBody3D = _launch_crate(Vector3(1.8, 0.05, 1.0))
+	await get_tree().create_timer(2.1).timeout
+	var park_npc: Node3D = _spawn_crew_prone("Dr Park", "park", park_spot)
+	if is_instance_valid(r_park): r_park.queue_free()
+	_settle_crate(c1)
+	await get_tree().create_timer(0.6).timeout
+
+	# WAVE 4 — Dr Volker + a crate.
+	var volker_spot: Vector3 = Vector3(3.5, 0.05, GATE_CONSOLE_Z - 1.0)
+	var r_volker: Node3D = _launch_ragdoll("Dr Volker", volker_spot)
+	await get_tree().create_timer(0.35).timeout
+	var c2: RigidBody3D = _launch_crate(Vector3(-2.2, 0.05, -1.5))
+	await get_tree().create_timer(2.1).timeout
+	var volker_npc: Node3D = _spawn_crew_prone("Dr Volker", "volker", volker_spot)
+	if is_instance_valid(r_volker): r_volker.queue_free()
+	_settle_crate(c2)
+	# Park & Volker pick themselves up and man the consoles.
+	_stand_after(park_npc, 1.0)
+	_stand_after(volker_npc, 1.8)
+	await get_tree().create_timer(0.6).timeout
+
+	# WAVES 5-8 — the rest of the crew pour through in pairs (with the odd crate),
+	# escaping the doomed planet: 4 soldiers + 4 scientists, real SGU cast names.
+	await _extra_pair("Sgt Greer", "greer", Vector3(5.5, 0.05, 3.0),
+			"Sgt Spencer", "", Vector3(-5.5, 0.05, 2.0))
+	await _extra_pair("Dr Brody", "", Vector3(6.2, 0.05, -2.0),
+			"Dr Franklin", "", Vector3(-6.2, 0.05, -1.0))
+	await _extra_pair("Sgt Riley", "", Vector3(4.2, 0.05, -6.0),
+			"Camile Wray", "", Vector3(-4.2, 0.05, -6.5), Vector3(2.6, 0.05, -4.0))
+	await _extra_pair("Sgt Dunning", "", Vector3(7.2, 0.05, 0.0),
+			"Chloe Armstrong", "", Vector3(-7.2, 0.05, 0.5))
+
+	# FINAL — Eli (solo, the player): last through, groggily climbs to his feet.
+	var eli_spot: Vector3 = Vector3(-0.6, 0.05, GATE_Z - 6.5)
+	var r_eli: Node3D = _launch_ragdoll("Eli", eli_spot)
 	GameState.add_log("Eli is hurled through and slams into the deck!")
-	await get_tree().create_timer(1.8).timeout
-	var eli_pos: Vector3 = _ragdoll_rest_pos(r_eli)
+	await get_tree().create_timer(2.1).timeout
 	if _player != null:
-		_player.global_position = eli_pos
+		_player.global_position = eli_spot
 		_lay_player_prone(true)
 		_show_player_model(true)
 	if is_instance_valid(r_eli): r_eli.queue_free()
@@ -605,12 +639,86 @@ func _play_prologue_cinematic() -> void:
 	_set_scott_autogreet(true)
 
 
+# Throw a pair of background crew (and optionally a crate) head-first through the
+# gate, ≤2 in the air, then hand each off to a recovered NPC that gets up. Names
+# are real SGU cast. `crate_spot` (if non-zero) tumbles a crate in with them.
+func _extra_pair(a_name: String, a_kind: String, a_spot: Vector3,
+		b_name: String, b_kind: String, b_spot: Vector3,
+		crate_spot: Vector3 = Vector3.ZERO) -> void:
+	var ra: Node3D = _launch_ragdoll(a_name, a_spot)
+	await get_tree().create_timer(0.35).timeout
+	var rb: Node3D = _launch_ragdoll(b_name, b_spot)
+	var crate: RigidBody3D = null
+	if crate_spot != Vector3.ZERO:
+		crate = _launch_crate(crate_spot)
+	await get_tree().create_timer(2.1).timeout
+	# Hand off at the EXACT aimed spots (where we expect them), not the mid-flight
+	# hips — keeps the crowd spread out instead of clustered at the gate.
+	var na: Node3D = _spawn_crew_prone(a_name, a_kind, a_spot)
+	if is_instance_valid(ra): ra.queue_free()
+	var nb: Node3D = _spawn_crew_prone(b_name, b_kind, b_spot)
+	if is_instance_valid(rb): rb.queue_free()
+	if crate != null:
+		_settle_crate(crate)
+	# Stagger them onto their feet (dazed crowd milling in the gate room).
+	_stand_after(na, 1.2)
+	_stand_after(nb, 2.0)
+	await get_tree().create_timer(0.6).timeout
+
+
+# Stand a spawned NPC up after `delay` seconds (fire-and-forget coroutine).
+func _stand_after(npc: Node3D, delay: float) -> void:
+	await get_tree().create_timer(delay).timeout
+	_stand_npc(npc)
+
+
+# Throw a supply crate (a plain box for now — we'll style it later) head-first
+# through the gate on the same ballistic arc the crew use. Returns the RigidBody.
+func _launch_crate(target: Vector3) -> RigidBody3D:
+	var crate: RigidBody3D = RigidBody3D.new()
+	crate.name = "ArrivalCrate"
+	crate.collision_layer = 0
+	crate.collision_mask = 1            # land on the deck/walls, ignore the player
+	crate.mass = 40.0
+	crate.linear_damp = 0.6
+	crate.angular_damp = 0.9
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = Vector3(0.8, 0.8, 0.8)
+	cs.shape = box
+	crate.add_child(cs)
+	var mi: MeshInstance3D = MeshInstance3D.new()
+	var bm: BoxMesh = BoxMesh.new()
+	bm.size = Vector3(0.8, 0.8, 0.8)
+	mi.mesh = bm
+	var mat: StandardMaterial3D = StandardMaterial3D.new()
+	mat.albedo_color = Color(0.32, 0.30, 0.26, 1.0)   # placeholder crate grey-brown
+	mat.metallic = 0.2
+	mat.roughness = 0.7
+	mi.material_override = mat
+	crate.add_child(mi)
+	_world.add_child(crate)
+	var origin: Vector3 = Vector3(0.0, _gate_center_y(), GATE_Z - 0.4)
+	crate.global_position = origin
+	var g: float = float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
+	var flight: float = 1.6
+	var disp: Vector3 = target - origin
+	crate.linear_velocity = Vector3(disp.x / flight, (disp.y + 0.5 * g * flight * flight) / flight, disp.z / flight)
+	crate.angular_velocity = Vector3(5.0, 3.0, 4.0)
+	return crate
+
+
+# Stop a crate where it landed so it doesn't keep drifting.
+func _settle_crate(crate: RigidBody3D) -> void:
+	if crate != null and is_instance_valid(crate):
+		crate.freeze = true
+
+
 # Hand a flying-through ragdoll off to a PRE-BUILT, PRE-POSED tableau NPC (Young
-# prone, James kneeling): reposition the NPC to the ragdoll's resting spot, reveal
-# it, then free the ragdoll the SAME frame so the body appears to settle into the
-# character (no vanish). Keeps the NPC's authored pose.
-func _handoff_tableau(rag: Node3D, node_name: String) -> void:
-	var pos: Vector3 = _ragdoll_rest_pos(rag) if is_instance_valid(rag) else Vector3.ZERO
+# prone): reposition the NPC to its expected landing spot, reveal it, then free
+# the ragdoll the SAME frame so the body appears to settle into the character (no
+# vanish). Keeps the NPC's authored pose.
+func _handoff_tableau(rag: Node3D, node_name: String, pos: Vector3) -> void:
 	var npc: Node3D = _world.get_node_or_null(node_name) as Node3D
 	if npc != null:
 		npc.global_position = pos
@@ -918,10 +1026,13 @@ func _make_ragdoll(character: String) -> Node3D:
 	root.name = "Ragdoll_" + character.replace(" ", "")
 	root.set_meta("ragdoll_character", character)
 
-	# Visual + skeleton holder — models export +Z forward, flip to face the room.
+	# Visual + skeleton holder. The crew were RUNNING when the gate flung them
+	# through, so they enter DIVING HEAD-FIRST: pitch the body forward to near-
+	# horizontal (head leading toward the room, -Z) — the limbs then flail behind
+	# under the launch (torso gets the speed, limbs trail; see _setup_ragdoll_physics).
 	var holder: Node3D = Node3D.new()
 	holder.name = "Model"
-	holder.rotation.y = PI
+	holder.rotation = Vector3(-PI * 0.5, PI, 0.0)
 	root.add_child(holder)
 
 	# Build the Quaternius modular body and attach it. mc._ready() fires once root
@@ -994,13 +1105,21 @@ func _setup_ragdoll_physics(root: Node3D, vel: Vector3, ang: Vector3) -> void:
 			if pb.get_bone_id() < 0:
 				push_warning("_setup_ragdoll_physics: bone '%s' unresolved for '%s'" % [pb.bone_name, char_name2])
 
-	# Start the per-bone physics simulation, then immediately impart the throw so the
-	# whole skeleton leaves the gate on one ballistic arc and tumbles from there.
+	# Start the per-bone physics simulation, then impart the throw. EVERY bone gets
+	# the full launch velocity so the body's centre of mass reaches the aimed spot
+	# (no undershoot/clustering). The head-first DIVE orientation (set in _make_
+	# ragdoll) makes it enter head-first; the limbs get extra spin so the arms and
+	# legs FLAIL behind during the flight (running-through-the-gate look).
+	var lead_bones := {"Hips": true, "Spine": true, "Chest": true, "UpperChest": true, "Head": true}
 	sim.physical_bones_start_simulation()
 	for pb_child2: Node in sim.get_children():
 		if pb_child2 is PhysicalBone3D:
-			(pb_child2 as PhysicalBone3D).linear_velocity = vel
-			(pb_child2 as PhysicalBone3D).angular_velocity = ang
+			var pb2: PhysicalBone3D = pb_child2 as PhysicalBone3D
+			pb2.linear_velocity = vel
+			if lead_bones.has(pb2.bone_name):
+				pb2.angular_velocity = ang
+			else:
+				pb2.angular_velocity = ang * 2.2   # limbs windmill/flail
 
 
 # Recursive depth-first search for the Skeleton3D inside a ModularCharacter node.
@@ -1513,6 +1632,13 @@ func _on_quest_objective_changed(_text: String) -> void:
 # console holders), the cross-room target uses the ExitDoor instance defined
 # in gate_room.tscn (target_room_id = "stargate_corridor_east_connector").
 func _refresh_quest_waypoint() -> void:
+	# Cold open: no quest marker until Lt Scott has come over and talked to us
+	# (that conversation is a guaranteed trigger — he walks up on his own). The
+	# first quest + its diamond only appear AFTER that beat (met_scott).
+	if not GameState.met_scott:
+		_destroy_quest_waypoint()
+		return
+
 	# Scout beat: the objective is "open the Kino Remote", which has no spatial
 	# target — the HUD shows a [Tab] guide instead. Suppress the diamond + the
 	# HUD edge-arrow (which follows the quest_waypoint group) entirely.

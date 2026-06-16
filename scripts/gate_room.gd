@@ -862,7 +862,13 @@ func _man_console_after(npc: Node3D, stand_pos: Vector3, delay: float) -> void:
 	var face: Vector3 = Vector3(stand_pos.x, npc.global_position.y, GATE_CONSOLE_Z)
 	if npc.global_position.distance_to(face) > 0.05:
 		npc.look_at(face, Vector3.UP)
-	_rise_npc(npc, "idle")
+	# Drop into the two-handed "working the console" pose (the frozen typing pose
+	# authored for Rush) rather than standing idle — Park/Volker man their stations.
+	var mc: Node3D = _first_mc(npc)
+	if mc != null and mc.has_method("pose_console_work"):
+		mc.call("pose_console_work")
+	else:
+		_rise_npc(npc, "idle")
 
 
 # Reveal a PRE-BUILT crew NPC at `pos` (where its thrown body came to rest), play

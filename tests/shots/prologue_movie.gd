@@ -26,9 +26,10 @@ func _run() -> void:
 	if hud is CanvasLayer:
 		(hud as CanvasLayer).visible = false
 
-	# Run long enough for the whole paired-wave cinematic (~23s) plus Scott's
-	# walk-up + first dialog beat. At --fixed-fps 30 that's ~31s → 930 frames.
-	var frames: int = 930
+	# Run long enough for the whole evac cinematic (dial + Scott's voiced "all clear"
+	# beat + 10 waves of projectile arrivals + crowd recovery + crews shoving the
+	# crates to the walls ~60s). At --fixed-fps 30 that's ~65s → 1950 frames.
+	var frames: int = 1950
 	for i in frames:
 		await process_frame
 	quit(0)

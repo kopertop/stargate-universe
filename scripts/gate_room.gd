@@ -582,6 +582,11 @@ func _play_prologue_cinematic() -> void:
 	# letterbox closed-caption.
 	await _scott_radio_line(scott)
 
+	# NOW that Scott's signalled it's safe, the rest pour through — and supplies with
+	# them: 10 crates rain in (fire-and-forget) while waves 2-8 arrive. Two-person
+	# teams stack them at the walls once everyone's up.
+	_launch_crate_wave()
+
 	# WAVE 2 — Colonel Young + Lt James. Young is thrown the HARDEST — clean OFF-SCREEN
 	# (behind the camera) and STAYS down face-down, injured. Lt James lands in view and
 	# kneels working over the deck (looping the repair animation — tending the wounded).
@@ -595,18 +600,14 @@ func _play_prologue_cinematic() -> void:
 	_settle_persistent_crew(james, "repair")     # kneels, loops the repair anim (medic)
 	await get_tree().create_timer(0.8).timeout
 
-	# WAVE 3 — Dr Park + a crate.
+	# WAVE 3 — Dr Park.
 	var park: StaticBody3D = _throw_persistent_crew("Dr Park", "park", Vector3(-3.5, 0.05, GATE_CONSOLE_Z - 1.0))
-	await get_tree().create_timer(0.35).timeout
-	_launch_crate(Vector3(1.8, 0.05, 1.0))
 	await get_tree().create_timer(2.2).timeout
 	_settle_persistent_crew(park, "crouch_idle")
 	await get_tree().create_timer(0.6).timeout
 
-	# WAVE 4 — Dr Volker + a crate.
+	# WAVE 4 — Dr Volker.
 	var volker: StaticBody3D = _throw_persistent_crew("Dr Volker", "volker", Vector3(3.5, 0.05, GATE_CONSOLE_Z - 1.0))
-	await get_tree().create_timer(0.35).timeout
-	_launch_crate(Vector3(-2.2, 0.05, -1.5))
 	await get_tree().create_timer(2.2).timeout
 	_settle_persistent_crew(volker, "crouch_idle")
 	# Park & Volker gather themselves, step onto their stations and FACE the consoles
@@ -621,9 +622,8 @@ func _play_prologue_cinematic() -> void:
 			"Sgt Spencer", "", Vector3(-5.5, 0.05, 0.5))
 	await _extra_pair("Dr Brody", "", Vector3(6.2, 0.05, -3.0),
 			"Dr Franklin", "", Vector3(-6.2, 0.05, -2.5))
-	# This crate lands RIGHT next to Sgt Riley (a near-miss — it skids in beside him).
 	await _extra_pair("Sgt Riley", "", Vector3(4.2, 0.05, -7.0),
-			"Camile Wray", "", Vector3(-4.2, 0.05, -7.5), Vector3(4.0, 0.05, -6.3))
+			"Camile Wray", "", Vector3(-4.2, 0.05, -7.5))
 	await _extra_pair("Sgt Dunning", "", Vector3(7.0, 0.05, -1.0),
 			"Chloe Armstrong", "", Vector3(-7.0, 0.05, -0.5))
 
@@ -655,14 +655,21 @@ func _play_prologue_cinematic() -> void:
 	_wake_consoles()
 	_set_scott_autogreet(true)
 
-	# A couple of soldiers pick themselves up and shove the loose crates to the side
-	# walls so nobody trips over them (or gets pinned).
-	var pushers: Array = []
-	for n in ["ReturnTeam_SgtGreer", "ReturnTeam_SgtDunning", "ReturnTeam_SgtRiley"]:
-		var p: Node = _world.get_node_or_null(n)
-		if p != null:
-			pushers.append(p)
-	_clear_crates_to_edges(pushers)
+	# Two-person teams pick themselves up and carry the loose crates to the side walls
+	# (one crew on each side, crate lifted between them) so nobody trips over them.
+	var team_names: Array = [
+		["ReturnTeam_SgtGreer", "ReturnTeam_SgtSpencer"],
+		["ReturnTeam_DrBrody", "ReturnTeam_DrFranklin"],
+		["ReturnTeam_SgtRiley", "ReturnTeam_CamileWray"],
+		["ReturnTeam_SgtDunning", "ReturnTeam_ChloeArmstrong"],
+	]
+	var teams: Array = []
+	for pair in team_names:
+		var a: Node = _world.get_node_or_null(pair[0])
+		var b: Node = _world.get_node_or_null(pair[1])
+		if a != null and b != null:
+			teams.append([a, b])
+	_carry_crates_to_edges(teams)
 
 
 # Throw a pair of crew (and optionally a crate) head-first through the gate, ≤2 in
@@ -743,12 +750,13 @@ func _fly_projectile(npc: StaticBody3D, spot: Vector3, flight: float) -> void:
 	# returns to spot.y at t=flight (apex height grows with flight → taller arc).
 	var vel: Vector3 = Vector3(disp.x / flight, (disp.y + 0.5 * g * flight * flight) / flight, disp.z / flight)
 	var model: Node3D = npc.get_node_or_null("Model") as Node3D
-	# Face-DOWN dive, head pointing along the horizontal travel — held FIXED (no
+	# Face-DOWN dive, HEAD pointing along the horizontal travel — held FIXED (no
 	# tumble) so the crew don't flip head-over-heels and so the mesh can't rotate
-	# below the deck. rotation.x = +PI/2 is face-down (same as the player prone).
+	# below the deck. rotation.x = +PI/2 is face-down (same as the player prone); the
+	# yaw is set so the HEAD leads (not feet-first).
 	var yaw: float = atan2(disp.x, disp.z)
 	if model != null and is_instance_valid(model):
-		model.rotation = Vector3(PI * 0.5, PI + yaw, 0.0)
+		model.rotation = Vector3(PI * 0.5, yaw, 0.0)
 		model.position.y = 0.1
 	var t: float = 0.0
 	while t < flight and is_instance_valid(npc):
@@ -985,6 +993,21 @@ func _consoles_call(method: String) -> void:
 
 const CRATE_SIZE: Vector3 = Vector3(1.4, 0.55, 0.85)   # footlocker: longer than wide/tall
 
+# Ten supply crates hurled through the gate, in pairs with a short stagger, to
+# open spots scattered across the room (clear of the consoles, the gate mouth, and
+# the player's landing). One skids in next to Sgt Riley. Fire-and-forget.
+func _launch_crate_wave() -> void:
+	var spots: Array[Vector3] = [
+		Vector3(2.2, 0.05, 2.4), Vector3(-2.6, 0.05, 2.0),
+		Vector3(3.6, 0.05, -1.2), Vector3(-3.8, 0.05, -1.0),
+		Vector3(4.0, 0.05, -6.3), Vector3(-4.4, 0.05, -5.6),   # first one lands by Sgt Riley
+		Vector3(1.6, 0.05, -3.4), Vector3(-1.8, 0.05, -3.0),
+		Vector3(5.2, 0.05, -3.6), Vector3(-5.4, 0.05, -3.9),
+	]
+	for i in range(spots.size()):
+		_launch_crate(spots[i])
+		await get_tree().create_timer(0.45).timeout
+
 # Fire a supply crate out of the gate as a PROJECTILE (same reliable kinematic arc
 # the crew use — a RigidBody's launch velocity gets bled/reset the same way, so we
 # drive it ourselves). It tumbles through the air and lands FLAT on the deck at
@@ -1047,45 +1070,119 @@ func _fly_crate(crate: Node3D, target: Vector3, flight: float) -> void:
 		_thud()
 
 
-# After the crew are up, crew shove the loose crates to the nearest side wall so
-# nobody trips over them. A nearby crew member walks to each crate, then the crate
-# slides to the wall edge as they push it. Fire-and-forget.
-func _clear_crates_to_edges(pushers: Array) -> void:
-	var half_x: float = room_size.x * 0.5 - 2.0
+const CRATE_CARRY_HEIGHT: float = 1.0     # crate ride height when two crew lift it
+const CRATE_FLANK: float = 0.85           # half-gap between the two carriers
+
+# After the crew are up, TWO-PERSON teams lift the loose crates and carry them to
+# the side walls (out of the way). Crates are split round-robin across the teams;
+# each team works through its share one crate at a time. Fire-and-forget.
+func _carry_crates_to_edges(teams: Array) -> void:
+	if teams.is_empty():
+		return
+	# Round-robin the crates into a per-team queue.
+	var queues: Array = []
+	for _t in teams:
+		queues.append([])
 	var i: int = 0
 	for crate in _arrival_crates:
-		if not is_instance_valid(crate):
+		if is_instance_valid(crate):
+			queues[i % teams.size()].append(crate)
 			i += 1
+	for ti in range(teams.size()):
+		_team_carry_loop(teams[ti], queues[ti], float(ti) * 0.8)
+
+
+# One two-person team carries its whole list of crates to the walls, one at a time.
+func _team_carry_loop(team: Array, crates: Array, start_delay: float) -> void:
+	if team.size() < 2:
+		return
+	await get_tree().create_timer(start_delay).timeout
+	var a: Node3D = team[0]
+	var b: Node3D = team[1]
+	var half_x: float = room_size.x * 0.5 - 1.6
+	var idx: int = 0
+	for crate in crates:
+		if not (is_instance_valid(crate) and is_instance_valid(a) and is_instance_valid(b)):
 			continue
+		# Stack along the wall on the crate's own side, spaced by z so they don't pile up.
 		var cp: Vector3 = (crate as Node3D).global_position
-		# Nearest side wall (left/right) on the crate's own side.
-		var edge: Vector3 = Vector3(signf(cp.x) * half_x, cp.y, cp.z)
-		var pusher: Node3D = pushers[i % pushers.size()] if not pushers.is_empty() else null
-		_push_crate_to_edge(crate as Node3D, edge, pusher, float(i) * 1.4)
-		i += 1
+		var dest: Vector3 = Vector3(signf(cp.x) * half_x, CRATE_SIZE.y * 0.5,
+			clampf(cp.z + float(idx) * 0.2, -room_size.y * 0.5 + 2.0, room_size.y * 0.5 - 2.0))
+		await _two_person_carry(crate as Node3D, a, b, dest)
+		idx += 1
 
 
-# One crewman walks to `crate`, then shoves it to `edge` (the crate slides there as
-# they keep pace). Staggered by `delay`.
-func _push_crate_to_edge(crate: Node3D, edge: Vector3, pusher: Node3D, delay: float) -> void:
-	await get_tree().create_timer(delay).timeout
-	if not is_instance_valid(crate):
+# Two crew flank `crate` (one on each side), LIFT it to carry height, walk it to
+# `dest` with the crate riding the midpoint BETWEEN them the whole way, then set it
+# down. Awaitable so a team carries its crates sequentially.
+func _two_person_carry(crate: Node3D, a: Node3D, b: Node3D, dest: Vector3) -> void:
+	if not (is_instance_valid(crate) and is_instance_valid(a) and is_instance_valid(b)):
 		return
-	# Walk a pusher to the crate's near side first (if we have one) — get them up off
-	# the deck out of their crash pose, then over to the crate.
-	if pusher != null and is_instance_valid(pusher) and pusher.has_method("walk_to"):
-		_rise_npc(pusher, "idle")
-		var approach: Vector3 = crate.global_position + (crate.global_position - edge).normalized() * 0.9
-		pusher.call("walk_to", Vector3(approach.x, 0.05, approach.z), 2.2, 0.0)
-		await get_tree().create_timer(1.6).timeout
-	if not is_instance_valid(crate):
+	var cp: Vector3 = crate.global_position
+	# Phase 1 — get up and walk to opposite sides of the crate (obstacle-aware walk).
+	_rise_npc(a, "idle")
+	_rise_npc(b, "idle")
+	if a.has_method("walk_to"):
+		a.call("walk_to", Vector3(cp.x - CRATE_FLANK, 0.05, cp.z), 2.3, 0.0)
+	if b.has_method("walk_to"):
+		b.call("walk_to", Vector3(cp.x + CRATE_FLANK, 0.05, cp.z), 2.3, 0.0)
+	await get_tree().create_timer(2.0).timeout
+	if not (is_instance_valid(crate) and is_instance_valid(a) and is_instance_valid(b)):
 		return
-	# Slide the crate to the wall; the pusher walks alongside it.
-	var dur: float = 1.8
-	var t: Tween = create_tween()
-	t.tween_property(crate, "global_position", edge, dur).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	if pusher != null and is_instance_valid(pusher) and pusher.has_method("walk_to"):
-		pusher.call("walk_to", edge + (crate.global_position - edge).normalized() * 0.9, 1.3, 0.0)
+	# Phase 2 — both stop walking and hold a carry pose; lift the crate between them.
+	if a.has_method("stop_walk"): a.call("stop_walk")
+	if b.has_method("stop_walk"): b.call("stop_walk")
+	_face(a, crate.global_position); _face(b, crate.global_position)
+	_play_clip_on(a, "walk_carry"); _play_clip_on(b, "walk_carry")
+	var lift: Tween = create_tween()
+	lift.tween_property(crate, "global_position:y", CRATE_CARRY_HEIGHT, 0.5).set_trans(Tween.TRANS_SINE)
+	await lift.finished
+	# Phase 3 — manually walk both carriers to the dest flanks (manual move keeps the
+	# walk_carry pose, which the NPC walker would otherwise overwrite with "walk"),
+	# crate tracking their midpoint at carry height.
+	var da: Vector3 = Vector3(dest.x - CRATE_FLANK, 0.05, dest.z)
+	var db: Vector3 = Vector3(dest.x + CRATE_FLANK, 0.05, dest.z)
+	var speed: float = 1.5
+	var t: float = 0.0
+	while t < 6.0 and is_instance_valid(crate) and is_instance_valid(a) and is_instance_valid(b):
+		var dt: float = get_process_delta_time()
+		if dt <= 0.0:
+			dt = 1.0 / 60.0
+		var travel: Vector3 = (da - a.global_position); travel.y = 0.0
+		a.global_position = a.global_position.move_toward(Vector3(da.x, 0.05, da.z), speed * dt)
+		b.global_position = b.global_position.move_toward(Vector3(db.x, 0.05, db.z), speed * dt)
+		if travel.length() > 0.05:
+			_face(a, da); _face(b, db)
+		var mid: Vector3 = (a.global_position + b.global_position) * 0.5
+		crate.global_position = Vector3(mid.x, CRATE_CARRY_HEIGHT, mid.z)
+		t += dt
+		if a.global_position.distance_to(Vector3(da.x, 0.05, da.z)) < 0.25 \
+				and b.global_position.distance_to(Vector3(db.x, 0.05, db.z)) < 0.25:
+			break
+		await get_tree().process_frame
+	# Phase 4 — set the crate down at the wall; carriers stand off.
+	if is_instance_valid(crate):
+		var down: Tween = create_tween()
+		down.tween_property(crate, "global_position", Vector3(dest.x, CRATE_SIZE.y * 0.5, dest.z), 0.5).set_trans(Tween.TRANS_SINE)
+		await down.finished
+	if is_instance_valid(a): _play_clip_on(a, "idle")
+	if is_instance_valid(b): _play_clip_on(b, "idle")
+
+
+# Face a crew body toward a world point (model holder convention handled by look_at).
+func _face(npc: Node3D, target: Vector3) -> void:
+	if npc == null or not is_instance_valid(npc):
+		return
+	var flat: Vector3 = Vector3(target.x, npc.global_position.y, target.z)
+	if npc.global_position.distance_to(flat) > 0.05:
+		npc.look_at(flat, Vector3.UP)
+
+
+# Play a body clip on an NPC's ModularCharacter (no orientation reset, unlike _rise_npc).
+func _play_clip_on(npc: Node3D, clip: String) -> void:
+	var mc: Node3D = _first_mc(npc)
+	if mc != null and mc.has_method("play_clip"):
+		mc.call("play_clip", clip)
 
 
 # Hand a flying-through ragdoll off to a PRE-BUILT, PRE-POSED tableau NPC (Young

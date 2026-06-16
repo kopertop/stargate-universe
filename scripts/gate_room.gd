@@ -552,16 +552,20 @@ func _play_prologue_cinematic() -> void:
 	# WAVE 1 — Scott (solo). The PRE-BUILT LtScott node IS the body that flies through
 	# (no throwaway-then-reveal swap), so it lands exactly where thrown, kneels, then
 	# stands — and keeps its walk-up/talk auto-greet.
-	var scott_spot: Vector3 = Vector3(2.5, 0.05, 4.0)
+	# Scott lands DEEP in the room — well past where Eli (z≈6.0) ends up — so he can
+	# turn back toward the gate and wave the rest through.
+	var scott_spot: Vector3 = Vector3(2.0, 0.05, 2.0)
 	var scott: StaticBody3D = _world.get_node_or_null("LtScott") as StaticBody3D
 	scott = _throw_persistent_crew("Lt Scott", "", scott_spot, scott)
 	GameState.add_log("Lt Scott comes barrelling through the gate!")
 	await get_tree().create_timer(2.0).timeout
 	_settle_persistent_crew(scott, "repair")   # lands kneeling, same body
 	await get_tree().create_timer(1.3).timeout
-	_rise_npc(scott, "idle")
-	GameState.add_log("Lt Scott: It's clear! Send the rest through!")
-	await get_tree().create_timer(0.8).timeout
+	_rise_npc(scott, "idle")                    # push up to his feet
+	await get_tree().create_timer(0.9).timeout  # let the stand read before he turns
+	# He turns back to the gate and calls the rest through — voiced, with a
+	# letterbox closed-caption.
+	await _scott_radio_line(scott)
 
 	# WAVE 2 — Colonel Young + Lt James. Young is thrown the HARDEST — clean OFF-SCREEN
 	# (behind the camera) and stays down, injured. James lands in view, gets up, then
@@ -758,6 +762,41 @@ func _first_mc(npc: Node) -> Node3D:
 	for c: Node in model.get_children():
 		return c as Node3D
 	return null
+
+
+# Scott, on his feet, turns back toward the gate and radios the rest through —
+# delivered as letterbox closed-captioning (Cinematic autoload) over a baked
+# LuxTTS voice line (his enrolled `scott` voice). Awaitable: the cinematic holds
+# on this beat until the line has played and the bars lift.
+func _scott_radio_line(scott: Node3D) -> void:
+	if scott == null or not is_instance_valid(scott):
+		return
+	# Turn to face the GATE (+Z) — he's calling back through the open wormhole.
+	var gate_pt: Vector3 = Vector3(scott.global_position.x, scott.global_position.y, GATE_Z)
+	if scott.has_method("look_at") and scott.global_position.distance_to(gate_pt) > 0.1:
+		scott.look_at(gate_pt, Vector3.UP)
+	_rise_npc(scott, "idle")   # hold standing while he speaks
+	var line: String = "Okay, it's safe. Start sending people through."
+	GameState.add_log("Lt Scott: %s" % line)
+	# Letterbox bars + caption.
+	await Cinematic.letterbox_in()
+	Cinematic.set_caption("LT. SCOTT — \"%s\"" % line)
+	# Voiced line on an AudioStreamPlayer (master bus → Movie Maker captures it too).
+	var vo: AudioStreamPlayer = AudioStreamPlayer.new()
+	vo.name = "ScottRadioVO"
+	add_child(vo)
+	var stream: AudioStream = load("res://sounds/dialog/prologue/scott_clear.wav") as AudioStream
+	var hold: float = 2.6
+	if stream != null:
+		vo.stream = stream
+		vo.play()
+		hold = maxf(stream.get_length() + 0.25, 1.0)
+	# Bounded wait (never blocks on a missing/never-finishing stream).
+	await get_tree().create_timer(hold).timeout
+	Cinematic.set_caption("")
+	await Cinematic.letterbox_out()
+	if is_instance_valid(vo):
+		vo.queue_free()
 
 
 # Play a standing/working clip so a downed crew member rises to their feet.

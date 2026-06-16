@@ -84,6 +84,18 @@ const RAIL_THICKNESS: float = 0.1
 const STAIR_WIDTH: float = 2.4
 const STAIR_Z_CENTER: float = -10.0
 
+# --- Gate-throw projectile tuning -------------------------------------------
+# Crew (and crates) are FIRED out of the wormhole on a ballistic arc — NOT
+# ragdolled. The PhysicalBone joint solver bleeds the launch so badly the body
+# never travels (it flops at the gate), so we drive a kinematic projectile that
+# always reaches its spot. One value per line so the overnight Karpathy tuner
+# can sed-replace them; see tools/throw_tune_loop.sh + tests/shots/ragdoll_tune.gd.
+const THROW_FLIGHT_TIME: float = 1.35    # seconds gate→landing (higher = floatier, taller arc)
+const THROW_TUMBLE_BASE: float = 5.0     # head-over-heels tumble rate (rad/s) — limbs swing
+const THROW_TUMBLE_DIST: float = 0.45    # extra tumble per metre of downrange throw
+const THROW_CRATE_FLIGHT: float = 1.15   # crates fly flatter/faster than bodies
+const THROW_CRATE_SPIN: float = 6.0      # crate tumble rate (rad/s)
+
 @export_group("Room")
 @export var room_size: Vector2 = Vector2(32.0, 32.0)
 @export var tile_size: float = 2.0
@@ -699,21 +711,58 @@ func _throw_persistent_crew(display_name: String, kind: String, spot: Vector3,
 			npc.set("enabled", true)
 		npc.global_position = origin
 		npc.set_meta("arrival_spot", spot)
-	# Dive head-first: pitch the body horizontal, head leading toward the room.
-	var model: Node3D = npc.get_node_or_null("Model") as Node3D
-	if model != null:
-		model.rotation = Vector3(-PI * 0.5, PI, 0.0)
-	# Ballistic head-first throw toward the spot.
-	var g: float = float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
-	var flight: float = 1.45
-	var disp: Vector3 = spot - origin
-	var vy: float = (disp.y + 0.5 * g * flight * flight) / flight
-	# Overshoot the horizontal a touch (×1.25) so ragdoll energy-bleed doesn't leave
-	# the body short of the aimed spot — the body flies near it, settle nudges to it.
-	var vel: Vector3 = Vector3(disp.x / flight * 1.25, vy, disp.z / flight * 1.25)
-	var spin: float = 4.0 + absf(disp.z) * 0.5
-	_setup_ragdoll_physics(npc, vel, Vector3(spin, spin * 0.5, spin * 0.7))
+	# Fire head-first across the room as a PROJECTILE (clean ballistic arc), NOT a
+	# ragdoll. The PhysicalBone joint solver bleeds the launch so hard the body never
+	# travels — it flops at the gate, and the old code hid that by TELEPORTING it to
+	# the spot at settle (the "lands here / spawns over there" jump). A projectile
+	# flies far like it was hurled out of the wormhole and lands EXACTLY on the spot.
+	_fly_projectile(npc, spot, THROW_FLIGHT_TIME)
 	return npc
+
+
+# Drive `npc` along a ballistic arc from its current position to `spot` over
+# `flight` seconds, head-first and tumbling — the "fired out of the gate like a
+# projectile" look. Kinematic (we integrate the position ourselves; no rigid or
+# ragdoll sim to bleed the launch), so it ALWAYS arrives exactly on `spot` — which
+# is why there's no teleport/jump. Fire-and-forget coroutine; _settle_persistent_crew
+# then drops the landed body into its injured pose.
+func _fly_projectile(npc: StaticBody3D, spot: Vector3, flight: float) -> void:
+	if npc == null or not is_instance_valid(npc):
+		return
+	var origin: Vector3 = npc.global_position
+	var g: float = float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
+	var disp: Vector3 = spot - origin
+	# Ballistic solve: horizontal at constant speed; vertical launched so the body
+	# returns to spot.y at t=flight (apex height grows with flight → taller arc).
+	var vel: Vector3 = Vector3(disp.x / flight, (disp.y + 0.5 * g * flight * flight) / flight, disp.z / flight)
+	var model: Node3D = npc.get_node_or_null("Model") as Node3D
+	var yaw: float = atan2(disp.x, disp.z)   # dive points along the horizontal travel
+	var tumble_rate: float = THROW_TUMBLE_BASE + absf(disp.z) * THROW_TUMBLE_DIST
+	var tumble: float = 0.0
+	var t: float = 0.0
+	while t < flight and is_instance_valid(npc):
+		var dt: float = get_process_delta_time()
+		if dt <= 0.0:
+			dt = 1.0 / 60.0
+		vel.y -= g * dt
+		npc.global_position += vel * dt
+		t += dt
+		if model != null and is_instance_valid(model):
+			# Head leads along the arc (rope-yank) with a head-over-heels tumble so the
+			# arms/legs swing as it flies.
+			tumble += dt * tumble_rate
+			model.rotation = Vector3(-PI * 0.5 - tumble, PI + yaw, 0.0)
+		await get_tree().process_frame
+	# Arrive exactly on the aimed spot — the body that flew IS the one here (no swap,
+	# no teleport). Drop it flat (crashed) until _settle_persistent_crew poses it.
+	if is_instance_valid(npc):
+		npc.global_position = Vector3(spot.x, 0.05, spot.z)
+		if model != null and is_instance_valid(model):
+			model.rotation = Vector3(0.0, PI, 0.0)
+		var mc0: Node3D = _first_mc(npc)
+		if mc0 != null and mc0.has_method("play_clip"):
+			mc0.call("play_clip", "knockback")
+		_thud()
 
 
 # Stop a thrown crew member's ragdoll and leave THE SAME body where it landed, in
@@ -723,13 +772,11 @@ func _throw_persistent_crew(display_name: String, kind: String, spot: Vector3,
 func _settle_persistent_crew(npc: StaticBody3D, pose: String = "auto") -> void:
 	if npc == null or not is_instance_valid(npc):
 		return
-	# Reposition the root to the AIMED landing spot FIRST, THEN stop the sim. Two
-	# reasons: (1) stopping first snaps the mesh back to the gate-parked root for a
-	# frame (the old jolt); (2) ragdolls bleed energy and settle SHORT of the throw,
-	# so reading the physics hips clusters everyone near the gate — using the aimed
-	# spot guarantees the scatter we authored. (Throw velocity is tuned so the body
-	# flies close to this spot, keeping the settle adjustment small.)
-	var rest: Vector3 = npc.get_meta("arrival_spot", _ragdoll_rest_pos(npc))
+	# The projectile already flew the body to its aimed spot (no teleport jump), so
+	# this just confirms the position and drops it into the injured pose. (sim is
+	# null on the projectile path; the guard keeps it safe if a ragdoll body is ever
+	# passed in.)
+	var rest: Vector3 = npc.get_meta("arrival_spot", npc.global_position)
 	npc.global_position = rest
 	var sim: PhysicalBoneSimulator3D = _ragdoll_sim(npc)
 	if sim != null:

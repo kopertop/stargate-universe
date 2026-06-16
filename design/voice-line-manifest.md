@@ -686,6 +686,56 @@ Lines triggered automatically by game systems, not player-initiated.
 
 ---
 
+## 18. E1 COLD-OPEN — Evacuation Arrival (→ Find Rush)
+
+Scene-specific lines for the E1 prologue: the Icarus evac crashing through the gate onto
+Destiny. Authored against `design/sgu-opening-reference.md`. Delivery is **loud, panicked,
+overlapping** — these layer over the arrival choreography in
+`scripts/gate_room.gd::_play_prologue_cinematic()`. Many lines are short and meant to stack.
+
+### 18.1 Marshalling / Command (Scott, Greer, Young)
+
+| ID | Character | Text | Trigger | Priority | Status |
+|----|-----------|------|---------|----------|--------|
+| open-scott-evac | Scott | "Slow down the evac — we're coming in too high!" | Wave 1, at the gate | P1 | TODO |
+| open-scott-side | Scott | "There's no time to explain — off to the side!" | Crowd clearing the ramp | P1 | TODO |
+| open-greer-clear | Greer | "Clear! Keep 'em moving!" | Landing zone cleared | P1 | TODO |
+| open-young-move | Young | "Move, move, move!" | Waves 2–8, herding crowd | P1 | TODO |
+| open-young-calm | Young | "Stay calm! Keep it down!" | Crowd panic peak | P1 | TODO |
+| open-young-where | Young | "Where are we?" | After the flood settles | P1 | TODO |
+| open-officer-idk | Crew | "I don't know, sir." | Reply to Young | P1 | TODO |
+
+### 18.2 Crowd Confusion (generic crew, layered)
+
+| ID | Character | Text | Trigger | Priority | Status |
+|----|-----------|------|---------|----------|--------|
+| open-crowd-where | Crew | "Where are we?" | Civilian panic bed | P1 | TODO |
+| open-crowd-what | Crew | "What's going on?" | Civilian panic bed | P1 | TODO |
+| open-crowd-place | Crew | "What is this place?" | The turn to wonder | P1 | TODO |
+| open-crowd-incoming | Crew | "Leave it — there'll be more coming through!" | Mid-flood | P2 | TODO |
+
+### 18.3 Medic Pocket (TJ)
+
+| ID | Character | Text | Trigger | Priority | Status |
+|----|-----------|------|---------|----------|--------|
+| open-tj-fingers | TJ | "Can you move your fingers?" | Treating wounded crew | P1 | TODO |
+| open-tj-sling | TJ | "Okay — hold your arm there, we'll get it in a sling." | Treating wounded crew | P1 | TODO |
+| open-tj-okay | TJ | "Are you okay?" | Checking a downed arrival | P1 | TODO |
+| open-wounded-broken | Crew | "I think it's broken." | Wounded crew reply | P2 | TODO |
+
+### 18.4 The Rush Hand-off + Wonder (launches Find Rush)
+
+| ID | Character | Text | Trigger | Priority | Status |
+|----|-----------|------|---------|----------|--------|
+| open-scott-norush | Scott | "I haven't seen Rush — I don't know if he made it through." | Hand-off beat | P1 | TODO |
+| open-young-rush | Young | "Rush! … Rush!" | Calling out, no answer | P1 | TODO |
+| open-young-findhim | Young | "You all right? Help me find him." | Activates quest `find_rush` | P1 | TODO |
+| open-crew-whatwasthat | Crew | "What the hell *was* that?" | Ship shudders — wonder beat | P1 | TODO |
+| open-scott-eli-now | Scott | "Eli! NOW!" | **Shouted**, urgent — Scott rounds on Eli to get him moving | P1 | TODO |
+| open-eli-coming | Eli | "Okay! I'm coming!" | Eli's scramble reply → hand control to player | P1 | TODO |
+
+---
+
 ## Summary Statistics (Updated)
 
 | Character | Done | P1 TODO | P2 TODO | P3 TODO | Total |

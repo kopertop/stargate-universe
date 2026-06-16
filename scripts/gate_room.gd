@@ -649,6 +649,11 @@ func _play_prologue_cinematic() -> void:
 	_lay_player_prone(false)
 	await get_tree().create_timer(1.7).timeout
 
+	# Closing beat: ship-shudder wonder → Scott can't find Rush → he rounds on Eli
+	# ("Eli! NOW!") and Eli scrambles after him. Still on the cinematic camera so the
+	# yell lands before control snaps back. (#142)
+	await _play_rush_handoff(scott)
+
 	# Hand control back: restore the player camera, wake the consoles (offline →
 	# Ancient glyphs), and release Scott to walk over (auto_greet) and talk.
 	_restore_player_camera(cam)
@@ -868,6 +873,66 @@ func _scott_radio_line(scott: Node3D) -> void:
 	await Cinematic.letterbox_out()
 	if is_instance_valid(vo):
 		vo.queue_free()
+
+
+# Cold-open VO lives here; ids match the open-* entries in design/voice-line-manifest.md.
+const PROLOGUE_VO_DIR: String = "res://sounds/dialog/prologue/"
+
+# One captioned (optionally voiced) cold-open line. Plays the baked VO at
+# PROLOGUE_VO_DIR + vo_id + ".wav" if it exists; otherwise holds on the caption for
+# `fallback_hold` seconds so the sequence never blocks on un-authored audio. The
+# caller brackets a run of these with a single letterbox_in()/letterbox_out().
+func _cold_open_line(speaker: String, line: String, vo_id: String, fallback_hold: float = 2.2) -> void:
+	GameState.add_log("%s: %s" % [speaker, line])
+	Cinematic.set_caption("%s — \"%s\"" % [speaker, line])
+	var hold: float = fallback_hold
+	var vo: AudioStreamPlayer = null
+	var path: String = PROLOGUE_VO_DIR + vo_id + ".wav"
+	if ResourceLoader.exists(path):
+		var stream: AudioStream = load(path) as AudioStream
+		if stream != null:
+			vo = AudioStreamPlayer.new()
+			vo.name = "ColdOpenVO"
+			add_child(vo)
+			vo.stream = stream
+			vo.play()
+			hold = maxf(stream.get_length() + 0.2, 1.0)
+	await get_tree().create_timer(hold).timeout
+	if vo != null and is_instance_valid(vo):
+		vo.queue_free()
+
+
+# Closing beat of the cold open (issue #142): the ship shudders, Scott can't account
+# for Rush, and he rounds on Eli — "Eli! NOW!" — the button that hands control back to
+# the player and starts the Find-Rush objective. Authored against
+# design/sgu-opening-reference.md. Each beat lights up its baked VO automatically once
+# the matching open-* clip lands in PROLOGUE_VO_DIR; until then it holds on the caption.
+func _play_rush_handoff(scott: Node3D) -> void:
+	await Cinematic.letterbox_in()
+
+	# The ship shudders — the room turns from evac to wonder.
+	Cinematic.flash(Color(0.7, 0.85, 1.0, 1.0), 0.5)
+	await _cold_open_line("CREW", "What the hell was that?", "open-crew-whatwasthat", 1.8)
+
+	# Scott (facing the dead gate) can't account for Rush.
+	if scott != null and is_instance_valid(scott) and scott.has_method("look_at"):
+		var gate_pt: Vector3 = Vector3(scott.global_position.x, scott.global_position.y, GATE_Z)
+		if scott.global_position.distance_to(gate_pt) > 0.1:
+			scott.look_at(gate_pt, Vector3.UP)
+	await _cold_open_line("LT. SCOTT", "I haven't seen Rush. I don't know if he made it through.", "open-scott-norush", 2.6)
+	await _cold_open_line("LT. SCOTT", "Rush! … Rush!", "open-young-rush", 1.8)
+	await _cold_open_line("LT. SCOTT", "Help me find him.", "open-young-findhim", 1.6)
+
+	# Scott rounds on Eli — the button. Shouted.
+	if scott != null and is_instance_valid(scott) and scott.has_method("look_at") and _player != null:
+		var eli_pt: Vector3 = Vector3(_player.global_position.x, scott.global_position.y, _player.global_position.z)
+		if scott.global_position.distance_to(eli_pt) > 0.1:
+			scott.look_at(eli_pt, Vector3.UP)
+	await _cold_open_line("LT. SCOTT", "Eli! NOW!", "open-scott-eli-now", 1.3)
+	await _cold_open_line("ELI", "Okay! I'm coming!", "open-eli-coming", 1.2)
+
+	Cinematic.set_caption("")
+	await Cinematic.letterbox_out()
 
 
 # Play a standing/working clip so a downed crew member rises to their feet. Resets

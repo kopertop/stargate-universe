@@ -90,7 +90,7 @@ const STAIR_Z_CENTER: float = -10.0
 # never travels (it flops at the gate), so we drive a kinematic projectile that
 # always reaches its spot. One value per line so the overnight Karpathy tuner
 # can sed-replace them; see tools/throw_tune_loop.sh + tests/shots/ragdoll_tune.gd.
-const THROW_FLIGHT_TIME: float = 1.550    # seconds gate→landing (higher = floatier, taller arc)
+const THROW_FLIGHT_TIME: float = 1.600    # seconds gate→landing (higher = floatier, taller arc)
 const THROW_TUMBLE_BASE: float = 5.0     # head-over-heels tumble rate (rad/s) — limbs swing
 const THROW_TUMBLE_DIST: float = 0.45    # extra tumble per metre of downrange throw
 const THROW_CRATE_FLIGHT: float = 1.15   # crates fly flatter/faster than bodies

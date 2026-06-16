@@ -121,6 +121,9 @@ const THROW_CRATE_SPIN: float = 6.0      # crate tumble rate (rad/s)
 var _thud_players: Array[AudioStreamPlayer] = []
 var _thud_streams: Array[AudioStream] = []
 var _thud_i: int = 0
+# Crates hurled through the gate this cold-open, so crew can shove them to the
+# walls afterward (out of the way so nobody trips over them).
+var _arrival_crates: Array[Node3D] = []
 
 var _stargate: Node3D
 # The visible gunmetal ring GLB (separate from the procedural _stargate, which now
@@ -625,8 +628,9 @@ func _play_prologue_cinematic() -> void:
 			"Sgt Spencer", "", Vector3(-5.5, 0.05, 0.5))
 	await _extra_pair("Dr Brody", "", Vector3(6.2, 0.05, -3.0),
 			"Dr Franklin", "", Vector3(-6.2, 0.05, -2.5))
+	# This crate lands RIGHT next to Sgt Riley (a near-miss — it skids in beside him).
 	await _extra_pair("Sgt Riley", "", Vector3(4.2, 0.05, -7.0),
-			"Camile Wray", "", Vector3(-4.2, 0.05, -7.5), Vector3(2.6, 0.05, -4.0))
+			"Camile Wray", "", Vector3(-4.2, 0.05, -7.5), Vector3(4.0, 0.05, -6.3))
 	await _extra_pair("Sgt Dunning", "", Vector3(7.0, 0.05, -1.0),
 			"Chloe Armstrong", "", Vector3(-7.0, 0.05, -0.5))
 
@@ -657,6 +661,15 @@ func _play_prologue_cinematic() -> void:
 	_restore_player_camera(cam)
 	_wake_consoles()
 	_set_scott_autogreet(true)
+
+	# A couple of soldiers pick themselves up and shove the loose crates to the side
+	# walls so nobody trips over them (or gets pinned).
+	var pushers: Array = []
+	for n in ["ReturnTeam_SgtGreer", "ReturnTeam_SgtDunning", "ReturnTeam_SgtRiley"]:
+		var p: Node = _world.get_node_or_null(n)
+		if p != null:
+			pushers.append(p)
+	_clear_crates_to_edges(pushers)
 
 
 # Throw a pair of crew (and optionally a crate) head-first through the gate, ≤2 in
@@ -961,29 +974,25 @@ func _consoles_call(method: String) -> void:
 			inter.call(method)
 
 
-# Throw a supply crate (a plain box for now — we'll style it later) head-first
-# through the gate on the same ballistic arc the crew use. Returns the RigidBody.
-func _launch_crate(target: Vector3) -> RigidBody3D:
-	var crate: RigidBody3D = RigidBody3D.new()
+const CRATE_SIZE: Vector3 = Vector3(1.4, 0.55, 0.85)   # footlocker: longer than wide/tall
+
+# Fire a supply crate out of the gate as a PROJECTILE (same reliable kinematic arc
+# the crew use — a RigidBody's launch velocity gets bled/reset the same way, so we
+# drive it ourselves). It tumbles through the air and lands FLAT on the deck at
+# `target` (which may be on or beside a downed crewman). Returns the crate body.
+func _launch_crate(target: Vector3) -> Node3D:
+	var crate: StaticBody3D = StaticBody3D.new()
 	crate.name = "ArrivalCrate"
-	crate.collision_layer = 0
-	crate.collision_mask = 1            # land on the deck/walls, ignore the player
-	# A real, heavy crate: weight + gravity make it tip onto a face and settle FLAT
-	# (we never freeze it mid-tumble). Strong angular damping kills residual spin so
-	# it doesn't come to rest on an edge/corner.
-	crate.mass = 80.0
-	crate.linear_damp = 0.3
-	crate.angular_damp = 3.0
-	# RECTANGULAR — longer than it is wide or tall (a footlocker/supply crate).
-	var crate_size: Vector3 = Vector3(1.4, 0.55, 0.85)
+	crate.collision_layer = 1           # solid once landed (player/crew can't walk through)
+	crate.collision_mask = 0
 	var cs: CollisionShape3D = CollisionShape3D.new()
 	var box: BoxShape3D = BoxShape3D.new()
-	box.size = crate_size
+	box.size = CRATE_SIZE
 	cs.shape = box
 	crate.add_child(cs)
 	var mi: MeshInstance3D = MeshInstance3D.new()
 	var bm: BoxMesh = BoxMesh.new()
-	bm.size = crate_size
+	bm.size = CRATE_SIZE
 	mi.mesh = bm
 	var mat: StandardMaterial3D = StandardMaterial3D.new()
 	mat.albedo_color = Color(0.32, 0.30, 0.26, 1.0)   # placeholder crate grey-brown
@@ -992,21 +1001,82 @@ func _launch_crate(target: Vector3) -> RigidBody3D:
 	mi.material_override = mat
 	crate.add_child(mi)
 	_world.add_child(crate)
-	var origin: Vector3 = Vector3(0.0, _gate_center_y(), GATE_Z - 0.4)
-	crate.global_position = origin
-	var g: float = float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
-	var flight: float = 1.6
-	var disp: Vector3 = target - origin
-	crate.linear_velocity = Vector3(disp.x / flight, (disp.y + 0.5 * g * flight * flight) / flight, disp.z / flight)
-	# Gentle tumble only — it lands and settles flat on a face under its own weight.
-	crate.angular_velocity = Vector3(1.6, 1.0, 1.2)
+	crate.global_position = Vector3(0.0, _gate_center_y(), GATE_Z - 0.4)
+	_arrival_crates.append(crate)
+	_fly_crate(crate, target, THROW_CRATE_FLIGHT)
 	return crate
 
 
-# Crates now settle flat under their own weight (gravity + angular damping); no
-# premature freeze that would lock them at an angle. Kept as a no-op hook.
-func _settle_crate(_crate: RigidBody3D) -> void:
-	pass
+# Kinematic ballistic arc for a crate: hurls it out of the gate, tumbling in 3D,
+# and lands it FLAT (rotation zeroed, resting on its base) exactly at `target`.
+func _fly_crate(crate: Node3D, target: Vector3, flight: float) -> void:
+	if crate == null or not is_instance_valid(crate):
+		return
+	var origin: Vector3 = crate.global_position
+	var g: float = float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
+	var rest_y: float = CRATE_SIZE.y * 0.5
+	var land: Vector3 = Vector3(target.x, rest_y, target.z)
+	var disp: Vector3 = land - origin
+	var vel: Vector3 = Vector3(disp.x / flight, (disp.y + 0.5 * g * flight * flight) / flight, disp.z / flight)
+	var spin: Vector3 = Vector3(THROW_CRATE_SPIN, THROW_CRATE_SPIN * 0.35, THROW_CRATE_SPIN * 0.6)
+	var rot: Vector3 = Vector3.ZERO
+	var t: float = 0.0
+	while t < flight and is_instance_valid(crate):
+		var dt: float = get_process_delta_time()
+		if dt <= 0.0:
+			dt = 1.0 / 60.0
+		vel.y -= g * dt
+		crate.global_position += vel * dt
+		rot += spin * dt
+		crate.rotation = rot
+		t += dt
+		await get_tree().process_frame
+	# Land flat on the deck at the target (settles on its base, not an edge).
+	if is_instance_valid(crate):
+		crate.global_position = land
+		crate.rotation = Vector3.ZERO
+		_thud()
+
+
+# After the crew are up, crew shove the loose crates to the nearest side wall so
+# nobody trips over them. A nearby crew member walks to each crate, then the crate
+# slides to the wall edge as they push it. Fire-and-forget.
+func _clear_crates_to_edges(pushers: Array) -> void:
+	var half_x: float = room_size.x * 0.5 - 2.0
+	var i: int = 0
+	for crate in _arrival_crates:
+		if not is_instance_valid(crate):
+			i += 1
+			continue
+		var cp: Vector3 = (crate as Node3D).global_position
+		# Nearest side wall (left/right) on the crate's own side.
+		var edge: Vector3 = Vector3(signf(cp.x) * half_x, cp.y, cp.z)
+		var pusher: Node3D = pushers[i % pushers.size()] if not pushers.is_empty() else null
+		_push_crate_to_edge(crate as Node3D, edge, pusher, float(i) * 1.4)
+		i += 1
+
+
+# One crewman walks to `crate`, then shoves it to `edge` (the crate slides there as
+# they keep pace). Staggered by `delay`.
+func _push_crate_to_edge(crate: Node3D, edge: Vector3, pusher: Node3D, delay: float) -> void:
+	await get_tree().create_timer(delay).timeout
+	if not is_instance_valid(crate):
+		return
+	# Walk a pusher to the crate's near side first (if we have one) — get them up off
+	# the deck out of their crash pose, then over to the crate.
+	if pusher != null and is_instance_valid(pusher) and pusher.has_method("walk_to"):
+		_rise_npc(pusher, "idle")
+		var approach: Vector3 = crate.global_position + (crate.global_position - edge).normalized() * 0.9
+		pusher.call("walk_to", Vector3(approach.x, 0.05, approach.z), 2.2, 0.0)
+		await get_tree().create_timer(1.6).timeout
+	if not is_instance_valid(crate):
+		return
+	# Slide the crate to the wall; the pusher walks alongside it.
+	var dur: float = 1.8
+	var t: Tween = create_tween()
+	t.tween_property(crate, "global_position", edge, dur).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	if pusher != null and is_instance_valid(pusher) and pusher.has_method("walk_to"):
+		pusher.call("walk_to", edge + (crate.global_position - edge).normalized() * 0.9, 1.3, 0.0)
 
 
 # Hand a flying-through ragdoll off to a PRE-BUILT, PRE-POSED tableau NPC (Young

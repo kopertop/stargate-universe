@@ -549,16 +549,17 @@ func _play_prologue_cinematic() -> void:
 	# body — the body that flies through IS the character that stays where it lands.
 	# Eli lands CLOSEST to the gate; everyone else is thrown FURTHER in.
 
-	# WAVE 1 — Scott (solo). (Stays the pre-built LtScott NPC so his walk-up/talk
-	# auto-greet works; revealed at the body's actual landing, kneeling, then up.)
+	# WAVE 1 — Scott (solo). The PRE-BUILT LtScott node IS the body that flies through
+	# (no throwaway-then-reveal swap), so it lands exactly where thrown, kneels, then
+	# stands — and keeps its walk-up/talk auto-greet.
 	var scott_spot: Vector3 = Vector3(2.5, 0.05, 4.0)
-	var r_scott: Node3D = _launch_ragdoll("Lt Scott", scott_spot)
+	var scott: StaticBody3D = _world.get_node_or_null("LtScott") as StaticBody3D
+	scott = _throw_persistent_crew("Lt Scott", "", scott_spot, scott)
 	GameState.add_log("Lt Scott comes barrelling through the gate!")
 	await get_tree().create_timer(2.0).timeout
-	_reveal_crew_at("LtScott", _ragdoll_rest_pos(r_scott), "repair")   # down on a knee
-	if is_instance_valid(r_scott): r_scott.queue_free()
+	_settle_persistent_crew(scott, "repair")   # lands kneeling, same body
 	await get_tree().create_timer(1.3).timeout
-	_rise_npc(_world.get_node_or_null("LtScott"), "idle")
+	_rise_npc(scott, "idle")
 	GameState.add_log("Lt Scott: It's clear! Send the rest through!")
 	await get_tree().create_timer(0.8).timeout
 
@@ -566,11 +567,13 @@ func _play_prologue_cinematic() -> void:
 	# (behind the camera) and stays down, injured. James lands in view, gets up, then
 	# realises Young's down and hurries to him (she doesn't notice him at first).
 	var young_spot: Vector3 = Vector3(-3.0, 0.05, -15.0)   # behind the camera = off-screen
-	var r_young: Node3D = _launch_ragdoll("Colonel Young", young_spot)
+	var young: StaticBody3D = _world.get_node_or_null("ColonelYoung") as StaticBody3D
+	young = _throw_persistent_crew("Colonel Young", "", young_spot, young)
 	await get_tree().create_timer(0.35).timeout
 	var james: StaticBody3D = _throw_persistent_crew("Lt James", "", Vector3(1.5, 0.05, -2.0))
 	await get_tree().create_timer(2.0).timeout
-	_handoff_tableau(r_young, "ColonelYoung", young_spot)   # off-screen prone tableau
+	# Young lands sprawled flat and STAYS down (his injury) — same body, no handoff.
+	_settle_persistent_crew(young, "knockback")
 	_settle_persistent_crew(james, "crouch_idle")
 	await get_tree().create_timer(1.6).timeout
 	_rise_npc(james, "idle")
@@ -594,9 +597,10 @@ func _play_prologue_cinematic() -> void:
 	_launch_crate(Vector3(-2.2, 0.05, -1.5))
 	await get_tree().create_timer(2.2).timeout
 	_settle_persistent_crew(volker, "crouch_idle")
-	# Park & Volker gather themselves and man the consoles.
-	_rise_after(park, 1.0)
-	_rise_after(volker, 1.8)
+	# Park & Volker gather themselves, step onto their stations and FACE the consoles
+	# (GateControlConsole at x=-3.5, FTLConsole at x=+3.5, both at z=GATE_CONSOLE_Z).
+	_man_console_after(park, Vector3(-3.5, 0.05, GATE_CONSOLE_Z - 1.1), 1.0)
+	_man_console_after(volker, Vector3(3.5, 0.05, GATE_CONSOLE_Z - 1.1), 1.8)
 	await get_tree().create_timer(0.6).timeout
 
 	# WAVES 5-8 — the rest pour through in pairs (+ crates): 4 soldiers + 4 sci/civ,
@@ -662,21 +666,35 @@ func _extra_pair(a_name: String, a_kind: String, a_spot: Vector3,
 # Build a REAL interactable crew NPC, dive it HEAD-FIRST through the gate as a
 # ragdoll (its own skeleton is the physics body), and return it. After it lands,
 # call _settle_persistent_crew() to stop the sim and leave the same body in place.
-func _throw_persistent_crew(display_name: String, kind: String, spot: Vector3) -> StaticBody3D:
-	var npc: StaticBody3D = _build_returned_crew_npc(
-		display_name, kind, "res://models/characters/scott.glb", Color.WHITE)
-	var tree: Variant = npc.get("dialogue_tree")
-	if tree == null or (tree is Array and (tree as Array).is_empty()):
-		var generic: Array = [{"speaker": display_name,
-			"text": "Still shaking that off. Give me a second.",
-			"choices": [{"text": "(nod)", "next": "exit"}]}]
-		npc.set("dialogue_tree", generic)
-		npc.set("repeat_dialogue_tree", generic)
+func _throw_persistent_crew(display_name: String, kind: String, spot: Vector3,
+		existing: StaticBody3D = null) -> StaticBody3D:
 	# Spawn clear of the ring collider so the body flies cleanly into the room.
 	var origin: Vector3 = Vector3(0.0, _gate_center_y(), GATE_Z - 2.0)
-	npc.position = origin
-	npc.set_meta("arrival_spot", spot)
-	_world.add_child(npc)
+	var npc: StaticBody3D = existing
+	if npc == null:
+		# Generic returned-crew body (extras who have no authored scene node).
+		npc = _build_returned_crew_npc(
+			display_name, kind, "res://models/characters/scott.glb", Color.WHITE)
+		var tree: Variant = npc.get("dialogue_tree")
+		if tree == null or (tree is Array and (tree as Array).is_empty()):
+			var generic: Array = [{"speaker": display_name,
+				"text": "Still shaking that off. Give me a second.",
+				"choices": [{"text": "(nod)", "next": "exit"}]}]
+			npc.set("dialogue_tree", generic)
+			npc.set("repeat_dialogue_tree", generic)
+		npc.position = origin
+		npc.set_meta("arrival_spot", spot)
+		_world.add_child(npc)
+	else:
+		# Re-use a PRE-BUILT scene NPC (Scott, Young) so the SAME body that flies is
+		# the one that stays — keeping its authored dialogue / auto_greet / met-flag
+		# identity. No throwaway-then-reveal swap (the old "different body appears
+		# somewhere else" artifact). It was hidden at cold-open start; reveal it now.
+		npc.visible = true
+		if "enabled" in npc:
+			npc.set("enabled", true)
+		npc.global_position = origin
+		npc.set_meta("arrival_spot", spot)
 	# Dive head-first: pitch the body horizontal, head leading toward the room.
 	var model: Node3D = npc.get_node_or_null("Model") as Node3D
 	if model != null:
@@ -781,6 +799,31 @@ func _stand_after(npc: Node3D, delay: float) -> void:
 func _rise_after(npc: Node3D, delay: float) -> void:
 	await get_tree().create_timer(delay).timeout
 	_rise_npc(npc)
+
+
+# Rise a settled operator, walk them onto their console `stand_pos`, then turn them
+# to FACE the console (+Z, at z=GATE_CONSOLE_Z) so Park/Volker end up working their
+# stations rather than standing idle. Fire-and-forget coroutine.
+func _man_console_after(npc: Node3D, stand_pos: Vector3, delay: float) -> void:
+	await get_tree().create_timer(delay).timeout
+	if not is_instance_valid(npc):
+		return
+	_rise_npc(npc, "idle")
+	await get_tree().create_timer(0.4).timeout
+	if not is_instance_valid(npc):
+		return
+	if npc.has_method("walk_to"):
+		npc.call("walk_to", stand_pos, 2.0, 0.0)
+	# Let the short walk finish, then stop it and face the console.
+	await get_tree().create_timer(2.4).timeout
+	if not is_instance_valid(npc):
+		return
+	if npc.has_method("stop_walk"):
+		npc.call("stop_walk")
+	var face: Vector3 = Vector3(stand_pos.x, npc.global_position.y, GATE_CONSOLE_Z)
+	if npc.global_position.distance_to(face) > 0.05:
+		npc.look_at(face, Vector3.UP)
+	_rise_npc(npc, "idle")
 
 
 # Reveal a PRE-BUILT crew NPC at `pos` (where its thrown body came to rest), play

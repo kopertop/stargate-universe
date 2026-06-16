@@ -583,23 +583,16 @@ func _play_prologue_cinematic() -> void:
 	await _scott_radio_line(scott)
 
 	# WAVE 2 — Colonel Young + Lt James. Young is thrown the HARDEST — clean OFF-SCREEN
-	# (behind the camera) and stays down, injured. James lands in view, gets up, then
-	# realises Young's down and hurries to him (she doesn't notice him at first).
+	# (behind the camera) and STAYS down face-down, injured. Lt James lands in view and
+	# kneels working over the deck (looping the repair animation — tending the wounded).
 	var young_spot: Vector3 = Vector3(-3.0, 0.05, -15.0)   # behind the camera = off-screen
 	var young: StaticBody3D = _world.get_node_or_null("ColonelYoung") as StaticBody3D
 	young = _throw_persistent_crew("Colonel Young", "", young_spot, young)
 	await get_tree().create_timer(0.35).timeout
 	var james: StaticBody3D = _throw_persistent_crew("Lt James", "", Vector3(1.5, 0.05, -2.0))
 	await get_tree().create_timer(2.0).timeout
-	# Young lands sprawled flat and STAYS down (his injury) — same body, no handoff.
-	_settle_persistent_crew(young, "knockback")
-	_settle_persistent_crew(james, "crouch_idle")
-	await get_tree().create_timer(1.6).timeout
-	_rise_npc(james, "idle")
-	await get_tree().create_timer(1.7).timeout   # a beat — she doesn't notice him yet
-	GameState.add_log("Lt James: ...Colonel? Colonel Young! — hang on!")
-	if james.has_method("walk_to"):
-		james.call("walk_to", young_spot + Vector3(1.4, 0.0, 1.2), 2.8, 0.0)
+	_settle_persistent_crew(young, "facedown")   # stays down, on his front (injured)
+	_settle_persistent_crew(james, "repair")     # kneels, loops the repair anim (medic)
 	await get_tree().create_timer(0.8).timeout
 
 	# WAVE 3 — Dr Park + a crate.
@@ -734,11 +727,12 @@ func _throw_persistent_crew(display_name: String, kind: String, spot: Vector3,
 
 
 # Drive `npc` along a ballistic arc from its current position to `spot` over
-# `flight` seconds, head-first and tumbling — the "fired out of the gate like a
-# projectile" look. Kinematic (we integrate the position ourselves; no rigid or
-# ragdoll sim to bleed the launch), so it ALWAYS arrives exactly on `spot` — which
-# is why there's no teleport/jump. Fire-and-forget coroutine; _settle_persistent_crew
-# then drops the landed body into its injured pose.
+# `flight` seconds — fired out of the gate STRAIGHT to its landing spot, NO flip.
+# The body holds one fixed face-down dive orientation the whole flight (so it can't
+# rotate through the floor) and lands FACE DOWN exactly on the spot. Kinematic (we
+# integrate the position ourselves), so it always arrives on `spot` (no teleport/
+# jump) and the floor-clamp guarantees it never sinks through the deck mid-air.
+# Fire-and-forget coroutine; _settle_persistent_crew then poses the landed body.
 func _fly_projectile(npc: StaticBody3D, spot: Vector3, flight: float) -> void:
 	if npc == null or not is_instance_valid(npc):
 		return
@@ -749,9 +743,13 @@ func _fly_projectile(npc: StaticBody3D, spot: Vector3, flight: float) -> void:
 	# returns to spot.y at t=flight (apex height grows with flight → taller arc).
 	var vel: Vector3 = Vector3(disp.x / flight, (disp.y + 0.5 * g * flight * flight) / flight, disp.z / flight)
 	var model: Node3D = npc.get_node_or_null("Model") as Node3D
-	var yaw: float = atan2(disp.x, disp.z)   # dive points along the horizontal travel
-	var tumble_rate: float = THROW_TUMBLE_BASE + absf(disp.z) * THROW_TUMBLE_DIST
-	var tumble: float = 0.0
+	# Face-DOWN dive, head pointing along the horizontal travel — held FIXED (no
+	# tumble) so the crew don't flip head-over-heels and so the mesh can't rotate
+	# below the deck. rotation.x = +PI/2 is face-down (same as the player prone).
+	var yaw: float = atan2(disp.x, disp.z)
+	if model != null and is_instance_valid(model):
+		model.rotation = Vector3(PI * 0.5, PI + yaw, 0.0)
+		model.position.y = 0.1
 	var t: float = 0.0
 	while t < flight and is_instance_valid(npc):
 		var dt: float = get_process_delta_time()
@@ -759,22 +757,18 @@ func _fly_projectile(npc: StaticBody3D, spot: Vector3, flight: float) -> void:
 			dt = 1.0 / 60.0
 		vel.y -= g * dt
 		npc.global_position += vel * dt
+		# Collision floor: never let the body sink through the deck while airborne.
+		if npc.global_position.y < 0.05:
+			npc.global_position.y = 0.05
 		t += dt
-		if model != null and is_instance_valid(model):
-			# Head leads along the arc (rope-yank) with a head-over-heels tumble so the
-			# arms/legs swing as it flies.
-			tumble += dt * tumble_rate
-			model.rotation = Vector3(-PI * 0.5 - tumble, PI + yaw, 0.0)
 		await get_tree().process_frame
-	# Arrive exactly on the aimed spot — the body that flew IS the one here (no swap,
-	# no teleport). Drop it flat (crashed) until _settle_persistent_crew poses it.
+	# Arrive exactly on the aimed spot, FACE DOWN. _settle_persistent_crew then either
+	# leaves them sprawled face-down or rises them to a kneel/crouch.
 	if is_instance_valid(npc):
 		npc.global_position = Vector3(spot.x, 0.05, spot.z)
-		if model != null and is_instance_valid(model):
-			model.rotation = Vector3(0.0, PI, 0.0)
 		var mc0: Node3D = _first_mc(npc)
 		if mc0 != null and mc0.has_method("play_clip"):
-			mc0.call("play_clip", "knockback")
+			mc0.call("play_clip", "idle")
 		_thud()
 
 
@@ -795,20 +789,29 @@ func _settle_persistent_crew(npc: StaticBody3D, pose: String = "auto") -> void:
 	if sim != null:
 		sim.physical_bones_stop_simulation()
 	var model: Node3D = npc.get_node_or_null("Model") as Node3D
-	if model != null:
-		model.rotation = Vector3(0.0, PI, 0.0)
-	# Beaten-up pose: kneel / crouch / recoil — nobody pops straight up after a hit
-	# like that. Deterministic per character so the crowd isn't uniform.
 	var mc: Node3D = _first_mc(npc)
-	if mc != null and mc.has_method("play_clip"):
-		var clip: String = pose
-		if pose == "auto":
-			# Downed-crew pose pool (user-selected from the Animation Lab): kneel,
-			# low crouch, or sprawled flat. "hit" is a STANDING flinch — excluded,
-			# nobody stays upright after that crash.
-			var pool: Array[String] = ["repair", "crouch_idle", "knockback"]
-			clip = pool[absi(npc.name.hash()) % pool.size()]
-		mc.call("play_clip", clip)
+	# Pose pool: kneel (repair), low crouch (crouch_idle), or stay sprawled FACE-DOWN
+	# (facedown). All land face-down off the throw; the kneel/crouch ones have pushed
+	# themselves up to a knee. Deterministic per character so the crowd isn't uniform.
+	var clip: String = pose
+	if pose == "auto":
+		var pool: Array[String] = ["repair", "crouch_idle", "facedown"]
+		clip = pool[absi(npc.name.hash()) % pool.size()]
+	if clip == "facedown":
+		# Knocked flat on their front (NOT on their back) — rotation.x = +PI/2 is the
+		# same face-down lay the player prone uses.
+		if model != null:
+			model.rotation = Vector3(PI * 0.5, PI, 0.0)
+			model.position.y = 0.1
+		if mc != null and mc.has_method("play_clip"):
+			mc.call("play_clip", "idle")
+	else:
+		# Recovered to a knee/crouch — upright again.
+		if model != null:
+			model.rotation = Vector3(0.0, PI, 0.0)
+			model.position.y = 0.0
+		if mc != null and mc.has_method("play_clip"):
+			mc.call("play_clip", clip)
 	_thud()   # body hits the deck
 
 
@@ -859,8 +862,14 @@ func _scott_radio_line(scott: Node3D) -> void:
 		vo.queue_free()
 
 
-# Play a standing/working clip so a downed crew member rises to their feet.
+# Play a standing/working clip so a downed crew member rises to their feet. Resets
+# the model upright first, so a body that was lying FACE-DOWN stands properly
+# instead of playing the clip while still pitched into the deck.
 func _rise_npc(npc: Node3D, clip: String = "idle") -> void:
+	var model: Node3D = npc.get_node_or_null("Model") as Node3D
+	if model != null:
+		model.rotation = Vector3(0.0, PI, 0.0)
+		model.position.y = 0.0
 	var mc: Node3D = _first_mc(npc)
 	if mc != null and mc.has_method("play_clip"):
 		mc.call("play_clip", clip)
@@ -2764,10 +2773,13 @@ func _build_npcs() -> void:
 	scott.set("met_flag", "met_scott")
 	scott.set("first_meet_recompute_objective", true)
 	# Walk up to the player and trigger the briefing automatically — no E-press.
+	# He heads over the MOMENT control returns (short delay, brisk pace) so the
+	# first thing the player does is talk to Scott, which kicks off the main quest
+	# (met_scott → objective recompute → "find Rush").
 	scott.set("auto_greet", not GameState.met_scott)
 	scott.set("auto_greet_distance", 2.6)
-	scott.set("auto_greet_delay", 1.5)
-	scott.set("auto_greet_speed", 1.9)
+	scott.set("auto_greet_delay", 0.3)
+	scott.set("auto_greet_speed", 2.8)
 
 	# Collision capsule — blocks the player and acts as interactable hitbox.
 	var cs: CollisionShape3D = CollisionShape3D.new()

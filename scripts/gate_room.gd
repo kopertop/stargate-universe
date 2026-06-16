@@ -578,6 +578,8 @@ func _play_prologue_cinematic() -> void:
 	await get_tree().create_timer(1.3).timeout
 	_rise_npc(scott, "idle")                    # push up to his feet
 	await get_tree().create_timer(0.9).timeout  # let the stand read before he turns
+	# Marshalling bark as the rest pile up at the gate mouth.
+	_bark("LT. SCOTT", "Slow down the evac — we're coming in too high!", "open-scott-evac")
 	# He turns back to the gate and calls the rest through — voiced, with a
 	# letterbox closed-caption.
 	await _scott_radio_line(scott)
@@ -586,6 +588,8 @@ func _play_prologue_cinematic() -> void:
 	# them: 10 crates rain in (fire-and-forget) while waves 2-8 arrive. Two-person
 	# teams stack them at the walls once everyone's up.
 	_launch_crate_wave()
+	_bark("SGT. GREER", "Clear! Keep 'em moving!", "open-greer-clear")
+	_bark("LT. SCOTT", "There's no time to explain — off to the side!", "open-scott-side")
 
 	# WAVE 2 — Colonel Young + Lt James. Young is thrown the HARDEST — clean OFF-SCREEN
 	# (behind the camera) and STAYS down face-down, injured. Lt James lands in view and
@@ -599,6 +603,12 @@ func _play_prologue_cinematic() -> void:
 	_settle_persistent_crew(young, "facedown")   # stays down, on his front (injured)
 	_settle_persistent_crew(james, "repair")     # kneels, loops the repair anim (medic)
 	await get_tree().create_timer(0.8).timeout
+	# Medic pocket: James/TJ working a wounded arm, overlapping the ongoing flood.
+	_bark("TJ", "Can you move your fingers?", "open-tj-fingers")
+	await get_tree().create_timer(1.1).timeout
+	_bark("CREW", "I think it's broken.", "open-wounded-broken")
+	await get_tree().create_timer(1.0).timeout
+	_bark("TJ", "Okay — hold your arm there, we'll get it in a sling.", "open-tj-sling")
 
 	# WAVE 3 — Dr Park.
 	var park: StaticBody3D = _throw_persistent_crew("Dr Park", "park", Vector3(-3.5, 0.05, GATE_CONSOLE_Z - 1.0))
@@ -620,8 +630,11 @@ func _play_prologue_cinematic() -> void:
 	# real SGU cast names. ALL land further from the gate than Eli will.
 	await _extra_pair("Sgt Greer", "greer", Vector3(5.5, 0.05, 1.0),
 			"Sgt Spencer", "", Vector3(-5.5, 0.05, 0.5))
+	_bark("CREW", "Where are we?", "open-crowd-where")
+	_bark("COL. YOUNG", "Move, move, move!", "open-young-move")
 	await _extra_pair("Dr Brody", "", Vector3(6.2, 0.05, -3.0),
 			"Dr Franklin", "", Vector3(-6.2, 0.05, -2.5))
+	_bark("CREW", "What's going on?", "open-crowd-what")
 	await _extra_pair("Sgt Riley", "", Vector3(4.2, 0.05, -7.0),
 			"Camile Wray", "", Vector3(-4.2, 0.05, -7.5))
 	await _extra_pair("Sgt Dunning", "", Vector3(7.0, 0.05, -1.0),
@@ -900,6 +913,26 @@ func _cold_open_line(speaker: String, line: String, vo_id: String, fallback_hold
 	await get_tree().create_timer(hold).timeout
 	if vo != null and is_instance_valid(vo):
 		vo.queue_free()
+
+
+# Fire-and-forget cold-open bark: logs the line and plays its baked VO if present
+# (NO caption/letterbox, non-blocking) so marshalling/crowd shouts overlap naturally
+# with the arrival chaos and never perturb the tuned wave timing. (#142)
+func _bark(speaker: String, line: String, vo_id: String) -> void:
+	GameState.add_log("%s: %s" % [speaker, line])
+	var path: String = PROLOGUE_VO_DIR + vo_id + ".wav"
+	if not ResourceLoader.exists(path):
+		return
+	var stream: AudioStream = load(path) as AudioStream
+	if stream == null:
+		return
+	var vo: AudioStreamPlayer = AudioStreamPlayer.new()
+	vo.name = "ColdOpenBark"
+	vo.volume_db = -3.0
+	add_child(vo)
+	vo.stream = stream
+	vo.finished.connect(vo.queue_free)
+	vo.play()
 
 
 # Closing beat of the cold open (issue #142): the ship shudders, Scott can't account

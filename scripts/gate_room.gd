@@ -1426,7 +1426,14 @@ func _set_scott_autogreet(on: bool) -> void:
 		return
 	if on:
 		if not GameState.met_scott:
+			# CRITICAL: disabling auto_greet earlier made npc._process turn ITSELF off
+			# (`not auto_greet` → set_process(false)). Just flipping the flag back on
+			# won't restart the walk — reset the greet state AND re-enable _process, or
+			# Scott stands frozen and never comes over to brief the player.
 			scott.set("auto_greet", true)
+			scott.set("_auto_greet_done", false)
+			scott.set("_auto_greet_t", 0.0)
+			scott.set_process(true)
 	else:
 		scott.set("auto_greet", false)
 

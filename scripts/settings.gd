@@ -23,6 +23,11 @@ const SETTINGS_PATH: String = "user://settings.cfg"
 const SECTION: String = "audio"
 const GAMEPLAY_SECTION: String = "gameplay"
 const LOOP_SECTION: String = "loop"
+const UI_SECTION: String = "ui"
+
+# HUD interface size (#141): scales the whole HUD uniformly. 1.0 = authored size.
+const HUD_SCALE_MIN: float = 0.7
+const HUD_SCALE_MAX: float = 1.6
 
 # Clamp bounds for loop-tuning fields — enforced in set_* and load_from_disk.
 const LOOP_PHASE_MIN: float = 60.0
@@ -40,10 +45,12 @@ signal ship_phase_seconds_changed(value: float)
 signal planet_phase_seconds_changed(value: float)
 signal randomization_band_changed(value: float)
 signal jump_destination_pref_changed(value: int)
+signal hud_scale_changed(value: float)
 
 var music_volume: float = 0.8     # 0.0 .. 1.0
 var sfx_volume: float = 0.9       # 0.0 .. 1.0
 var difficulty: int = Difficulty.NORMAL
+var hud_scale: float = 1.0        # HUD interface size, HUD_SCALE_MIN .. MAX
 
 # Core-loop timing defaults — Bridge console writes these via set_*.
 var ship_phase_seconds: float = 1800.0    # default ~30 min ship phase
@@ -75,6 +82,12 @@ func set_sfx_volume(value: float) -> void:
 func set_difficulty(value: int) -> void:
 	difficulty = clampi(value, Difficulty.EASY, Difficulty.HARD)
 	difficulty_changed.emit(difficulty)
+	save_to_disk()
+
+
+func set_hud_scale(value: float) -> void:
+	hud_scale = clampf(value, HUD_SCALE_MIN, HUD_SCALE_MAX)
+	hud_scale_changed.emit(hud_scale)
 	save_to_disk()
 
 
@@ -158,6 +171,8 @@ func load_from_disk() -> void:
 	sfx_volume = clampf(float(cfg.get_value(SECTION, "sfx_volume", sfx_volume)), 0.0, 1.0)
 	difficulty = clampi(int(cfg.get_value(GAMEPLAY_SECTION, "difficulty", difficulty)),
 		Difficulty.EASY, Difficulty.HARD)
+	hud_scale = clampf(float(cfg.get_value(UI_SECTION, "hud_scale", hud_scale)),
+		HUD_SCALE_MIN, HUD_SCALE_MAX)
 	ship_phase_seconds = clampf(
 		float(cfg.get_value(LOOP_SECTION, "ship_phase_seconds", ship_phase_seconds)),
 		LOOP_PHASE_MIN, LOOP_PHASE_MAX)
@@ -178,6 +193,7 @@ func save_to_disk() -> void:
 	cfg.set_value(SECTION, "music_volume", music_volume)
 	cfg.set_value(SECTION, "sfx_volume", sfx_volume)
 	cfg.set_value(GAMEPLAY_SECTION, "difficulty", difficulty)
+	cfg.set_value(UI_SECTION, "hud_scale", hud_scale)
 	cfg.set_value(LOOP_SECTION, "ship_phase_seconds", ship_phase_seconds)
 	cfg.set_value(LOOP_SECTION, "planet_phase_seconds", planet_phase_seconds)
 	cfg.set_value(LOOP_SECTION, "randomization_band", randomization_band)

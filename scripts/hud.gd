@@ -265,8 +265,45 @@ func _ready() -> void:
 	# room entry is the first toast shown.
 	if not GameState.rooms_deciphered.is_empty():
 		_first_discovery_consumed = true
+	# HUD interface size (#141): scale the whole HUD uniformly from the Settings
+	# value, re-applying on live changes and viewport resizes.
+	var settings: Node = get_node_or_null("/root/Settings")
+	if settings != null and settings.has_signal("hud_scale_changed"):
+		settings.hud_scale_changed.connect(_on_hud_scale_changed)
+	get_viewport().size_changed.connect(_apply_hud_scale)
+	_apply_hud_scale()
 	# Defer player lookup so the scene tree is settled.
 	call_deferred("_bind_player")
+
+
+# Scale the entire HUD uniformly to the Settings hud_scale. The HUD root is
+# re-anchored to the top-left with an explicit size of viewport/scale; scaling
+# that by `scale` makes the rendered rect cover the viewport again, so every
+# edge-anchored child still lands on the real screen edge — the only correct way
+# to scale a full-screen anchored UI without detaching corner widgets.
+func _apply_hud_scale() -> void:
+	var s: float = 1.0
+	var settings: Node = get_node_or_null("/root/Settings")
+	if settings != null and "hud_scale" in settings:
+		s = float(settings.hud_scale)
+	s = clampf(s, 0.5, 2.0)
+	var vp: Vector2 = Vector2(get_viewport_rect().size)
+	if vp.x <= 0.0 or vp.y <= 0.0:
+		return
+	# Drop the full-rect anchoring so size is ours to set; pivot at top-left (0,0)
+	# so the scaled rect's origin stays pinned to the screen origin.
+	anchor_left = 0.0
+	anchor_top = 0.0
+	anchor_right = 0.0
+	anchor_bottom = 0.0
+	position = Vector2.ZERO
+	pivot_offset = Vector2.ZERO
+	scale = Vector2(s, s)
+	size = vp / s
+
+
+func _on_hud_scale_changed(_value: float) -> void:
+	_apply_hud_scale()
 
 
 # Build the always-on direction compass as a child of this HUD layer. Single

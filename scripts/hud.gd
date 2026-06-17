@@ -89,6 +89,20 @@ const EDGE_ARROW_ACCENT: Color = Color(1.0, 0.84, 0.42, 0.95)  # gold, matches s
 const EDGE_ARROW_MARGIN: float = 64.0
 var _edge_arrow: Polygon2D = null
 
+# Circular radar minimap (top-right, #141 Phase 4). Always-on, drawn by
+# scripts/ui/minimap.gd (preloaded by path to dodge the class_name race). The HUD
+# feeds it heading-rotated, player-relative markers each frame; it owns the disc /
+# ring / arrow drawing. A room-name label sits just beneath it.
+const MinimapScript := preload("res://scripts/ui/minimap.gd")
+const MINIMAP_SIZE: float = 150.0
+const MINIMAP_RANGE: float = 18.0       # world metres mapped to the disc radius
+const MINIMAP_POS_RIGHT: float = -18.0
+const MINIMAP_POS_TOP: float = 14.0
+const MINIMAP_MARKER_QUEST: Color = Color(1.0, 0.84, 0.42, 1.0)
+const MINIMAP_MARKER_INTERACT: Color = Color(0.75, 0.85, 1.0, 0.9)
+var _minimap: Control = null
+var _minimap_name: Label = null
+
 # WoW-style action bar (bottom-CENTER, #141 Phase 5). Four FIXED controller-first
 # slots, always shown. `ActionBar` is a full-width-bottom CenterContainer (so its
 # corner anchors still read 1.0/1.0 for the cohesion test) holding a centred HBox
@@ -126,7 +140,7 @@ var _menu_col: VBoxContainer = null
 # quest is tracked. Sits ABOVE the recent-log feed (which is pushed down in
 # _ready) so the two top-right elements never overlap. (#66)
 const TRACKER_POS_RIGHT: float = -24.0       # offset from the right edge
-const TRACKER_POS_TOP: float = 70.0          # below the compass banner
+const TRACKER_POS_TOP: float = 196.0         # below the top-right minimap (#141 P4)
 const TRACKER_WIDTH: float = 300.0
 # Tracker title uses the shared gold accent; objective + outline use the shared
 # primary text + outline so all four widgets read in one type/color language.
@@ -233,6 +247,7 @@ func _ready() -> void:
 	_build_quest_tracker()
 	_refresh_quest_tracker()
 	_build_edge_arrow()
+	_build_minimap()
 	_build_discovery_toast()
 	_spawn_compass()
 	# If the Gate Room was already deciphered before this HUD mounted (it is
@@ -561,6 +576,100 @@ func _hide_discovery_toast() -> void:
 
 func _process(_delta: float) -> void:
 	_update_edge_arrow()
+	_update_minimap()
+
+
+# Top-right circular minimap + a room-name label beneath it. Always built (the
+# HUD only mounts in gameplay scenes), so it holds the corner the way the concept
+# does. The marker feed is computed each frame in _update_minimap.
+func _build_minimap() -> void:
+	if _minimap != null and is_instance_valid(_minimap):
+		return
+	var map: Control = MinimapScript.new()
+	map.name = "Minimap"
+	map.custom_minimum_size = Vector2(MINIMAP_SIZE, MINIMAP_SIZE)
+	map.size = Vector2(MINIMAP_SIZE, MINIMAP_SIZE)
+	map.anchor_left = 1.0
+	map.anchor_right = 1.0
+	map.anchor_top = 0.0
+	map.anchor_bottom = 0.0
+	map.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	map.offset_left = -(MINIMAP_SIZE - MINIMAP_POS_RIGHT)
+	map.offset_right = MINIMAP_POS_RIGHT
+	map.offset_top = MINIMAP_POS_TOP
+	map.offset_bottom = MINIMAP_POS_TOP + MINIMAP_SIZE
+	map.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(map)
+	_minimap = map
+
+	# Room/zone name centred just beneath the disc.
+	var name_l: Label = Label.new()
+	name_l.name = "MinimapName"
+	name_l.anchor_left = 1.0
+	name_l.anchor_right = 1.0
+	name_l.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	name_l.offset_left = -(MINIMAP_SIZE + 30.0)
+	name_l.offset_right = MINIMAP_POS_RIGHT
+	name_l.offset_top = MINIMAP_POS_TOP + MINIMAP_SIZE + 2.0
+	name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_l.add_theme_font_size_override("font_size", 14)
+	name_l.add_theme_color_override("font_color", SKIN_ACCENT_GOLD)
+	name_l.add_theme_color_override("font_outline_color", SKIN_TEXT_OUTLINE)
+	name_l.add_theme_constant_override("outline_size", 5)
+	name_l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(name_l)
+	_minimap_name = name_l
+
+
+# Recompute the minimap markers in the player's heading frame and push them to
+# the widget; refresh the room-name label. Cheap: a handful of nodes, no allocations
+# beyond the marker array. No-ops gracefully before the player/camera exist.
+func _update_minimap() -> void:
+	if _minimap == null or not is_instance_valid(_minimap):
+		return
+	if _minimap_name != null:
+		var rid: String = GameState.current_room_id
+		if rid != "":
+			_minimap_name.text = String(ShipLayout.room(rid).get("name", rid))
+	var player: Node = _player
+	if player == null or not (player is Node3D):
+		return
+	var camera: Camera3D = get_viewport().get_camera_3d()
+	if camera == null:
+		return
+	# Heading yaw from the camera forward, so the disc "up" is the way we look.
+	var fwd: Vector3 = -camera.global_transform.basis.z
+	fwd.y = 0.0
+	if fwd.length() < 0.001:
+		return
+	var yaw: float = atan2(fwd.x, fwd.z)
+	var cos_y: float = cos(yaw)
+	var sin_y: float = sin(yaw)
+	var origin: Vector3 = (player as Node3D).global_position
+	var markers: Array = []
+	var waypoint: Node = get_tree().get_first_node_in_group("quest_waypoint")
+	if waypoint is Node3D:
+		_append_marker(markers, (waypoint as Node3D).global_position, origin, cos_y, sin_y, MINIMAP_MARKER_QUEST)
+	for node in get_tree().get_nodes_in_group("interactable"):
+		if node is Node3D:
+			_append_marker(markers, (node as Node3D).global_position, origin, cos_y, sin_y, MINIMAP_MARKER_INTERACT)
+	_minimap.call("set_markers", markers)
+
+
+# Project a world position into the minimap's heading-rotated disc space (-1..1,
+# up = forward), clamped to the disc, and append a marker if within range.
+func _append_marker(out: Array, world: Vector3, origin: Vector3, cos_y: float, sin_y: float, color: Color) -> void:
+	var d: Vector3 = world - origin
+	var dist: float = Vector2(d.x, d.z).length()
+	if dist > MINIMAP_RANGE * 1.4:
+		return
+	# Rotate the (x,z) delta by -yaw so the look direction maps to +forward.
+	var local_x: float = d.x * cos_y - d.z * sin_y
+	var local_z: float = d.x * sin_y + d.z * cos_y
+	var disc: Vector2 = Vector2(local_x / MINIMAP_RANGE, -local_z / MINIMAP_RANGE)
+	if disc.length() > 1.0:
+		disc = disc.normalized()
+	out.append({"pos": disc, "color": color})
 
 
 # Polled each frame because the player + camera move continuously and there's

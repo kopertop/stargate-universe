@@ -30,7 +30,8 @@ const HUD_SCRIPT: String = "res://scripts/hud.gd"
 
 # Mirror of the shared palette in hud.gd (kept in sync intentionally — the test
 # is the contract that the widgets share THESE values).
-const SKIN_ACCENT: Color = Color(0.60, 0.78, 0.95, 0.85)
+# Gold-primary skin (HUD redesign Phase 0, #141) — mirrors hud.gd's SKIN_*.
+const SKIN_ACCENT: Color = Color(0.83, 0.66, 0.32, 1.0)
 const SKIN_ACCENT_GOLD: Color = Color(1.0, 0.84, 0.42, 1.0)
 const SKIN_CORNER_RADIUS: int = 4
 

@@ -31,13 +31,17 @@ var _player: Node = null
 # _make_wow_stylebox factory are now the single source of truth. The warm-gold
 # accent (SKIN_ACCENT_GOLD) is the deliberate secondary highlight for quest
 # titles / attention states — also shared, not per-widget.
-const SKIN_ACCENT: Color = Color(0.60, 0.78, 0.95, 0.85)       # primary cool-blue border
-const SKIN_ACCENT_GOLD: Color = Color(1.0, 0.84, 0.42, 1.0)    # quest title / attention
-const SKIN_PANEL_BG: Color = Color(0.04, 0.06, 0.09, 0.6)      # translucent dark fill
+# Gold-primary WoW skin (HUD redesign Phase 0, #141). These mirror
+# scripts/ui/hud_theme.gd::HudTheme — kept as inline literals here (not a
+# class_name reference) to dodge the cold-import class_name-registration race in
+# headless runs. The hud_wow.gd cohesion test mirrors SKIN_ACCENT as its contract.
+const SKIN_ACCENT: Color = Color(0.83, 0.66, 0.32, 1.0)        # primary GOLD border
+const SKIN_ACCENT_GOLD: Color = Color(1.0, 0.84, 0.42, 1.0)    # quest title / attention (bright gold)
+const SKIN_PANEL_BG: Color = Color(0.035, 0.035, 0.045, 0.82)  # near-black translucent fill
 const SKIN_CORNER_RADIUS: int = 4
 const SKIN_BORDER_WIDTH: int = 2
-const SKIN_TEXT_PRIMARY: Color = Color(0.95, 0.98, 1.0, 1.0)
-const SKIN_TEXT_OUTLINE: Color = Color(0, 0, 0, 0.85)
+const SKIN_TEXT_PRIMARY: Color = Color(0.96, 0.92, 0.80, 1.0)  # warm off-white
+const SKIN_TEXT_OUTLINE: Color = Color(0, 0, 0, 0.9)
 
 # WoW-style player unit frame (upper-left, below the compass banner). A square
 # portrait of Eli on the left, his name plate top-right of it, and the Health +
@@ -48,9 +52,15 @@ const SKIN_TEXT_OUTLINE: Color = Color(0, 0, 0, 0.85)
 const PortraitLoaderScript := preload("res://scripts/portrait_loader.gd")
 const UNIT_PLAYER_NAME: String = "Eli Wallace"
 const UNIT_PORTRAIT_KEY: String = "Eli"
-const UNIT_FRAME_POS: Vector2 = Vector2(24.0, 70.0)
-const UNIT_PORTRAIT_SIZE: Vector2 = Vector2(72.0, 72.0)
-const UNIT_BAR_WIDTH: float = 196.0
+# Promoted to the very top-left corner to match the concept (HUD redesign Phase 1,
+# #141). The compass banner's left anchor is pushed right (see _spawn_compass) so
+# it no longer sits under this frame.
+const UNIT_FRAME_POS: Vector2 = Vector2(14.0, 10.0)
+const UNIT_PORTRAIT_SIZE: Vector2 = Vector2(76.0, 76.0)
+const UNIT_BAR_WIDTH: float = 168.0
+# Player level shown in a badge over the portrait's lower-left (placeholder until
+# a real level system exists — the WoW frame always carries a level pip).
+const UNIT_LEVEL: int = 1
 const UNIT_HEALTH_FILL: Color = Color(0.35, 0.85, 0.45, 0.95)
 const UNIT_HEALTH_CRITICAL_FILL: Color = Color(0.95, 0.3, 0.3, 0.98)
 const UNIT_OXYGEN_FILL: Color = Color(0.4, 0.85, 0.95, 0.95)
@@ -59,6 +69,10 @@ const UNIT_HEALTH_CRITICAL_FRAC: float = 0.3
 var _unit_frame: Control = null
 var _health_bar: ProgressBar = null
 var _oxygen_bar: ProgressBar = null
+# Numeric "cur/max" overlays centred on each vitals bar (WoW-style), updated in
+# the health/oxygen change handlers.
+var _health_value: Label = null
+var _oxygen_value: Label = null
 var _health_fill_style: StyleBoxFlat = null
 var _health_pulse: Tween = null
 # Active dialog auto-hide tween. Held so a follow-up line can cancel the old
@@ -71,7 +85,7 @@ var _dialog_tween: Tween = null
 # the direction from screen-centre to its projected position and rotates to
 # point at it. When the waypoint is onscreen — or doesn't exist — the arrow
 # hides. Built programmatically so the .tscn stays unchanged.
-const EDGE_ARROW_ACCENT: Color = Color(0.55, 0.85, 1.0, 0.95)
+const EDGE_ARROW_ACCENT: Color = Color(1.0, 0.84, 0.42, 0.95)  # gold, matches skin (#141)
 const EDGE_ARROW_MARGIN: float = 64.0
 var _edge_arrow: Polygon2D = null
 
@@ -236,10 +250,10 @@ func _spawn_compass() -> void:
 		return
 	_compass = PlanetCompassScript.new()
 	_compass.name = "PlanetCompass"
-	# Span ~70% of the screen width, centred. The strip draws to the control's
-	# actual width, so the anchors define how wide it reads. Pinned to the VERY
-	# TOP as the top banner; the objective label sits below it.
-	_compass.anchor_left = 0.15
+	# Span the centre of the screen. Left anchor pushed right of the top-left unit
+	# frame (#141 Phase 1) so the frame owns the corner; the strip draws to the
+	# control's actual width, so the anchors define how wide it reads.
+	_compass.anchor_left = 0.34
 	_compass.anchor_right = 0.85
 	_compass.offset_left = 0.0
 	_compass.offset_right = 0.0
@@ -300,6 +314,31 @@ func _build_unit_frame() -> void:
 	# Graceful blank if the PNG is missing — texture stays null.
 	portrait.texture = PortraitLoaderScript.portrait_for(UNIT_PORTRAIT_KEY)
 	portrait_frame.add_child(portrait)
+
+	# Level badge — a small gold-ringed pip over the portrait's lower-left corner,
+	# the way a WoW unit frame always carries a level number.
+	var badge: Panel = Panel.new()
+	badge.name = "LevelBadge"
+	badge.custom_minimum_size = Vector2(24.0, 24.0)
+	badge.size = Vector2(24.0, 24.0)
+	badge.position = Vector2(-6.0, UNIT_PORTRAIT_SIZE.y - 18.0)
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var badge_style: StyleBoxFlat = _make_wow_stylebox(SKIN_ACCENT_GOLD)
+	badge_style.set_corner_radius_all(12)
+	badge_style.bg_color = Color(0.08, 0.07, 0.05, 0.95)
+	badge.add_theme_stylebox_override("panel", badge_style)
+	var badge_label: Label = Label.new()
+	badge_label.text = str(UNIT_LEVEL)
+	badge_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	badge_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	badge_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	badge_label.add_theme_font_size_override("font_size", 13)
+	badge_label.add_theme_color_override("font_color", SKIN_ACCENT_GOLD)
+	badge_label.add_theme_color_override("font_outline_color", SKIN_TEXT_OUTLINE)
+	badge_label.add_theme_constant_override("outline_size", 4)
+	badge_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.add_child(badge_label)
+	portrait_frame.add_child(badge)
 	frame.add_child(portrait_frame)
 
 	# Right column: name plate over the two vitals bars.
@@ -321,8 +360,10 @@ func _build_unit_frame() -> void:
 
 	_health_bar = _make_vital_bar("Health", UNIT_HEALTH_FILL)
 	_health_fill_style = _health_bar.get_theme_stylebox("fill") as StyleBoxFlat
+	_health_value = _add_bar_value_label(_health_bar)
 	col.add_child(_health_bar)
 	_oxygen_bar = _make_vital_bar("Oxygen", UNIT_OXYGEN_FILL)
+	_oxygen_value = _add_bar_value_label(_oxygen_bar)
 	col.add_child(_oxygen_bar)
 
 	frame.add_child(col)
@@ -347,6 +388,24 @@ func _make_vital_bar(bar_name: String, fill_color: Color) -> ProgressBar:
 	fill.set_corner_radius_all(SKIN_CORNER_RADIUS)
 	bar.add_theme_stylebox_override("fill", fill)
 	return bar
+
+
+# Centred "cur/max" overlay for a vitals bar (WoW-style). Anchored to the bar's
+# full rect so it stays centred as the bar resizes; MOUSE_FILTER_IGNORE so it
+# never eats input. Returned so the caller can hold the ref and update the text.
+func _add_bar_value_label(bar: ProgressBar) -> Label:
+	var lbl: Label = Label.new()
+	lbl.name = "Value"
+	lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_size_override("font_size", 11)
+	lbl.add_theme_color_override("font_color", SKIN_TEXT_PRIMARY)
+	lbl.add_theme_color_override("font_outline_color", SKIN_TEXT_OUTLINE)
+	lbl.add_theme_constant_override("outline_size", 3)
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(lbl)
+	return lbl
 
 
 func _build_edge_arrow() -> void:
@@ -556,6 +615,8 @@ func _on_health_changed(v: float) -> void:
 	if _health_bar == null:
 		return
 	_health_bar.value = v
+	if _health_value != null:
+		_health_value.text = "%d/%d" % [roundi(v), roundi(GameState.MAX_HEALTH)]
 	_update_health_critical(v)
 
 # Below UNIT_HEALTH_CRITICAL_FRAC of max HP the health bar turns red and pulses
@@ -580,6 +641,8 @@ func _on_oxygen_changed(v: float) -> void:
 	if _oxygen_bar == null:
 		return
 	_oxygen_bar.value = v
+	if _oxygen_value != null:
+		_oxygen_value.text = "%d/%d" % [roundi(v), roundi(GameState.MAX_OXYGEN)]
 
 func _on_kino_changed(_acquired: bool) -> void:
 	_refresh_action_bar()

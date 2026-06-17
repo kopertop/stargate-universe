@@ -110,27 +110,20 @@ var _minimap_name: Label = null
 # action's icon; empty/reserved slots show just the gold frame + slot number.
 const ACTION_SLOT_SIZE: Vector2 = Vector2(56, 56)
 const ACTION_BAR_MARGIN: float = 18.0
-# Fixed slot roster — id drives icon + click action; key = InputMap action whose
-# glyph is shown; empty id == reserved slot (frame only).
+# Fixed slot roster. Each slot's hotkey is its NUMBER (1-4) on keyboard, or a
+# D-pad direction (Up / Right / Down / Left) when a controller is connected — the
+# glyph shown reflects whichever device is active. `action` is the InputMap action
+# the slot fires; the slot's number key + D-pad button are added to that action at
+# runtime (_setup_action_slot_binds). Empty `id` == reserved slot (frame only).
 const ACTION_SLOTS: Array = [
-	{"id": "interact", "action": "interact"},
-	{"id": "kino_remote", "action": "kino_remote"},
-	{"id": "", "action": ""},
-	{"id": "", "action": ""},
+	{"id": "interact", "action": "interact", "key": KEY_1, "pad": JOY_BUTTON_DPAD_UP, "arrow": "↑"},
+	{"id": "kino_remote", "action": "kino_remote", "key": KEY_2, "pad": JOY_BUTTON_DPAD_RIGHT, "arrow": "→"},
+	{"id": "", "action": "", "key": KEY_3, "pad": JOY_BUTTON_DPAD_DOWN, "arrow": "↓"},
+	{"id": "", "action": "", "key": KEY_4, "pad": JOY_BUTTON_DPAD_LEFT, "arrow": "←"},
 ]
 var _action_bar: CenterContainer = null
 var _action_slots_box: HBoxContainer = null
 var _action_pulse: Tween = null
-
-# Bottom-right menu-button column (#141 Phase 5): C/Q/M/B chips that open the
-# character / quest / map / bags panels. Always shown; gold-framed.
-const MENU_BUTTONS: Array = [
-	{"key": "C", "label": "Character", "id": "character"},
-	{"key": "Q", "label": "Quests", "id": "quests"},
-	{"key": "M", "label": "Map", "id": "map"},
-	{"key": "B", "label": "Bags", "id": "bags"},
-]
-var _menu_col: VBoxContainer = null
 
 # WoW-style quest objective tracker (upper-right). The tracked quest's title in
 # an accent header above its active objective line, prefixed with an empty
@@ -782,9 +775,9 @@ func _on_quest_step_changed(_step: String) -> void:
 	_refresh_quest_tracker()
 
 
-# Bottom-CENTER action bar (#141 Phase 5). A full-width-bottom CenterContainer
-# named "ActionBar" (keeps the corner anchors the cohesion test asserts) holding
-# a centred HBox of fixed slots. Also builds the bottom-right menu column.
+# Bottom-CENTER action bar (#141). A full-width-bottom CenterContainer named
+# "ActionBar" (keeps the corner anchors the cohesion test asserts) holding a
+# centred HBox of 4 fixed slots, hotkeyed 1-4 (keyboard) or the D-pad (controller).
 func _build_action_bar() -> void:
 	_action_bar = CenterContainer.new()
 	_action_bar.name = "ActionBar"
@@ -805,74 +798,43 @@ func _build_action_bar() -> void:
 	_action_slots_box.add_theme_constant_override("separation", 8)
 	_action_bar.add_child(_action_slots_box)
 
-	_build_menu_column()
+	_setup_action_slot_binds()
+	# Re-glyph the bar when a controller is plugged in/out (1-4 <-> D-pad arrows).
+	if not Input.joy_connection_changed.is_connected(_on_joy_connection_changed):
+		Input.joy_connection_changed.connect(_on_joy_connection_changed)
 
 
-# Bottom-right vertical column of menu chips (Character / Quests / Map / Bags).
-func _build_menu_column() -> void:
-	if _menu_col != null and is_instance_valid(_menu_col):
-		return
-	_menu_col = VBoxContainer.new()
-	_menu_col.name = "MenuColumn"
-	# Just right of the centred action bar (matches the concept ~63% width), NOT
-	# the far-right corner.
-	_menu_col.anchor_left = 0.655
-	_menu_col.anchor_top = 1.0
-	_menu_col.anchor_right = 0.655
-	_menu_col.anchor_bottom = 1.0
-	_menu_col.grow_horizontal = Control.GROW_DIRECTION_END
-	_menu_col.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_menu_col.offset_bottom = -ACTION_BAR_MARGIN
-	_menu_col.add_theme_constant_override("separation", 4)
-	for entry in MENU_BUTTONS:
-		_menu_col.add_child(_make_menu_chip(String(entry["key"]), String(entry["label"]), String(entry["id"])))
-	add_child(_menu_col)
+# Add each slot's number key + D-pad button to the action it fires, so pressing
+# 1-4 (or the D-pad) triggers the slot exactly like its native keybind. Idempotent.
+func _setup_action_slot_binds() -> void:
+	for entry in ACTION_SLOTS:
+		var action: String = String(entry["action"])
+		if action == "" or not InputMap.has_action(action):
+			continue
+		var key_ev: InputEventKey = InputEventKey.new()
+		key_ev.physical_keycode = int(entry["key"])
+		if not _action_has_event(action, key_ev):
+			InputMap.action_add_event(action, key_ev)
+		var pad_ev: InputEventJoypadButton = InputEventJoypadButton.new()
+		pad_ev.button_index = int(entry["pad"])
+		if not _action_has_event(action, pad_ev):
+			InputMap.action_add_event(action, pad_ev)
 
 
-# A single compact menu chip: a small gold-framed square showing the keybind
-# letter in gold (WoW-style), clickable to open the matching panel. The full name
-# lives in the tooltip.
-func _make_menu_chip(key_label: String, label_text: String, id: String) -> Panel:
-	var chip: Panel = Panel.new()
-	chip.custom_minimum_size = Vector2(30.0, 28.0)
-	chip.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	chip.tooltip_text = "%s  [%s]" % [label_text, key_label]
-	chip.add_theme_stylebox_override("panel", _make_wow_stylebox(SKIN_ACCENT, 1))
-	chip.gui_input.connect(_on_menu_chip_input.bind(id))
-	var key: Label = Label.new()
-	key.text = key_label
-	key.set_anchors_preset(Control.PRESET_FULL_RECT)
-	key.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	key.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	key.add_theme_font_size_override("font_size", 15)
-	key.add_theme_color_override("font_color", SKIN_ACCENT_GOLD)
-	key.add_theme_color_override("font_outline_color", SKIN_TEXT_OUTLINE)
-	key.add_theme_constant_override("outline_size", 3)
-	key.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	chip.add_child(key)
-	return chip
+func _action_has_event(action: String, ev: InputEvent) -> bool:
+	for existing in InputMap.action_get_events(action):
+		if existing.is_match(ev):
+			return true
+	return false
 
 
-# Open the panel a menu chip maps to. Best-effort — guards each autoload so a
-# missing system never errors (the panels land over the phases that build them).
-func _on_menu_chip_input(event: InputEvent, id: String) -> void:
-	if not (event is InputEventMouseButton):
-		return
-	var mb: InputEventMouseButton = event
-	if not (mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT):
-		return
-	accept_event()
-	match id:
-		"character":
-			var cp: Node = get_node_or_null("/root/CharacterPanel")
-			if cp != null and cp.has_method("open") and cp.has_method("is_open"):
-				if cp.call("is_open"):
-					cp.call("close")
-				else:
-					cp.call("open")
-		"map", "bags":
-			if Inventory.has("kino_remote") and has_node("/root/KinoRemote"):
-				get_node("/root/KinoRemote").call("open_remote")
+func _on_joy_connection_changed(_device: int, _connected: bool) -> void:
+	_refresh_action_bar()
+
+
+# A controller is "active" (so the bar shows D-pad arrows) when one is connected.
+func _controller_active() -> bool:
+	return not Input.get_connected_joypads().is_empty()
 
 
 # One slot per currently-available tool. Today just the Kino Remote (gated on
@@ -900,7 +862,7 @@ func _refresh_action_bar() -> void:
 		# frame is always present so the bar reads as a fixed 4-slot row.
 		var owned: bool = slot_id != "kino_remote" or Inventory.has("kino_remote")
 		var attention: bool = scouting and slot_id == "kino_remote" and owned
-		var slot: Panel = _make_action_slot(slot_id if owned else "", action, idx, attention)
+		var slot: Panel = _make_action_slot(entry, slot_id if owned else "", attention)
 		_action_slots_box.add_child(slot)
 		if attention:
 			_action_pulse = create_tween().set_loops()
@@ -915,10 +877,10 @@ func _refresh_action_bar() -> void:
 		_kino_hint.visible = true
 
 
-# One fixed action slot. `item_id` empty == reserved (frame + slot number only).
-# `action` names the InputMap action whose key glyph is shown top-left (so it
-# tracks rebinds). `slot_num` is the WoW-style 1-4 hotkey shown bottom-right.
-func _make_action_slot(item_id: String, action: String, slot_num: int, attention: bool) -> Panel:
+# One fixed action slot. `entry` is the ACTION_SLOTS dict (drives the hotkey
+# glyph: its number 1-4 on keyboard, or its D-pad arrow when a controller is
+# connected). `item_id` empty == reserved slot (frame + glyph only).
+func _make_action_slot(entry: Dictionary, item_id: String, attention: bool) -> Panel:
 	var slot: Panel = Panel.new()
 	slot.custom_minimum_size = ACTION_SLOT_SIZE
 	slot.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -942,43 +904,18 @@ func _make_action_slot(item_id: String, action: String, slot_num: int, attention
 			tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			slot.add_child(tex)
 
-	# Key glyph (top-left) read live from InputMap so it reflects the real bind.
-	var glyph: String = _key_for_action(action)
-	if glyph != "":
-		var key: Label = Label.new()
-		key.text = glyph
-		key.add_theme_font_size_override("font_size", 12)
-		key.add_theme_color_override("font_color", SKIN_ACCENT_GOLD)
-		key.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-		key.add_theme_constant_override("outline_size", 4)
-		key.position = Vector2(4, 1)
-		key.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		slot.add_child(key)
-
-	# Slot number (bottom-right), WoW hotbar convention.
-	var num: Label = Label.new()
-	num.text = str(slot_num)
-	num.add_theme_font_size_override("font_size", 11)
-	num.add_theme_color_override("font_color", Color(0.8, 0.78, 0.7, 0.8))
-	num.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-	num.add_theme_constant_override("outline_size", 3)
-	num.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	num.position = Vector2(ACTION_SLOT_SIZE.x - 14.0, ACTION_SLOT_SIZE.y - 18.0)
-	num.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	slot.add_child(num)
+	# Hotkey glyph (top-left): the slot number 1-4, or its D-pad arrow under a
+	# controller. This IS the slot's trigger — pressing it fires the slot action.
+	var key: Label = Label.new()
+	key.text = String(entry["arrow"]) if _controller_active() else OS.get_keycode_string(int(entry["key"]))
+	key.add_theme_font_size_override("font_size", 15)
+	key.add_theme_color_override("font_color", SKIN_ACCENT_GOLD)
+	key.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	key.add_theme_constant_override("outline_size", 4)
+	key.position = Vector2(5, 2)
+	key.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	slot.add_child(key)
 	return slot
-
-
-# First keyboard glyph bound to an InputMap action (e.g. "E", "Tab"), or "".
-func _key_for_action(action: String) -> String:
-	if action == "" or not InputMap.has_action(action):
-		return ""
-	for ev in InputMap.action_get_events(action):
-		if ev is InputEventKey:
-			var k: InputEventKey = ev
-			var code: int = k.physical_keycode if k.physical_keycode != 0 else k.keycode
-			return OS.get_keycode_string(code)
-	return ""
 
 
 # Left-clicking a filled action slot fires its action (mirrors the keybind).

@@ -89,14 +89,34 @@ const EDGE_ARROW_ACCENT: Color = Color(1.0, 0.84, 0.42, 0.95)  # gold, matches s
 const EDGE_ARROW_MARGIN: float = 64.0
 var _edge_arrow: Polygon2D = null
 
-# WoW-style action bar (bottom-right). One slot per available tool: a dark
-# translucent square with the tool's catalog icon centred and its keybind
-# overlaid top-left. Built in code, anchored bottom-right, grows leftward so
-# more tools can be added later. Driven by _refresh_action_bar.
-const ACTION_SLOT_SIZE: Vector2 = Vector2(58, 58)
-const ACTION_BAR_MARGIN: float = 20.0
-var _action_bar: HBoxContainer = null
+# WoW-style action bar (bottom-CENTER, #141 Phase 5). Four FIXED controller-first
+# slots, always shown. `ActionBar` is a full-width-bottom CenterContainer (so its
+# corner anchors still read 1.0/1.0 for the cohesion test) holding a centred HBox
+# of slots. Each slot shows its bound key glyph (read live from InputMap) over the
+# action's icon; empty/reserved slots show just the gold frame + slot number.
+const ACTION_SLOT_SIZE: Vector2 = Vector2(56, 56)
+const ACTION_BAR_MARGIN: float = 18.0
+# Fixed slot roster — id drives icon + click action; key = InputMap action whose
+# glyph is shown; empty id == reserved slot (frame only).
+const ACTION_SLOTS: Array = [
+	{"id": "interact", "action": "interact"},
+	{"id": "kino_remote", "action": "kino_remote"},
+	{"id": "", "action": ""},
+	{"id": "", "action": ""},
+]
+var _action_bar: CenterContainer = null
+var _action_slots_box: HBoxContainer = null
 var _action_pulse: Tween = null
+
+# Bottom-right menu-button column (#141 Phase 5): C/Q/M/B chips that open the
+# character / quest / map / bags panels. Always shown; gold-framed.
+const MENU_BUTTONS: Array = [
+	{"key": "C", "label": "Character", "id": "character"},
+	{"key": "Q", "label": "Quests", "id": "quests"},
+	{"key": "M", "label": "Map", "id": "map"},
+	{"key": "B", "label": "Bags", "id": "bags"},
+]
+var _menu_col: VBoxContainer = null
 
 # WoW-style quest objective tracker (upper-right). The tracked quest's title in
 # an accent header above its active objective line, prefixed with an empty
@@ -653,21 +673,97 @@ func _on_quest_step_changed(_step: String) -> void:
 	_refresh_quest_tracker()
 
 
-# Bottom-right action bar anchored to the corner, growing leftward as tools
-# are added. Empty until built.
+# Bottom-CENTER action bar (#141 Phase 5). A full-width-bottom CenterContainer
+# named "ActionBar" (keeps the corner anchors the cohesion test asserts) holding
+# a centred HBox of fixed slots. Also builds the bottom-right menu column.
 func _build_action_bar() -> void:
-	_action_bar = HBoxContainer.new()
+	_action_bar = CenterContainer.new()
 	_action_bar.name = "ActionBar"
-	_action_bar.anchor_left = 1.0
+	_action_bar.anchor_left = 0.0
 	_action_bar.anchor_top = 1.0
 	_action_bar.anchor_right = 1.0
 	_action_bar.anchor_bottom = 1.0
-	_action_bar.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	_action_bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_action_bar.offset_right = -ACTION_BAR_MARGIN
+	_action_bar.offset_top = -(ACTION_SLOT_SIZE.y + ACTION_BAR_MARGIN)
 	_action_bar.offset_bottom = -ACTION_BAR_MARGIN
-	_action_bar.add_theme_constant_override("separation", 8)
+	# The CenterContainer spans the width but must not eat world clicks outside the
+	# slots; the inner HBox + slots take input, the container itself ignores.
+	_action_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_action_bar)
+
+	_action_slots_box = HBoxContainer.new()
+	_action_slots_box.name = "Slots"
+	_action_slots_box.add_theme_constant_override("separation", 8)
+	_action_bar.add_child(_action_slots_box)
+
+	_build_menu_column()
+
+
+# Bottom-right vertical column of menu chips (Character / Quests / Map / Bags).
+func _build_menu_column() -> void:
+	if _menu_col != null and is_instance_valid(_menu_col):
+		return
+	_menu_col = VBoxContainer.new()
+	_menu_col.name = "MenuColumn"
+	# Just right of the centred action bar (matches the concept ~63% width), NOT
+	# the far-right corner.
+	_menu_col.anchor_left = 0.655
+	_menu_col.anchor_top = 1.0
+	_menu_col.anchor_right = 0.655
+	_menu_col.anchor_bottom = 1.0
+	_menu_col.grow_horizontal = Control.GROW_DIRECTION_END
+	_menu_col.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_menu_col.offset_bottom = -ACTION_BAR_MARGIN
+	_menu_col.add_theme_constant_override("separation", 4)
+	for entry in MENU_BUTTONS:
+		_menu_col.add_child(_make_menu_chip(String(entry["key"]), String(entry["label"]), String(entry["id"])))
+	add_child(_menu_col)
+
+
+# A single compact menu chip: a small gold-framed square showing the keybind
+# letter in gold (WoW-style), clickable to open the matching panel. The full name
+# lives in the tooltip.
+func _make_menu_chip(key_label: String, label_text: String, id: String) -> Panel:
+	var chip: Panel = Panel.new()
+	chip.custom_minimum_size = Vector2(30.0, 28.0)
+	chip.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	chip.tooltip_text = "%s  [%s]" % [label_text, key_label]
+	chip.add_theme_stylebox_override("panel", _make_wow_stylebox(SKIN_ACCENT, 1))
+	chip.gui_input.connect(_on_menu_chip_input.bind(id))
+	var key: Label = Label.new()
+	key.text = key_label
+	key.set_anchors_preset(Control.PRESET_FULL_RECT)
+	key.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	key.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	key.add_theme_font_size_override("font_size", 15)
+	key.add_theme_color_override("font_color", SKIN_ACCENT_GOLD)
+	key.add_theme_color_override("font_outline_color", SKIN_TEXT_OUTLINE)
+	key.add_theme_constant_override("outline_size", 3)
+	key.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chip.add_child(key)
+	return chip
+
+
+# Open the panel a menu chip maps to. Best-effort — guards each autoload so a
+# missing system never errors (the panels land over the phases that build them).
+func _on_menu_chip_input(event: InputEvent, id: String) -> void:
+	if not (event is InputEventMouseButton):
+		return
+	var mb: InputEventMouseButton = event
+	if not (mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT):
+		return
+	accept_event()
+	match id:
+		"character":
+			var cp: Node = get_node_or_null("/root/CharacterPanel")
+			if cp != null and cp.has_method("open") and cp.has_method("is_open"):
+				if cp.call("is_open"):
+					cp.call("close")
+				else:
+					cp.call("open")
+		"map", "bags":
+			if Inventory.has("kino_remote") and has_node("/root/KinoRemote"):
+				get_node("/root/KinoRemote").call("open_remote")
 
 
 # One slot per currently-available tool. Today just the Kino Remote (gated on
@@ -676,24 +772,27 @@ func _build_action_bar() -> void:
 # During the scout beat the slot gets an attention border + pulse and the
 # repurposed KinoHint label shows a caption above the bar.
 func _refresh_action_bar() -> void:
-	if _action_bar == null:
+	if _action_slots_box == null:
 		return
-	for c in _action_bar.get_children():
+	for c in _action_slots_box.get_children():
 		c.queue_free()
 	if _action_pulse != null and _action_pulse.is_running():
 		_action_pulse.kill()
 	_action_pulse = null
 	_kino_hint.visible = false
 
-	var tools: Array = []
-	if Inventory.has("kino_remote"):
-		tools.append({"id": "kino_remote", "key": "Tab"})
-
 	var scouting: bool = GameState.quest_step == GameState.QUEST_SCOUT_KINO
-	for tool in tools:
-		var attention: bool = scouting and tool["id"] == "kino_remote"
-		var slot: Panel = _make_action_slot(String(tool["id"]), String(tool["key"]), attention)
-		_action_bar.add_child(slot)
+	var idx: int = 0
+	for entry in ACTION_SLOTS:
+		idx += 1
+		var slot_id: String = String(entry["id"])
+		var action: String = String(entry["action"])
+		# The Kino slot only carries its icon/click once the remote is owned; the
+		# frame is always present so the bar reads as a fixed 4-slot row.
+		var owned: bool = slot_id != "kino_remote" or Inventory.has("kino_remote")
+		var attention: bool = scouting and slot_id == "kino_remote" and owned
+		var slot: Panel = _make_action_slot(slot_id if owned else "", action, idx, attention)
+		_action_slots_box.add_child(slot)
 		if attention:
 			_action_pulse = create_tween().set_loops()
 			_action_pulse.tween_property(slot, "modulate:a", 0.55, 0.6)
@@ -707,52 +806,73 @@ func _refresh_action_bar() -> void:
 		_kino_hint.visible = true
 
 
-func _make_action_slot(item_id: String, key_label: String, attention: bool) -> Panel:
+# One fixed action slot. `item_id` empty == reserved (frame + slot number only).
+# `action` names the InputMap action whose key glyph is shown top-left (so it
+# tracks rebinds). `slot_num` is the WoW-style 1-4 hotkey shown bottom-right.
+func _make_action_slot(item_id: String, action: String, slot_num: int, attention: bool) -> Panel:
 	var slot: Panel = Panel.new()
 	slot.custom_minimum_size = ACTION_SLOT_SIZE
-	# Clickable, same as pressing the keybind. The icon/label children are
-	# MOUSE_FILTER_IGNORE, so the Panel itself receives the click.
 	slot.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	slot.tooltip_text = "Open the Kino Remote  [%s]" % key_label
-	slot.gui_input.connect(_on_action_slot_input.bind(item_id))
-	# Shares the skin fill + corner; attention swaps to the gold accent (same gold
-	# the quest tracker title uses), otherwise the cool-blue primary border.
+	if item_id != "":
+		slot.gui_input.connect(_on_action_slot_input.bind(item_id))
 	var border: Color = SKIN_ACCENT_GOLD if attention else SKIN_ACCENT
 	slot.add_theme_stylebox_override("panel", _make_wow_stylebox(border))
 
-	var icon_path: String = String(Inventory.definition(item_id).get("icon", ""))
-	if icon_path != "" and ResourceLoader.exists(icon_path):
-		var tex: TextureRect = TextureRect.new()
-		tex.texture = load(icon_path)
-		tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		tex.anchor_right = 1.0
-		tex.anchor_bottom = 1.0
-		tex.offset_left = 5
-		tex.offset_top = 5
-		tex.offset_right = -5
-		tex.offset_bottom = -5
-		tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		slot.add_child(tex)
+	if item_id != "":
+		var icon_path: String = String(Inventory.definition(item_id).get("icon", ""))
+		if icon_path != "" and ResourceLoader.exists(icon_path):
+			var tex: TextureRect = TextureRect.new()
+			tex.texture = load(icon_path)
+			tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			tex.set_anchors_preset(Control.PRESET_FULL_RECT)
+			tex.offset_left = 5
+			tex.offset_top = 5
+			tex.offset_right = -5
+			tex.offset_bottom = -5
+			tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			slot.add_child(tex)
 
-	# Keybind overlay, WoW-style top-left corner with an outline so it reads
-	# over the icon.
-	var key: Label = Label.new()
-	key.text = key_label
-	key.add_theme_font_size_override("font_size", 13)
-	key.add_theme_color_override("font_color", Color.WHITE)
-	key.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	key.add_theme_constant_override("outline_size", 4)
-	key.position = Vector2(4, 1)
-	key.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	slot.add_child(key)
+	# Key glyph (top-left) read live from InputMap so it reflects the real bind.
+	var glyph: String = _key_for_action(action)
+	if glyph != "":
+		var key: Label = Label.new()
+		key.text = glyph
+		key.add_theme_font_size_override("font_size", 12)
+		key.add_theme_color_override("font_color", SKIN_ACCENT_GOLD)
+		key.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+		key.add_theme_constant_override("outline_size", 4)
+		key.position = Vector2(4, 1)
+		key.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(key)
+
+	# Slot number (bottom-right), WoW hotbar convention.
+	var num: Label = Label.new()
+	num.text = str(slot_num)
+	num.add_theme_font_size_override("font_size", 11)
+	num.add_theme_color_override("font_color", Color(0.8, 0.78, 0.7, 0.8))
+	num.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	num.add_theme_constant_override("outline_size", 3)
+	num.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	num.position = Vector2(ACTION_SLOT_SIZE.x - 14.0, ACTION_SLOT_SIZE.y - 18.0)
+	num.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	slot.add_child(num)
 	return slot
 
 
-# Left-clicking an action-bar slot fires the tool's action — the same thing its
-# keybind does. Today the only tool is the Kino Remote, whose action mirrors the
-# Tab key (KinoRemote.open_remote, gated on owning the remote). Add a match arm
-# here when more tools are added.
+# First keyboard glyph bound to an InputMap action (e.g. "E", "Tab"), or "".
+func _key_for_action(action: String) -> String:
+	if action == "" or not InputMap.has_action(action):
+		return ""
+	for ev in InputMap.action_get_events(action):
+		if ev is InputEventKey:
+			var k: InputEventKey = ev
+			var code: int = k.physical_keycode if k.physical_keycode != 0 else k.keycode
+			return OS.get_keycode_string(code)
+	return ""
+
+
+# Left-clicking a filled action slot fires its action (mirrors the keybind).
 func _on_action_slot_input(event: InputEvent, item_id: String) -> void:
 	if not (event is InputEventMouseButton):
 		return
@@ -763,6 +883,9 @@ func _on_action_slot_input(event: InputEvent, item_id: String) -> void:
 		"kino_remote":
 			if has_node("/root/KinoRemote"):
 				get_node("/root/KinoRemote").call("open_remote")
+		"interact":
+			if _player != null and _player.has_method("try_interact"):
+				_player.call("try_interact")
 	accept_event()
 
 # Upper-right quest tracker: a transparent VBox holding the accent quest title

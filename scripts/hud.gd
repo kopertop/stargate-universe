@@ -231,7 +231,12 @@ func _ready() -> void:
 	GameState.oxygen_changed.connect(_on_oxygen_changed)
 	GameState.kino_changed.connect(_on_kino_changed)
 	GameState.quest_step_changed.connect(_on_quest_step_changed)
-	GameState.log_added.connect(_on_log_added)
+	# The Chat panel is a NARRATIVE transcript: it is fed by dialogue_shown
+	# (character speech) + narrative_added (stage directions / scripted lines),
+	# NOT log_added — log_added is the noisy system journal (discovery, resources,
+	# saves) and must not flood the chat. So the chat starts empty and only fills
+	# as characters actually speak. (#141)
+	GameState.narrative_added.connect(_on_narrative_added)
 	GameState.dialogue_shown.connect(_on_dialogue_shown)
 	GameState.dialog_started.connect(_on_dialog_started)
 	# The interact prompt ("[E] Talk to …") must not linger under an open
@@ -1085,6 +1090,8 @@ func _apply_log_feed_position() -> void:
 
 
 func _on_dialogue_shown(character_name: String, line: String) -> void:
+	# Mirror the spoken line into the Chat transcript.
+	_append_dialogue(character_name, line)
 	_dialog_name.text = character_name
 	_dialog_line.text = line
 	_dialog_panel.modulate = Color(1.0, 1.0, 1.0, 1.0)
@@ -1124,31 +1131,52 @@ func _on_dialog_closed_restore_prompt() -> void:
 		_interact_label.visible = true
 
 
-func _on_log_added(line: String) -> void:
-	# Combat-ish lines are mirrored into the Combat tab too; everything lands in
-	# Chat so the Chat tab is the full transcript.
-	_append_chat_line(_chat_log, line)
-	if _is_combat_line(line):
-		_append_chat_line(_combat_log, line)
+# Narrative transcript entry. speaker == "" → a white stage-direction line;
+# otherwise a "Speaker: line" dialogue line. Combat-flavoured lines also mirror
+# into the Combat tab.
+func _on_narrative_added(speaker: String, text: String) -> void:
+	if speaker == "":
+		_append_narration(text)
+	else:
+		_append_dialogue(speaker, text)
+	if _is_combat_line(text):
+		_append_chat_line(_combat_log, "[color=#d98c6b]%s[/color]" % _escape_bbcode(text))
+
+
+# Character speech also flows into the Chat transcript (in addition to the
+# on-screen subtitle panel rendered by _on_dialogue_shown).
+func _append_dialogue(speaker: String, line: String) -> void:
+	_append_chat_line(_chat_log, "[color=#ffd56b]%s:[/color] [color=#ffffff]\"%s\"[/color]"
+		% [_escape_bbcode(speaker), _escape_bbcode(line)])
+
+
+# Speaker-less stage direction, rendered white + italic (e.g. "Scott arrives
+# through the Stargate").
+func _append_narration(text: String) -> void:
+	_append_chat_line(_chat_log, "[color=#eaeaf0][i]%s[/i][/color]" % _escape_bbcode(text))
 
 
 # Heuristic routing for the Combat tab — keyword match until a real combat event
 # stream exists. Keeps the Combat tab meaningful without a combat system.
 func _is_combat_line(line: String) -> bool:
 	var l: String = line.to_lower()
-	for kw in ["damage", "hit", "attack", "slain", "killed", "hostile", "down", "heal"]:
+	for kw in ["damage", "hit", "attack", "slain", "killed", "hostile", "wounded", "heal"]:
 		if l.contains(kw):
 			return true
 	return false
 
 
-func _append_chat_line(target: RichTextLabel, line: String) -> void:
+# Escape BBCode opening brackets so authored text can't accidentally inject tags.
+func _escape_bbcode(s: String) -> String:
+	return s.replace("[", "[lb]")
+
+
+func _append_chat_line(target: RichTextLabel, bbcode: String) -> void:
 	if target == null:
 		return
-	target.append_text(line + "\n")
+	target.append_text(bbcode + "\n")
 	# Cap the backlog so a long session can't grow the buffer unbounded.
-	var lines: PackedStringArray = target.get_parsed_text().split("\n")
-	if lines.size() > CHAT_MAX_LINES:
+	if target.get_paragraph_count() > CHAT_MAX_LINES:
 		target.remove_paragraph(0)
 
 
@@ -1199,12 +1227,10 @@ func _build_chat_panel() -> void:
 
 	add_child(_chat_panel)
 
-	# Seed both streams from the persisted journal so the panel shows history.
-	for entry in GameState.log_entries:
-		var s: String = String(entry)
-		_append_chat_line(_chat_log, s)
-		if _is_combat_line(s):
-			_append_chat_line(_combat_log, s)
+	# Intentionally NOT seeded from GameState.log_entries — the chat is a live
+	# narrative transcript that starts empty and fills only as characters speak
+	# (dialogue_shown) or narration fires (narrative_added). The system journal
+	# (discovery/resources/saves) deliberately never appears here. (#141)
 	_update_chat_tab_styles()
 
 

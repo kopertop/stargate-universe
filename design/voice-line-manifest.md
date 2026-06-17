@@ -693,17 +693,23 @@ Destiny. Authored against `design/sgu-opening-reference.md`. Delivery is **loud,
 overlapping** — these layer over the arrival choreography in
 `scripts/gate_room.gd::_play_prologue_cinematic()`. Many lines are short and meant to stack.
 
-### 18.1 Marshalling / Command (Scott, Greer, Young)
+### 18.1 Marshalling / Command (Scott, Greer)
+
+> **E1 staging note:** Colonel Young lands **unconscious** in wave 2 (thrown off-screen,
+> face-down) and stays down for the whole cold open, so the shipped cinematic routes all
+> marshalling through **Scott and Greer**. The `open-young-*` lines below are reserved for
+> a variant where Young is conscious; they are not wired into `_play_prologue_cinematic()`.
 
 | ID | Character | Text | Trigger | Priority | Status |
 |----|-----------|------|---------|----------|--------|
 | open-scott-evac | Scott | "Slow down the evac — we're coming in too high!" | Wave 1, at the gate | P1 | TODO |
 | open-scott-side | Scott | "There's no time to explain — off to the side!" | Crowd clearing the ramp | P1 | TODO |
 | open-greer-clear | Greer | "Clear! Keep 'em moving!" | Landing zone cleared | P1 | TODO |
-| open-young-move | Young | "Move, move, move!" | Waves 2–8, herding crowd | P1 | TODO |
-| open-young-calm | Young | "Stay calm! Keep it down!" | Crowd panic peak | P1 | TODO |
-| open-young-where | Young | "Where are we?" | After the flood settles | P1 | TODO |
-| open-officer-idk | Crew | "I don't know, sir." | Reply to Young | P1 | TODO |
+| open-greer-move | Greer | "Move, move, move!" | Waves 5–8, herding crowd (used) | P1 | TODO |
+| open-young-move | Young | "Move, move, move!" | Herding crowd (Young-conscious variant) | P2 | TODO |
+| open-young-calm | Young | "Stay calm! Keep it down!" | Crowd panic peak (variant) | P2 | TODO |
+| open-young-where | Young | "Where are we?" | After the flood settles (variant) | P2 | TODO |
+| open-officer-idk | Crew | "I don't know, sir." | Reply to a senior officer | P1 | TODO |
 
 ### 18.2 Crowd Confusion (generic crew, layered)
 
@@ -728,8 +734,8 @@ overlapping** — these layer over the arrival choreography in
 | ID | Character | Text | Trigger | Priority | Status |
 |----|-----------|------|---------|----------|--------|
 | open-scott-norush | Scott | "I haven't seen Rush — I don't know if he made it through." | Hand-off beat | P1 | TODO |
-| open-young-rush | Young | "Rush! … Rush!" | Calling out, no answer | P1 | TODO |
-| open-young-findhim | Young | "You all right? Help me find him." | Activates quest `find_rush` | P1 | TODO |
+| open-scott-rush | Scott | "Rush! … Rush!" | Calling out, no answer | P1 | TODO |
+| open-scott-findhim | Scott | "Help me find him." | Activates quest `find_rush` | P1 | TODO |
 | open-crew-whatwasthat | Crew | "What the hell *was* that?" | Ship shudders — wonder beat | P1 | TODO |
 | open-scott-eli-now | Scott | "Eli! NOW!" | **Shouted**, urgent — Scott rounds on Eli to get him moving | P1 | TODO |
 | open-eli-coming | Eli | "Okay! I'm coming!" | Eli's scramble reply → hand control to player | P1 | TODO |

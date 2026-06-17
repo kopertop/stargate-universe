@@ -15,8 +15,8 @@ const MANIFEST: String = "res://design/voice-line-manifest.md"
 # The closing hand-off, exactly as _play_rush_handoff sequences it. If any of these
 # stops being referenced in code, the climax lost a beat — fail loudly.
 const REQUIRED_HANDOFF: Array[String] = [
-	"open-crew-whatwasthat", "open-scott-norush", "open-young-rush",
-	"open-young-findhim", "open-scott-eli-now", "open-eli-coming",
+	"open-crew-whatwasthat", "open-scott-norush", "open-scott-rush",
+	"open-scott-findhim", "open-scott-eli-now", "open-eli-coming",
 ]
 
 var _failures: Array[String] = []

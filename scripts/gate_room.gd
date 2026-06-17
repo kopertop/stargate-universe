@@ -631,7 +631,8 @@ func _play_prologue_cinematic() -> void:
 	await _extra_pair("Sgt Greer", "greer", Vector3(5.5, 0.05, 1.0),
 			"Sgt Spencer", "", Vector3(-5.5, 0.05, 0.5))
 	_bark("CREW", "Where are we?", "open-crowd-where")
-	_bark("COL. YOUNG", "Move, move, move!", "open-young-move")
+	# Greer (not Young) marshals the flood — Young landed unconscious in wave 2.
+	_bark("SGT. GREER", "Move, move, move!", "open-greer-move")
 	await _extra_pair("Dr Brody", "", Vector3(6.2, 0.05, -3.0),
 			"Dr Franklin", "", Vector3(-6.2, 0.05, -2.5))
 	_bark("CREW", "What's going on?", "open-crowd-what")
@@ -953,8 +954,8 @@ func _play_rush_handoff(scott: Node3D) -> void:
 		if scott.global_position.distance_to(gate_pt) > 0.1:
 			scott.look_at(gate_pt, Vector3.UP)
 	await _cold_open_line("LT. SCOTT", "I haven't seen Rush. I don't know if he made it through.", "open-scott-norush", 2.6)
-	await _cold_open_line("LT. SCOTT", "Rush! … Rush!", "open-young-rush", 1.8)
-	await _cold_open_line("LT. SCOTT", "Help me find him.", "open-young-findhim", 1.6)
+	await _cold_open_line("LT. SCOTT", "Rush! … Rush!", "open-scott-rush", 1.8)
+	await _cold_open_line("LT. SCOTT", "Help me find him.", "open-scott-findhim", 1.6)
 
 	# Scott rounds on Eli — the button. Shouted.
 	if scott != null and is_instance_valid(scott) and scott.has_method("look_at") and _player != null:

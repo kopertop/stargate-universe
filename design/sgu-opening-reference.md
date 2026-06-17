@@ -113,10 +113,11 @@ stages (see waves 1–8 + Eli). Bold = new authoring this issue adds.
 6. **The hush → wonder.** Lights/consoles wake (`_wake_consoles()`); the ship shudders.
    **Add** the turn: "What is this place?" → "**What the hell was that?**".
 7. **Hand-off to Rush.** Scott released to greet (`_set_scott_autogreet(true)`). **Add**
-   Young/Scott's "I haven't seen Rush… **Help me find him.**" → then **Scott rounds on Eli
-   and yells "Eli! NOW!"**, Eli answers "Okay! I'm coming!" — this is the button that
-   `_restore_player_camera()` snaps back on, activates quest `find_rush`, and points the
-   waypoint at the Control Interface Room.
+   the Rush hand-off — in the show Young calls it, but our staging has Young unconscious,
+   so **Scott** carries it: "I haven't seen Rush… **Help me find him.**" → then **Scott
+   rounds on Eli and yells "Eli! NOW!"**, Eli answers "Okay! I'm coming!" — this is the
+   button that `_restore_player_camera()` snaps back on, activates quest `find_rush`, and
+   points the waypoint at the Control Interface Room.
 
 ---
 

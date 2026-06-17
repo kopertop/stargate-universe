@@ -37,6 +37,7 @@ var _player: Node = null
 # headless runs. The hud_wow.gd cohesion test mirrors SKIN_ACCENT as its contract.
 const SKIN_ACCENT: Color = Color(0.83, 0.66, 0.32, 1.0)        # primary GOLD border
 const SKIN_ACCENT_GOLD: Color = Color(1.0, 0.84, 0.42, 1.0)    # quest title / attention (bright gold)
+const SKIN_ACCENT_DIM: Color = Color(0.55, 0.46, 0.28, 0.85)   # inactive tab / dimmed accent
 const SKIN_PANEL_BG: Color = Color(0.035, 0.035, 0.045, 0.82)  # near-black translucent fill
 const SKIN_CORNER_RADIUS: int = 4
 const SKIN_BORDER_WIDTH: int = 2
@@ -124,6 +125,20 @@ const ACTION_SLOTS: Array = [
 var _action_bar: CenterContainer = null
 var _action_slots_box: HBoxContainer = null
 var _action_pulse: Tween = null
+
+# Persistent tabbed Chat / Combat log (bottom-right, #141 Phase 6). Replaces the
+# transient top-right feed: a small gold-framed panel with "Chat" / "Combat" tabs
+# over a scrollable RichTextLabel, backed by GameState.log_entries (so history
+# survives across the session) + live log_added. Smaller font than the old feed.
+const CHAT_PANEL_SIZE: Vector2 = Vector2(372.0, 150.0)
+const CHAT_FONT_SIZE: int = 12
+const CHAT_MAX_LINES: int = 200
+var _chat_panel: PanelContainer = null
+var _chat_log: RichTextLabel = null
+var _combat_log: RichTextLabel = null
+var _chat_tab_btn: Button = null
+var _combat_tab_btn: Button = null
+var _chat_active: String = "chat"
 
 # WoW-style quest objective tracker (upper-right). The tracked quest's title in
 # an accent header above its active objective line, prefixed with an empty
@@ -237,6 +252,7 @@ func _ready() -> void:
 	_dialog_panel.visible = false
 	_build_action_bar()
 	_refresh_action_bar()
+	_build_chat_panel()
 	_build_quest_tracker()
 	_refresh_quest_tracker()
 	_build_edge_arrow()
@@ -1072,19 +1088,125 @@ func _on_dialog_closed_restore_prompt() -> void:
 
 
 func _on_log_added(line: String) -> void:
-	var lbl: Label = Label.new()
-	lbl.text = "• " + line
-	lbl.add_theme_color_override("font_color", Color(0.85, 0.95, 1.0, 1.0))
-	lbl.add_theme_font_size_override("font_size", 11)
-	_log_box.add_child(lbl)
-	# Keep only the last 3. remove_child() first so the count drops synchronously —
-	# queue_free() alone defers deletion to end-of-frame and would spin this loop.
-	while _log_box.get_child_count() > 3:
-		var oldest: Node = _log_box.get_child(0)
-		_log_box.remove_child(oldest)
-		oldest.queue_free()
-	# Auto-fade & remove after a moment.
-	var t: Tween = create_tween()
-	t.tween_interval(6.0)
-	t.tween_property(lbl, "modulate:a", 0.0, 1.0)
-	t.tween_callback(Callable(lbl, "queue_free"))
+	# Combat-ish lines are mirrored into the Combat tab too; everything lands in
+	# Chat so the Chat tab is the full transcript.
+	_append_chat_line(_chat_log, line)
+	if _is_combat_line(line):
+		_append_chat_line(_combat_log, line)
+
+
+# Heuristic routing for the Combat tab — keyword match until a real combat event
+# stream exists. Keeps the Combat tab meaningful without a combat system.
+func _is_combat_line(line: String) -> bool:
+	var l: String = line.to_lower()
+	for kw in ["damage", "hit", "attack", "slain", "killed", "hostile", "down", "heal"]:
+		if l.contains(kw):
+			return true
+	return false
+
+
+func _append_chat_line(target: RichTextLabel, line: String) -> void:
+	if target == null:
+		return
+	target.append_text(line + "\n")
+	# Cap the backlog so a long session can't grow the buffer unbounded.
+	var lines: PackedStringArray = target.get_parsed_text().split("\n")
+	if lines.size() > CHAT_MAX_LINES:
+		target.remove_paragraph(0)
+
+
+# Bottom-right tabbed Chat / Combat log. A gold-framed panel: a tab row over a
+# scrollable RichTextLabel per stream. Backed by GameState.log_entries (history)
+# + live log_added. Replaces the old transient top-right feed.
+func _build_chat_panel() -> void:
+	if _chat_panel != null and is_instance_valid(_chat_panel):
+		return
+	# The legacy transient feed node is retired — hide it so nothing renders there.
+	if _log_box != null:
+		_log_box.visible = false
+
+	_chat_panel = PanelContainer.new()
+	_chat_panel.name = "ChatPanel"
+	_chat_panel.custom_minimum_size = CHAT_PANEL_SIZE
+	_chat_panel.anchor_left = 1.0
+	_chat_panel.anchor_top = 1.0
+	_chat_panel.anchor_right = 1.0
+	_chat_panel.anchor_bottom = 1.0
+	_chat_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_chat_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_chat_panel.offset_left = -(CHAT_PANEL_SIZE.x + 14.0)
+	_chat_panel.offset_top = -(CHAT_PANEL_SIZE.y + 14.0)
+	_chat_panel.offset_right = -14.0
+	_chat_panel.offset_bottom = -14.0
+	var panel_style: StyleBoxFlat = _make_wow_stylebox(SKIN_ACCENT, 1)
+	panel_style.set_content_margin_all(6.0)
+	_chat_panel.add_theme_stylebox_override("panel", panel_style)
+
+	var col: VBoxContainer = VBoxContainer.new()
+	col.add_theme_constant_override("separation", 3)
+	_chat_panel.add_child(col)
+
+	var tabs: HBoxContainer = HBoxContainer.new()
+	tabs.add_theme_constant_override("separation", 4)
+	_chat_tab_btn = _make_chat_tab("Chat", "chat")
+	_combat_tab_btn = _make_chat_tab("Combat", "combat")
+	tabs.add_child(_chat_tab_btn)
+	tabs.add_child(_combat_tab_btn)
+	col.add_child(tabs)
+
+	_chat_log = _make_chat_stream()
+	_combat_log = _make_chat_stream()
+	_combat_log.visible = false
+	col.add_child(_chat_log)
+	col.add_child(_combat_log)
+
+	add_child(_chat_panel)
+
+	# Seed both streams from the persisted journal so the panel shows history.
+	for entry in GameState.log_entries:
+		var s: String = String(entry)
+		_append_chat_line(_chat_log, s)
+		if _is_combat_line(s):
+			_append_chat_line(_combat_log, s)
+	_update_chat_tab_styles()
+
+
+func _make_chat_tab(text: String, id: String) -> Button:
+	var btn: Button = Button.new()
+	btn.text = text
+	btn.flat = true
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.add_theme_font_size_override("font_size", CHAT_FONT_SIZE)
+	btn.pressed.connect(_on_chat_tab_pressed.bind(id))
+	return btn
+
+
+func _make_chat_stream() -> RichTextLabel:
+	var rt: RichTextLabel = RichTextLabel.new()
+	rt.bbcode_enabled = true
+	rt.scroll_active = true
+	rt.scroll_following = true
+	rt.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	rt.custom_minimum_size = Vector2(0.0, CHAT_PANEL_SIZE.y - 30.0)
+	rt.add_theme_font_size_override("normal_font_size", CHAT_FONT_SIZE)
+	rt.add_theme_color_override("default_color", SKIN_TEXT_PRIMARY)
+	return rt
+
+
+func _on_chat_tab_pressed(id: String) -> void:
+	_chat_active = id
+	if _chat_log != null:
+		_chat_log.visible = id == "chat"
+	if _combat_log != null:
+		_combat_log.visible = id == "combat"
+	_update_chat_tab_styles()
+
+
+# Active tab in gold, inactive dimmed — the WoW tab convention.
+func _update_chat_tab_styles() -> void:
+	if _chat_tab_btn != null:
+		_chat_tab_btn.add_theme_color_override("font_color",
+			SKIN_ACCENT_GOLD if _chat_active == "chat" else SKIN_ACCENT_DIM)
+	if _combat_tab_btn != null:
+		_combat_tab_btn.add_theme_color_override("font_color",
+			SKIN_ACCENT_GOLD if _chat_active == "combat" else SKIN_ACCENT_DIM)

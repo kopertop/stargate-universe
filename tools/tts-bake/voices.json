@@ -1,0 +1,15 @@
+{
+	"_comment": "Character -> timbre reference clip (repo-relative). Reuses the clips minted during the bake-off (tools/tts-bakeoff/refs). IndexTTS-2 clones timbre from these; emotion comes from the per-line preset. Swap a path here to upgrade a character's voice without touching any job.",
+	"scott":    "tools/tts-bakeoff/refs/scott.wav",
+	"eli":      "tools/tts-bakeoff/refs/eli.wav",
+	"tj":       "tools/tts-bakeoff/refs/tj.wav",
+	"greer":    "tools/tts-bakeoff/refs/greer.wav",
+	"rush":     "tools/tts-bakeoff/refs/rush.wav",
+	"young":    "tools/tts-bakeoff/refs/young.wav",
+	"chloe":    "tools/tts-bakeoff/refs/chloe.wav",
+	"wray":     "tools/tts-bakeoff/refs/wray.wav",
+	"telford":  "tools/tts-bakeoff/refs/telford.wav",
+	"marine":   "tools/tts-bakeoff/refs/marine.wav",
+	"jack":     "tools/tts-bakeoff/refs/jack.wav",
+	"narrator": "tools/tts-bakeoff/refs/narrator.wav"
+}

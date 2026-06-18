@@ -45,6 +45,12 @@ signal planet_run_ended()
 # renders the line inside the sci-fi dialog panel; log_added still captures
 # the same text for the journal.
 signal dialogue_shown(character_name: String, line: String)
+# Narrative transcript channel (#141). Drives the HUD Chat panel ONLY — a clean
+# in-fiction transcript of stage directions + scripted speech, deliberately
+# separate from add_log/log_added (which is the noisy system journal: discovery,
+# resources, saves, …). speaker == "" → a white narration / stage-direction line;
+# speaker set → a "Speaker: line" dialogue line. Emit via narrate()/say().
+signal narrative_added(speaker: String, text: String)
 # Fired by npc.gd when a choice-tree dialog should open. The HUD listens
 # and shows the full-screen DialogScreen targeting `npc`.
 signal kino_closed()
@@ -1072,6 +1078,17 @@ func room_atmosphere(room_id: String) -> Dictionary:
 func add_log(line: String) -> void:
 	log_entries.append(line)
 	log_added.emit(line)
+
+
+# Narrative-transcript helpers (feed the HUD Chat panel; see narrative_added).
+# Kept separate from add_log so the chat stays a clean dialogue/stage-direction
+# transcript and never fills with system-journal noise.
+func narrate(text: String) -> void:
+	narrative_added.emit("", text)
+
+
+func say(speaker: String, text: String) -> void:
+	narrative_added.emit(speaker, text)
 
 # Resource shims over the Inventory pool. These keep the game-logic side
 # effects (log line, resource_changed signal, quest advance) here while the

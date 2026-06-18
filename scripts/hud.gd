@@ -31,13 +31,18 @@ var _player: Node = null
 # _make_wow_stylebox factory are now the single source of truth. The warm-gold
 # accent (SKIN_ACCENT_GOLD) is the deliberate secondary highlight for quest
 # titles / attention states — also shared, not per-widget.
-const SKIN_ACCENT: Color = Color(0.60, 0.78, 0.95, 0.85)       # primary cool-blue border
-const SKIN_ACCENT_GOLD: Color = Color(1.0, 0.84, 0.42, 1.0)    # quest title / attention
-const SKIN_PANEL_BG: Color = Color(0.04, 0.06, 0.09, 0.6)      # translucent dark fill
+# Gold-primary WoW skin (HUD redesign Phase 0, #141). These mirror
+# scripts/ui/hud_theme.gd::HudTheme — kept as inline literals here (not a
+# class_name reference) to dodge the cold-import class_name-registration race in
+# headless runs. The hud_wow.gd cohesion test mirrors SKIN_ACCENT as its contract.
+const SKIN_ACCENT: Color = Color(0.83, 0.66, 0.32, 1.0)        # primary GOLD border
+const SKIN_ACCENT_GOLD: Color = Color(1.0, 0.84, 0.42, 1.0)    # quest title / attention (bright gold)
+const SKIN_ACCENT_DIM: Color = Color(0.55, 0.46, 0.28, 0.85)   # inactive tab / dimmed accent
+const SKIN_PANEL_BG: Color = Color(0.035, 0.035, 0.045, 0.82)  # near-black translucent fill
 const SKIN_CORNER_RADIUS: int = 4
 const SKIN_BORDER_WIDTH: int = 2
-const SKIN_TEXT_PRIMARY: Color = Color(0.95, 0.98, 1.0, 1.0)
-const SKIN_TEXT_OUTLINE: Color = Color(0, 0, 0, 0.85)
+const SKIN_TEXT_PRIMARY: Color = Color(0.96, 0.92, 0.80, 1.0)  # warm off-white
+const SKIN_TEXT_OUTLINE: Color = Color(0, 0, 0, 0.9)
 
 # WoW-style player unit frame (upper-left, below the compass banner). A square
 # portrait of Eli on the left, his name plate top-right of it, and the Health +
@@ -48,9 +53,15 @@ const SKIN_TEXT_OUTLINE: Color = Color(0, 0, 0, 0.85)
 const PortraitLoaderScript := preload("res://scripts/portrait_loader.gd")
 const UNIT_PLAYER_NAME: String = "Eli Wallace"
 const UNIT_PORTRAIT_KEY: String = "Eli"
-const UNIT_FRAME_POS: Vector2 = Vector2(24.0, 70.0)
-const UNIT_PORTRAIT_SIZE: Vector2 = Vector2(72.0, 72.0)
-const UNIT_BAR_WIDTH: float = 196.0
+# Promoted to the very top-left corner to match the concept (HUD redesign Phase 1,
+# #141). The compass banner's left anchor is pushed right (see _spawn_compass) so
+# it no longer sits under this frame.
+const UNIT_FRAME_POS: Vector2 = Vector2(14.0, 10.0)
+const UNIT_PORTRAIT_SIZE: Vector2 = Vector2(76.0, 76.0)
+const UNIT_BAR_WIDTH: float = 168.0
+# Player level shown in a badge over the portrait's lower-left (placeholder until
+# a real level system exists — the WoW frame always carries a level pip).
+const UNIT_LEVEL: int = 1
 const UNIT_HEALTH_FILL: Color = Color(0.35, 0.85, 0.45, 0.95)
 const UNIT_HEALTH_CRITICAL_FILL: Color = Color(0.95, 0.3, 0.3, 0.98)
 const UNIT_OXYGEN_FILL: Color = Color(0.4, 0.85, 0.95, 0.95)
@@ -59,6 +70,10 @@ const UNIT_HEALTH_CRITICAL_FRAC: float = 0.3
 var _unit_frame: Control = null
 var _health_bar: ProgressBar = null
 var _oxygen_bar: ProgressBar = null
+# Numeric "cur/max" overlays centred on each vitals bar (WoW-style), updated in
+# the health/oxygen change handlers.
+var _health_value: Label = null
+var _oxygen_value: Label = null
 var _health_fill_style: StyleBoxFlat = null
 var _health_pulse: Tween = null
 # Active dialog auto-hide tween. Held so a follow-up line can cancel the old
@@ -71,18 +86,59 @@ var _dialog_tween: Tween = null
 # the direction from screen-centre to its projected position and rotates to
 # point at it. When the waypoint is onscreen — or doesn't exist — the arrow
 # hides. Built programmatically so the .tscn stays unchanged.
-const EDGE_ARROW_ACCENT: Color = Color(0.55, 0.85, 1.0, 0.95)
+const EDGE_ARROW_ACCENT: Color = Color(1.0, 0.84, 0.42, 0.95)  # gold, matches skin (#141)
 const EDGE_ARROW_MARGIN: float = 64.0
 var _edge_arrow: Polygon2D = null
 
-# WoW-style action bar (bottom-right). One slot per available tool: a dark
-# translucent square with the tool's catalog icon centred and its keybind
-# overlaid top-left. Built in code, anchored bottom-right, grows leftward so
-# more tools can be added later. Driven by _refresh_action_bar.
-const ACTION_SLOT_SIZE: Vector2 = Vector2(58, 58)
-const ACTION_BAR_MARGIN: float = 20.0
-var _action_bar: HBoxContainer = null
+# Circular radar minimap (top-right, #141 Phase 4). Always-on, drawn by
+# scripts/ui/minimap.gd (preloaded by path to dodge the class_name race). The HUD
+# feeds it heading-rotated, player-relative markers each frame; it owns the disc /
+# ring / arrow drawing. A room-name label sits just beneath it.
+const MinimapScript := preload("res://scripts/ui/minimap.gd")
+const MINIMAP_SIZE: float = 150.0
+const MINIMAP_RANGE: float = 18.0       # world metres mapped to the disc radius
+const MINIMAP_POS_RIGHT: float = -18.0
+const MINIMAP_POS_TOP: float = 14.0
+const MINIMAP_MARKER_QUEST: Color = Color(1.0, 0.84, 0.42, 1.0)
+const MINIMAP_MARKER_INTERACT: Color = Color(0.75, 0.85, 1.0, 0.9)
+var _minimap: Control = null
+var _minimap_name: Label = null
+
+# WoW-style action bar (bottom-CENTER, #141 Phase 5). Four FIXED controller-first
+# slots, always shown. `ActionBar` is a full-width-bottom CenterContainer (so its
+# corner anchors still read 1.0/1.0 for the cohesion test) holding a centred HBox
+# of slots. Each slot shows its bound key glyph (read live from InputMap) over the
+# action's icon; empty/reserved slots show just the gold frame + slot number.
+const ACTION_SLOT_SIZE: Vector2 = Vector2(56, 56)
+const ACTION_BAR_MARGIN: float = 18.0
+# Fixed slot roster. Each slot's hotkey is its NUMBER (1-4) on keyboard, or a
+# D-pad direction (Up / Right / Down / Left) when a controller is connected — the
+# glyph shown reflects whichever device is active. `action` is the InputMap action
+# the slot fires; the slot's number key + D-pad button are added to that action at
+# runtime (_setup_action_slot_binds). Empty `id` == reserved slot (frame only).
+const ACTION_SLOTS: Array = [
+	{"id": "interact", "action": "interact", "key": KEY_1, "pad": JOY_BUTTON_DPAD_UP, "arrow": "↑"},
+	{"id": "kino_remote", "action": "kino_remote", "key": KEY_2, "pad": JOY_BUTTON_DPAD_RIGHT, "arrow": "→"},
+	{"id": "", "action": "", "key": KEY_3, "pad": JOY_BUTTON_DPAD_DOWN, "arrow": "↓"},
+	{"id": "", "action": "", "key": KEY_4, "pad": JOY_BUTTON_DPAD_LEFT, "arrow": "←"},
+]
+var _action_bar: CenterContainer = null
+var _action_slots_box: HBoxContainer = null
 var _action_pulse: Tween = null
+
+# Persistent tabbed Chat / Combat log (bottom-right, #141 Phase 6). Replaces the
+# transient top-right feed: a small gold-framed panel with "Chat" / "Combat" tabs
+# over a scrollable RichTextLabel, backed by GameState.log_entries (so history
+# survives across the session) + live log_added. Smaller font than the old feed.
+const CHAT_PANEL_SIZE: Vector2 = Vector2(372.0, 150.0)
+const CHAT_FONT_SIZE: int = 12
+const CHAT_MAX_LINES: int = 200
+var _chat_panel: PanelContainer = null
+var _chat_log: RichTextLabel = null
+var _combat_log: RichTextLabel = null
+var _chat_tab_btn: Button = null
+var _combat_tab_btn: Button = null
+var _chat_active: String = "chat"
 
 # WoW-style quest objective tracker (upper-right). The tracked quest's title in
 # an accent header above its active objective line, prefixed with an empty
@@ -92,7 +148,7 @@ var _action_pulse: Tween = null
 # quest is tracked. Sits ABOVE the recent-log feed (which is pushed down in
 # _ready) so the two top-right elements never overlap. (#66)
 const TRACKER_POS_RIGHT: float = -24.0       # offset from the right edge
-const TRACKER_POS_TOP: float = 70.0          # below the compass banner
+const TRACKER_POS_TOP: float = 196.0         # below the top-right minimap (#141 P4)
 const TRACKER_WIDTH: float = 300.0
 # Tracker title uses the shared gold accent; objective + outline use the shared
 # primary text + outline so all four widgets read in one type/color language.
@@ -175,7 +231,12 @@ func _ready() -> void:
 	GameState.oxygen_changed.connect(_on_oxygen_changed)
 	GameState.kino_changed.connect(_on_kino_changed)
 	GameState.quest_step_changed.connect(_on_quest_step_changed)
-	GameState.log_added.connect(_on_log_added)
+	# The Chat panel is a NARRATIVE transcript: it is fed by dialogue_shown
+	# (character speech) + narrative_added (stage directions / scripted lines),
+	# NOT log_added — log_added is the noisy system journal (discovery, resources,
+	# saves) and must not flood the chat. So the chat starts empty and only fills
+	# as characters actually speak. (#141)
+	GameState.narrative_added.connect(_on_narrative_added)
 	GameState.dialogue_shown.connect(_on_dialogue_shown)
 	GameState.dialog_started.connect(_on_dialog_started)
 	# The interact prompt ("[E] Talk to …") must not linger under an open
@@ -196,9 +257,11 @@ func _ready() -> void:
 	_dialog_panel.visible = false
 	_build_action_bar()
 	_refresh_action_bar()
+	_build_chat_panel()
 	_build_quest_tracker()
 	_refresh_quest_tracker()
 	_build_edge_arrow()
+	_build_minimap()
 	_build_discovery_toast()
 	_spawn_compass()
 	# If the Gate Room was already deciphered before this HUD mounted (it is
@@ -207,8 +270,45 @@ func _ready() -> void:
 	# room entry is the first toast shown.
 	if not GameState.rooms_deciphered.is_empty():
 		_first_discovery_consumed = true
+	# HUD interface size (#141): scale the whole HUD uniformly from the Settings
+	# value, re-applying on live changes and viewport resizes.
+	var settings: Node = get_node_or_null("/root/Settings")
+	if settings != null and settings.has_signal("hud_scale_changed"):
+		settings.hud_scale_changed.connect(_on_hud_scale_changed)
+	get_viewport().size_changed.connect(_apply_hud_scale)
+	_apply_hud_scale()
 	# Defer player lookup so the scene tree is settled.
 	call_deferred("_bind_player")
+
+
+# Scale the entire HUD uniformly to the Settings hud_scale. The HUD root is
+# re-anchored to the top-left with an explicit size of viewport/scale; scaling
+# that by `scale` makes the rendered rect cover the viewport again, so every
+# edge-anchored child still lands on the real screen edge — the only correct way
+# to scale a full-screen anchored UI without detaching corner widgets.
+func _apply_hud_scale() -> void:
+	var s: float = 1.0
+	var settings: Node = get_node_or_null("/root/Settings")
+	if settings != null and "hud_scale" in settings:
+		s = float(settings.hud_scale)
+	s = clampf(s, 0.5, 2.0)
+	var vp: Vector2 = Vector2(get_viewport_rect().size)
+	if vp.x <= 0.0 or vp.y <= 0.0:
+		return
+	# Drop the full-rect anchoring so size is ours to set; pivot at top-left (0,0)
+	# so the scaled rect's origin stays pinned to the screen origin.
+	anchor_left = 0.0
+	anchor_top = 0.0
+	anchor_right = 0.0
+	anchor_bottom = 0.0
+	position = Vector2.ZERO
+	pivot_offset = Vector2.ZERO
+	scale = Vector2(s, s)
+	size = vp / s
+
+
+func _on_hud_scale_changed(_value: float) -> void:
+	_apply_hud_scale()
 
 
 # Build the always-on direction compass as a child of this HUD layer. Single
@@ -236,10 +336,10 @@ func _spawn_compass() -> void:
 		return
 	_compass = PlanetCompassScript.new()
 	_compass.name = "PlanetCompass"
-	# Span ~70% of the screen width, centred. The strip draws to the control's
-	# actual width, so the anchors define how wide it reads. Pinned to the VERY
-	# TOP as the top banner; the objective label sits below it.
-	_compass.anchor_left = 0.15
+	# Span the centre of the screen. Left anchor pushed right of the top-left unit
+	# frame (#141 Phase 1) so the frame owns the corner; the strip draws to the
+	# control's actual width, so the anchors define how wide it reads.
+	_compass.anchor_left = 0.34
 	_compass.anchor_right = 0.85
 	_compass.offset_left = 0.0
 	_compass.offset_right = 0.0
@@ -300,6 +400,31 @@ func _build_unit_frame() -> void:
 	# Graceful blank if the PNG is missing — texture stays null.
 	portrait.texture = PortraitLoaderScript.portrait_for(UNIT_PORTRAIT_KEY)
 	portrait_frame.add_child(portrait)
+
+	# Level badge — a small gold-ringed pip over the portrait's lower-left corner,
+	# the way a WoW unit frame always carries a level number.
+	var badge: Panel = Panel.new()
+	badge.name = "LevelBadge"
+	badge.custom_minimum_size = Vector2(24.0, 24.0)
+	badge.size = Vector2(24.0, 24.0)
+	badge.position = Vector2(-6.0, UNIT_PORTRAIT_SIZE.y - 18.0)
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var badge_style: StyleBoxFlat = _make_wow_stylebox(SKIN_ACCENT_GOLD)
+	badge_style.set_corner_radius_all(12)
+	badge_style.bg_color = Color(0.08, 0.07, 0.05, 0.95)
+	badge.add_theme_stylebox_override("panel", badge_style)
+	var badge_label: Label = Label.new()
+	badge_label.text = str(UNIT_LEVEL)
+	badge_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	badge_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	badge_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	badge_label.add_theme_font_size_override("font_size", 13)
+	badge_label.add_theme_color_override("font_color", SKIN_ACCENT_GOLD)
+	badge_label.add_theme_color_override("font_outline_color", SKIN_TEXT_OUTLINE)
+	badge_label.add_theme_constant_override("outline_size", 4)
+	badge_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.add_child(badge_label)
+	portrait_frame.add_child(badge)
 	frame.add_child(portrait_frame)
 
 	# Right column: name plate over the two vitals bars.
@@ -321,8 +446,10 @@ func _build_unit_frame() -> void:
 
 	_health_bar = _make_vital_bar("Health", UNIT_HEALTH_FILL)
 	_health_fill_style = _health_bar.get_theme_stylebox("fill") as StyleBoxFlat
+	_health_value = _add_bar_value_label(_health_bar)
 	col.add_child(_health_bar)
 	_oxygen_bar = _make_vital_bar("Oxygen", UNIT_OXYGEN_FILL)
+	_oxygen_value = _add_bar_value_label(_oxygen_bar)
 	col.add_child(_oxygen_bar)
 
 	frame.add_child(col)
@@ -347,6 +474,24 @@ func _make_vital_bar(bar_name: String, fill_color: Color) -> ProgressBar:
 	fill.set_corner_radius_all(SKIN_CORNER_RADIUS)
 	bar.add_theme_stylebox_override("fill", fill)
 	return bar
+
+
+# Centred "cur/max" overlay for a vitals bar (WoW-style). Anchored to the bar's
+# full rect so it stays centred as the bar resizes; MOUSE_FILTER_IGNORE so it
+# never eats input. Returned so the caller can hold the ref and update the text.
+func _add_bar_value_label(bar: ProgressBar) -> Label:
+	var lbl: Label = Label.new()
+	lbl.name = "Value"
+	lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_size_override("font_size", 11)
+	lbl.add_theme_color_override("font_color", SKIN_TEXT_PRIMARY)
+	lbl.add_theme_color_override("font_outline_color", SKIN_TEXT_OUTLINE)
+	lbl.add_theme_constant_override("outline_size", 3)
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(lbl)
+	return lbl
 
 
 func _build_edge_arrow() -> void:
@@ -482,6 +627,100 @@ func _hide_discovery_toast() -> void:
 
 func _process(_delta: float) -> void:
 	_update_edge_arrow()
+	_update_minimap()
+
+
+# Top-right circular minimap + a room-name label beneath it. Always built (the
+# HUD only mounts in gameplay scenes), so it holds the corner the way the concept
+# does. The marker feed is computed each frame in _update_minimap.
+func _build_minimap() -> void:
+	if _minimap != null and is_instance_valid(_minimap):
+		return
+	var map: Control = MinimapScript.new()
+	map.name = "Minimap"
+	map.custom_minimum_size = Vector2(MINIMAP_SIZE, MINIMAP_SIZE)
+	map.size = Vector2(MINIMAP_SIZE, MINIMAP_SIZE)
+	map.anchor_left = 1.0
+	map.anchor_right = 1.0
+	map.anchor_top = 0.0
+	map.anchor_bottom = 0.0
+	map.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	map.offset_left = -(MINIMAP_SIZE - MINIMAP_POS_RIGHT)
+	map.offset_right = MINIMAP_POS_RIGHT
+	map.offset_top = MINIMAP_POS_TOP
+	map.offset_bottom = MINIMAP_POS_TOP + MINIMAP_SIZE
+	map.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(map)
+	_minimap = map
+
+	# Room/zone name centred just beneath the disc.
+	var name_l: Label = Label.new()
+	name_l.name = "MinimapName"
+	name_l.anchor_left = 1.0
+	name_l.anchor_right = 1.0
+	name_l.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	name_l.offset_left = -(MINIMAP_SIZE + 30.0)
+	name_l.offset_right = MINIMAP_POS_RIGHT
+	name_l.offset_top = MINIMAP_POS_TOP + MINIMAP_SIZE + 2.0
+	name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_l.add_theme_font_size_override("font_size", 14)
+	name_l.add_theme_color_override("font_color", SKIN_ACCENT_GOLD)
+	name_l.add_theme_color_override("font_outline_color", SKIN_TEXT_OUTLINE)
+	name_l.add_theme_constant_override("outline_size", 5)
+	name_l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(name_l)
+	_minimap_name = name_l
+
+
+# Recompute the minimap markers in the player's heading frame and push them to
+# the widget; refresh the room-name label. Cheap: a handful of nodes, no allocations
+# beyond the marker array. No-ops gracefully before the player/camera exist.
+func _update_minimap() -> void:
+	if _minimap == null or not is_instance_valid(_minimap):
+		return
+	if _minimap_name != null:
+		var rid: String = GameState.current_room_id
+		if rid != "":
+			_minimap_name.text = String(ShipLayout.room(rid).get("name", rid))
+	var player: Node = _player
+	if player == null or not (player is Node3D):
+		return
+	var camera: Camera3D = get_viewport().get_camera_3d()
+	if camera == null:
+		return
+	# Heading yaw from the camera forward, so the disc "up" is the way we look.
+	var fwd: Vector3 = -camera.global_transform.basis.z
+	fwd.y = 0.0
+	if fwd.length() < 0.001:
+		return
+	var yaw: float = atan2(fwd.x, fwd.z)
+	var cos_y: float = cos(yaw)
+	var sin_y: float = sin(yaw)
+	var origin: Vector3 = (player as Node3D).global_position
+	var markers: Array = []
+	var waypoint: Node = get_tree().get_first_node_in_group("quest_waypoint")
+	if waypoint is Node3D:
+		_append_marker(markers, (waypoint as Node3D).global_position, origin, cos_y, sin_y, MINIMAP_MARKER_QUEST)
+	for node in get_tree().get_nodes_in_group("interactable"):
+		if node is Node3D:
+			_append_marker(markers, (node as Node3D).global_position, origin, cos_y, sin_y, MINIMAP_MARKER_INTERACT)
+	_minimap.call("set_markers", markers)
+
+
+# Project a world position into the minimap's heading-rotated disc space (-1..1,
+# up = forward), clamped to the disc, and append a marker if within range.
+func _append_marker(out: Array, world: Vector3, origin: Vector3, cos_y: float, sin_y: float, color: Color) -> void:
+	var d: Vector3 = world - origin
+	var dist: float = Vector2(d.x, d.z).length()
+	if dist > MINIMAP_RANGE * 1.4:
+		return
+	# Rotate the (x,z) delta by -yaw so the look direction maps to +forward.
+	var local_x: float = d.x * cos_y - d.z * sin_y
+	var local_z: float = d.x * sin_y + d.z * cos_y
+	var disc: Vector2 = Vector2(local_x / MINIMAP_RANGE, -local_z / MINIMAP_RANGE)
+	if disc.length() > 1.0:
+		disc = disc.normalized()
+	out.append({"pos": disc, "color": color})
 
 
 # Polled each frame because the player + camera move continuously and there's
@@ -556,6 +795,8 @@ func _on_health_changed(v: float) -> void:
 	if _health_bar == null:
 		return
 	_health_bar.value = v
+	if _health_value != null:
+		_health_value.text = "%d/%d" % [roundi(v), roundi(GameState.MAX_HEALTH)]
 	_update_health_critical(v)
 
 # Below UNIT_HEALTH_CRITICAL_FRAC of max HP the health bar turns red and pulses
@@ -580,6 +821,8 @@ func _on_oxygen_changed(v: float) -> void:
 	if _oxygen_bar == null:
 		return
 	_oxygen_bar.value = v
+	if _oxygen_value != null:
+		_oxygen_value.text = "%d/%d" % [roundi(v), roundi(GameState.MAX_OXYGEN)]
 
 func _on_kino_changed(_acquired: bool) -> void:
 	_refresh_action_bar()
@@ -590,21 +833,66 @@ func _on_quest_step_changed(_step: String) -> void:
 	_refresh_quest_tracker()
 
 
-# Bottom-right action bar anchored to the corner, growing leftward as tools
-# are added. Empty until built.
+# Bottom-CENTER action bar (#141). A full-width-bottom CenterContainer named
+# "ActionBar" (keeps the corner anchors the cohesion test asserts) holding a
+# centred HBox of 4 fixed slots, hotkeyed 1-4 (keyboard) or the D-pad (controller).
 func _build_action_bar() -> void:
-	_action_bar = HBoxContainer.new()
+	_action_bar = CenterContainer.new()
 	_action_bar.name = "ActionBar"
-	_action_bar.anchor_left = 1.0
+	_action_bar.anchor_left = 0.0
 	_action_bar.anchor_top = 1.0
 	_action_bar.anchor_right = 1.0
 	_action_bar.anchor_bottom = 1.0
-	_action_bar.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	_action_bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_action_bar.offset_right = -ACTION_BAR_MARGIN
+	_action_bar.offset_top = -(ACTION_SLOT_SIZE.y + ACTION_BAR_MARGIN)
 	_action_bar.offset_bottom = -ACTION_BAR_MARGIN
-	_action_bar.add_theme_constant_override("separation", 8)
+	# The CenterContainer spans the width but must not eat world clicks outside the
+	# slots; the inner HBox + slots take input, the container itself ignores.
+	_action_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_action_bar)
+
+	_action_slots_box = HBoxContainer.new()
+	_action_slots_box.name = "Slots"
+	_action_slots_box.add_theme_constant_override("separation", 8)
+	_action_bar.add_child(_action_slots_box)
+
+	_setup_action_slot_binds()
+	# Re-glyph the bar when a controller is plugged in/out (1-4 <-> D-pad arrows).
+	if not Input.joy_connection_changed.is_connected(_on_joy_connection_changed):
+		Input.joy_connection_changed.connect(_on_joy_connection_changed)
+
+
+# Add each slot's number key + D-pad button to the action it fires, so pressing
+# 1-4 (or the D-pad) triggers the slot exactly like its native keybind. Idempotent.
+func _setup_action_slot_binds() -> void:
+	for entry in ACTION_SLOTS:
+		var action: String = String(entry["action"])
+		if action == "" or not InputMap.has_action(action):
+			continue
+		var key_ev: InputEventKey = InputEventKey.new()
+		key_ev.physical_keycode = int(entry["key"])
+		if not _action_has_event(action, key_ev):
+			InputMap.action_add_event(action, key_ev)
+		var pad_ev: InputEventJoypadButton = InputEventJoypadButton.new()
+		pad_ev.button_index = int(entry["pad"])
+		if not _action_has_event(action, pad_ev):
+			InputMap.action_add_event(action, pad_ev)
+
+
+func _action_has_event(action: String, ev: InputEvent) -> bool:
+	for existing in InputMap.action_get_events(action):
+		if existing.is_match(ev):
+			return true
+	return false
+
+
+func _on_joy_connection_changed(_device: int, _connected: bool) -> void:
+	_refresh_action_bar()
+
+
+# A controller is "active" (so the bar shows D-pad arrows) when one is connected.
+func _controller_active() -> bool:
+	return not Input.get_connected_joypads().is_empty()
 
 
 # One slot per currently-available tool. Today just the Kino Remote (gated on
@@ -613,24 +901,27 @@ func _build_action_bar() -> void:
 # During the scout beat the slot gets an attention border + pulse and the
 # repurposed KinoHint label shows a caption above the bar.
 func _refresh_action_bar() -> void:
-	if _action_bar == null:
+	if _action_slots_box == null:
 		return
-	for c in _action_bar.get_children():
+	for c in _action_slots_box.get_children():
 		c.queue_free()
 	if _action_pulse != null and _action_pulse.is_running():
 		_action_pulse.kill()
 	_action_pulse = null
 	_kino_hint.visible = false
 
-	var tools: Array = []
-	if Inventory.has("kino_remote"):
-		tools.append({"id": "kino_remote", "key": "Tab"})
-
 	var scouting: bool = GameState.quest_step == GameState.QUEST_SCOUT_KINO
-	for tool in tools:
-		var attention: bool = scouting and tool["id"] == "kino_remote"
-		var slot: Panel = _make_action_slot(String(tool["id"]), String(tool["key"]), attention)
-		_action_bar.add_child(slot)
+	var idx: int = 0
+	for entry in ACTION_SLOTS:
+		idx += 1
+		var slot_id: String = String(entry["id"])
+		var action: String = String(entry["action"])
+		# The Kino slot only carries its icon/click once the remote is owned; the
+		# frame is always present so the bar reads as a fixed 4-slot row.
+		var owned: bool = slot_id != "kino_remote" or Inventory.has("kino_remote")
+		var attention: bool = scouting and slot_id == "kino_remote" and owned
+		var slot: Panel = _make_action_slot(entry, slot_id if owned else "", attention)
+		_action_slots_box.add_child(slot)
 		if attention:
 			_action_pulse = create_tween().set_loops()
 			_action_pulse.tween_property(slot, "modulate:a", 0.55, 0.6)
@@ -644,52 +935,48 @@ func _refresh_action_bar() -> void:
 		_kino_hint.visible = true
 
 
-func _make_action_slot(item_id: String, key_label: String, attention: bool) -> Panel:
+# One fixed action slot. `entry` is the ACTION_SLOTS dict (drives the hotkey
+# glyph: its number 1-4 on keyboard, or its D-pad arrow when a controller is
+# connected). `item_id` empty == reserved slot (frame + glyph only).
+func _make_action_slot(entry: Dictionary, item_id: String, attention: bool) -> Panel:
 	var slot: Panel = Panel.new()
 	slot.custom_minimum_size = ACTION_SLOT_SIZE
-	# Clickable, same as pressing the keybind. The icon/label children are
-	# MOUSE_FILTER_IGNORE, so the Panel itself receives the click.
 	slot.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	slot.tooltip_text = "Open the Kino Remote  [%s]" % key_label
-	slot.gui_input.connect(_on_action_slot_input.bind(item_id))
-	# Shares the skin fill + corner; attention swaps to the gold accent (same gold
-	# the quest tracker title uses), otherwise the cool-blue primary border.
+	if item_id != "":
+		slot.gui_input.connect(_on_action_slot_input.bind(item_id))
 	var border: Color = SKIN_ACCENT_GOLD if attention else SKIN_ACCENT
 	slot.add_theme_stylebox_override("panel", _make_wow_stylebox(border))
 
-	var icon_path: String = String(Inventory.definition(item_id).get("icon", ""))
-	if icon_path != "" and ResourceLoader.exists(icon_path):
-		var tex: TextureRect = TextureRect.new()
-		tex.texture = load(icon_path)
-		tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		tex.anchor_right = 1.0
-		tex.anchor_bottom = 1.0
-		tex.offset_left = 5
-		tex.offset_top = 5
-		tex.offset_right = -5
-		tex.offset_bottom = -5
-		tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		slot.add_child(tex)
+	if item_id != "":
+		var icon_path: String = String(Inventory.definition(item_id).get("icon", ""))
+		if icon_path != "" and ResourceLoader.exists(icon_path):
+			var tex: TextureRect = TextureRect.new()
+			tex.texture = load(icon_path)
+			tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			tex.set_anchors_preset(Control.PRESET_FULL_RECT)
+			tex.offset_left = 5
+			tex.offset_top = 5
+			tex.offset_right = -5
+			tex.offset_bottom = -5
+			tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			slot.add_child(tex)
 
-	# Keybind overlay, WoW-style top-left corner with an outline so it reads
-	# over the icon.
+	# Hotkey glyph (top-left): the slot number 1-4, or its D-pad arrow under a
+	# controller. This IS the slot's trigger — pressing it fires the slot action.
 	var key: Label = Label.new()
-	key.text = key_label
-	key.add_theme_font_size_override("font_size", 13)
-	key.add_theme_color_override("font_color", Color.WHITE)
+	key.text = String(entry["arrow"]) if _controller_active() else OS.get_keycode_string(int(entry["key"]))
+	key.add_theme_font_size_override("font_size", 15)
+	key.add_theme_color_override("font_color", SKIN_ACCENT_GOLD)
 	key.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 	key.add_theme_constant_override("outline_size", 4)
-	key.position = Vector2(4, 1)
+	key.position = Vector2(5, 2)
 	key.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	slot.add_child(key)
 	return slot
 
 
-# Left-clicking an action-bar slot fires the tool's action — the same thing its
-# keybind does. Today the only tool is the Kino Remote, whose action mirrors the
-# Tab key (KinoRemote.open_remote, gated on owning the remote). Add a match arm
-# here when more tools are added.
+# Left-clicking a filled action slot fires its action (mirrors the keybind).
 func _on_action_slot_input(event: InputEvent, item_id: String) -> void:
 	if not (event is InputEventMouseButton):
 		return
@@ -700,6 +987,9 @@ func _on_action_slot_input(event: InputEvent, item_id: String) -> void:
 		"kino_remote":
 			if has_node("/root/KinoRemote"):
 				get_node("/root/KinoRemote").call("open_remote")
+		"interact":
+			if _player != null and _player.has_method("try_interact"):
+				_player.call("try_interact")
 	accept_event()
 
 # Upper-right quest tracker: a transparent VBox holding the accent quest title
@@ -800,6 +1090,8 @@ func _apply_log_feed_position() -> void:
 
 
 func _on_dialogue_shown(character_name: String, line: String) -> void:
+	# Mirror the spoken line into the Chat transcript.
+	_append_dialogue(character_name, line)
 	_dialog_name.text = character_name
 	_dialog_line.text = line
 	_dialog_panel.modulate = Color(1.0, 1.0, 1.0, 1.0)
@@ -839,20 +1131,145 @@ func _on_dialog_closed_restore_prompt() -> void:
 		_interact_label.visible = true
 
 
-func _on_log_added(line: String) -> void:
-	var lbl: Label = Label.new()
-	lbl.text = "• " + line
-	lbl.add_theme_color_override("font_color", Color(0.85, 0.95, 1.0, 1.0))
-	lbl.add_theme_font_size_override("font_size", 11)
-	_log_box.add_child(lbl)
-	# Keep only the last 3. remove_child() first so the count drops synchronously —
-	# queue_free() alone defers deletion to end-of-frame and would spin this loop.
-	while _log_box.get_child_count() > 3:
-		var oldest: Node = _log_box.get_child(0)
-		_log_box.remove_child(oldest)
-		oldest.queue_free()
-	# Auto-fade & remove after a moment.
-	var t: Tween = create_tween()
-	t.tween_interval(6.0)
-	t.tween_property(lbl, "modulate:a", 0.0, 1.0)
-	t.tween_callback(Callable(lbl, "queue_free"))
+# Narrative transcript entry. speaker == "" → a white stage-direction line;
+# otherwise a "Speaker: line" dialogue line. Combat-flavoured lines also mirror
+# into the Combat tab.
+func _on_narrative_added(speaker: String, text: String) -> void:
+	if speaker == "":
+		_append_narration(text)
+	else:
+		_append_dialogue(speaker, text)
+	if _is_combat_line(text):
+		_append_chat_line(_combat_log, "[color=#d98c6b]%s[/color]" % _escape_bbcode(text))
+
+
+# Character speech also flows into the Chat transcript (in addition to the
+# on-screen subtitle panel rendered by _on_dialogue_shown).
+func _append_dialogue(speaker: String, line: String) -> void:
+	_append_chat_line(_chat_log, "[color=#ffd56b]%s:[/color] [color=#ffffff]\"%s\"[/color]"
+		% [_escape_bbcode(speaker), _escape_bbcode(line)])
+
+
+# Speaker-less stage direction, rendered white + italic (e.g. "Scott arrives
+# through the Stargate").
+func _append_narration(text: String) -> void:
+	_append_chat_line(_chat_log, "[color=#eaeaf0][i]%s[/i][/color]" % _escape_bbcode(text))
+
+
+# Heuristic routing for the Combat tab — keyword match until a real combat event
+# stream exists. Keeps the Combat tab meaningful without a combat system.
+func _is_combat_line(line: String) -> bool:
+	var l: String = line.to_lower()
+	for kw in ["damage", "hit", "attack", "slain", "killed", "hostile", "wounded", "heal"]:
+		if l.contains(kw):
+			return true
+	return false
+
+
+# Escape BBCode opening brackets so authored text can't accidentally inject tags.
+func _escape_bbcode(s: String) -> String:
+	return s.replace("[", "[lb]")
+
+
+func _append_chat_line(target: RichTextLabel, bbcode: String) -> void:
+	if target == null:
+		return
+	target.append_text(bbcode + "\n")
+	# Cap the backlog so a long session can't grow the buffer unbounded.
+	if target.get_paragraph_count() > CHAT_MAX_LINES:
+		target.remove_paragraph(0)
+
+
+# Bottom-right tabbed Chat / Combat log. A gold-framed panel: a tab row over a
+# scrollable RichTextLabel per stream. Backed by GameState.log_entries (history)
+# + live log_added. Replaces the old transient top-right feed.
+func _build_chat_panel() -> void:
+	if _chat_panel != null and is_instance_valid(_chat_panel):
+		return
+	# The legacy transient feed node is retired — hide it so nothing renders there.
+	if _log_box != null:
+		_log_box.visible = false
+
+	_chat_panel = PanelContainer.new()
+	_chat_panel.name = "ChatPanel"
+	_chat_panel.custom_minimum_size = CHAT_PANEL_SIZE
+	_chat_panel.anchor_left = 1.0
+	_chat_panel.anchor_top = 1.0
+	_chat_panel.anchor_right = 1.0
+	_chat_panel.anchor_bottom = 1.0
+	_chat_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_chat_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_chat_panel.offset_left = -(CHAT_PANEL_SIZE.x + 14.0)
+	_chat_panel.offset_top = -(CHAT_PANEL_SIZE.y + 14.0)
+	_chat_panel.offset_right = -14.0
+	_chat_panel.offset_bottom = -14.0
+	var panel_style: StyleBoxFlat = _make_wow_stylebox(SKIN_ACCENT, 1)
+	panel_style.set_content_margin_all(6.0)
+	_chat_panel.add_theme_stylebox_override("panel", panel_style)
+
+	var col: VBoxContainer = VBoxContainer.new()
+	col.add_theme_constant_override("separation", 3)
+	_chat_panel.add_child(col)
+
+	var tabs: HBoxContainer = HBoxContainer.new()
+	tabs.add_theme_constant_override("separation", 4)
+	_chat_tab_btn = _make_chat_tab("Chat", "chat")
+	_combat_tab_btn = _make_chat_tab("Combat", "combat")
+	tabs.add_child(_chat_tab_btn)
+	tabs.add_child(_combat_tab_btn)
+	col.add_child(tabs)
+
+	_chat_log = _make_chat_stream()
+	_combat_log = _make_chat_stream()
+	_combat_log.visible = false
+	col.add_child(_chat_log)
+	col.add_child(_combat_log)
+
+	add_child(_chat_panel)
+
+	# Intentionally NOT seeded from GameState.log_entries — the chat is a live
+	# narrative transcript that starts empty and fills only as characters speak
+	# (dialogue_shown) or narration fires (narrative_added). The system journal
+	# (discovery/resources/saves) deliberately never appears here. (#141)
+	_update_chat_tab_styles()
+
+
+func _make_chat_tab(text: String, id: String) -> Button:
+	var btn: Button = Button.new()
+	btn.text = text
+	btn.flat = true
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.add_theme_font_size_override("font_size", CHAT_FONT_SIZE)
+	btn.pressed.connect(_on_chat_tab_pressed.bind(id))
+	return btn
+
+
+func _make_chat_stream() -> RichTextLabel:
+	var rt: RichTextLabel = RichTextLabel.new()
+	rt.bbcode_enabled = true
+	rt.scroll_active = true
+	rt.scroll_following = true
+	rt.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	rt.custom_minimum_size = Vector2(0.0, CHAT_PANEL_SIZE.y - 30.0)
+	rt.add_theme_font_size_override("normal_font_size", CHAT_FONT_SIZE)
+	rt.add_theme_color_override("default_color", SKIN_TEXT_PRIMARY)
+	return rt
+
+
+func _on_chat_tab_pressed(id: String) -> void:
+	_chat_active = id
+	if _chat_log != null:
+		_chat_log.visible = id == "chat"
+	if _combat_log != null:
+		_combat_log.visible = id == "combat"
+	_update_chat_tab_styles()
+
+
+# Active tab in gold, inactive dimmed — the WoW tab convention.
+func _update_chat_tab_styles() -> void:
+	if _chat_tab_btn != null:
+		_chat_tab_btn.add_theme_color_override("font_color",
+			SKIN_ACCENT_GOLD if _chat_active == "chat" else SKIN_ACCENT_DIM)
+	if _combat_tab_btn != null:
+		_combat_tab_btn.add_theme_color_override("font_color",
+			SKIN_ACCENT_GOLD if _chat_active == "combat" else SKIN_ACCENT_DIM)

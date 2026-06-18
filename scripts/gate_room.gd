@@ -573,6 +573,7 @@ func _play_prologue_cinematic() -> void:
 	var scott: StaticBody3D = _world.get_node_or_null("LtScott") as StaticBody3D
 	scott = _throw_persistent_crew("Lt Scott", "", scott_spot, scott)
 	GameState.add_log("Lt Scott comes barrelling through the gate!")
+	GameState.narrate("Lt Scott comes barrelling through the gate!")  # white chat line (#141)
 	await get_tree().create_timer(2.0).timeout
 	_settle_persistent_crew(scott, "repair")   # lands kneeling, same body
 	await get_tree().create_timer(1.3).timeout
@@ -868,6 +869,7 @@ func _scott_radio_line(scott: Node3D) -> void:
 	_rise_npc(scott, "idle")   # hold standing while he speaks
 	var line: String = "Okay, it's safe. Start sending people through."
 	GameState.add_log("Lt Scott: %s" % line)
+	GameState.say("Lt Scott", line)  # "Lt Scott: \"...\"" chat line (#141)
 	# Letterbox bars + caption.
 	await Cinematic.letterbox_in()
 	Cinematic.set_caption("LT. SCOTT — \"%s\"" % line)

@@ -63,6 +63,8 @@ docs/hud-redesign/*.import
 # TTS bake-off reference audio is dev-tool input, not a game asset — Godot's
 # auto-generated .import sidecars for it are noise.
 tools/tts-bakeoff/**/*.import
+# IndexTTS-2 baker per-run provenance reports (regenerated each bake).
+tools/tts-bake/bake_report_*.json
 
 # Local agent workspaces (per-developer skill/tooling caches — not project state)
 .agents/

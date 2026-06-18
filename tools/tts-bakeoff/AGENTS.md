@@ -33,6 +33,14 @@ open out/index.html                  # listen + compare
 `indextts2` (timbre⊥emotion, best fit) · `orpheus` (inline tags, preset voice) ·
 `qwen3` (native MLX, instruct emotion, preset voice).
 
+### Chatterbox-Turbo tag test (`gen_chatterbox_turbo.py`)
+
+Separate run: clones Scott/Eli/TJ from `refs/*.wav` (Eli/TJ minted from the sidecar)
+and renders `lines_turbo.json` with inline `[gasp]/[laugh]/[sigh]/[cough]/[chuckle]`
+tags → `build_index_turbo.py` → `out/index_turbo.html`. Turbo **ignores `exaggeration`**
+(base Chatterbox keeps the knob but parses no tags — they're complementary). Run:
+`uv run --python-preference only-managed --python 3.12 --with chatterbox-tts --with torchaudio --with torchvision python gen_chatterbox_turbo.py`
+
 Engines that fail to load are logged and skipped — not fatal. First runs pull
 multi-GB models. The winner gets wired into `tts_server.py` + `tts_client.gd` later;
 this harness is disposable.

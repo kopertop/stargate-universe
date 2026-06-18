@@ -115,9 +115,10 @@ stages (see waves 1–8 + Eli). Bold = new authoring this issue adds.
 7. **Hand-off to Rush.** Scott released to greet (`_set_scott_autogreet(true)`). **Add**
    the Rush hand-off — in the show Young calls it, but our staging has Young unconscious,
    so **Scott** carries it: "I haven't seen Rush… **Help me find him.**" → then **Scott
-   rounds on Eli and yells "Eli! NOW!"**, Eli answers "Okay! I'm coming!" — this is the
-   button that `_restore_player_camera()` snaps back on, activates quest `find_rush`, and
-   points the waypoint at the Control Interface Room.
+   rounds on Eli and yells "Eli! NOW!"**, Eli answers "Okay! I'm coming!". Both lines play
+   on the cinematic camera; once the hand-off returns, `_restore_player_camera()` snaps
+   control back and `_set_scott_autogreet(true)` walks Scott over to brief the player →
+   `met_scott` → quest `find_rush`, waypoint to the Control Interface Room.
 
 ---
 

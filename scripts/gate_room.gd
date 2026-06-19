@@ -588,160 +588,191 @@ func _play_prologue_cinematic() -> void:
 	# Consoles are dead/offline on the derelict during the cold open.
 	_set_consoles_offline()
 
-	# Wide, slow-dollying cinematic camera for the whole arrival.
-	var cam: Camera3D = _make_cinematic_camera()
+	# Camera cuts (cut-to-speaker) own the framing for the whole verbatim cold open.
+	_begin_cuts()
+	_cut_wide(0.5)
 
-	# THE soundtrack: the real cold-open recording, played ONCE. _cold_open_start_ms
-	# anchors the wall-clock fallback in case the stream fails to load (real play
-	# always has it; headless skips this whole path via instant_mode).
+	# THE soundtrack: the ~165s ambience BED, played ONCE. _cold_open_start_ms anchors
+	# the wall-clock fallback if the stream fails (real play has it; headless skips this
+	# whole path via instant_mode). Our designed per-character VO plays on top via _cap.
 	_cold_open_start_ms = Time.get_ticks_msec()
 	var audio: AudioStreamPlayer = AudioStreamPlayer.new()
 	audio.name = "ColdOpenMaster"
 	add_child(audio)
-	var master: AudioStream = load(COLD_OPEN_BED) as AudioStream
-	if master != null:
-		if "loop" in master:
-			master.set("loop", false)
-		audio.stream = master
+	var bed: AudioStream = load(COLD_OPEN_BED) as AudioStream
+	if bed != null:
+		if "loop" in bed:
+			bed.set("loop", false)
+		audio.stream = bed
 		audio.play()
 
-	# Letterbox for the entire cinematic; captions appear/clear within the bars. Each
-	# _cap(...) is fire-and-forget — it awaits the playhead to its cue time then sets
-	# the subtitle, so the main flow keeps pacing the visual waves.
 	await Cinematic.letterbox_in()
 
-	# DIAL (≈0–3s): ring spins → chevrons lock one-by-one (a sound per chevron) → kawoosh.
+	# DIAL (≈0.5–3.5s): ring spins → chevrons lock one-by-one (sound per chevron) → kawoosh.
 	await get_tree().create_timer(0.5).timeout
 	await dial_and_open(true)
 
-	# WAVE 1 — Scott flies in, rises, and moves toward the crew crashing onto the deck,
-	# yelling them clear. Gear is already raining in: no empty beats from here on.
-	var scott: StaticBody3D = _world.get_node_or_null("LtScott") as StaticBody3D
-	_co_wave1_scott(scott)
+	# §1.2 FIRST THROUGH — Scott dives through, rolls up, marshals the early arrivals.
+	var scott: StaticBody3D = _co_arrival("Lt Scott", "", Vector3(1.6, 0.05, GATE_Z - 4.5),
+			Vector3(2.2, 0.05, GATE_Z - 5.5), "scott", _world.get_node_or_null("LtScott") as StaticBody3D)
 	GameState.add_log("Lt Scott comes barrelling through the gate!")
-	GameState.narrate("Lt Scott comes barrelling through the gate!")  # white chat line (#141)
-	_launch_crate_wave()
-	_cap("LT. SCOTT", "Get out of the way!", 6.0, "open-scott-clearway")
-	_cap("LT. SCOTT", "Slow down the evac — we're coming in too hot!", 10.0, "open-scott-evac")
-	_cap("CREW", "Where are we?", 13.0, "open-crowd-where")
+	GameState.narrate("Lt Scott comes barrelling through the gate!")
+	_cut_follow(scott, Vector3(2.0, 1.6, 3.2))
+	_cap("LT. SCOTT", "All right, get out of here. Get out of the way!", 6.0, "open-scott-clearway")
 
-	# WAVE 2 — Young (thrown hardest, off-screen, stays down injured) + James (medic).
-	await _await_audio(audio, 8.0)
-	var young: StaticBody3D = _world.get_node_or_null("ColonelYoung") as StaticBody3D
-	_co_wave2(young)
-
-	# WAVES 3/4 — Park & Volker arrive and step to their consoles.
+	# §1.3 PANDEMONIUM — people pour through FIRST, then the crates start raining.
+	_co_crowd_flood(audio, 7.0, 60.0, 0.7)
+	_cap("LT. SCOTT", "This is Scott! Slow down the evac — we are comin' in too hot!", 10.0, "open-scott-evac")
+	await _await_audio(audio, 12.0)
+	var wray: StaticBody3D = _co_arrival("Camile Wray", "", Vector3(-1.4, 0.05, GATE_Z - 3.4),
+			Vector3(-3.2, 0.05, GATE_Z - 4.5), "civ")
+	_cut_to(wray, 3.0, 1.5, 1.4, 0.6)
+	_cap("CAMILE WRAY", "Where are we? Why didn't we come through to Earth?", 13.5, "open-wray-whereare")
+	_cut_to(scott, 3.2, 1.5, 1.6, 0.5)
+	_cap("LT. SCOTT", "There's no time to explain. Off to the side!", 15.5, "open-scott-side")
 	await _await_audio(audio, 16.0)
-	_co_console_crew("Dr Park", "park", Vector3(-3.5, 0.05, GATE_CONSOLE_Z - 1.0), -3.5)
-	_co_console_crew("Dr Volker", "volker", Vector3(3.5, 0.05, GATE_CONSOLE_Z - 1.0), 3.5)
-	_cap("SGT. GREER", "There's no time to explain — off to the side!", 18.0, "open-greer-side")
-	_cap("CREW", "What's going on?", 21.0, "open-crowd-what")
+	_launch_crate_wave()                       # gear now raining in (after the first people)
+	_cap("LT. SCOTT", "This is Scott — come in!", 18.5, "open-scott-comein")
 
-	# Medic pocket (TJ over a wounded arm).
-	_cap("TJ", "Can you move your fingers?", 25.0, "open-tj-fingers")
-	_cap("CREW", "I think it's broken.", 29.0, "open-wounded-broken")
-	_cap("TJ", "Okay — hold your arm there, we'll get it in a sling.", 32.0, "open-tj-sling")
+	# §1.4 "I NEED A MEDIC" — TJ working the broken-arm man; a crate hits him.
+	# Reveal TJ at the medic pocket and place the wounded man beside her.
+	var tj: StaticBody3D = _world.get_node_or_null("LtJames") as StaticBody3D
+	var medic_spot: Vector3 = Vector3(3.4, 0.05, GATE_Z - 8.0)
+	if tj != null:
+		tj.visible = true
+		if "enabled" in tj: tj.set("enabled", true)
+		tj.global_position = medic_spot
+		_rise_npc(tj, "crouch_idle")
+	var man: StaticBody3D = _co_arrival("Wounded Marine", "", medic_spot + Vector3(1.0, 0.0, 0.4),
+			medic_spot + Vector3(1.0, 0.0, 0.4), "hard")
+	_cap("MARINE", "I need a medic!", 20.0, "open-marine-medic")
+	await _await_audio(audio, 23.0)
+	_cut_to(tj, 2.8, 1.4, -1.2, 0.6)           # cut to TJ + the wounded man
+	_cap("TJ", "Over here! Can you move your fingers?", 24.0, "open-tj-fingers")
+	await _await_audio(audio, 27.0)
+	_launch_impact_crate(man, "arm")           # a crate skids in and clips his arm
+	_cap("MARINE", "No. I think my arm is broken.", 29.0, "open-man-broken")
+	_cap("TJ", "Okay, just hold your arm there and we'll put it in a sling, okay?", 32.0, "open-tj-sling")
 
-	# WAVES 5–8 — crew AND gear keep pouring through with no let-up.
-	await _await_audio(audio, 24.0)
-	_extra_pair("Sgt Greer", "greer", Vector3(5.5, 0.05, 1.0),
-			"Sgt Spencer", "", Vector3(-5.5, 0.05, 0.5))
-	_launch_crate_wave()
-	_cap("MARINE", "Leave it — there'll be more coming through.", 38.0, "open-marine-leaveit")
-	await _await_audio(audio, 33.0)
-	_extra_pair("Dr Brody", "", Vector3(6.2, 0.05, -3.0),
-			"Dr Franklin", "", Vector3(-6.2, 0.05, -2.5))
-	_cap("TJ", "Are you okay?", 43.0, "open-tj-areyouokay")
-	_cap("MARINE", "Clear!", 47.0, "open-marine-clear")
+	# §1.5 RUSH/ELI + the staircase; Scott marshals; Senator + Chloe arrive.
+	await _await_audio(audio, 36.0)
+	_cut_wide(0.8)
+	_cap("LT. SCOTT", "Clear this area! There could still be more incoming!", 38.0, "open-scott-cleararea")
 	await _await_audio(audio, 42.0)
-	_extra_pair("Sgt Riley", "", Vector3(4.2, 0.05, -7.0),
-			"Camile Wray", "", Vector3(-4.2, 0.05, -7.5))
-	_launch_crate_wave()
-	_cap("SGT. GREER", "Move, move, move!", 50.0, "open-greer-move")
-	await _await_audio(audio, 50.0)
-	_extra_pair("Sgt Dunning", "", Vector3(7.0, 0.05, -1.0),
-			"Chloe Armstrong", "", Vector3(-7.0, 0.05, -0.5))
+	var senator: StaticBody3D = _co_arrival("Senator Armstrong", "", Vector3(-5.0, 0.05, GATE_Z - 6.5),
+			Vector3(-6.5, 0.05, GATE_Z - 7.5), "civ")
+	var chloe: StaticBody3D = _co_arrival("Chloe Armstrong", "", Vector3(-4.0, 0.05, GATE_Z - 5.8),
+			Vector3(-6.0, 0.05, GATE_Z - 8.2), "civ")
+	_cut_to(chloe, 2.8, 1.4, 1.3, 0.6)
+	_cap("CHLOE", "Are you okay?", 44.0, "open-chloe-areyouok")
+	_cut_to(senator, 3.0, 1.5, 1.4, 0.5)
+	_cap("SENATOR", "Yeah.", 47.0, "open-senator-yeah")
+	_cap("SENATOR", "Where the hell are we?", 49.0, "open-senator-whereare")
 
-	# FINAL — Eli (the player): last through, lands CLOSEST to the gate.
-	await _await_audio(audio, 56.0)
+	# §1.6 "Where's Colonel Young?" — Scott to Greer.
+	await _await_audio(audio, 51.0)
+	var greer: StaticBody3D = _co_arrival("Sgt Greer", "greer", Vector3(4.4, 0.05, GATE_Z - 5.0),
+			Vector3(5.6, 0.05, GATE_Z - 6.5), "mil")
+	# Eli (the player) is delivered last-ish, closest to the gate.
+	await _await_audio(audio, 53.0)
 	var eli_spot: Vector3 = Vector3(-0.6, 0.05, GATE_Z - 6.2)
 	var r_eli: Node3D = _launch_ragdoll("Eli", eli_spot)
 	GameState.add_log("Eli is hurled through and slams into the deck!")
-	_cap("COL. YOUNG", "Where are we?", 58.0, "open-young-whereare")
-	_cap("OFFICER", "I don't know, sir.", 60.0, "open-officer-idontknow")
-	await _await_audio(audio, 59.0)
+	_cut_to(scott, 3.2, 1.5, 1.6, 0.5)
+	_cap("LT. SCOTT", "Greer? Where's Colonel Young?", 55.0, "open-scott-greerwhere")
+	await _await_audio(audio, 54.5)
 	if _player != null:
 		_player.global_position = eli_spot
 		_lay_player_prone(true)
 		_show_player_model(true)
 	if is_instance_valid(r_eli): r_eli.queue_free()
 	_thud()
+	_cut_to(greer, 3.0, 1.5, 1.5, 0.5)
+	_cap("SGT. GREER", "He was right behind me.", 58.0, "open-greer-behindme")
 
-	# Gate collapses behind the last arrival.
+	# §1.7 YOUNG arrives HARDEST → a crate clips his head → the gate shuts.
+	await _await_audio(audio, 60.5)
+	var young_spot: Vector3 = Vector3(-3.2, 0.05, GATE_Z - 11.0)
+	var young: StaticBody3D = _co_arrival("Colonel Young", "", young_spot, young_spot, "hard",
+			_world.get_node_or_null("ColonelYoung") as StaticBody3D)
+	_cut_to(young, 3.2, 1.4, 1.6, 0.6)
 	await _await_audio(audio, 63.0)
+	_launch_impact_crate(young, "head")        # head wound
+	await _await_audio(audio, 64.0)
 	_collapse_gate()
+	Cinematic.flash(Color(1.0, 0.6, 0.25, 1.0), 0.6)   # flame/steam vent
+	_cut_follow(greer, Vector3(2.0, 1.6, 3.0))
+	_cap("SGT. GREER", "Move, move, move. Stay calm! Keep it down! Move, move, move, move, move.", 66.0, "open-greer-move")
 
-	# Eli groggily climbs to his feet during the hush.
-	await _await_audio(audio, 66.0)
+	# Eli groggily climbs to his feet.
+	await _await_audio(audio, 68.0)
 	_lay_player_prone(false)
 
-	# COMMAND HAND-OFF — Scott crosses to the downed Young, who passes him command
-	# before going still; Scott finds blood on his hand and calls the medic over.
-	# Visuals are staged by _co_command_handoff; these subtitle the recording's lines.
+	# §1.8 COMMAND HAND-OFF — Scott crosses to Young; Young passes command; blood; TJ called.
 	_co_command_handoff(scott, young)
-	_cap("COL. YOUNG", "Scott … you're in charge.", 68.0, "open-young-incharge")
-	_cap("LT. SCOTT", "TJ!", 71.0, "open-scott-tj")
-	_cap("TJ", "Coming!", 72.5, "open-tj-coming")
+	_cut_follow(scott, Vector3(1.8, 1.5, 3.0))
+	_cap("LT. SCOTT", "Colonel? Colonel?", 72.0, "open-scott-colonel")
+	_cap("SGT. GREER", "Don't move!", 74.0, "open-greer-dontmove")
+	await _await_audio(audio, 76.0)
+	_cut_to(young, 2.4, 1.1, 1.3, 0.6)         # close on Young, barely conscious
+	_cap("COL. YOUNG", "Where are we? Where are we?", 76.0, "open-young-whereare")
+	_cap("LT. SCOTT", "I don't know, sir.", 78.0, "open-scott-idontknow")
+	_cap("COL. YOUNG", "You're in charge, okay? You're...", 80.0, "open-young-incharge")
+	_cut_to(scott, 2.6, 1.4, 1.4, 0.6)
+	_cap("LT. SCOTT", "Yes, sir.", 83.5, "open-scott-yessir")   # blood-on-the-hand beat
+	_cap("LT. SCOTT", "TJ!", 86.0, "open-scott-tj")
+	_cut_follow(tj, Vector3(1.8, 1.5, 2.8))
+	_cap("TJ", "I'm coming!", 88.0, "open-tj-coming")
+	_cap("SGT. GREER", "Is he okay?", 91.0, "open-greer-isheok")
+	_cap("TJ", "Uh, I dunno.", 93.0, "open-tj-dunno")
 
-	# CLOSING — the evac turns to wonder; Scott can't account for Rush and rounds on
-	# Eli. Subtitle the recording and stage Scott's looks. This is the Find-Rush
-	# hand-off, but the quest is set unconditionally after the bars lift (below).
-	_cap("ELI", "What is this place?", 75.0, "open-eli-whatisthis")
-	await _await_audio(audio, 77.0)
+	# §1.8b Scott rounds on Eli (Wallace) to find Rush.
+	await _await_audio(audio, 96.0)
+	_cut_to(scott, 3.0, 1.5, 1.5, 0.5)
+	_cap("LT. SCOTT", "Wallace!", 96.0, "open-scott-wallace")
+	_cut_to(_player, 3.0, 1.5, 1.5, 0.5)
+	_cap("LT. SCOTT", "What is this place?", 99.0, "open-scott-whatisplace")
+	_cap("ELI", "Look, I just did what Rush told me.", 101.0, "open-eli-didwhat")
+	_cut_to(scott, 3.0, 1.5, 1.5, 0.5)
+	_cap("LT. SCOTT", "Where is he?", 104.0, "open-scott-whereishe")
+	_cut_to(_player, 3.0, 1.5, 1.5, 0.5)
+	_cap("ELI", "I don't know if he went ahead of me.", 106.0, "open-eli-wentahead")
+	await _await_audio(audio, 108.5)
 	_face_gate(scott)
-	_cap("LT. SCOTT", "I haven't seen Rush — I don't know if he went through ahead of me.", 77.0, "open-scott-norush")
-	_cap("LT. SCOTT", "Rush! … Rush!", 81.5, "open-scott-rush")
-	_cap("LT. SCOTT", "Help me find him.", 84.0, "open-scott-findhim")
-	await _await_audio(audio, 85.5)
-	Cinematic.flash(Color(0.7, 0.85, 1.0, 1.0), 0.5)   # the ship shudders
-	_cap("CREW", "What the hell was that?", 85.5, "open-crew-whatwasthat")
-	await _await_audio(audio, 87.0)
-	_face_player(scott)
-	_cap("LT. SCOTT", "Eli! NOW!", 87.5, "open-scott-eli-now")
-	_cap("ELI", "Okay! I'm coming!", 89.0, "open-eli-coming")
+	_cut_to(scott, 3.4, 1.6, 1.6, 0.5)
+	_cap("LT. SCOTT", "Rush!", 109.0, "open-scott-rush")
+	_cap("LT. SCOTT", "Rush! Eli, help me find him.", 112.0, "open-scott-findhim")
+	_cap("ELI", "Well, I...", 114.5, "open-eli-welli")
 
-	# Let the bed finish, then drop the bars and free the player.
-	await _await_audio(audio, 90.5)
+	# §1.9 THE SHIMMER — the ship jumps to FTL (left-right shake + blur), then the button.
+	await _await_audio(audio, 118.0)
+	_ftl_jump()
+	_cut_wide(0.8)
+	_cap("SGT. GREER", "What in the hell was that?!", 120.0, "open-greer-whatwasthat")
+	_cut_to(scott, 3.2, 1.5, 1.6, 0.5)
+	_cap("LT. SCOTT", "I don't know. Sergeant, I need you to get these people settled here. I need you to find out who and what we've got. Nobody leaves this room.", 123.0, "open-scott-settle")
+	_cut_to(greer, 3.0, 1.5, 1.5, 0.5)
+	_cap("SGT. GREER", "Yes, sir.", 133.0, "open-greer-yessir")
+	await _await_audio(audio, 137.0)
+	_face_player(scott)
+	_cut_to(_player, 2.8, 1.5, 1.4, 0.5)
+	_cap("LT. SCOTT", "Eli! Now!", 139.0, "open-scott-elinow")
+
+	# End: drop the bars, release the cut camera, hand control back.
+	await _await_audio(audio, 142.0)
 	Cinematic.set_caption("")
 	await Cinematic.letterbox_out()
 	if is_instance_valid(audio):
 		audio.queue_free()
+	_end_cuts()
 
-	# Hand control back. Per the user's design, the FIRST thing after the cold open is
-	# that the player ALREADY holds the Find-Rush quest — Scott does NOT walk over to
-	# brief them. Mark him met and advance e1_air talk_scott → find_rush; leave his
-	# auto_greet OFF so he stays put (still interactable for optional flavour).
-	_restore_player_camera(cam)
+	# Hand control back. The player ALREADY holds the Find-Rush quest — Scott does NOT
+	# walk over to brief them. Mark him met and advance e1_air talk_scott → find_rush.
+	_restore_player_camera(null)
 	_wake_consoles()
 	GameState.met_scott = true
 	GameState.advance_air_quest()
 	_set_scott_autogreet(false)
-
-	# Two-person teams pick themselves up and carry the loose crates to the side walls
-	# (one crew on each side, crate lifted between them) so nobody trips over them.
-	var team_names: Array = [
-		["ReturnTeam_SgtGreer", "ReturnTeam_SgtSpencer"],
-		["ReturnTeam_DrBrody", "ReturnTeam_DrFranklin"],
-		["ReturnTeam_SgtRiley", "ReturnTeam_CamileWray"],
-		["ReturnTeam_SgtDunning", "ReturnTeam_ChloeArmstrong"],
-	]
-	var teams: Array = []
-	for pair in team_names:
-		var a: Node = _world.get_node_or_null(pair[0])
-		var b: Node = _world.get_node_or_null(pair[1])
-		if a != null and b != null:
-			teams.append([a, b])
-	_carry_crates_to_edges(teams)
 
 
 # Throw a pair of crew (and optionally a crate) head-first through the gate, ≤2 in
@@ -1038,22 +1069,22 @@ func _co_command_handoff(scott: StaticBody3D, young: StaticBody3D) -> void:
 	var audio: AudioStreamPlayer = get_node_or_null("ColdOpenMaster") as AudioStreamPlayer
 	# Scott crosses to Young (room-left/gate-side of him) the moment the gate snuffs out.
 	var beside: Vector3 = Vector3(young.global_position.x + 1.6, 0.05, young.global_position.z)
-	await _await_audio(audio, 66.0)
+	await _await_audio(audio, 70.0)
 	if is_instance_valid(scott) and scott.has_method("walk_to"):
 		scott.call("walk_to", beside, 3.2, 0.0)
 	# Arrive, stop, kneel beside him and check him over.
-	await _await_audio(audio, 69.0)
+	await _await_audio(audio, 73.5)
 	if is_instance_valid(scott):
 		if scott.has_method("stop_walk"):
 			scott.call("stop_walk")
 		_face_node(scott, young)
 		_rise_npc(scott, "crouch_idle")
 	# Scott rocks back — blood on his hand — and stands to take charge.
-	await _await_audio(audio, 71.5)
+	await _await_audio(audio, 84.0)
 	if is_instance_valid(scott):
 		_rise_npc(scott, "idle")
 	# The medic breaks from the pocket to Young.
-	await _await_audio(audio, 72.5)
+	await _await_audio(audio, 87.5)
 	var james: StaticBody3D = _world.get_node_or_null("LtJames") as StaticBody3D
 	if is_instance_valid(james):
 		_rise_npc(james, "idle")
@@ -1289,14 +1320,26 @@ func _arrival_roll_for(role: String, name_hash: int) -> String:
 		"hard":  return "crash"
 		_:       return ARRIVAL_ROLLS[absi(name_hash) % ARRIVAL_ROLLS.size()]
 
-# Fire a crew body through the gate (kinematic arc), land it, play its assigned ROLL
-# upright (not face-down), push up with get_up, then scramble to `clear_spot` to dodge
-# the incoming crates. Fire-and-forget. `role`: "scott" | "mil" | "civ" | "hard".
-# A "hard" arrival stays down where it lands (crash → stays prone) — used for Young.
-func _co_arrival(npc: StaticBody3D, land_spot: Vector3, clear_spot: Vector3, role: String = "mil") -> void:
+# Build (or reuse `existing`) a crew body, fire it through the gate (kinematic arc),
+# land it, play its assigned ROLL upright, push up with get_up, then scramble to
+# `clear_spot` to dodge incoming crates. Returns the body. `role`: "scott" | "mil" |
+# "civ" | "hard". A "hard" arrival stays down where it lands (crash → prone) — Young.
+# `freeze` drops the body out of _process once settled (cheap nameless extras).
+func _co_arrival(disp_name: String, kind: String, land_spot: Vector3, clear_spot: Vector3,
+		role: String = "mil", existing: StaticBody3D = null, freeze: bool = false) -> StaticBody3D:
+	# _throw_persistent_crew builds/reveals the NPC and fires the ballistic arc.
+	var npc: StaticBody3D = _throw_persistent_crew(disp_name, kind, land_spot, existing)
+	_co_roll_settle(npc, clear_spot, role, freeze)
+	return npc
+
+
+# Post-throw behaviour for an already-launched body: wait out the arc, play the ROLL
+# upright, get up, and scramble to `clear_spot`. Split out so principals can grab the
+# node ref from _throw_persistent_crew synchronously, then fire this and keep going.
+func _co_roll_settle(npc: StaticBody3D, clear_spot: Vector3, role: String = "mil", freeze: bool = false) -> void:
+	await get_tree().create_timer(THROW_FLIGHT_TIME).timeout   # let the arc land
 	if npc == null or not is_instance_valid(npc):
 		return
-	_fly_projectile(npc, land_spot, THROW_FLIGHT_TIME)   # ballistic arc to land_spot
 	var model: Node3D = npc.get_node_or_null("Model") as Node3D
 	var mc: Node3D = _first_mc(npc)
 	var roll: String = _arrival_roll_for(role, npc.name.hash())
@@ -1308,8 +1351,7 @@ func _co_arrival(npc: StaticBody3D, land_spot: Vector3, clear_spot: Vector3, rol
 		mc.call("play_clip", roll)
 	_thud()
 	if role == "hard":
-		# Crashed hard — stay down where it landed (the crash clip ends prone).
-		return
+		return   # crashed hard — stays down where it landed
 	await get_tree().create_timer(0.95).timeout
 	if not is_instance_valid(npc):
 		return
@@ -1318,16 +1360,35 @@ func _co_arrival(npc: StaticBody3D, land_spot: Vector3, clear_spot: Vector3, rol
 	await get_tree().create_timer(1.0).timeout
 	# Scramble to the side, out of the landing zone (dodging crates).
 	if is_instance_valid(npc) and npc.has_method("walk_to"):
-		npc.call("walk_to", clear_spot, 3.0, 0.0)
+		npc.call("walk_to", clear_spot, 3.2, 0.0)
 		await get_tree().create_timer(1.6).timeout
 		if is_instance_valid(npc) and npc.has_method("stop_walk"):
 			npc.call("stop_walk")
 		if is_instance_valid(npc) and mc != null and mc.has_method("play_clip"):
 			mc.call("play_clip", "idle")
-	# Settled extra: freeze to cap cost (named principals keep processing).
-	if String(npc.get("display_name") if "display_name" in npc else "").begins_with("civ_") \
-			or String(npc.name).begins_with("Civ") or String(npc.name).begins_with("Mil"):
-		npc.set_process(false)
+	if freeze and is_instance_valid(npc):
+		npc.set_process(false)   # settled extra — cap cost
+
+
+# Continuous nameless flood: spawn civ_#/mil_# every ~`gap`s from `from_t` to `to_t`
+# (playhead), each rolling in to a scattered spot then scrambling to the perimeter.
+# Keeps the gate "always flowing" with ~1-2 bodies/sec. Cheap (frozen once settled).
+func _co_crowd_flood(audio: AudioStreamPlayer, from_t: float, to_t: float, gap: float = 0.7) -> void:
+	await _await_audio(audio, from_t)
+	var i: int = 0
+	var t: float = from_t
+	while t < to_t and is_instance_valid(audio):
+		var mil: bool = (i % 2) == 0
+		var nm: String = ("mil_%d" % i) if mil else ("civ_%d" % i)
+		# Scatter landings across the front half of the room; scramble to a wall.
+		var sx: float = (-1.0 if (i % 2) else 1.0) * (2.0 + float(i % 5) * 0.9)
+		var lz: float = GATE_Z - (3.0 + float(i % 6) * 1.4)
+		var land: Vector3 = Vector3(sx * 0.5, 0.05, lz)
+		var clear: Vector3 = Vector3(clampf(sx * 1.7, -8.0, 8.0), 0.05, lz - 1.5)
+		_co_arrival(nm, ("greer" if mil else ""), land, clear, ("mil" if mil else "civ"), null, true)
+		i += 1
+		t += gap
+		await _await_audio(audio, t)
 
 
 # ----- cold-open crate impact: REAL RigidBody3D that HITS a victim ------------

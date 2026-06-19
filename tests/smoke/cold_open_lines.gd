@@ -49,7 +49,22 @@ func _initialize() -> void:
 	test_cold_open_master_track_referenced_and_present(code)
 	test_cold_open_handoff_captions_present(code)
 	test_cold_open_advances_quest_without_scott_walkup(code)
+	test_cold_open_mechanics_wired(code)
 	_report()
+
+
+# The new staging mechanics must stay wired (rolls, crate-impact physics, camera cuts,
+# FTL jump, continuous flood) — cheap string guard against a silent drop.
+func test_cold_open_mechanics_wired(code: String) -> void:
+	var needles: Array[String] = [
+		"_co_arrival(", "_co_crowd_flood(", "_launch_impact_crate(",
+		"_begin_cuts(", "_cut_to(", "_ftl_jump(",
+	]
+	for n: String in needles:
+		if code.find(n) != -1:
+			_passes += 1
+		else:
+			_fail("cold-open mechanic '%s' is no longer wired in gate_room.gd" % n)
 
 
 # The master soundtrack must be referenced in code and actually exist on disk.

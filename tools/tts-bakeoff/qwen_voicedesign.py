@@ -43,6 +43,19 @@ CHARS = {
 	"tj":    ("A young blonde American female military medic in her late twenties. Warm, "
 	          "calm, steady, clear voice.",
 	          "Stay with me. You're gonna be okay."),
+	# Cold-open named extras (transcript §1).
+	"wray":  ("A composed American woman in her forties, a professional IOA bureaucrat. "
+	          "Controlled, articulate, slightly clipped.",
+	          "Where are we? Why didn't we come through to Earth?"),
+	"chloe": ("A refined young American woman in her mid twenties. Clear, earnest, a little shaken.",
+	          "Are you okay?"),
+	"senator": ("An older American male in his late fifties, a U.S. senator. Gravelly, "
+	          "authoritative, weary gravitas.",
+	          "Where the hell are we?"),
+	"marine": ("A young American male U.S. marine. Gruff, urgent, hard-edged.",
+	          "I need a medic!"),
+	"civ":   ("A frightened young American male civilian. Disoriented, breathless.",
+	          "I think my arm is broken."),
 }
 # Delivery modifier appended to the voice description for each mode.
 MODES = {
@@ -68,11 +81,12 @@ SEEDS = [42, 777, 2024, 1337]
 
 def main() -> int:
 	import sys
-	only = sys.argv[1].lower() if len(sys.argv) > 1 else None  # optional char filter, e.g. "greer"
+	# optional char filter: one or comma-separated, e.g. "greer" or "wray,chloe,senator"
+	only = set(sys.argv[1].lower().split(",")) if len(sys.argv) > 1 else None
 	model = load_model(MODEL)
 	n = 0
 	for char, mood, instruct, text in JOBS:
-		if only and char != only:
+		if only and char not in only:
 			continue
 		for seed in SEEDS:
 			mx.random.seed(seed)

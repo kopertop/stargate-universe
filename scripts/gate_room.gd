@@ -1277,6 +1277,156 @@ func _fly_crate(crate: Node3D, target: Vector3, flight: float) -> void:
 		_thud()
 
 
+# ----- cold-open arrival: roll in → get up → scramble clear -------------------
+
+# Per-character arrival roll clips (imported Mixamo). Scott dives; mil/civ get a
+# varied roll; "hard" crashes (Young, crate victims).
+const ARRIVAL_ROLLS: Array[String] = ["sprint_roll", "roll_to_run", "run_roll", "falling_roll"]
+
+func _arrival_roll_for(role: String, name_hash: int) -> String:
+	match role:
+		"scott": return "dive_roll"
+		"hard":  return "crash"
+		_:       return ARRIVAL_ROLLS[absi(name_hash) % ARRIVAL_ROLLS.size()]
+
+# Fire a crew body through the gate (kinematic arc), land it, play its assigned ROLL
+# upright (not face-down), push up with get_up, then scramble to `clear_spot` to dodge
+# the incoming crates. Fire-and-forget. `role`: "scott" | "mil" | "civ" | "hard".
+# A "hard" arrival stays down where it lands (crash → stays prone) — used for Young.
+func _co_arrival(npc: StaticBody3D, land_spot: Vector3, clear_spot: Vector3, role: String = "mil") -> void:
+	if npc == null or not is_instance_valid(npc):
+		return
+	_fly_projectile(npc, land_spot, THROW_FLIGHT_TIME)   # ballistic arc to land_spot
+	var model: Node3D = npc.get_node_or_null("Model") as Node3D
+	var mc: Node3D = _first_mc(npc)
+	var roll: String = _arrival_roll_for(role, npc.name.hash())
+	# Upright the model so the roll clip drives the pose (the arc left it face-down).
+	if model != null:
+		model.rotation = Vector3(0.0, model.rotation.y, 0.0)
+		model.position.y = 0.0
+	if mc != null and mc.has_method("play_clip"):
+		mc.call("play_clip", roll)
+	_thud()
+	if role == "hard":
+		# Crashed hard — stay down where it landed (the crash clip ends prone).
+		return
+	await get_tree().create_timer(0.95).timeout
+	if not is_instance_valid(npc):
+		return
+	if mc != null and mc.has_method("play_clip"):
+		mc.call("play_clip", "get_up")
+	await get_tree().create_timer(1.0).timeout
+	# Scramble to the side, out of the landing zone (dodging crates).
+	if is_instance_valid(npc) and npc.has_method("walk_to"):
+		npc.call("walk_to", clear_spot, 3.0, 0.0)
+		await get_tree().create_timer(1.6).timeout
+		if is_instance_valid(npc) and npc.has_method("stop_walk"):
+			npc.call("stop_walk")
+		if is_instance_valid(npc) and mc != null and mc.has_method("play_clip"):
+			mc.call("play_clip", "idle")
+	# Settled extra: freeze to cap cost (named principals keep processing).
+	if String(npc.get("display_name") if "display_name" in npc else "").begins_with("civ_") \
+			or String(npc.name).begins_with("Civ") or String(npc.name).begins_with("Mil"):
+		npc.set_process(false)
+
+
+# ----- cold-open crate impact: REAL RigidBody3D that HITS a victim ------------
+
+const IMPACT_CRATE_TIME: float = 0.55     # ~flight to the victim; sets launch speed
+
+# Hurl a REAL RigidBody crate at `victim` so it physically collides (contact-monitored).
+# On first contact with the victim it fires the scripted wound reaction (`wound`:
+# "arm" = clutch/limp, "head" = down + blood). The crate then tumbles/settles via
+# physics. Returns the crate. Deterministic enough for a headless physics test.
+func _launch_impact_crate(victim: StaticBody3D, wound: String) -> RigidBody3D:
+	var crate: RigidBody3D = RigidBody3D.new()
+	crate.name = "ImpactCrate"
+	crate.mass = 16.0
+	crate.contact_monitor = true
+	crate.max_contacts_reported = 6
+	crate.collision_layer = 1
+	crate.collision_mask = 1 | 2          # floor, walls, and crew static bodies (layer 1)
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = CRATE_SIZE
+	cs.shape = box
+	crate.add_child(cs)
+	var mi: MeshInstance3D = MeshInstance3D.new()
+	var bm: BoxMesh = BoxMesh.new()
+	bm.size = CRATE_SIZE
+	mi.mesh = bm
+	var mat: StandardMaterial3D = StandardMaterial3D.new()
+	mat.albedo_color = Color(0.30, 0.28, 0.24, 1.0)
+	mat.metallic = 0.2
+	mat.roughness = 0.7
+	mi.material_override = mat
+	crate.add_child(mi)
+	_world.add_child(crate)
+	crate.global_position = Vector3(0.0, _gate_center_y(), GATE_Z - 0.4)
+	_arrival_crates.append(crate)
+	if victim != null and is_instance_valid(victim):
+		var aim: Vector3 = victim.global_position + Vector3(0.0, 0.95, 0.0)
+		var disp: Vector3 = aim - crate.global_position
+		crate.linear_velocity = disp / IMPACT_CRATE_TIME + Vector3.UP * 2.0
+		crate.angular_velocity = Vector3(7.0, 2.0, 4.0)
+		crate.body_entered.connect(_on_impact_crate_hit.bind(crate, victim, wound))
+	return crate
+
+
+func _on_impact_crate_hit(body: Node, crate: RigidBody3D, victim: StaticBody3D, wound: String) -> void:
+	if body != victim or not is_instance_valid(victim):
+		return
+	if crate.get_meta("hit", false):
+		return
+	crate.set_meta("hit", true)
+	_wound_crew(victim, wound)
+	_thud()
+
+
+# Scripted wound reaction (the crew bodies are static — physics doesn't shove them).
+# "arm": clutch and go to a knee (the broken-arm marine). "head": crash flat and stay
+# down with a head-wound mark (Col. Young).
+func _wound_crew(victim: StaticBody3D, wound: String) -> void:
+	if victim == null or not is_instance_valid(victim):
+		return
+	victim.set_meta("wounded", true)
+	var model: Node3D = victim.get_node_or_null("Model") as Node3D
+	var mc: Node3D = _first_mc(victim)
+	if wound == "head":
+		if model != null:
+			model.rotation = Vector3(PI * 0.5, PI, 0.0)   # face-down
+			model.position.y = 0.1
+		if mc != null and mc.has_method("play_clip"):
+			mc.call("play_clip", "idle")
+		_add_head_blood(victim)
+	else:   # "arm"
+		if model != null:
+			model.rotation = Vector3(0.0, model.rotation.y, 0.0)
+			model.position.y = 0.0
+		if mc != null and mc.has_method("play_clip"):
+			mc.call("play_clip", "crouch_idle")   # hunched, favouring the arm
+
+
+# Small dark-red marker at head height to read as a head wound (placeholder VFX).
+func _add_head_blood(victim: Node3D) -> void:
+	if victim == null or not is_instance_valid(victim):
+		return
+	if victim.get_node_or_null("HeadWound") != null:
+		return
+	var blood: MeshInstance3D = MeshInstance3D.new()
+	blood.name = "HeadWound"
+	var sm: SphereMesh = SphereMesh.new()
+	sm.radius = 0.06
+	sm.height = 0.12
+	blood.mesh = sm
+	var bmat: StandardMaterial3D = StandardMaterial3D.new()
+	bmat.albedo_color = Color(0.35, 0.02, 0.02, 1.0)
+	bmat.roughness = 0.3
+	blood.material_override = bmat
+	blood.position = Vector3(0.15, 0.25, 0.0)   # near the head when face-down
+	victim.add_child(blood)
+
+
 const CRATE_CARRY_HEIGHT: float = 1.0     # crate ride height when two crew lift it
 const CRATE_FLANK: float = 0.85           # half-gap between the two carriers
 

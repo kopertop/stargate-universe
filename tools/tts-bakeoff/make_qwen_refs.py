@@ -30,6 +30,12 @@ PICKS: dict[str, dict[str, int]] = {
 	"rush":  {"standard": 2024, "barked": 2024, "panic": 2024, "whisper": 2024},
 	"young": {"standard": 777, "barked": 2024, "panic": 2024, "whisper": 2024},
 	"tj":    {"standard": 1337, "barked": 1337, "panic": 777, "whisper": 777},
+	# Cold-open named extras (full-auto seed picks).
+	"wray":    {"standard": 777, "barked": 777, "panic": 777, "whisper": 777},
+	"chloe":   {"standard": 1337, "barked": 1337, "panic": 1337, "whisper": 1337},
+	"senator": {"standard": 2024, "barked": 2024, "panic": 2024, "whisper": 2024},
+	"marine":  {"standard": 42, "barked": 42, "panic": 42, "whisper": 42},
+	"civ":     {"standard": 777, "barked": 777, "panic": 777, "whisper": 777},
 }
 
 # What each character's VoiceDesign reference clip actually SAYS (= ref_text for cloning).
@@ -40,6 +46,11 @@ REF_TEXT: dict[str, str] = {
 	"rush": "This ship could be the most important discovery mankind has ever made.",
 	"young": "This is my ship. We do this my way.",
 	"tj": "Stay with me. You're gonna be okay.",
+	"wray": "Where are we? Why didn't we come through to Earth?",
+	"chloe": "Are you okay?",
+	"senator": "Where the hell are we?",
+	"marine": "I need a medic!",
+	"civ": "I think my arm is broken.",
 }
 
 

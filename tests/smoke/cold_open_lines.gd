@@ -19,19 +19,19 @@ extends SceneTree
 #   godot --headless -s res://tests/smoke/cold_open_lines.gd
 
 const GATE_ROOM: String = "res://scripts/gate_room.gd"
-const MASTER_AUDIO: String = "res://sounds/dialog/prologue/cold_open_master.mp3"
+const MASTER_AUDIO: String = "res://sounds/dialog/prologue/cold_open_bed.mp3"
 
-# Captions that subtitle the recording's climax — the beats that hand off to gameplay.
-# Includes the command hand-off beat (Young → Scott → medic) staged in the post-collapse
-# lull by _co_command_handoff.
+# Verbatim transcript beats that MUST stay wired (the command hand-off + the Rush
+# hand-off button). Match docs/OPENING_SCENE_SCRIPT.md §1 exactly.
 const REQUIRED_CAPTIONS: Array[String] = [
-	"Scott … you're in charge.",
+	"Get out of the way!",
+	"Where's Colonel Young?",
+	"You're in charge, okay? You're...",
 	"TJ!",
-	"Coming!",
-	"Help me find him.",
-	"Eli! NOW!",
-	"Okay! I'm coming!",
-	"What the hell was that?",
+	"I'm coming!",
+	"Rush! Eli, help me find him.",
+	"What in the hell was that?!",
+	"Eli! Now!",
 ]
 
 var _failures: Array[String] = []

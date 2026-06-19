@@ -13,6 +13,10 @@ from __future__ import annotations
 # preset -> (emo_text, emo_alpha)
 PRESETS: dict[str, tuple[str, float]] = {
 	"neutral":  ("natural, even delivery", 0.7),
+	# Chris-approved cold-open delivery: fast/clipped WITHOUT emotional drama. The
+	# wording sets flat affect; the low alpha keeps it from drifting toward panic.
+	# (Used for Scott's "Slow down the evac… too hot!" — "rushed, not emo".)
+	"rushed":   ("fast, clipped, hurried, businesslike, matter-of-fact, flat affect, no drama", 0.45),
 	"urgent":   ("commanding, loud, urgent, fast and clipped", 0.95),
 	"panic":    ("shouting, panicked, breathless, high urgency", 1.0),
 	"shout":    ("shouting at the top of his lungs, intense, furious urgency", 1.0),

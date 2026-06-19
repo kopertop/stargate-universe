@@ -1,5 +1,5 @@
 {
-	"_comment": "Character registry. Maps display name → portrait + metadata. dialog_screen.gd looks up the speaker name when rendering a dialog node. Add new characters here, not in the script.",
+	"_comment": "Character registry. Maps display name → portrait + metadata. dialog_screen.gd looks up the speaker name when rendering a dialog node. Add new characters here, not in the script. NOTE: 'Lt James' is her official name but everyone calls her 'TJ' — all of 'Lt James' / 'Dr James' / 'TJ' / 'TJ Johansen' are ONE character and resolve to the same portrait + short_name 'TJ'.",
 
 	"Eli": {
 		"portrait": "res://sprites/portraits/eli-wallace.png",
@@ -32,14 +32,14 @@
 		"short_name": "Chloe"
 	},
 	"Dr James": {
-		"portrait": "res://sprites/portraits/dr-james.png",
-		"role": "civilian",
-		"short_name": "James"
+		"portrait": "res://sprites/portraits/tj-johansen.png",
+		"role": "military",
+		"short_name": "TJ"
 	},
 	"Lt James": {
-		"portrait": "res://sprites/portraits/dr-james.png",
+		"portrait": "res://sprites/portraits/tj-johansen.png",
 		"role": "military",
-		"short_name": "James"
+		"short_name": "TJ"
 	},
 	"Dr Park": {
 		"portrait": "res://sprites/portraits/dr-park.png",

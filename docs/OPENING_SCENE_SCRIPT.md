@@ -3,17 +3,18 @@
 > **What this is.** The script for the E1 *cold open* — the pre-flashback opening where the
 > Icarus crew is shoved through the Stargate onto the derelict *Destiny* and Scott hands the
 > player the **Find Rush** objective. §1 is the **canonical scene** (exact dialogue, story
-> order); §3 maps it onto the shipped **~90 s cut** that
+> order); §3 maps it onto the shipped **verbatim ~2.5-minute cut** that
 > `scripts/gate_room.gd::_play_prologue_cinematic()` actually renders.
 >
 > **Dialogue source.** Exact lines are from the *Stargate Universe* "Air, Part 1" episode
 > transcript (GateWorld, transcribed by Callie Sullivan). Action/staging is paraphrased.
 >
-> **Audio.** Timing is anchored to the reference recording `~/Desktop/SGU Openning.m4a`
-> (`cold_open_master.mp3`, 255.3 s). Its voices were stripped with Demucs and the result
-> tightened into the **~90 s lull-free ambience bed** `cold_open_bed.mp3` (music, kawoosh,
-> crowd — no dialog), played once as the master clock. Our **designed per-character VO**
-> (Qwen3-TTS) plays on top via `_cap(..., vo_id)`.
+> **Audio.** The cold open is now the **full verbatim transcript** (~2.5 min). Voices were
+> stripped from the reference recording with Demucs and the loud sections stitched into a
+> **~165 s lull-free ambience bed** `cold_open_bed.mp3` (music, kawoosh, crowd — no dialog),
+> played once as the master clock. Every line is our **designed per-character VO** (Qwen3-TTS
+> Design→Clone) played on top via `_cap(..., vo_id)`; the camera cuts to the speaker
+> (`standoff_camera`). `cold_open_master.mp3` (255.3 s) is kept only as the timing reference.
 >
 > **Status.** Reference / production doc. Supersedes beat 7 of `design/sgu-opening-reference.md`
 > (the old "Scott walks over to brief you" hand-off — replaced; see §5).
@@ -176,8 +177,8 @@ active — see §3 / §4.)*
 
 ## 2. Timing model (read before §3)
 
-The cold open is a **~90 s cut** (down from the 255 s recording). Every cue in §3 is **seconds
-into `cold_open_bed.mp3`** — the ~90 s, lull-free ambience bed (Demucs no-vocals, voices
+The cold open is the **full verbatim transcript (~2.5 min)**. Every cue in §3 is **seconds
+into `cold_open_bed.mp3`** — the ~165 s, lull-free ambience bed (Demucs no-vocals, voices
 stripped); the gate stays active and crew + gear flow **continuously** with no dead air. The
 cinematic paces itself to that bed's playhead:
 
@@ -198,55 +199,54 @@ Captions render as `SPEAKER — "line"`.
 
 ---
 
-## 3. Shot list — the shipped ~90 s cut
+## 3. Shot list — the shipped verbatim cut (~2.5 min)
 
-Our cut **condenses** the canonical scene into a single playhead-timed pass with continuous
-flow. Captions are the strings currently in `gate_room.gd`; where they diverge from §1 they're
-marked **[adapt]** and should be reconciled toward §1 when the VO is (re)baked.
+The shipped cut now plays **§1 verbatim** — every line, correct speaker, in order — over the
+~165 s bed, with the camera **cutting to the speaker**. Playhead seconds below are approximate;
+the authoritative timings live in `scripts/gate_room.gd::_play_prologue_cinematic()`.
 
-| Playhead | Beat | On-screen action / camera | Caption (speaker — line) | Code anchor |
-|---:|---|---|---|---|
-| 0.0 | **Letterbox in** | Cinematic bars slide in; wide cam dollies back across the whole ~90 s. Consoles dead, room dark, player model hidden. | — | `_make_cinematic_camera()`, `letterbox_in()` |
-| ~0.5–3 | **Dial & open** | Ring spins → chevrons lock **one-by-one, a chevron-lock sound firing for each** → portal flushes (−Z plume) → kawoosh. | — | `dial_and_open(true)` → per-chevron `_play_chevron_lock()` |
-| ~2–8 | **Wave 1 — Scott** | `LtScott` hurled through, lands **kneeling**, rises, then **walks toward the crew crashing onto the deck**. Crates already raining. | — | `_co_wave1_scott(scott)`, `_launch_crate_wave()` |
-| 6.0 | Scott clears the LZ | Scott, moving to the downed crew. | `LT. SCOTT — "Get out of the way!"` **[adapt: canon "All right, get out of here. Get out of the way!"]** | `_cap(..., "open-scott-clearway")` |
-| 8.0 | **Wave 2 — Young + medic** | **Col. Young** thrown *hardest* — face-down, off to the side, **stays down for the rest of the scene.** TJ/medic kneels near him. | — | `_co_wave2(young)` |
-| 10.0 | Scott marshals | Comms-flavored shout. | `LT. SCOTT — "Slow down the evac — we're coming in too hot!"` **[adapt: canon "we are comin' in too hot!"]** | `_cap(..., "open-scott-evac")` |
-| 13.0 | Crowd confusion | Disoriented crew picking themselves up. | `CREW — "Where are we?"` **[adapt: canon Wray "...Why didn't we come through to Earth?"]** | `_cap(..., "open-crowd-where")` |
-| 16.0 | **Waves 3/4 — console crew** | **Dr Park** + **Dr Volker** pick their way to the dead consoles flanking the gate. | — | `_co_console_crew(...)` ×2 |
-| 18.0 | Scott waves them clear | Waving civilians clear of the LZ. | `SGT. GREER — "There's no time to explain — off to the side!"` **[adapt: canon Scott]** | `_cap(..., "open-greer-side")` |
-| 21.0 | Crowd confusion | — | `CREW — "What's going on?"` | `_cap(..., "open-crowd-what")` |
-| 25.0 | **Medic pocket** | Push toward TJ working a wounded crewman's arm. | `TJ — "Can you move your fingers?"` | `_cap(..., "open-tj-fingers")` |
-| 29.0 | … | Wounded crew grimacing. | `CREW — "I think it's broken."` **[adapt: canon "No. I think my arm is broken."]** | `_cap(..., "open-wounded-broken")` |
-| 32.0 | … | TJ improvising a sling. | `TJ — "Okay — hold your arm there, we'll get it in a sling."` | `_cap(..., "open-tj-sling")` |
-| 24 / 33 / 42 | **Waves 5–8 (+ crates)** | Greer+Spencer, Brody+Franklin, Riley+Wray, Dunning+Chloe pour through in pairs; more crates raining — **constant flow, no lull**. | — | `_extra_pair(...)` ×4, `_launch_crate_wave()` |
-| 38.0 | Marshalling | Kicking debris aside, keeping the LZ clear. | `MARINE — "Leave it — there'll be more coming through."` | `_cap(..., "open-marine-leaveit")` |
-| 43.0 | Medic check | TJ moving between casualties. | `TJ — "Are you okay?"` | `_cap(..., "open-tj-areyouokay")` |
-| 47.0 | Status call | A landing reported clear. | `MARINE — "Clear!"` **[adapt: canon "Clear this area! There could still be more incoming!"]** | `_cap(..., "open-marine-clear")` |
-| 50.0 | Marshalling | Driving the last stragglers off the pad. | `SGT. GREER — "Move, move, move!"` | `_cap(..., "open-greer-move")` |
-| 56.0 | **Eli (the player) thrown** | Ragdoll proxy hurled through, landing **closest to the gate** (`Vector3(-0.6, 0.05, GATE_Z-6.2)`). | — | `_launch_ragdoll("Eli", eli_spot)` |
-| 58.0 | Young, dazed | — | `COL. YOUNG — "Where are we?"` | `_cap(..., "open-young-whereare")` |
-| 59.0 | **Player body swap** | Proxy freed; real `_player` snaps to the spot, **laid prone**, model shown. Thud. | — | `_lay_player_prone(true)`, `_show_player_model(true)` |
-| 60.0 | Scott answers Young | — | `LT. SCOTT — "I don't know, sir."` **[adapt: canon, was OFFICER]** | `_cap(..., "open-officer-idontknow")` |
-| 63.0 | **Gate collapses** | Event horizon snuffs out behind the last arrival; flame/steam plumes vent; no one else coming through. | — | `_collapse_gate()` |
-| 66.0 | **Eli stands** | The player's body **groggily climbs to its feet**. | — | `_lay_player_prone(false)` |
-| ~66–72 | **Command hand-off — Scott crosses to Young** | Scott walks to the downed Young, kneels to check him over, finds blood, stands to take charge. | — | `_co_command_handoff()` |
-| 68.0 | Young passes command | Barely conscious, face-down. | `COL. YOUNG — "Scott … you're in charge."` **[adapt: canon "You're in charge, OK? You're …"]** | `_cap(..., "open-young-incharge")` |
-| 71.0 | Scott calls the medic | Turns and screams for TJ. | `LT. SCOTT — "TJ!"` | `_cap(..., "open-scott-tj")` |
-| 72.5 | Medic answers + crosses | TJ acknowledges and **breaks to Young**. | `TJ — "Coming!"` **[adapt: canon "I'm coming!"]** | `_cap(..., "open-tj-coming")` |
-| 75.0 | **Turn to Eli / wonder** | Scott rounds on the civilian; crew look around the alien deck. | `ELI — "What is this place?"` **[adapt: canon Scott asks Eli this]** | `_cap(..., "open-eli-whatisthis")` |
-| 77.0 | Scott faces the (dead) gate | He scans the arrivals, counting heads. | `LT. SCOTT — "I haven't seen Rush — I don't know if he went through ahead of me."` **[adapt: canon Eli "I don't know if he went ahead of me."]** | `_face_gate(scott)`, `_cap(..., "open-scott-norush")` |
-| 81.5 | Scott calls out | Shouting into the dark room. | `LT. SCOTT — "Rush! … Rush!"` | `_cap(..., "open-scott-rush")` |
-| 84.0 | **The quest line** | The diegetic launch of step 1. | `LT. SCOTT — "Help me find him."` **[adapt: canon "Rush! Eli, help me find him."]** | `_cap(..., "open-scott-findhim")` |
-| 85.5 | **FTL shimmer** | Full-frame blue-white flash; the deck lurches (Destiny jumps). | `CREW — "What the hell was that?"` **[adapt: canon Greer "What in the hell was that?!"]** | `Cinematic.flash(...)`, `_cap(..., "open-crew-whatwasthat")` |
-| 87.5 | **THE BUTTON** | Scott rounds on the player, hard and urgent. | `LT. SCOTT — "Eli! NOW!"` **[adapt: canon "Eli! Now!"]** | `_face_player(scott)`, `_cap(..., "open-scott-eli-now")` |
-| 89.0 | Eli answers | Player-character scramble. | `ELI — "Okay! I'm coming!"` | `_cap(..., "open-eli-coming")` |
-| 90.5 | **End** | Caption clears; **letterbox out**; bed freed. | *(blank)* | `letterbox_out()` |
-| — | **HAND-OFF → GAMEPLAY** | See §4. | — | `_restore_player_camera()` … `advance_air_quest()` |
+Arrivals: each body flies a ballistic arc, plays a **Mixamo roll** (`dive_roll` Scott, varied for
+mil/civ, `crash` for hard hits), `get_up`, then `walk_to` a perimeter spot (`_co_arrival` /
+`_co_roll_settle`). Nameless `civ_#`/`mil_#` pour in continuously (`_co_crowd_flood`, ~1–2/s,
+frozen once settled). Crates rain via `_launch_crate_wave`; **hero impact crates** are real
+RigidBody3D that physically hit the broken-arm marine and Young (`_launch_impact_crate` →
+`_wound_crew`). Camera via `standoff_camera` (`_begin_cuts`/`_cut_to`/`_cut_follow`/`_cut_wide`).
 
-> **Sync note.** The **[adapt]** captions are our earlier condensed/re-attributed wording. When
-> the Qwen3-TTS VO is (re)baked, reconcile each toward the exact §1 line and update
-> `cold_open_lines.gd` to match.
+| ~t | Beat | Caption (speaker — verbatim line) |
+|---:|---|---|
+| 0.5 | Dial & open (per-chevron lock SFX) | — |
+| 4 | Scott dives through, rolls up | `LT. SCOTT — "All right, get out of here. Get out of the way!"` (6) |
+| 7+ | Continuous flood begins (people, then crates @16) | — |
+| 10 | Scott on the radio | `LT. SCOTT — "This is Scott! Slow down the evac — we are comin' in too hot!"` |
+| 13.5 | Wray grabs Scott | `CAMILE WRAY — "Where are we? Why didn't we come through to Earth?"` |
+| 15.5 | Scott | `LT. SCOTT — "There's no time to explain. Off to the side!"` |
+| 18.5 | Scott (no reply) | `LT. SCOTT — "This is Scott — come in!"` |
+| 20 | A marine | `MARINE — "I need a medic!"` |
+| 24 | **cut to TJ + wounded man** | `TJ — "Over here! Can you move your fingers?"` |
+| 27 | **crate clips the marine's arm** (RigidBody) | `MARINE — "No. I think my arm is broken."` (29) |
+| 32 | TJ slings the arm | `TJ — "Okay, just hold your arm there and we'll put it in a sling, okay?"` |
+| 38 | Scott | `LT. SCOTT — "Clear this area! There could still be more incoming!"` |
+| 44 | Chloe helps the Senator up | `CHLOE — "Are you okay?"` / `SENATOR — "Yeah."` (47) / `SENATOR — "Where the hell are we?"` (49) |
+| 55 | Scott → Greer | `LT. SCOTT — "Greer? Where's Colonel Young?"` / `SGT. GREER — "He was right behind me."` (58) |
+| 53 | Eli (player) thrown in, lands prone closest to the gate | — |
+| 61 | **Young thrown hardest; crate clips his head** (head wound) | — |
+| 64 | Gate collapses, flame/steam vent | `SGT. GREER — "Move, move, move. Stay calm! Keep it down! ..."` (66) |
+| 68 | Eli stands | — |
+| 70–88 | **Command hand-off** (Scott crosses to Young) | `LT. SCOTT — "Colonel? Colonel?"` (72) / `SGT. GREER — "Don't move!"` (74) |
+| 76 | **close on Young** | `COL. YOUNG — "Where are we? Where are we?"` / `LT. SCOTT — "I don't know, sir."` (78) |
+| 80 | Young passes command | `COL. YOUNG — "You're in charge, okay? You're..."` |
+| 83.5 | blood on his hand | `LT. SCOTT — "Yes, sir."` |
+| 86 | Scott screams for the medic | `LT. SCOTT — "TJ!"` / `TJ — "I'm coming!"` (88) / `SGT. GREER — "Is he okay?"` (91) / `TJ — "Uh, I dunno."` (93) |
+| 96 | Scott rounds on Eli | `LT. SCOTT — "Wallace!"` / `LT. SCOTT — "What is this place?"` (99) / `ELI — "Look, I just did what Rush told me."` (101) |
+| 104 | | `LT. SCOTT — "Where is he?"` / `ELI — "I don't know if he went ahead of me."` (106) |
+| 109 | Scott yells for Rush | `LT. SCOTT — "Rush!"` / `LT. SCOTT — "Rush! Eli, help me find him."` (112) / `ELI — "Well, I..."` (114) |
+| 118 | **FTL JUMP — left-right shake + blur** (`_ftl_jump`) | `SGT. GREER — "What in the hell was that?!"` (120) |
+| 123 | Scott takes command | `LT. SCOTT — "I don't know. Sergeant, I need you to get these people settled here. ... Nobody leaves this room."` / `SGT. GREER — "Yes, sir."` (133) |
+| 139 | **THE BUTTON** (cut to player) | `LT. SCOTT — "Eli! Now!"` |
+| 142 | End — letterbox out, release cuts, hand-off → quest | — |
+
+> **Hand-off:** at the end the player ALREADY holds quest step 1 (Find Rush) — see §4. Captions
+> are guarded by `tests/smoke/cold_open_lines.gd`.
 
 ---
 
@@ -292,15 +292,14 @@ our own designed VO over the no-vocals bed (no double-talk, since the bed's voic
 ## 6. Audio assets backing this scene
 
 - **Ambience bed (played once, master clock):** `sounds/dialog/prologue/cold_open_bed.mp3`
-  (~90 s) — the Demucs no-vocals stem of the TV recording (music/kawoosh/crowd, voices
-  stripped), tightened to a lull-free cut. Captions/VO are timed to its playhead.
-- **Per-line VO (our designed voices):** `sounds/dialog/prologue/open-*.wav`, played on top of
-  the bed by `_cap(..., vo_id)`. Built via the **Qwen3-TTS Design→Clone** pipeline
-  (`tools/tts-bakeoff/`): VoiceDesign per-mode refs (`refs_qwen/<char>_<mode>.wav`, picks in
-  `make_qwen_refs.py`) → Base-model clone (`qwen_clone.py` + `jobs_qwen/`); generic crowd lines
-  via `qwen_crowd.py`. Principals: Scott/Greer/Eli/TJ/Young; crowd: marine/civilian/officer.
-  (Earlier IndexTTS-2 `rushed`-preset takes in `tools/tts-bake/` are superseded for the cold
-  open.)
+  (~165 s) — two loud sections of the Demucs no-vocals stem (music/kawoosh/crowd, voices
+  stripped) crossfaded into a lull-free cut. Captions/VO are timed to its playhead.
+- **Per-line VO (our designed voices):** `sounds/dialog/prologue/open-*.wav` (38-line verbatim
+  set), played on top of the bed by `_cap(..., vo_id)`. Built via the **Qwen3-TTS Design→Clone**
+  pipeline (`tools/tts-bakeoff/`): VoiceDesign per-mode refs (`refs_qwen/<char>_<mode>.wav`,
+  picks in `make_qwen_refs.py`) → Base clone (`qwen_clone.py` + `jobs_qwen/cold_open_full.json`).
+  Principals: Scott/Greer/Eli/TJ/Young/Rush; named extras: Wray/Chloe/Senator; generic
+  marine/civ. (Earlier IndexTTS-2 + 90 s-cut takes are superseded.)
 - **Reference master:** `cold_open_master.mp3` (255.3 s) — the full TV recording, kept for
   timing/reference only.
 - **SFX:** gate `dial`/`kawoosh`/`hum`, per-chevron lock, impact pool (`land`/`fall`/`break` via

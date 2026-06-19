@@ -1828,6 +1828,66 @@ func _restore_player_camera(cam: Camera3D) -> void:
 		cam.queue_free()
 
 
+# ----- cold-open camera cuts (cut-to-speaker) + FTL jump ----------------------
+
+const StandoffCameraScript: Script = preload("res://scripts/standoff_camera.gd")
+var _cut_cam: Node = null   # active StandoffCamera during the verbatim cold open
+
+# Spin up the cut camera (captures whatever camera is current for restore).
+func _begin_cuts() -> void:
+	if _cut_cam != null and is_instance_valid(_cut_cam):
+		return
+	_cut_cam = StandoffCameraScript.new()
+	_cut_cam.name = "ColdOpenCutCam"
+	add_child(_cut_cam)
+	if _cut_cam.has_method("configure"):
+		_cut_cam.call("configure", 50.0, 0.0)   # centred framing (no dialog window to dodge)
+	if _cut_cam.has_method("activate"):
+		_cut_cam.call("activate")
+
+# Hard-cut/glide to frame `node` (the speaker). side/height/dist compose the shot.
+func _cut_to(node: Node3D, dist: float = 3.4, height: float = 1.5, side: float = 1.6, dur: float = 0.6) -> void:
+	if _cut_cam == null or not is_instance_valid(_cut_cam) or node == null or not is_instance_valid(node):
+		return
+	var look: Vector3 = node.global_position + Vector3.UP * 1.4
+	var pos: Vector3 = node.global_position + Vector3(side, height, dist)
+	if _cut_cam.has_method("frame"):
+		_cut_cam.call("frame", pos, look, dur, 0.05)
+
+# Track a moving subject (Scott crossing, TJ crossing in).
+func _cut_follow(node: Node3D, offset: Vector3 = Vector3(1.6, 1.5, 3.0), dur: float = 0.6) -> void:
+	if _cut_cam == null or not is_instance_valid(_cut_cam) or node == null or not is_instance_valid(node):
+		return
+	if _cut_cam.has_method("follow"):
+		_cut_cam.call("follow", node, offset, dur, 1.4)
+
+# Wide establishing shot of the gate/landing zone.
+func _cut_wide(dur: float = 1.0) -> void:
+	if _cut_cam == null or not is_instance_valid(_cut_cam):
+		return
+	var pos: Vector3 = Vector3(0.0, 5.5, GATE_Z - 20.0)
+	var look: Vector3 = Vector3(0.0, 1.4, GATE_Z - 8.0)
+	if _cut_cam.has_method("frame"):
+		_cut_cam.call("frame", pos, look, dur, 0.02)
+
+func _end_cuts() -> void:
+	if _cut_cam != null and is_instance_valid(_cut_cam):
+		if _cut_cam.has_method("release"):
+			_cut_cam.call("release")
+		_cut_cam.queue_free()
+	_cut_cam = null
+
+# The FTL jump: the ship lurches into faster-than-light. Repeated LEFT-RIGHT shake
+# (shake_y_scale low) + box-blur over the whole world, with the jump whoosh. Spawns
+# the FtlDrop overlay directly (NOT GameState.trigger_ftl_drop, which is gated on the
+# later air-crisis state) so it's purely a cold-open visual.
+func _ftl_jump() -> void:
+	var fx: FtlDrop = FtlDrop.new()
+	fx.sound_path = FtlDrop.FTL_JUMP_SOUND
+	fx.shake_y_scale = 0.2   # bias to a repeated left-right jolt
+	get_tree().root.add_child(fx)
+
+
 # Tip the player's visual body onto its back (prone) or stand it upright. Only
 # the Character model is rotated — the physics capsule stays vertical so nothing
 # downstream (camera target, idle facing) is disturbed.

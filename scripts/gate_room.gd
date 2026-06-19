@@ -1942,9 +1942,11 @@ func _end_cuts() -> void:
 # (shake_y_scale low) + box-blur over the whole world, with the jump whoosh. Spawns
 # the FtlDrop overlay directly (NOT GameState.trigger_ftl_drop, which is gated on the
 # later air-crisis state) so it's purely a cold-open visual.
+const FTL_JUMP_SOUND_COLDOPEN: String = "res://sounds/ftl_jump_destiny.ogg"
+
 func _ftl_jump() -> void:
 	var fx: FtlDrop = FtlDrop.new()
-	fx.sound_path = FtlDrop.FTL_JUMP_SOUND
+	fx.sound_path = FTL_JUMP_SOUND_COLDOPEN   # enhanced Destiny FTL-jump whoosh
 	fx.shake_y_scale = 0.2   # bias to a repeated left-right jolt
 	get_tree().root.add_child(fx)
 

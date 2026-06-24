@@ -2411,46 +2411,63 @@ func _stop_anim(root: Node) -> void:
 # Shut the wormhole: drop the forced-open latch, kill the horizon, play the
 # collapse whoosh + fade the dial loop. Returns the room to its dormant, empty,
 # walk-through state for normal gameplay.
-# Script §1.7: as the gate shuts, plumes of flame/steam vent from either side.
-# Two one-shot upward particle bursts at the gate base sides — flame-coloured,
-# additive, brief — fired during the collapse (paired with a wide cut so they're
-# actually on screen). Each burst frees itself after its lifetime.
+# Script §1.7: as the gate shuts, plumes of flame AND steam vent from either side.
+# Each side gets a fast additive FLAME burst plus a slower, billowing grey STEAM
+# burst — one-shot, brief, fired during the collapse and paired with a wide cut so
+# they're actually on screen. Each burst frees itself after its lifetime.
 func _vent_gate_sides() -> void:
 	var base: Vector3 = Vector3(0.0, 0.4, GATE_Z)
 	for sx: float in [-1.0, 1.0]:
-		var p: GPUParticles3D = GPUParticles3D.new()
-		p.name = "GateVent"
-		p.amount = 48
-		p.one_shot = true
-		p.explosiveness = 0.75
-		p.lifetime = 1.1
-		p.position = base + Vector3(sx * 2.3, 0.0, 0.15)
-		var pm: ParticleProcessMaterial = ParticleProcessMaterial.new()
-		pm.direction = Vector3(sx * 0.25, 1.0, -0.2)
-		pm.spread = 22.0
-		pm.initial_velocity_min = 2.4
-		pm.initial_velocity_max = 4.6
-		pm.gravity = Vector3(0.0, -1.2, 0.0)
-		pm.scale_min = 0.25
-		pm.scale_max = 0.7
-		pm.color = Color(1.0, 0.55, 0.2, 0.85)
-		p.process_material = pm
-		var quad: QuadMesh = QuadMesh.new()
-		quad.size = Vector2(0.45, 0.45)
-		var dm: StandardMaterial3D = StandardMaterial3D.new()
+		var side_pos: Vector3 = base + Vector3(sx * 2.3, 0.0, 0.15)
+		# Flame: fast, additive, hot orange, falls back under gravity.
+		_spawn_vent_burst(side_pos, Vector3(sx * 0.25, 1.0, -0.2), 48, 0.75, 1.1,
+			2.4, 4.6, Vector3(0.0, -1.2, 0.0), 0.25, 0.7, 0.45,
+			Color(1.0, 0.55, 0.2, 0.85), Color(1.0, 0.45, 0.12), 3.5, true)
+		# Steam: slower, billowing, grey, near-buoyant — lingers above the flame.
+		_spawn_vent_burst(side_pos + Vector3(0.0, 0.4, 0.0), Vector3(sx * 0.15, 1.0, -0.15),
+			30, 0.55, 1.8, 1.0, 2.2, Vector3(0.0, 0.2, 0.0), 0.7, 1.5, 0.7,
+			Color(0.72, 0.73, 0.78, 0.32), Color.BLACK, 0.0, false)
+
+
+# Build + fire ONE one-shot particle burst (flame or steam). Frees itself after
+# its lifetime. additive=true → hot/glowing (flame); false → soft alpha (steam).
+func _spawn_vent_burst(pos: Vector3, dir: Vector3, amount: int, explosive: float,
+		life: float, vmin: float, vmax: float, grav: Vector3, smin: float, smax: float,
+		quad_size: float, col: Color, emission: Color, emit_energy: float, additive: bool) -> void:
+	var p: GPUParticles3D = GPUParticles3D.new()
+	p.name = "GateVent"
+	p.amount = amount
+	p.one_shot = true
+	p.explosiveness = explosive
+	p.lifetime = life
+	p.position = pos
+	var pm: ParticleProcessMaterial = ParticleProcessMaterial.new()
+	pm.direction = dir
+	pm.spread = 22.0
+	pm.initial_velocity_min = vmin
+	pm.initial_velocity_max = vmax
+	pm.gravity = grav
+	pm.scale_min = smin
+	pm.scale_max = smax
+	pm.color = col
+	p.process_material = pm
+	var quad: QuadMesh = QuadMesh.new()
+	quad.size = Vector2(quad_size, quad_size)
+	var dm: StandardMaterial3D = StandardMaterial3D.new()
+	dm.albedo_color = col
+	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	dm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	if additive:
 		dm.emission_enabled = true
-		dm.emission = Color(1.0, 0.45, 0.12)
-		dm.emission_energy_multiplier = 3.5
-		dm.albedo_color = Color(1.0, 0.55, 0.2, 0.8)
-		dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		dm.emission = emission
+		dm.emission_energy_multiplier = emit_energy
 		dm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-		dm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-		dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		quad.material = dm
-		p.draw_pass_1 = quad
-		_world.add_child(p)
-		p.emitting = true
-		get_tree().create_timer(2.0).timeout.connect(p.queue_free)
+	quad.material = dm
+	p.draw_pass_1 = quad
+	_world.add_child(p)
+	p.emitting = true
+	get_tree().create_timer(life + 1.0).timeout.connect(p.queue_free)
 
 
 func _collapse_gate() -> void:

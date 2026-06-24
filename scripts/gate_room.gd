@@ -665,16 +665,33 @@ func _play_prologue_cinematic() -> void:
 	var flood_from: float = audio.get_playback_position() if (audio != null and is_instance_valid(audio)) else 9.0
 	_co_crowd_flood(audio, flood_from, 38.0, 0.9)
 	_cap_now("LT. SCOTT", "This is Scott! Slow down the evac — we are comin' in too hot!", "open-scott-evac")
-	# Resync to the bed playhead for the rest of the cold open (Wray onward).
-	await _await_audio(audio, 13.0)
-	var wray_clear: Vector3 = Vector3(-3.2, 0.05, GATE_Z - 4.5)
-	var wray: StaticBody3D = _co_arrival("Camile Wray", "", Vector3(-1.4, 0.05, GATE_Z - 3.4),
-			wray_clear, "civ")
-	_cut_to_spot(wray_clear, 3.0, 1.5, 1.4, 0.6)   # frame where she lands (not the gate mouth)
-	_cap("CAMILE WRAY", "Where are we? Why didn't we come through to Earth?", 13.5, "open-wray-whereare")
-	_cut_to(scott, 3.2, 1.5, 1.6, 0.5)
-	_cap("LT. SCOTT", "There's no time to explain. Off to the side!", 15.5, "open-scott-side")
-	await _await_audio(audio, 16.0)
+	# §1.3c WRAY grabs at Scott. She comes through, scrambles UP to him, and the two
+	# KNEEL together amid the chaos as he turns to her and she asks where they are —
+	# staged as a walk-up (not a cut to her landing spot). Timer-paced; we re-lock to
+	# the bed playhead afterward (downstream _cap calls self-heal if it has advanced).
+	await get_tree().create_timer(0.5).timeout
+	var wray_at_scott: Vector3 = scott.global_position + Vector3(-1.4, 0.0, 0.25)
+	var wray: StaticBody3D = _co_arrival("Camile Wray", "", Vector3(0.2, 0.05, GATE_Z - 4.2),
+			wray_at_scott, "civ")
+	_grunt(wray)
+	_cut_follow(scott, Vector3(2.2, 1.6, -3.6))   # hold on Scott (gate behind) as she crosses to him
+	await get_tree().create_timer(THROW_FLIGHT_TIME + 3.0).timeout   # land, roll up, scramble to his side
+	if is_instance_valid(wray):
+		_rise_npc(wray, "crouch_idle")            # she drops to a knee beside him
+		_face_node(wray, scott)
+	_rise_npc(scott, "crouch_idle")               # Scott crouched amid the wounded, turns to her
+	_face_node(scott, wray)
+	_cut_to_spot(scott.global_position, 2.6, 1.2, 1.5, 0.5)   # low two-shot of the kneeling pair
+	_cap_now("CAMILE WRAY", "Where are we? Why didn't we come through to Earth?", "open-wray-whereare")
+	await get_tree().create_timer(2.9).timeout
+	_face_node(scott, wray)
+	_cap_now("LT. SCOTT", "There's no time to explain. Off to the side!", "open-scott-side")
+	await get_tree().create_timer(2.0).timeout
+	# Scott rises and waves her off to the side; re-lock to the bed playhead.
+	_rise_npc(scott, "idle")
+	if is_instance_valid(wray) and wray.has_method("walk_to"):
+		wray.call("walk_to", Vector3(-11.5, 0.05, GATE_Z - 7.0), 2.8, 0.0)
+	await _await_audio(audio, 17.5)
 	_launch_crate_wave()                       # gear now raining in (after the first people)
 	_cap("LT. SCOTT", "This is Scott — come in!", 18.5, "open-scott-comein")
 

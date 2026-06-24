@@ -128,6 +128,11 @@ var _thud_metal: AudioStreamPlayer = null
 var _splash_players: Array[AudioStreamPlayer] = []
 var _splash_streams: Array[AudioStream] = []
 var _splash_i: int = 0
+# Vocal effort grunts as bodies slam onto the deck — the human panic layer the
+# no-vocals ambience bed strips out (built lazily; no-op if assets are absent).
+var _grunt_players: Array[AudioStreamPlayer] = []
+var _grunt_streams: Array[AudioStream] = []
+var _grunt_i: int = 0
 # Crates hurled through the gate this cold-open, so crew can shove them to the
 # walls afterward (out of the way so nobody trips over them).
 var _arrival_crates: Array[Node3D] = []
@@ -625,27 +630,43 @@ func _play_prologue_cinematic() -> void:
 	await get_tree().create_timer(0.5).timeout
 	await dial_and_open(true)
 
-	# §1.2 FIRST THROUGH — Scott dives through, rolls up, marshals the early arrivals.
-	# Hold WIDE on the gate so we SEE him flung out of the active wormhole into the
-	# room (the establishing drama), not a tight close-up of empty floor.
+	# §1.2 FIRST THROUGH — Scott ALONE. He's flung out of the active wormhole, hits the
+	# deck and GRUNTS (no line yet). Hold WIDE so we see him thrown into the dark room.
+	# This beat is paced by real timers off the dial + throw-flight (NOT the bed
+	# playhead — the dial runs on timers, so absolute playhead cues desync here).
 	_cut_wide(0.6)
 	var scott: StaticBody3D = _co_arrival("Lt Scott", "", Vector3(1.6, 0.05, GATE_Z - 4.5),
 			Vector3(2.2, 0.05, GATE_Z - 5.5), "scott", _world.get_node_or_null("LtScott") as StaticBody3D)
 	GameState.add_log("Lt Scott comes barrelling through the gate!")
 	GameState.narrate("Lt Scott comes barrelling through the gate!")
+	await get_tree().create_timer(THROW_FLIGHT_TIME + 0.15).timeout
+	_grunt(scott)                                # impact grunt as he hits the deck
+	# Frame Scott in the foreground with the GATE behind him (camera on the room side,
+	# looking back toward the wormhole) so the two who follow are SEEN coming through.
+	_cut_follow(scott, Vector3(2.4, 1.7, -4.5))
 
-	# §1.3 PANDEMONIUM — the flood is ALREADY pouring through behind Scott as he rises
-	# (he isn't marshalling an empty room). Start it early, before his first bark; it
-	# tapers by ~38s (the named principals keep the gate flowing after) so the crowd
-	# is a believable evac that clears to the walls, not an endless clone-wall.
-	_co_crowd_flood(audio, 4.8, 38.0, 0.9)
-	_cap("LT. SCOTT", "All right, get out of here. Get out of the way!", 6.0, "open-scott-clearway")
-	await _await_audio(audio, 5.2)
-	_cut_follow(scott, Vector3(2.2, 1.6, 3.0))   # now land on Scott as he rolls up + marshals
-	await _await_audio(audio, 8.5)
-	_cut_wide(0.8)                                # pull WIDE: the flood + gate + room as one shot
-	_cap("LT. SCOTT", "This is Scott! Slow down the evac — we are comin' in too hot!", 10.0, "open-scott-evac")
-	await _await_audio(audio, 12.0)
+	# §1.3 …a BEAT (~1.1s) later, the first TWO follow him through and scramble aside.
+	# Scott only barks "get out of the way" once there are actually people to clear.
+	await get_tree().create_timer(1.1).timeout
+	_co_arrival("mil_0", "greer", Vector3(-1.2, 0.05, GATE_Z - 4.0),
+			Vector3(-12.5, 0.05, GATE_Z - 6.0), "mil", null, true)
+	_co_arrival("civ_1", "", Vector3(1.0, 0.05, GATE_Z - 4.6),
+			Vector3(12.5, 0.05, GATE_Z - 7.0), "civ", null, true)
+	_grunt(scott)                                # the two crash in (grunts on the punch-through)
+	await get_tree().create_timer(THROW_FLIGHT_TIME).timeout   # let the two land first
+	_cut_to(scott, 3.2, 1.5, 1.6, 0.5)
+	_cap_now("LT. SCOTT", "All right, get out of here. Get out of the way!", "open-scott-clearway")
+
+	# §1.3b PANDEMONIUM — NOW the continuous flood ramps as Scott marshals it. Tapers by
+	# ~38s (the named principals keep the gate flowing after) so it's a believable evac
+	# that clears to the walls, not an endless clone-wall.
+	await get_tree().create_timer(2.0).timeout
+	_cut_wide(0.8)                               # WIDE: the flood + gate + room as one shot
+	var flood_from: float = audio.get_playback_position() if (audio != null and is_instance_valid(audio)) else 9.0
+	_co_crowd_flood(audio, flood_from, 38.0, 0.9)
+	_cap_now("LT. SCOTT", "This is Scott! Slow down the evac — we are comin' in too hot!", "open-scott-evac")
+	# Resync to the bed playhead for the rest of the cold open (Wray onward).
+	await _await_audio(audio, 13.0)
 	var wray_clear: Vector3 = Vector3(-3.2, 0.05, GATE_Z - 4.5)
 	var wray: StaticBody3D = _co_arrival("Camile Wray", "", Vector3(-1.4, 0.05, GATE_Z - 3.4),
 			wray_clear, "civ")
@@ -1039,6 +1060,32 @@ func _cap(speaker: String, line: String, at_t: float, vo_id: String = "") -> voi
 	vo.play()
 
 
+# Show a caption + VO RIGHT NOW (no playhead wait). The opening beat is sequenced by
+# real timers relative to the dial completion + throw-flight (the dial runs on timers,
+# not the bed playhead, so absolute _cap times desync there); this fires each line at
+# the exact staged moment instead.
+func _cap_now(speaker: String, line: String, vo_id: String = "") -> void:
+	if line == "":
+		Cinematic.set_caption("")
+		return
+	GameState.add_log("%s: %s" % [speaker, line])
+	Cinematic.set_caption("%s — \"%s\"" % [speaker, line])
+	if vo_id == "":
+		return
+	var path: String = PROLOGUE_VO_DIR + vo_id + ".wav"
+	if not ResourceLoader.exists(path):
+		return
+	var stream: AudioStream = load(path) as AudioStream
+	if stream == null:
+		return
+	var vo: AudioStreamPlayer = AudioStreamPlayer.new()
+	vo.name = "ColdOpenVO"
+	add_child(vo)
+	vo.stream = stream
+	vo.finished.connect(vo.queue_free)
+	vo.play()
+
+
 # Turn Scott to face the (dead) gate — he's calling back through the wormhole / for Rush.
 func _face_gate(scott: Node3D) -> void:
 	if scott == null or not is_instance_valid(scott) or not scott.has_method("look_at"):
@@ -1219,6 +1266,35 @@ func _splash() -> void:
 	pl2.pitch_scale = 0.62 + 0.1 * float(_splash_i % 3)   # pitched down = bigger splash
 	pl2.play()
 	_splash_i += 1
+
+
+# Candidate grunt clips (generated via the sound-effects pipeline; any present are
+# used round-robin, and the whole thing no-ops cleanly until they exist on disk).
+const GRUNT_PATHS: Array[String] = [
+	"res://sounds/grunt_01.ogg", "res://sounds/grunt_02.ogg", "res://sounds/grunt_03.ogg",
+]
+
+# A vocal effort grunt as a body slams onto the deck — the human panic layer the
+# no-vocals ambience bed strips out. `_who` is accepted for call-site readability
+# (AudioStreamPlayer is non-positional, so it's unused).
+func _grunt(_who: Node3D = null) -> void:
+	if _grunt_streams.is_empty():
+		for p: String in GRUNT_PATHS:
+			var s: AudioStream = load(p) as AudioStream
+			if s != null:
+				_grunt_streams.append(s)
+		for i in 3:
+			var pl: AudioStreamPlayer = AudioStreamPlayer.new()
+			pl.volume_db = -5.0
+			add_child(pl)
+			_grunt_players.append(pl)
+	if _grunt_streams.is_empty() or _grunt_players.is_empty():
+		return   # no grunt assets yet — silent, never errors
+	var pl2: AudioStreamPlayer = _grunt_players[_grunt_i % _grunt_players.size()]
+	pl2.stream = _grunt_streams[_grunt_i % _grunt_streams.size()]
+	pl2.pitch_scale = 0.9 + 0.13 * float(_grunt_i % 3)
+	pl2.play()
+	_grunt_i += 1
 
 
 # Stand a spawned NPC up after `delay` seconds (fire-and-forget coroutine).

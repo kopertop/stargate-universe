@@ -756,10 +756,13 @@ func _play_prologue_cinematic() -> void:
 
 	# §1.7 YOUNG arrives HARDEST → a crate clips his head → the gate shuts.
 	await _await_audio(audio, 60.5)
-	var young_spot: Vector3 = Vector3(-3.2, 0.05, GATE_Z - 11.0)
+	# Young soars across the room but lands in the CLEARED central landing zone (not
+	# deep aft where the evac crowd settles) so the command hand-off frames him + Scott,
+	# not a wall of standing extras behind them.
+	var young_spot: Vector3 = Vector3(-2.0, 0.05, GATE_Z - 7.5)
 	var young: StaticBody3D = _co_arrival("Colonel Young", "", young_spot, young_spot, "hard",
 			_world.get_node_or_null("ColonelYoung") as StaticBody3D)
-	_cut_to_spot(young_spot, 3.2, 1.4, 1.6, 0.6)   # frame his landing, not the gate mouth mid-flight
+	_cut_to_spot(young_spot, 3.0, 1.0, 1.6, 0.6)   # low on his landing, not the gate mouth mid-flight
 	await _await_audio(audio, 63.0)
 	_launch_impact_crate(young, "head")        # head wound
 	await _await_audio(audio, 64.0)
@@ -778,7 +781,7 @@ func _play_prologue_cinematic() -> void:
 	_cap("LT. SCOTT", "Colonel? Colonel?", 72.0, "open-scott-colonel")
 	_cap("SGT. GREER", "Don't move!", 74.0, "open-greer-dontmove")
 	await _await_audio(audio, 76.0)
-	_cut_to(young, 2.4, 1.1, 1.3, 0.6)         # close on Young, barely conscious
+	_cut_to(young, 2.2, 0.65, 1.2, 0.6)        # LOW close on Young (floor drama; standing crew sit above frame)
 	_cap("COL. YOUNG", "Where are we? Where are we?", 76.0, "open-young-whereare")
 	_cap("LT. SCOTT", "I don't know, sir.", 78.0, "open-scott-idontknow")
 	_cap("COL. YOUNG", "You're in charge, okay? You're...", 80.0, "open-young-incharge")

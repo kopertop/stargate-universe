@@ -50,6 +50,7 @@ func _initialize() -> void:
 	test_cold_open_handoff_captions_present(code)
 	test_cold_open_advances_quest_without_scott_walkup(code)
 	test_cold_open_mechanics_wired(code)
+	test_cold_open_nametags_suppressed(code)
 	_report()
 
 
@@ -65,6 +66,30 @@ func test_cold_open_mechanics_wired(code: String) -> void:
 			_passes += 1
 		else:
 			_fail("cold-open mechanic '%s' is no longer wired in gate_room.gd" % n)
+
+
+# Regression guard (cold-open render polish, 2026-06-24): floating crew nametags
+# must NOT render during the cinematic, and anonymous flood extras (mil_#/civ_#)
+# must NEVER carry a text nametag at all. The original bug stamped "mil_22" over
+# every crowd extra and showed all tags over a letterboxed cutscene — the biggest
+# "student-project" tell in the render. This locks the suppression wiring:
+#   • _is_anonymous_extra() exists and the nametag build is guarded by it,
+#   • the build also respects _cold_open_active (tags spawn hidden mid-cinematic),
+#   • the cinematic hides tags at the start and restores them at the hand-off.
+func test_cold_open_nametags_suppressed(code: String) -> void:
+	var needles: Array[String] = [
+		"func _is_anonymous_extra(",            # the anonymous-crowd classifier
+		"if not _is_anonymous_extra(display_name):",  # nametag skipped for mil_/civ_
+		"func _set_crew_nametags_visible(",     # the bulk show/hide helper
+		"_set_crew_nametags_visible(false)",    # hidden when the cinematic starts
+		"_set_crew_nametags_visible(true)",     # restored at the hand-off
+		"tag.visible = not _cold_open_active",  # mid-flood tags spawn hidden
+	]
+	for n: String in needles:
+		if code.find(n) != -1:
+			_passes += 1
+		else:
+			_fail("cold-open nametag suppression wiring missing: '%s'" % n)
 
 
 # The master soundtrack must be referenced in code and actually exist on disk.

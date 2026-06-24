@@ -588,6 +588,12 @@ func _play_prologue_cinematic() -> void:
 	# Consoles are dead/offline on the derelict during the cold open.
 	_set_consoles_offline()
 
+	# A cinematic carries NO floating UI labels — the captions name the speaker.
+	# Hide any nametag already in the room (pre-built Scott/James/Young) and arm
+	# the flag so every crew body built mid-flood spawns its tag hidden too.
+	_cold_open_active = true
+	_set_crew_nametags_visible(false)
+
 	# Camera cuts (cut-to-speaker) own the framing for the whole verbatim cold open.
 	_begin_cuts()
 	_cut_wide(0.5)
@@ -770,6 +776,10 @@ func _play_prologue_cinematic() -> void:
 	# walk over to brief them. Mark him met and advance e1_air talk_scott → find_rush.
 	_restore_player_camera(null)
 	_wake_consoles()
+	# Cinematic over: restore crew nametags so the player can ID who's who in the
+	# room (anonymous flood extras carry no tag, so only named crew light up).
+	_cold_open_active = false
+	_set_crew_nametags_visible(true)
 	GameState.met_scott = true
 	GameState.advance_air_quest()
 	_set_scott_autogreet(false)
@@ -952,6 +962,10 @@ const PROLOGUE_VO_DIR: String = "res://sounds/dialog/prologue/"
 # Wall-clock anchor (ms) for the cold open, used only when the master stream fails
 # to load so the beats still pace out. Real play reads the audio playhead instead.
 var _cold_open_start_ms: int = 0
+# True for the whole cold-open cinematic. While set, newly-built crew nametags
+# spawn hidden — a cutscene carries NO floating UI labels (captions name the
+# speaker instead). Flipped false at the hand-off, then crew tags are revealed.
+var _cold_open_active: bool = false
 
 
 # Block until the master cold-open track's PLAYHEAD reaches `t` seconds — this is how
@@ -2416,6 +2430,22 @@ func _spawn_returned_away_team() -> void:
 # _build_npcs Lt-Scott pattern so the returned trio share that one code path.
 # `kind` picks the dialogue wiring: "scott" (quest-aware repeat line), "greer"
 # (Greer hint script), or "park" (short authored wrap-up).
+# Nameless crowd built by _co_crowd_flood: internal ids, not characters to label.
+func _is_anonymous_extra(display_name: String) -> bool:
+	return display_name.begins_with("mil_") or display_name.begins_with("civ_")
+
+
+# Show/hide every crew nametag in the room at once. Used to strip floating UI
+# labels for the duration of the cold-open cinematic and restore them at the
+# hand-off (so gameplay can still ID Scott/Greer across the room).
+func _set_crew_nametags_visible(vis: bool) -> void:
+	if _world == null:
+		return
+	for tag in _world.find_children("Nametag", "Label3D", true, false):
+		if tag is Label3D:
+			(tag as Label3D).visible = vis
+
+
 func _build_returned_crew_npc(display_name: String, kind: String, glb_path: String,
 		tint: Color) -> StaticBody3D:
 	var body: StaticBody3D = StaticBody3D.new()
@@ -2469,17 +2499,22 @@ func _build_returned_crew_npc(display_name: String, kind: String, glb_path: Stri
 			# Legacy per-instance tint for unregistered characters.
 			_tint_kenney_model(model_holder, tint)
 
-	var tag: Label3D = Label3D.new()
-	tag.name = "Nametag"
-	tag.text = display_name
-	tag.pixel_size = 0.0042
-	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	tag.outline_size = 6
-	tag.shaded = false
-	tag.modulate = Color(0.95, 0.92, 0.78, 1.0)
-	tag.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
-	tag.position = Vector3(0.0, 2.05, 0.0)
-	body.add_child(tag)
+	# Anonymous flood extras (mil_#/civ_#) are nameless crowd — never stamp their
+	# internal id over their head (the "mil_22 floating over an extra" cinematic
+	# tell). Named crew get a tag, but it spawns hidden during the cold open.
+	if not _is_anonymous_extra(display_name):
+		var tag: Label3D = Label3D.new()
+		tag.name = "Nametag"
+		tag.text = display_name
+		tag.pixel_size = 0.0042
+		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		tag.outline_size = 6
+		tag.shaded = false
+		tag.modulate = Color(0.95, 0.92, 0.78, 1.0)
+		tag.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
+		tag.position = Vector3(0.0, 2.05, 0.0)
+		tag.visible = not _cold_open_active
+		body.add_child(tag)
 	return body
 
 
@@ -3400,6 +3435,7 @@ func _build_npcs() -> void:
 	tag.modulate = Color(0.95, 0.92, 0.78, 1.0)
 	tag.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
 	tag.position = Vector3(0.0, 2.05, 0.0)
+	tag.visible = not _cold_open_active
 	scott.add_child(tag)
 
 	_world.add_child(scott)
@@ -3634,6 +3670,7 @@ func _build_tableau_npc(
 		tag.position = Vector3(0.0, 1.5, 0.0)
 	else:
 		tag.position = Vector3(0.0, 2.05, 0.0)
+	tag.visible = not _cold_open_active
 	body.add_child(tag)
 
 	_world.add_child(body)

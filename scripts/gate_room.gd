@@ -1540,7 +1540,16 @@ func _co_roll_settle(npc: StaticBody3D, clear_spot: Vector3, role: String = "mil
 		if is_instance_valid(npc) and npc.has_method("stop_walk"):
 			npc.call("stop_walk")
 		if is_instance_valid(npc) and mc != null and mc.has_method("play_clip"):
-			mc.call("play_clip", "idle")
+			# A settled evac crowd is a shell-shocked MIX — most drop to a crouch/knee,
+			# some stay standing — NOT a wall of idle clones at attention. Low poses also
+			# keep heads down so camera cuts to the principals aren't blocked. Deterministic
+			# per body so it's stable across frames. Named principals (not frozen) stay
+			# standing so they read as active.
+			var settle_clip: String = "idle"
+			if freeze:
+				var pool: Array[String] = ["crouch_idle", "repair", "crouch_idle", "crouch_idle", "idle"]
+				settle_clip = pool[absi(npc.name.hash()) % pool.size()]
+			mc.call("play_clip", settle_clip)
 	if freeze and is_instance_valid(npc):
 		npc.set_process(false)   # settled extra — cap cost
 

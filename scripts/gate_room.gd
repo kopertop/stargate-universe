@@ -1271,7 +1271,7 @@ func _splash() -> void:
 # Candidate grunt clips (generated via the sound-effects pipeline; any present are
 # used round-robin, and the whole thing no-ops cleanly until they exist on disk).
 const GRUNT_PATHS: Array[String] = [
-	"res://sounds/grunt_01.ogg", "res://sounds/grunt_02.ogg", "res://sounds/grunt_03.ogg",
+	"res://sounds/grunt_01.wav", "res://sounds/grunt_02.wav", "res://sounds/grunt_03.wav",
 ]
 
 # A vocal effort grunt as a body slams onto the deck — the human panic layer the

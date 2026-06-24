@@ -1567,6 +1567,18 @@ func _co_roll_settle(npc: StaticBody3D, clear_spot: Vector3, role: String = "mil
 		npc.set_process(false)   # settled extra — cap cost
 
 
+# Playhead windows where the camera is cut TIGHT on a staged two-shot (the medic
+# tending the marine) — the gate isn't on screen, so we pause spawning so no new
+# arrival walks ACROSS the focus en route to the wall. Invisible (we're not looking
+# at the gate), and it keeps the intimate beats clean.
+const FLOOD_QUIET_WINDOWS: Array = [[22.5, 33.5]]   # medic two-shot
+
+func _flood_quiet(t: float) -> bool:
+	for w in FLOOD_QUIET_WINDOWS:
+		if t >= float(w[0]) and t < float(w[1]):
+			return true
+	return false
+
 # Continuous nameless flood: spawn civ_#/mil_# every ~`gap`s from `from_t` to `to_t`
 # (playhead), each rolling in to a scattered spot then scrambling to the perimeter.
 # Keeps the gate "always flowing" with ~1-2 bodies/sec. Cheap (frozen once settled).
@@ -1575,6 +1587,10 @@ func _co_crowd_flood(audio: AudioStreamPlayer, from_t: float, to_t: float, gap: 
 	var i: int = 0
 	var t: float = from_t
 	while t < to_t and is_instance_valid(audio):
+		if _flood_quiet(t):
+			t += gap
+			await _await_audio(audio, t)
+			continue
 		var mil: bool = (i % 2) == 0
 		var nm: String = ("mil_%d" % i) if mil else ("civ_%d" % i)
 		# Scatter landings across the front half of the room…

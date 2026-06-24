@@ -719,19 +719,29 @@ func _play_prologue_cinematic() -> void:
 	await _await_audio(audio, 36.0)
 	_cut_wide(0.8)
 	_cap("LT. SCOTT", "Clear this area! There could still be more incoming!", 38.0, "open-scott-cleararea")
-	await _await_audio(audio, 42.0)
-	# The Senator lands hard and STAYS DOWN (injured) off to the side; Chloe drops to
-	# a knee beside him to tend him rather than scrambling clear. Both are framed at
-	# the Senator's resting spot so the camera holds on the pair, not the gate.
-	var senator_spot: Vector3 = Vector3(-6.8, 0.05, GATE_Z - 7.2)
+	# The Senator comes through, lands HARD and stays down (injured); Chloe scrambles to
+	# him and drops to a KNEE to tend him — a kneeling pair, framed low, not lost among
+	# standing extras. Captions fire via _cap_now once she's posed at his side.
+	await _await_audio(audio, 39.5)
+	var senator_spot: Vector3 = Vector3(-5.6, 0.05, GATE_Z - 7.0)
 	var senator: StaticBody3D = _co_arrival("Senator Armstrong", "", senator_spot, senator_spot, "hard")
-	var chloe_spot: Vector3 = senator_spot + Vector3(-1.3, 0.0, 0.5)
-	var chloe: StaticBody3D = _co_arrival("Chloe Armstrong", "", Vector3(-4.0, 0.05, GATE_Z - 5.8),
+	var chloe_spot: Vector3 = senator_spot + Vector3(-1.2, 0.0, 0.45)
+	var chloe: StaticBody3D = _co_arrival("Chloe Armstrong", "", Vector3(-3.6, 0.05, GATE_Z - 5.6),
 			chloe_spot, "civ")
-	_cut_to_spot(senator_spot, 3.2, 1.6, 1.6, 0.6)   # hold on the pair (Chloe + downed Senator)
-	_cap("CHLOE", "Are you okay?", 44.0, "open-chloe-areyouok")
-	_cap("SENATOR", "Yeah.", 47.0, "open-senator-yeah")
-	_cap("SENATOR", "Where the hell are we?", 49.0, "open-senator-whereare")
+	_cut_to_spot(senator_spot, 2.8, 1.0, 1.5, 0.6)   # LOW two-shot of the kneeling pair
+	await _await_audio(audio, 44.0)
+	# Guarantee Chloe is at his side and kneeling by her line (snap past any walk-in).
+	if is_instance_valid(chloe):
+		chloe.global_position = chloe_spot
+		_rise_npc(chloe, "crouch_idle")
+		_face_node(chloe, senator)
+	_cap_now("CHLOE", "Are you okay?", "open-chloe-areyouok")
+	await _await_audio(audio, 47.0)
+	_cap_now("SENATOR", "Yeah.", "open-senator-yeah")
+	await _await_audio(audio, 49.0)
+	if is_instance_valid(chloe):
+		_face_node(chloe, senator)
+	_cap_now("SENATOR", "Where the hell are we?", "open-senator-whereare")
 
 	# §1.6 "Where's Colonel Young?" — Scott to Greer.
 	await _await_audio(audio, 51.0)

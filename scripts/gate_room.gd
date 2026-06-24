@@ -635,8 +635,10 @@ func _play_prologue_cinematic() -> void:
 	GameState.narrate("Lt Scott comes barrelling through the gate!")
 
 	# §1.3 PANDEMONIUM — the flood is ALREADY pouring through behind Scott as he rises
-	# (he isn't marshalling an empty room). Start it early, before his first bark.
-	_co_crowd_flood(audio, 4.8, 60.0, 0.7)
+	# (he isn't marshalling an empty room). Start it early, before his first bark; it
+	# tapers by ~38s (the named principals keep the gate flowing after) so the crowd
+	# is a believable evac that clears to the walls, not an endless clone-wall.
+	_co_crowd_flood(audio, 4.8, 38.0, 0.9)
 	_cap("LT. SCOTT", "All right, get out of here. Get out of the way!", 6.0, "open-scott-clearway")
 	await _await_audio(audio, 5.2)
 	_cut_follow(scott, Vector3(2.2, 1.6, 3.0))   # now land on Scott as he rolls up + marshals
@@ -644,9 +646,10 @@ func _play_prologue_cinematic() -> void:
 	_cut_wide(0.8)                                # pull WIDE: the flood + gate + room as one shot
 	_cap("LT. SCOTT", "This is Scott! Slow down the evac — we are comin' in too hot!", 10.0, "open-scott-evac")
 	await _await_audio(audio, 12.0)
+	var wray_clear: Vector3 = Vector3(-3.2, 0.05, GATE_Z - 4.5)
 	var wray: StaticBody3D = _co_arrival("Camile Wray", "", Vector3(-1.4, 0.05, GATE_Z - 3.4),
-			Vector3(-3.2, 0.05, GATE_Z - 4.5), "civ")
-	_cut_to(wray, 3.0, 1.5, 1.4, 0.6)
+			wray_clear, "civ")
+	_cut_to_spot(wray_clear, 3.0, 1.5, 1.4, 0.6)   # frame where she lands (not the gate mouth)
 	_cap("CAMILE WRAY", "Where are we? Why didn't we come through to Earth?", 13.5, "open-wray-whereare")
 	_cut_to(scott, 3.2, 1.5, 1.6, 0.5)
 	_cap("LT. SCOTT", "There's no time to explain. Off to the side!", 15.5, "open-scott-side")
@@ -679,13 +682,16 @@ func _play_prologue_cinematic() -> void:
 	_cut_wide(0.8)
 	_cap("LT. SCOTT", "Clear this area! There could still be more incoming!", 38.0, "open-scott-cleararea")
 	await _await_audio(audio, 42.0)
-	var senator: StaticBody3D = _co_arrival("Senator Armstrong", "", Vector3(-5.0, 0.05, GATE_Z - 6.5),
-			Vector3(-6.5, 0.05, GATE_Z - 7.5), "civ")
+	# The Senator lands hard and STAYS DOWN (injured) off to the side; Chloe drops to
+	# a knee beside him to tend him rather than scrambling clear. Both are framed at
+	# the Senator's resting spot so the camera holds on the pair, not the gate.
+	var senator_spot: Vector3 = Vector3(-6.8, 0.05, GATE_Z - 7.2)
+	var senator: StaticBody3D = _co_arrival("Senator Armstrong", "", senator_spot, senator_spot, "hard")
+	var chloe_spot: Vector3 = senator_spot + Vector3(-1.3, 0.0, 0.5)
 	var chloe: StaticBody3D = _co_arrival("Chloe Armstrong", "", Vector3(-4.0, 0.05, GATE_Z - 5.8),
-			Vector3(-6.0, 0.05, GATE_Z - 8.2), "civ")
-	_cut_to(chloe, 2.8, 1.4, 1.3, 0.6)
+			chloe_spot, "civ")
+	_cut_to_spot(senator_spot, 3.2, 1.6, 1.6, 0.6)   # hold on the pair (Chloe + downed Senator)
 	_cap("CHLOE", "Are you okay?", 44.0, "open-chloe-areyouok")
-	_cut_to(senator, 3.0, 1.5, 1.4, 0.5)
 	_cap("SENATOR", "Yeah.", 47.0, "open-senator-yeah")
 	_cap("SENATOR", "Where the hell are we?", 49.0, "open-senator-whereare")
 
@@ -715,7 +721,7 @@ func _play_prologue_cinematic() -> void:
 	var young_spot: Vector3 = Vector3(-3.2, 0.05, GATE_Z - 11.0)
 	var young: StaticBody3D = _co_arrival("Colonel Young", "", young_spot, young_spot, "hard",
 			_world.get_node_or_null("ColonelYoung") as StaticBody3D)
-	_cut_to(young, 3.2, 1.4, 1.6, 0.6)
+	_cut_to_spot(young_spot, 3.2, 1.4, 1.6, 0.6)   # frame his landing, not the gate mouth mid-flight
 	await _await_audio(audio, 63.0)
 	_launch_impact_crate(young, "head")        # head wound
 	await _await_audio(audio, 64.0)
@@ -1453,11 +1459,17 @@ func _co_crowd_flood(audio: AudioStreamPlayer, from_t: float, to_t: float, gap: 
 	while t < to_t and is_instance_valid(audio):
 		var mil: bool = (i % 2) == 0
 		var nm: String = ("mil_%d" % i) if mil else ("civ_%d" % i)
-		# Scatter landings across the front half of the room; scramble to a wall.
-		var sx: float = (-1.0 if (i % 2) else 1.0) * (2.0 + float(i % 5) * 0.9)
+		# Scatter landings across the front half of the room…
+		var side: float = (-1.0 if (i % 2) else 1.0)
+		var sx: float = side * (2.0 + float(i % 5) * 0.9)
 		var lz: float = GATE_Z - (3.0 + float(i % 6) * 1.4)
 		var land: Vector3 = Vector3(sx * 0.5, 0.05, lz)
-		var clear: Vector3 = Vector3(clampf(sx * 1.7, -8.0, 8.0), 0.05, lz - 1.5)
+		# …then everyone scrambles ALL the way to the side walls (room half-width 16)
+		# and spreads aft, so the gate mouth + centre landing zone stay clear — nobody
+		# loiters in the arrival path (only the scripted injured stay put). Deeper
+		# arrivals tuck further back along the wall.
+		var clear: Vector3 = Vector3(side * (11.5 + float(i % 4) * 1.2), 0.05,
+				GATE_Z - (6.0 + float(i % 9) * 1.9))
 		_co_arrival(nm, ("greer" if mil else ""), land, clear, ("mil" if mil else "civ"), null, true)
 		i += 1
 		t += gap
@@ -1987,6 +1999,18 @@ func _cut_to(node: Node3D, dist: float = 3.4, height: float = 1.5, side: float =
 		return
 	var look: Vector3 = node.global_position + Vector3.UP * 1.4
 	var pos: Vector3 = node.global_position + Vector3(side, height, dist)
+	if _cut_cam.has_method("frame"):
+		_cut_cam.call("frame", pos, look, dur, 0.05)
+
+# Frame a fixed WORLD spot. Use this for a crew member we cut to in the same breath
+# as _co_arrival(): the body is still at the gate origin mid-flight at that instant,
+# so _cut_to(body) frames the wormhole mouth (fullscreen blue) — cut to where they're
+# LANDING instead and the body rolls into a correctly-composed shot.
+func _cut_to_spot(spot: Vector3, dist: float = 3.4, height: float = 1.5, side: float = 1.6, dur: float = 0.6) -> void:
+	if _cut_cam == null or not is_instance_valid(_cut_cam):
+		return
+	var look: Vector3 = spot + Vector3.UP * 1.2
+	var pos: Vector3 = spot + Vector3(side, height, dist)
 	if _cut_cam.has_method("frame"):
 		_cut_cam.call("frame", pos, look, dur, 0.05)
 

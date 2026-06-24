@@ -726,14 +726,26 @@ func _play_prologue_cinematic() -> void:
 	# him and drops to a KNEE to tend him — a kneeling pair, framed low, not lost among
 	# standing extras. Captions fire via _cap_now once she's posed at his side.
 	await _await_audio(audio, 39.5)
-	var senator_spot: Vector3 = Vector3(-5.6, 0.05, GATE_Z - 7.0)
+	# Land the pair in the VACATED central landing zone (crew cleared to the walls),
+	# not the -X transit lane — so no standing extra blocks the downed Senator.
+	var senator_spot: Vector3 = Vector3(-2.5, 0.05, GATE_Z - 5.0)
 	var senator: StaticBody3D = _co_arrival("Senator Armstrong", "", senator_spot, senator_spot, "hard")
 	var chloe_spot: Vector3 = senator_spot + Vector3(-1.2, 0.0, 0.45)
 	var chloe: StaticBody3D = _co_arrival("Chloe Armstrong", "", Vector3(-3.6, 0.05, GATE_Z - 5.6),
 			chloe_spot, "civ")
-	_cut_to_spot(senator_spot, 2.8, 1.0, 1.5, 0.6)   # LOW two-shot of the kneeling pair
+	# Tight LOW two-shot on the pair's midpoint — a low angle crops the standing
+	# background crew above the frame so the downed Senator + kneeling Chloe read.
+	var sen_mid: Vector3 = senator_spot.lerp(chloe_spot, 0.5)
+	_cut_to_spot(sen_mid, 1.9, 0.78, 1.5, 0.6)
 	await _await_audio(audio, 44.0)
-	# Guarantee Chloe is at his side and kneeling by her line (snap past any walk-in).
+	# Guarantee the staged pair is posed by their lines (snap past any walk-in). The
+	# Senator is hurt and DOWN at Chloe's level — the "hard" role leaves the body
+	# upright in a crash clip, so force a low crouch — and Chloe kneels facing him.
+	# Both low → the low two-shot crops the standing background crew above frame.
+	if is_instance_valid(senator):
+		senator.global_position = senator_spot
+		_rise_npc(senator, "crouch_idle")
+		_face_node(senator, chloe)
 	if is_instance_valid(chloe):
 		chloe.global_position = chloe_spot
 		_rise_npc(chloe, "crouch_idle")

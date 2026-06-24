@@ -237,6 +237,7 @@ func _ready() -> void:
 	# saves) and must not flood the chat. So the chat starts empty and only fills
 	# as characters actually speak. (#141)
 	GameState.narrative_added.connect(_on_narrative_added)
+	GameState.chat_cleared.connect(_on_chat_cleared)
 	GameState.dialogue_shown.connect(_on_dialogue_shown)
 	GameState.dialog_started.connect(_on_dialog_started)
 	# The interact prompt ("[E] Talk to …") must not linger under an open
@@ -1141,6 +1142,14 @@ func _on_narrative_added(speaker: String, text: String) -> void:
 		_append_dialogue(speaker, text)
 	if _is_combat_line(text):
 		_append_chat_line(_combat_log, "[color=#d98c6b]%s[/color]" % _escape_bbcode(text))
+
+
+# Wipe the chat transcript (cold-open hand-off — see GameState.clear_chat).
+func _on_chat_cleared() -> void:
+	if _chat_log != null:
+		_chat_log.clear()
+	if _combat_log != null:
+		_combat_log.clear()
 
 
 # Character speech also flows into the Chat transcript (in addition to the

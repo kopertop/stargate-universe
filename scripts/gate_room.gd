@@ -869,6 +869,10 @@ func _play_prologue_cinematic() -> void:
 	GameState.met_scott = true
 	GameState.advance_air_quest()
 	_set_scott_autogreet(false)
+	# The player regains control here. Wipe the cinematic's chatter so the ONLY chat
+	# message standing is Scott's instruction — the single thing to act on next.
+	GameState.clear_chat()
+	GameState.say("Lt Scott", "Eli, help me find Rush.")
 
 
 # Throw a pair of crew (and optionally a crate) head-first through the gate, ≤2 in

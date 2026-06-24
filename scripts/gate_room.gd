@@ -121,6 +121,13 @@ const THROW_CRATE_SPIN: float = 6.0      # crate tumble rate (rad/s)
 var _thud_players: Array[AudioStreamPlayer] = []
 var _thud_streams: Array[AudioStream] = []
 var _thud_i: int = 0
+# Metallic deck-ring overlay played under each thud (the floor is steel grating).
+var _thud_metal: AudioStreamPlayer = null
+# Round-robin pool for the wormhole "puddle" splash — every body/crate that breaks
+# the gate surface gets a short watery punch-through (built lazily).
+var _splash_players: Array[AudioStreamPlayer] = []
+var _splash_streams: Array[AudioStream] = []
+var _splash_i: int = 0
 # Crates hurled through the gate this cold-open, so crew can shove them to the
 # walls afterward (out of the way so nobody trips over them).
 var _arrival_crates: Array[Node3D] = []
@@ -619,15 +626,22 @@ func _play_prologue_cinematic() -> void:
 	await dial_and_open(true)
 
 	# §1.2 FIRST THROUGH — Scott dives through, rolls up, marshals the early arrivals.
+	# Hold WIDE on the gate so we SEE him flung out of the active wormhole into the
+	# room (the establishing drama), not a tight close-up of empty floor.
+	_cut_wide(0.6)
 	var scott: StaticBody3D = _co_arrival("Lt Scott", "", Vector3(1.6, 0.05, GATE_Z - 4.5),
 			Vector3(2.2, 0.05, GATE_Z - 5.5), "scott", _world.get_node_or_null("LtScott") as StaticBody3D)
 	GameState.add_log("Lt Scott comes barrelling through the gate!")
 	GameState.narrate("Lt Scott comes barrelling through the gate!")
-	_cut_follow(scott, Vector3(2.0, 1.6, 3.2))
-	_cap("LT. SCOTT", "All right, get out of here. Get out of the way!", 6.0, "open-scott-clearway")
 
-	# §1.3 PANDEMONIUM — people pour through FIRST, then the crates start raining.
-	_co_crowd_flood(audio, 7.0, 60.0, 0.7)
+	# §1.3 PANDEMONIUM — the flood is ALREADY pouring through behind Scott as he rises
+	# (he isn't marshalling an empty room). Start it early, before his first bark.
+	_co_crowd_flood(audio, 4.8, 60.0, 0.7)
+	_cap("LT. SCOTT", "All right, get out of here. Get out of the way!", 6.0, "open-scott-clearway")
+	await _await_audio(audio, 5.2)
+	_cut_follow(scott, Vector3(2.2, 1.6, 3.0))   # now land on Scott as he rolls up + marshals
+	await _await_audio(audio, 8.5)
+	_cut_wide(0.8)                                # pull WIDE: the flood + gate + room as one shot
 	_cap("LT. SCOTT", "This is Scott! Slow down the evac — we are comin' in too hot!", 10.0, "open-scott-evac")
 	await _await_audio(audio, 12.0)
 	var wray: StaticBody3D = _co_arrival("Camile Wray", "", Vector3(-1.4, 0.05, GATE_Z - 3.4),
@@ -856,6 +870,7 @@ func _throw_persistent_crew(display_name: String, kind: String, spot: Vector3,
 func _fly_projectile(npc: StaticBody3D, spot: Vector3, flight: float) -> void:
 	if npc == null or not is_instance_valid(npc):
 		return
+	_splash()   # punch-through the wormhole surface as the body leaves the gate
 	var origin: Vector3 = npc.global_position
 	var g: float = float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
 	var disp: Vector3 = spot - origin
@@ -863,14 +878,16 @@ func _fly_projectile(npc: StaticBody3D, spot: Vector3, flight: float) -> void:
 	# returns to spot.y at t=flight (apex height grows with flight → taller arc).
 	var vel: Vector3 = Vector3(disp.x / flight, (disp.y + 0.5 * g * flight * flight) / flight, disp.z / flight)
 	var model: Node3D = npc.get_node_or_null("Model") as Node3D
-	# Face-DOWN dive, HEAD pointing along the horizontal travel — held FIXED (no
-	# tumble) so the crew don't flip head-over-heels and so the mesh can't rotate
-	# below the deck. rotation.x = +PI/2 is face-down (same as the player prone); the
-	# yaw is set so the HEAD leads (not feet-first).
+	# Tuck-and-roll OUT of the wormhole: the body follows a clean kinematic arc (NOT a
+	# thrown ragdoll — the solver bleeds those into a floor-flop), while the MODEL
+	# somersaults forward head-over-heels. The head leads (yaw along travel) and the
+	# spin is exactly TWO full turns, so it lands face-down (PI/2 + 2·TAU ≡ PI/2) with
+	# no snap. The pivot rides at torso height mid-air, easing to the feet for landing.
 	var yaw: float = atan2(disp.x, disp.z)
+	var spins: float = TAU * 2.0
 	if model != null and is_instance_valid(model):
 		model.rotation = Vector3(PI * 0.5, yaw, 0.0)
-		model.position.y = 0.1
+		model.position.y = 0.9
 	var t: float = 0.0
 	while t < flight and is_instance_valid(npc):
 		var dt: float = get_process_delta_time()
@@ -881,6 +898,11 @@ func _fly_projectile(npc: StaticBody3D, spot: Vector3, flight: float) -> void:
 		# Collision floor: never let the body sink through the deck while airborne.
 		if npc.global_position.y < 0.05:
 			npc.global_position.y = 0.05
+		# Drive the forward tumble; unwind the torso pivot to the feet for touchdown.
+		if model != null and is_instance_valid(model):
+			var f: float = clampf(t / flight, 0.0, 1.0)
+			model.rotation = Vector3(PI * 0.5 + spins * f, yaw, 0.0)
+			model.position.y = lerpf(0.9, 0.1, clampf((f - 0.82) / 0.18, 0.0, 1.0))
 		t += dt
 		await get_tree().process_frame
 	# Arrive exactly on the aimed spot, FACE DOWN. _settle_persistent_crew then either
@@ -1154,7 +1176,43 @@ func _thud() -> void:
 	pl2.stream = _thud_streams[_thud_i % _thud_streams.size()]
 	pl2.pitch_scale = 0.85 + 0.12 * float(_thud_i % 3)   # vary so it's not a metronome
 	pl2.play()
+	# Metallic deck ring layered under the thump — the floor is steel grating, so a
+	# body/crate hitting it clangs, not just thumps. bong_001 is the metal resonance.
+	if _thud_metal == null:
+		var ms: AudioStream = load("res://sounds/bong_001.ogg") as AudioStream
+		if ms != null:
+			_thud_metal = AudioStreamPlayer.new()
+			_thud_metal.stream = ms
+			_thud_metal.volume_db = -11.0
+			add_child(_thud_metal)
+	if _thud_metal != null:
+		_thud_metal.pitch_scale = 0.78 + 0.18 * float(_thud_i % 4)   # deep, varied clang
+		_thud_metal.play()
 	_thud_i += 1
+
+
+# A body or crate breaks the wormhole surface — the "puddle" splash as it punches
+# through the gate. Short watery transient (footstep_water pool, pitched down for
+# mass), so every single arrival is audible over the ambience bed.
+func _splash() -> void:
+	if _splash_streams.is_empty():
+		for p: String in ["res://sounds/footstep_water_00.ogg", "res://sounds/footstep_water_01.ogg",
+				"res://sounds/footstep_water_02.ogg", "res://sounds/footstep_water_03.ogg"]:
+			var s: AudioStream = load(p) as AudioStream
+			if s != null:
+				_splash_streams.append(s)
+		for i in 4:
+			var pl: AudioStreamPlayer = AudioStreamPlayer.new()
+			pl.volume_db = -4.0
+			add_child(pl)
+			_splash_players.append(pl)
+	if _splash_streams.is_empty() or _splash_players.is_empty():
+		return
+	var pl2: AudioStreamPlayer = _splash_players[_splash_i % _splash_players.size()]
+	pl2.stream = _splash_streams[_splash_i % _splash_streams.size()]
+	pl2.pitch_scale = 0.62 + 0.1 * float(_splash_i % 3)   # pitched down = bigger splash
+	pl2.play()
+	_splash_i += 1
 
 
 # Stand a spawned NPC up after `delay` seconds (fire-and-forget coroutine).
@@ -1265,6 +1323,7 @@ func _launch_crate_wave() -> void:
 # drive it ourselves). It tumbles through the air and lands FLAT on the deck at
 # `target` (which may be on or beside a downed crewman). Returns the crate body.
 func _launch_crate(target: Vector3) -> Node3D:
+	_splash()   # a crate breaks the wormhole surface punching through
 	var crate: StaticBody3D = StaticBody3D.new()
 	crate.name = "ArrivalCrate"
 	crate.collision_layer = 1           # solid once landed (player/crew can't walk through)
@@ -1414,6 +1473,7 @@ const IMPACT_CRATE_TIME: float = 0.55     # ~flight to the victim; sets launch s
 # "arm" = clutch/limp, "head" = down + blood). The crate then tumbles/settles via
 # physics. Returns the crate. Deterministic enough for a headless physics test.
 func _launch_impact_crate(victim: StaticBody3D, wound: String) -> RigidBody3D:
+	_splash()   # the heavy impact crate punches through the wormhole
 	var crate: RigidBody3D = RigidBody3D.new()
 	crate.name = "ImpactCrate"
 	crate.mass = 16.0
@@ -1800,6 +1860,7 @@ func _recover_walker(display_name: String, kind: String, from: Vector3, to: Vect
 # gate (the bones move in world space), so read the landed spot from the hips bone
 # via _ragdoll_rest_pos(). Returns the root so the caller can free it once settled.
 func _launch_ragdoll(character: String, target: Vector3) -> Node3D:
+	_splash()   # the body breaks the wormhole surface (e.g. Eli/Young hurled through)
 	var root: Node3D = _make_ragdoll(character)
 	_world.add_child(root)
 	# Position the body at the event-horizon mouth BEFORE building the bones so they

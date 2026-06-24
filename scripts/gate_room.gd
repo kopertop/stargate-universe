@@ -2635,6 +2635,18 @@ func _is_anonymous_extra(display_name: String) -> bool:
 	return display_name.begins_with("mil_") or display_name.begins_with("civ_")
 
 
+# A muted per-civilian clothing tint so the evac crowd's civvies aren't identical
+# cream clones. Deterministic by name hash; deliberately desaturated (a derelict-ship
+# evac, not a parade). Multiplies the cream "Peasant" texture, so values stay <1.
+func _civ_tint(display_name: String) -> Color:
+	var pool: Array[Color] = [
+		Color(0.46, 0.52, 0.60), Color(0.62, 0.46, 0.44),   # dusty blue, faded brick
+		Color(0.50, 0.54, 0.48), Color(0.42, 0.48, 0.52),   # sage, steel
+		Color(0.66, 0.60, 0.48), Color(0.55, 0.50, 0.58),   # khaki, mauve-grey
+	]
+	return pool[absi(display_name.hash()) % pool.size()]
+
+
 # Show/hide every crew nametag in the room at once. Used to strip floating UI
 # labels for the duration of the cold-open cinematic and restore them at the
 # hand-off (so gameplay can still ID Scott/Greer across the room).
@@ -2687,6 +2699,12 @@ func _build_returned_crew_npc(display_name: String, kind: String, glb_path: Stri
 		model_holder.add_child(mc)
 		# Back aboard: ship dress code (duty tint + sidearm for military).
 		CharacterFactoryRef.dress_modular(mc, display_name, CharacterFactoryRef.CTX_SHIP)
+		# Break the identical-civvies look: give each anonymous CIVILIAN extra a muted
+		# per-body clothing tint so the evac crowd reads as varied clothes, not clones.
+		# Military keep their uniform (a uniform SHOULD be uniform). Deterministic by name.
+		if _is_anonymous_extra(display_name) and display_name.begins_with("civ_") \
+				and mc.has_method("tint_clothing"):
+			mc.call("tint_clothing", _civ_tint(display_name))
 	else:
 		model_holder.scale = Vector3(2.6, 2.6, 2.6)
 		var glb: PackedScene = load(CharacterFactoryRef.model_for(display_name, glb_path))

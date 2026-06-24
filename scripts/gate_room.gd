@@ -704,11 +704,14 @@ func _play_prologue_cinematic() -> void:
 		if "enabled" in tj: tj.set("enabled", true)
 		tj.global_position = medic_spot
 		_rise_npc(tj, "crouch_idle")
-	var man: StaticBody3D = _co_arrival("Wounded Marine", "", medic_spot + Vector3(1.0, 0.0, 0.4),
-			medic_spot + Vector3(1.0, 0.0, 0.4), "hard")
+	var man_spot: Vector3 = medic_spot + Vector3(0.85, 0.0, 0.2)   # close beside TJ
+	var man: StaticBody3D = _co_arrival("Wounded Marine", "", man_spot, man_spot, "hard")
 	_cap("MARINE", "I need a medic!", 20.0, "open-marine-medic")
 	await _await_audio(audio, 23.0)
-	_cut_to(tj, 2.8, 1.4, -1.2, 0.6)           # cut to TJ + the wounded man
+	# TIGHT LOW two-shot centred on the pair so TJ + the wounded marine fill the frame
+	# (was a wide shot that blended them into the crouched crowd).
+	var medic_mid: Vector3 = medic_spot.lerp(man_spot, 0.5)
+	_cut_to_spot(medic_mid, 2.1, 0.95, -1.5, 0.6)
 	_cap("TJ", "Over here! Can you move your fingers?", 24.0, "open-tj-fingers")
 	await _await_audio(audio, 27.0)
 	_launch_impact_crate(man, "arm")           # a crate skids in and clips his arm

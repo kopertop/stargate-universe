@@ -791,8 +791,11 @@ func _play_prologue_cinematic() -> void:
 	await _await_audio(audio, 63.0)
 	_launch_impact_crate(young, "head")        # head wound
 	await _await_audio(audio, 64.0)
+	_cut_wide(0.5)                                     # SEE the gate shut + vent
 	_collapse_gate()
-	Cinematic.flash(Color(1.0, 0.6, 0.25, 1.0), 0.6)   # flame/steam vent
+	_vent_gate_sides()                                 # flame/steam plumes from the gate sides
+	Cinematic.flash(Color(1.0, 0.6, 0.25, 1.0), 0.5)
+	await _await_audio(audio, 66.0)
 	_cut_follow(greer, Vector3(2.0, 1.6, 3.0))
 	_cap("SGT. GREER", "Move, move, move. Stay calm! Keep it down! Move, move, move, move, move.", 66.0, "open-greer-move")
 
@@ -2408,6 +2411,48 @@ func _stop_anim(root: Node) -> void:
 # Shut the wormhole: drop the forced-open latch, kill the horizon, play the
 # collapse whoosh + fade the dial loop. Returns the room to its dormant, empty,
 # walk-through state for normal gameplay.
+# Script §1.7: as the gate shuts, plumes of flame/steam vent from either side.
+# Two one-shot upward particle bursts at the gate base sides — flame-coloured,
+# additive, brief — fired during the collapse (paired with a wide cut so they're
+# actually on screen). Each burst frees itself after its lifetime.
+func _vent_gate_sides() -> void:
+	var base: Vector3 = Vector3(0.0, 0.4, GATE_Z)
+	for sx: float in [-1.0, 1.0]:
+		var p: GPUParticles3D = GPUParticles3D.new()
+		p.name = "GateVent"
+		p.amount = 48
+		p.one_shot = true
+		p.explosiveness = 0.75
+		p.lifetime = 1.1
+		p.position = base + Vector3(sx * 2.3, 0.0, 0.15)
+		var pm: ParticleProcessMaterial = ParticleProcessMaterial.new()
+		pm.direction = Vector3(sx * 0.25, 1.0, -0.2)
+		pm.spread = 22.0
+		pm.initial_velocity_min = 2.4
+		pm.initial_velocity_max = 4.6
+		pm.gravity = Vector3(0.0, -1.2, 0.0)
+		pm.scale_min = 0.25
+		pm.scale_max = 0.7
+		pm.color = Color(1.0, 0.55, 0.2, 0.85)
+		p.process_material = pm
+		var quad: QuadMesh = QuadMesh.new()
+		quad.size = Vector2(0.45, 0.45)
+		var dm: StandardMaterial3D = StandardMaterial3D.new()
+		dm.emission_enabled = true
+		dm.emission = Color(1.0, 0.45, 0.12)
+		dm.emission_energy_multiplier = 3.5
+		dm.albedo_color = Color(1.0, 0.55, 0.2, 0.8)
+		dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		dm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		dm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		quad.material = dm
+		p.draw_pass_1 = quad
+		_world.add_child(p)
+		p.emitting = true
+		get_tree().create_timer(2.0).timeout.connect(p.queue_free)
+
+
 func _collapse_gate() -> void:
 	_gate_forced_open = false
 	_light_chevrons(0)

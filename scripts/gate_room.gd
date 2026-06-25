@@ -2537,6 +2537,12 @@ var _flicker_pairs: Array = []
 # can restore the room ambient it crushed for the establishing shot.
 var _open_env: Environment = null
 var _open_ambient0: float = 1.35
+# The cool-blue ceiling edge-glow strips share ONE material (set in
+# _build_walls_and_ceiling). They're UNSHADED emissive — neither the Light3D crush nor
+# the ambient crush darkens them — so the dark-open must dim this material directly or
+# the establishing shot reads bright (the reference still has a pure-black ceiling line).
+var _glow_mat: StandardMaterial3D = null
+var _glow_energy0: float = 2.6
 
 # Open the cold open DARK: snapshot every dynamic light's energy, then crush them
 # to near-black so the establishing shot + the gate dial play in the SGU gloom (only
@@ -2557,6 +2563,11 @@ func _open_dark() -> void:
 		_open_env = we.environment
 		_open_ambient0 = _open_env.ambient_light_energy
 		_open_env.ambient_light_energy = _open_ambient0 * 0.10
+	# Snuff the emissive blue ceiling strips too (Light3D/ambient crush can't reach
+	# them) so the ceiling line goes black like the reference; restored on flicker-up.
+	if _glow_mat != null:
+		_glow_energy0 = _glow_mat.emission_energy_multiplier
+		_glow_mat.emission_energy_multiplier = _glow_energy0 * 0.04
 
 
 # §1.1: "a little lighting flickers on." The derelict's lights stutter back up from
@@ -2584,6 +2595,11 @@ func _flicker_lights_up() -> void:
 		var et: Tween = create_tween()
 		et.tween_interval(0.3)
 		et.tween_property(_open_env, "ambient_light_energy", _open_ambient0, 0.8)
+	# Flicker the ceiling strips back up with the lights (they were snuffed in _open_dark).
+	if _glow_mat != null:
+		var gt: Tween = create_tween()
+		gt.tween_interval(0.3)
+		gt.tween_property(_glow_mat, "emission_energy_multiplier", _glow_energy0, 0.8)
 
 
 func _apply_flicker_level(level: float) -> void:
@@ -3341,6 +3357,8 @@ func _build_walls_and_ceiling() -> void:
 	glow_mat.emission_energy_multiplier = 2.6
 	glow_mat.metallic = 0.0
 	glow_mat.roughness = 0.4
+	_glow_mat = glow_mat                 # so _open_dark can crush these emissive strips
+	_glow_energy0 = glow_mat.emission_energy_multiplier
 	var strip_thickness: float = 0.18
 	var strip_y: float = ceiling_height - 0.35
 	# +X strip

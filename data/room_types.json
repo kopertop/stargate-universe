@@ -650,6 +650,38 @@
           "scale": 2.2,
           "tint": [0.34, 0.40, 0.50],
           "blocker": [0.8, 1.2, 2.0]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/container-tall.glb",
+          "pos": [-13.0, 0.0, 9.0],
+          "yaw": 0.0,
+          "scale": 2.2,
+          "tint": [0.40, 0.44, 0.52],
+          "blocker": [1.0, 1.6, 1.0]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/container-tall.glb",
+          "pos": [13.0, 0.0, 9.0],
+          "yaw": 0.0,
+          "scale": 2.2,
+          "tint": [0.40, 0.44, 0.52],
+          "blocker": [1.0, 1.6, 1.0]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/computer-system.glb",
+          "pos": [-15.0, 0.0, 5.0],
+          "yaw": 1.5708,
+          "scale": 2.0,
+          "tint": [0.34, 0.40, 0.50],
+          "blocker": [0.8, 1.2, 1.0]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/computer-system.glb",
+          "pos": [15.0, 0.0, 5.0],
+          "yaw": -1.5708,
+          "scale": 2.0,
+          "tint": [0.34, 0.40, 0.50],
+          "blocker": [0.8, 1.2, 1.0]
         }
       ],
       "accent_lights": [

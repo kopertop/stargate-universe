@@ -32,7 +32,18 @@ func _ready() -> void:
 		if arg.begins_with("room_id="):
 			GameState.next_room_id = arg.substr(8)
 			print("[test_capture] room_id=", GameState.next_room_id)
+		elif arg.begins_with("quest="):
+			_preset_quest(arg.substr(6))
 	print("[test_capture] active")
+
+# Put GameState into a named quest state so room.gd stages the right beat (e.g.
+# the control-room Rush standoff needs find_rush + met_rush==false). Dev-only.
+func _preset_quest(which: String) -> void:
+	match which:
+		"find_rush":
+			GameState.met_scott = true
+			GameState.advance_air_quest()   # talk_scott → find_rush (met_rush stays false)
+	print("[test_capture] quest preset=%s step=%s" % [which, GameState.get("quest_step")])
 
 func _process(_delta: float) -> void:
 	if _state == 2:

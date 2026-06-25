@@ -844,6 +844,7 @@ func _play_prologue_cinematic() -> void:
 	# §1.9 THE SHIMMER — the ship jumps to FTL (left-right shake + blur), then the button.
 	await _await_audio(audio, 118.0)
 	_ftl_jump()
+	Cinematic.flash(Color(0.6, 0.8, 1.0, 0.5), 0.6)   # a brief blue shimmer envelops everyone
 	_cut_wide(0.8)
 	_cap("SGT. GREER", "What in the hell was that?!", 120.0, "open-greer-whatwasthat")
 	_cut_to(scott, 3.2, 1.5, 1.6, 0.5)

@@ -453,6 +453,10 @@ func dial_and_open(with_sfx: bool = true) -> void:
 	await get_tree().create_timer(DIAL_TIME).timeout
 	# Ring STOPS spinning; all chevrons locked.
 	_dialing = false
+	# If the cold open was SKIPPED mid-dial, bail before forcing the gate open — else
+	# this completes after _finalize_cold_open() and re-opens the portal it just shut.
+	if _co_skip:
+		return
 	_light_chevrons(CHEVRON_COUNT)
 	# Keep the gate lit after lock so _refresh_gate_state doesn't snap it back off.
 	_gate_forced_open = true
@@ -816,12 +820,13 @@ func _play_prologue_cinematic() -> void:
 	_cut_to(scott, 3.2, 1.5, 1.6, 0.5)
 	_cap("LT. SCOTT", "Greer? Where's Colonel Young?", 55.0, "open-scott-greerwhere")
 	await _await_audio(audio, 54.5)
-	if _player != null:
-		_player.global_position = eli_spot
+	if _player != null and not _co_skip:
+		_player.global_position = eli_spot   # don't yank the player back here after a skip
 		_lay_player_prone(true)
 		_show_player_model(true)
 	if is_instance_valid(r_eli): r_eli.queue_free()
-	_thud()
+	if not _co_skip:
+		_thud()
 	_cut_to(greer, 3.0, 1.5, 1.5, 0.5)
 	_cap("SGT. GREER", "He was right behind me.", 58.0, "open-greer-behindme")
 
@@ -979,16 +984,50 @@ func _finalize_cold_open() -> void:
 	_co_audio = null
 	# Lights/ambient back to full in case a skip landed during the dark establishing beat.
 	_flicker_lights_up()
+	# DETERMINISTIC END STATE. A skip can fire at any beat, so don't trust the racing
+	# coroutine to have flipped these — force the fully-completed gameplay state here:
+	#   • the gate is shut/dormant (no lingering open wormhole),
+	#   • the player model is visible and standing (not hidden / face-down),
+	#   • on a skip, the player stands at a clean spawn facing the exit (the cinematic
+	#     left him prone at the gate). Transition-only effects are guarded off (see
+	#     _collapse_gate / _lay_player_prone / the Eli-delivery block / FX funcs).
+	# Gate: drop the cinematic's force-open request and let the ONE authority
+	# (_refresh_gate_state) drive the portal visual — gate_active controls the horizon,
+	# so clearing the request + refreshing snuffs the puddle. (_arrival_running is
+	# cleared below so the refresh isn't short-circuited.)
+	_gate_forced_open = false
+	_light_chevrons(0)
+	_arrival_running = false
+	_refresh_gate_state()
+	_show_player_model(true)
+	_lay_player_prone(false, true)
+	if _co_skip and _player != null:
+		_player.global_position = Vector3(0.0, 0.05, 3.5)   # central, clear of the gate
+		_player.rotation.y = 0.0                             # face -Z toward the exit
+		var model: Node3D = _player.get_node_or_null("Character") as Node3D
+		if model != null:
+			model.rotation.x = 0.0
+			model.position.y = 0.0
 	await Cinematic.letterbox_out()
 	_end_cuts()
 	# Hand control to the player AS Eli — Scott is already running off; Eli follows.
 	_restore_player_camera(null)
+	if _co_skip and _view != null and _view.has_method("snap_to_target"):
+		_view.snap_to_target()   # heading is downstream of view yaw — resync after repositioning
 	_wake_consoles()
 	_set_arrival_crew_visible(true)
 	# Cinematic over: restore crew nametags so the player can ID who's who in the
 	# room (anonymous flood extras carry no tag, so only named crew light up).
 	_cold_open_active = false
 	_set_crew_nametags_visible(true)
+	# Run _run_arrival's post-cinematic cleanup HERE too: a skip funnels through finalize
+	# while the awaited coroutine may not have returned yet, so don't wait on it. Clearing
+	# _arrival_running lets _refresh_gate_state run again each frame and snuff the gate
+	# (gate_open is false post-cold-open); unlock movement; start the ambient bed.
+	_arrival_running = false
+	if _player != null and _player.has_method("set_input_locked"):
+		_player.set_input_locked(false)
+	_start_ambient()
 	GameState.met_scott = true
 	GameState.advance_air_quest()
 	_set_scott_autogreet(false)
@@ -1603,6 +1642,8 @@ const CRATE_SIZE: Vector3 = Vector3(1.4, 0.55, 0.85)   # footlocker: longer than
 # open spots scattered across the room (clear of the consoles, the gate mouth, and
 # the player's landing). One skids in next to Sgt Riley. Fire-and-forget.
 func _launch_crate_wave() -> void:
+	if _co_skip:
+		return
 	var spots: Array[Vector3] = [
 		Vector3(2.2, 0.05, 2.4), Vector3(-2.6, 0.05, 2.0),
 		Vector3(3.6, 0.05, -1.2), Vector3(-3.8, 0.05, -1.0),
@@ -1807,6 +1848,8 @@ const IMPACT_CRATE_TIME: float = 0.55     # ~flight to the victim; sets launch s
 # "arm" = clutch/limp, "head" = down + blood). The crate then tumbles/settles via
 # physics. Returns the crate. Deterministic enough for a headless physics test.
 func _launch_impact_crate(victim: StaticBody3D, wound: String) -> RigidBody3D:
+	if _co_skip:
+		return null
 	_splash()   # the heavy impact crate punches through the wormhole
 	var crate: RigidBody3D = RigidBody3D.new()
 	crate.name = "ImpactCrate"
@@ -2379,6 +2422,8 @@ func _end_cuts() -> void:
 const FTL_JUMP_SOUND_COLDOPEN: String = "res://sounds/ftl_jump_destiny.ogg"
 
 func _ftl_jump() -> void:
+	if _co_skip:
+		return
 	var fx: FtlDrop = FtlDrop.new()
 	fx.sound_path = FTL_JUMP_SOUND_COLDOPEN   # enhanced Destiny FTL-jump whoosh
 	fx.shake_y_scale = 0.2   # bias to a repeated left-right jolt
@@ -2388,7 +2433,11 @@ func _ftl_jump() -> void:
 # Tip the player's visual body onto its back (prone) or stand it upright. Only
 # the Character model is rotated — the physics capsule stays vertical so nothing
 # downstream (camera target, idle facing) is disturbed.
-func _lay_player_prone(prone: bool) -> void:
+func _lay_player_prone(prone: bool, force: bool = false) -> void:
+	# Skip in progress: the racing coroutine must not re-prone the player after the
+	# finalize stood him up. `force` lets finalize itself still drive the un-prone.
+	if _co_skip and not force:
+		return
 	if _player == null:
 		return
 	var model: Node3D = _player.get_node_or_null("Character")
@@ -2598,6 +2647,8 @@ func _stop_anim(root: Node) -> void:
 # burst — one-shot, brief, fired during the collapse and paired with a wide cut so
 # they're actually on screen. Each burst frees itself after its lifetime.
 func _vent_gate_sides() -> void:
+	if _co_skip:
+		return
 	var base: Vector3 = Vector3(0.0, 0.4, GATE_Z)
 	for sx: float in [-1.0, 1.0]:
 		var side_pos: Vector3 = base + Vector3(sx * 2.3, 0.0, 0.15)
@@ -2738,6 +2789,8 @@ func _apply_flicker_level(level: float) -> void:
 
 
 func _collapse_blackout() -> void:
+	if _co_skip:
+		return
 	var pairs: Array = []
 	var dim: Tween = create_tween().set_parallel(true)
 	for ln: Node in find_children("*", "Light3D", true, false):
@@ -2757,6 +2810,8 @@ func _collapse_blackout() -> void:
 # beams from perimeter positions cut the gloom toward the arrival zone, fading in
 # with the blackout and out as room lighting recovers, then free themselves.
 func _flashlights_during_dark() -> void:
+	if _co_skip:
+		return
 	var specs: Array = [
 		[Vector3(7.5, 1.5, GATE_Z - 10.5), Vector3(-0.7, -0.15, 0.4)],
 		[Vector3(-8.0, 1.5, GATE_Z - 9.0), Vector3(0.8, -0.15, 0.45)],
@@ -2798,6 +2853,8 @@ func _flashlights_during_dark() -> void:
 
 
 func _collapse_gate() -> void:
+	if _co_skip:
+		return   # finalize sets the gate dormant directly; skip its vent/shutdown FX
 	_gate_forced_open = false
 	_light_chevrons(0)
 	if _stargate != null and "active" in _stargate:

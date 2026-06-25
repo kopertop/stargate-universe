@@ -1,0 +1,268 @@
+[
+  {
+    "vo": "open-scott-clearway",
+    "speaker": "LT. SCOTT",
+    "at_t": null,
+    "source_start": 16.98,
+    "score": 0.78
+  },
+  {
+    "vo": "open-scott-evac",
+    "speaker": "LT. SCOTT",
+    "at_t": null,
+    "source_start": 29.36,
+    "score": 0.84
+  },
+  {
+    "vo": "open-wray-whereare",
+    "speaker": "CAMILE WRAY",
+    "at_t": null,
+    "source_start": 48.38,
+    "score": 0.7
+  },
+  {
+    "vo": "open-scott-side",
+    "speaker": "LT. SCOTT",
+    "at_t": null,
+    "source_start": 50.2,
+    "score": 0.76
+  },
+  {
+    "vo": "open-scott-comein",
+    "speaker": "LT. SCOTT",
+    "at_t": 18.5,
+    "source_start": 61.2,
+    "score": 0.7
+  },
+  {
+    "vo": "open-marine-medic",
+    "speaker": "MARINE",
+    "at_t": 20.0,
+    "source_start": 62.22,
+    "score": 0.41
+  },
+  {
+    "vo": "open-tj-fingers",
+    "speaker": "TJ",
+    "at_t": 24.0,
+    "source_start": 66.76,
+    "score": 0.7
+  },
+  {
+    "vo": "open-man-broken",
+    "speaker": "MARINE",
+    "at_t": 29.0,
+    "source_start": 70.34,
+    "score": 0.9
+  },
+  {
+    "vo": "open-tj-sling",
+    "speaker": "TJ",
+    "at_t": 32.0,
+    "source_start": 74.04,
+    "score": 0.94
+  },
+  {
+    "vo": "open-scott-cleararea",
+    "speaker": "LT. SCOTT",
+    "at_t": 38.0,
+    "source_start": 118.8,
+    "score": 0.74
+  },
+  {
+    "vo": "open-chloe-areyouok",
+    "speaker": "CHLOE",
+    "at_t": null,
+    "source_start": 144.84,
+    "score": 1.0
+  },
+  {
+    "vo": "open-senator-yeah",
+    "speaker": "SENATOR",
+    "at_t": null,
+    "source_start": 148.94,
+    "score": 0.1
+  },
+  {
+    "vo": "open-senator-whereare",
+    "speaker": "SENATOR",
+    "at_t": null,
+    "source_start": 152.5,
+    "score": 1.0
+  },
+  {
+    "vo": "open-scott-greerwhere",
+    "speaker": "LT. SCOTT",
+    "at_t": 55.0,
+    "source_start": 160.42,
+    "score": 0.48
+  },
+  {
+    "vo": "open-greer-behindme",
+    "speaker": "SGT. GREER",
+    "at_t": 58.0,
+    "source_start": 161.48,
+    "score": 0.93
+  },
+  {
+    "vo": "open-greer-move",
+    "speaker": "SGT. GREER",
+    "at_t": 66.0,
+    "source_start": 174.36,
+    "score": 0.7
+  },
+  {
+    "vo": "open-scott-colonel",
+    "speaker": "LT. SCOTT",
+    "at_t": 72.0,
+    "source_start": null,
+    "score": 0.0
+  },
+  {
+    "vo": "open-greer-dontmove",
+    "speaker": "SGT. GREER",
+    "at_t": 74.0,
+    "source_start": 191.7,
+    "score": 1.0
+  },
+  {
+    "vo": "open-young-whereare",
+    "speaker": "COL. YOUNG",
+    "at_t": 76.0,
+    "source_start": 193.54,
+    "score": 0.7
+  },
+  {
+    "vo": "open-scott-idontknow",
+    "speaker": "LT. SCOTT",
+    "at_t": 78.0,
+    "source_start": 195.36,
+    "score": 1.0
+  },
+  {
+    "vo": "open-young-incharge",
+    "speaker": "COL. YOUNG",
+    "at_t": 80.0,
+    "source_start": 195.9,
+    "score": 0.42
+  },
+  {
+    "vo": "open-scott-yessir",
+    "speaker": "LT. SCOTT",
+    "at_t": 83.5,
+    "source_start": 199.22,
+    "score": 0.42
+  },
+  {
+    "vo": "open-scott-tj",
+    "speaker": "LT. SCOTT",
+    "at_t": 86.0,
+    "source_start": null,
+    "score": 0.0
+  },
+  {
+    "vo": "open-tj-coming",
+    "speaker": "TJ",
+    "at_t": 88.0,
+    "source_start": null,
+    "score": 0.0
+  },
+  {
+    "vo": "open-greer-isheok",
+    "speaker": "SGT. GREER",
+    "at_t": 91.0,
+    "source_start": 200.86,
+    "score": 0.7
+  },
+  {
+    "vo": "open-tj-dunno",
+    "speaker": "TJ",
+    "at_t": 93.0,
+    "source_start": 202.16,
+    "score": 0.27
+  },
+  {
+    "vo": "open-scott-wallace",
+    "speaker": "LT. SCOTT",
+    "at_t": 96.0,
+    "source_start": null,
+    "score": 0.0
+  },
+  {
+    "vo": "open-scott-whatisplace",
+    "speaker": "LT. SCOTT",
+    "at_t": 99.0,
+    "source_start": 203.26,
+    "score": 0.18
+  },
+  {
+    "vo": "open-eli-didwhat",
+    "speaker": "ELI",
+    "at_t": 101.0,
+    "source_start": 225.88,
+    "score": 0.28
+  },
+  {
+    "vo": "open-scott-whereishe",
+    "speaker": "LT. SCOTT",
+    "at_t": 104.0,
+    "source_start": null,
+    "score": 0.0
+  },
+  {
+    "vo": "open-eli-wentahead",
+    "speaker": "ELI",
+    "at_t": 106.0,
+    "source_start": 236.9,
+    "score": 0.89
+  },
+  {
+    "vo": "open-scott-rush",
+    "speaker": "LT. SCOTT",
+    "at_t": 109.0,
+    "source_start": 238.54,
+    "score": 1.0
+  },
+  {
+    "vo": "open-scott-findhim",
+    "speaker": "LT. SCOTT",
+    "at_t": 112.0,
+    "source_start": 239.72,
+    "score": 0.7
+  },
+  {
+    "vo": "open-eli-welli",
+    "speaker": "ELI",
+    "at_t": 114.5,
+    "source_start": 241.7,
+    "score": 0.22
+  },
+  {
+    "vo": "open-greer-whatwasthat",
+    "speaker": "SGT. GREER",
+    "at_t": 120.0,
+    "source_start": 243.06,
+    "score": 0.7
+  },
+  {
+    "vo": "open-scott-settle",
+    "speaker": "LT. SCOTT",
+    "at_t": 123.0,
+    "source_start": 244.86,
+    "score": 0.14
+  },
+  {
+    "vo": "open-greer-yessir",
+    "speaker": "SGT. GREER",
+    "at_t": 133.0,
+    "source_start": 246.1,
+    "score": 0.2
+  },
+  {
+    "vo": "open-scott-elinow",
+    "speaker": "LT. SCOTT",
+    "at_t": 139.0,
+    "source_start": 251.72,
+    "score": 0.25
+  }
+]

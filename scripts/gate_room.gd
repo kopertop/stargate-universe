@@ -795,6 +795,7 @@ func _play_prologue_cinematic() -> void:
 	_collapse_gate()
 	_vent_gate_sides()                                 # flame/steam plumes from the gate sides
 	_collapse_blackout()                               # room plunged into darkness; flames glow through
+	_flashlights_during_dark()                         # crew flick on flashlights in the gloom
 	if _cut_cam != null and is_instance_valid(_cut_cam) and _cut_cam.has_method("shake"):
 		_cut_cam.call("shake", 0.22, 0.55)             # the room shudders as the gate snuffs out
 	await _await_audio(audio, 66.0)
@@ -2492,6 +2493,41 @@ func _collapse_blackout() -> void:
 	for pair: Array in pairs:
 		if is_instance_valid(pair[0]):
 			up.tween_property(pair[0], "light_energy", pair[1], 1.3)
+
+
+# Script §1.7: in the darkness, crew with flashlights switch them on. Two spot
+# beams from perimeter positions cut the gloom toward the arrival zone, fading in
+# with the blackout and out as room lighting recovers, then free themselves.
+func _flashlights_during_dark() -> void:
+	var specs: Array = [
+		[Vector3(7.5, 1.5, GATE_Z - 10.5), Vector3(-0.7, -0.15, 0.4)],
+		[Vector3(-8.0, 1.5, GATE_Z - 9.0), Vector3(0.8, -0.15, 0.45)],
+	]
+	var beams: Array[SpotLight3D] = []
+	for spec: Array in specs:
+		var sl: SpotLight3D = SpotLight3D.new()
+		sl.name = "CrewFlashlight"
+		sl.position = spec[0]
+		sl.light_energy = 0.0
+		sl.light_color = Color(0.86, 0.91, 1.0)
+		sl.spot_range = 15.0
+		sl.spot_angle = 16.0
+		sl.spot_attenuation = 1.3
+		_world.add_child(sl)
+		sl.look_at(sl.global_position + (spec[1] as Vector3), Vector3.UP)
+		beams.append(sl)
+	var up: Tween = create_tween().set_parallel(true)
+	for b: SpotLight3D in beams:
+		up.tween_property(b, "light_energy", 4.5, 0.3)
+	await get_tree().create_timer(1.0).timeout
+	var down: Tween = create_tween().set_parallel(true)
+	for b: SpotLight3D in beams:
+		if is_instance_valid(b):
+			down.tween_property(b, "light_energy", 0.0, 1.3)
+	await get_tree().create_timer(1.6).timeout
+	for b: SpotLight3D in beams:
+		if is_instance_valid(b):
+			b.queue_free()
 
 
 func _collapse_gate() -> void:

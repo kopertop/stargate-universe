@@ -2495,6 +2495,16 @@ func _lights_flicker_on() -> void:
 		var light: Light3D = ln as Light3D
 		if light != null:
 			_flicker_pairs.append([light, light.light_energy])
+	# Electrical flicker buzz under the visual stutter (frees itself when done).
+	var fl: AudioStream = load("res://sounds/flicker.ogg") as AudioStream
+	if fl != null:
+		var fp: AudioStreamPlayer = AudioStreamPlayer.new()
+		fp.name = "FlickerSfx"
+		fp.stream = fl
+		fp.volume_db = -6.0
+		add_child(fp)
+		fp.play()
+		fp.finished.connect(fp.queue_free)
 	_apply_flicker_level(0.06)   # start near-dark
 	var t: Tween = create_tween()
 	for level: float in [0.06, 0.55, 0.1, 0.8, 0.25, 1.0, 0.45, 1.0]:

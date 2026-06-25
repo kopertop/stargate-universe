@@ -29,6 +29,16 @@ const MANIFEST: Dictionary = {
 	"rifle_draw": {"src": "standingtoreadyposegrabbingriflefromtheback", "loop": false},
 	"rifle_fire_walk": {"src": "firingwhilewalkingwithrifle", "loop": true, "in_place": true},
 	"death": {"src": "deathfromstandingidle", "loop": false},
+	# ---- E1 cold-open arrivals (Mixamo): roll in, get up, hard crash ----
+	# in_place strips travel so the body stays on its landing spot (the kinematic
+	# arc + a post-land walk_to provide the scramble); get_up is stationary.
+	"dive_roll": {"src": "dive_roll", "loop": false, "in_place": true},
+	"falling_roll": {"src": "falling_to_roll", "loop": false, "in_place": true},
+	"sprint_roll": {"src": "sprint_roll", "loop": false, "in_place": true},
+	"roll_to_run": {"src": "quick_roll_to_run", "loop": false, "in_place": true},
+	"run_roll": {"src": "run_to_rolling", "loop": false, "in_place": true},
+	"get_up": {"src": "getting_up", "loop": false},
+	"crash": {"src": "wall_crash", "loop": false, "in_place": true},
 	# Stationary aim: the settled hold at the tail of the stop-running clip.
 	"rifle_aim": {"src": "stoprunningtoaimingrifleidle", "loop": true,
 		"in_place": true, "rebase": true, "slice": [1.70, 2.85], "yaw_rebase": 53.0},

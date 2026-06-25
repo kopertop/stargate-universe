@@ -61,6 +61,30 @@ func _run() -> void:
 	_test_no_layer2_blockers(obs_world, "observation_deck")
 	obs_world.queue_free()
 
+	# ── G: quarters (eli_quarters) at REAL dims (200x240 units = 10x12m) ───────
+	# Regression coverage for the shipped quarters dressing. Props are visual-only
+	# (no blockers), so doorway-clearance is vacuously clear; the real value is the
+	# prop-presence + no-white-mesh guard at the ACTUAL room size.
+	print("\n-- G: quarters build --")
+	var q_world: Node3D = _build_room("quarters", "quarters-template", 200, 240)
+	_test_has_kenney_prop(q_world, "quarters has >=1 KenneyProp")
+	_test_no_white_mesh(q_world, "quarters")
+	_test_doorway_clearance(q_world, 200, 240, "quarters")
+	_test_no_layer2_blockers(q_world, "quarters")
+	q_world.queue_free()
+
+	# ── H: control_room at REAL dims (700x560 units = 35x28m) ──────────────────
+	# The control room is large; its perimeter storage carries BLOCKERS, so this is
+	# the real doorway-clearance gate (verifies no blocker traps a wall-midpoint door
+	# at the room's true size — which the generic 300x300 build would not catch).
+	print("\n-- H: control_room build --")
+	var cr_world: Node3D = _build_room("control_room", "control-room-template", 700, 560)
+	_test_has_kenney_prop(cr_world, "control_room has >=1 KenneyProp")
+	_test_no_white_mesh(cr_world, "control_room")
+	_test_doorway_clearance(cr_world, 700, 560, "control_room")
+	_test_no_layer2_blockers(cr_world, "control_room")
+	cr_world.queue_free()
+
 	# ── F: cost curve ────────────────────────────────────────────────────────
 	print("\n-- F: cost curve --")
 	_test_cost_curve(ps)

@@ -1,22 +1,37 @@
 extends SceneTree
 
-# Drift guard for the E1 cold-open dialog (#142): every `open-*` VO id referenced
-# in scripts/gate_room.gd (via _cold_open_line / _bark) must be declared as a line
-# in design/voice-line-manifest.md section 18. Catches a renamed or typo'd vo-id
-# that would silently drop a cold-open beat to caption-only — and guards that the
-# six climax hand-off beats stay wired. Headless, no assets, no autoloads.
+# Drift guard for the E1 cold open. The cold open is now driven by ONE master
+# recording (sounds/dialog/prologue/cold_open_master.mp3) played in
+# scripts/gate_room.gd::_play_prologue_cinematic; the visual beats + captions are
+# timed against its playhead. This guards the load-bearing invariants of that design:
+#
+#   1. The master track is referenced in code AND the file exists on disk (a renamed
+#      or missing clip would silently drop the whole cold-open soundtrack).
+#   2. The Find-Rush hand-off captions stay wired (the climax that launches the quest).
+#   3. The hand-off END-STATE: the cinematic marks Scott met + advances the e1_air
+#      quest itself, and does NOT re-enable Scott's walk-up auto_greet — so the first
+#      thing after the cold open is that the player ALREADY holds the Find-Rush quest,
+#      not a Scott briefing.
+#
+# Headless, no assets, no autoloads.
 #
 # Run with:
 #   godot --headless -s res://tests/smoke/cold_open_lines.gd
 
 const GATE_ROOM: String = "res://scripts/gate_room.gd"
-const MANIFEST: String = "res://design/voice-line-manifest.md"
+const MASTER_AUDIO: String = "res://sounds/dialog/prologue/cold_open_bed.mp3"
 
-# The closing hand-off, exactly as _play_rush_handoff sequences it. If any of these
-# stops being referenced in code, the climax lost a beat — fail loudly.
-const REQUIRED_HANDOFF: Array[String] = [
-	"open-crew-whatwasthat", "open-scott-norush", "open-scott-rush",
-	"open-scott-findhim", "open-scott-eli-now", "open-eli-coming",
+# Verbatim transcript beats that MUST stay wired (the command hand-off + the Rush
+# hand-off button). Match docs/OPENING_SCENE_SCRIPT.md §1 exactly.
+const REQUIRED_CAPTIONS: Array[String] = [
+	"Get out of the way!",
+	"Where's Colonel Young?",
+	"You're in charge, okay? You're...",
+	"TJ!",
+	"I'm coming!",
+	"Rush! Eli, help me find him.",
+	"What in the hell was that?!",
+	"Eli! Now!",
 ]
 
 var _failures: Array[String] = []
@@ -24,53 +39,97 @@ var _passes: int = 0
 
 
 func _initialize() -> void:
-	# Arrange: pull the vo-ids out of the code and the manifest.
+	# Arrange.
 	var code: String = _read(GATE_ROOM)
-	var manifest: String = _read(MANIFEST)
-	if code == "" or manifest == "":
+	if code == "":
 		_report()
 		return
-	var referenced: Array[String] = _ids_in(code)
-	var declared: Dictionary = {}
-	for id: String in _ids_in(manifest):
-		declared[id] = true
 
 	# Act / Assert.
-	test_cold_open_vo_ids_all_declared_in_manifest(referenced, declared)
-	test_cold_open_handoff_beats_present_in_code(referenced)
+	test_cold_open_master_track_referenced_and_present(code)
+	test_cold_open_handoff_captions_present(code)
+	test_cold_open_advances_quest_without_scott_walkup(code)
+	test_cold_open_mechanics_wired(code)
+	test_cold_open_nametags_suppressed(code)
 	_report()
 
 
-# Every vo-id the cinematic plays must be a real manifest line.
-func test_cold_open_vo_ids_all_declared_in_manifest(referenced: Array[String], declared: Dictionary) -> void:
-	if referenced.is_empty():
-		_fail("no open-* vo-ids found in gate_room.gd (extraction broken?)")
-		return
-	for id: String in referenced:
-		if declared.has(id):
+# The new staging mechanics must stay wired (rolls, crate-impact physics, camera cuts,
+# FTL jump, continuous flood) — cheap string guard against a silent drop.
+func test_cold_open_mechanics_wired(code: String) -> void:
+	var needles: Array[String] = [
+		"_co_arrival(", "_co_crowd_flood(", "_launch_impact_crate(",
+		"_begin_cuts(", "_cut_to(", "_ftl_jump(",
+	]
+	for n: String in needles:
+		if code.find(n) != -1:
 			_passes += 1
 		else:
-			_fail("vo-id '%s' referenced in gate_room.gd but missing from voice-line-manifest.md §18" % id)
+			_fail("cold-open mechanic '%s' is no longer wired in gate_room.gd" % n)
 
 
-# The six climax beats must all still be wired in code.
-func test_cold_open_handoff_beats_present_in_code(referenced: Array[String]) -> void:
-	for id: String in REQUIRED_HANDOFF:
-		if referenced.has(id):
+# Regression guard (cold-open render polish, 2026-06-24): floating crew nametags
+# must NOT render during the cinematic, and anonymous flood extras (mil_#/civ_#)
+# must NEVER carry a text nametag at all. The original bug stamped "mil_22" over
+# every crowd extra and showed all tags over a letterboxed cutscene — the biggest
+# "student-project" tell in the render. This locks the suppression wiring:
+#   • _is_anonymous_extra() exists and the nametag build is guarded by it,
+#   • the build also respects _cold_open_active (tags spawn hidden mid-cinematic),
+#   • the cinematic hides tags at the start and restores them at the hand-off.
+func test_cold_open_nametags_suppressed(code: String) -> void:
+	var needles: Array[String] = [
+		"func _is_anonymous_extra(",            # the anonymous-crowd classifier
+		"if not _is_anonymous_extra(display_name):",  # nametag skipped for mil_/civ_
+		"func _set_crew_nametags_visible(",     # the bulk show/hide helper
+		"_set_crew_nametags_visible(false)",    # hidden when the cinematic starts
+		"_set_crew_nametags_visible(true)",     # restored at the hand-off
+		"tag.visible = not _cold_open_active",  # mid-flood tags spawn hidden
+	]
+	for n: String in needles:
+		if code.find(n) != -1:
 			_passes += 1
 		else:
-			_fail("required hand-off beat '%s' is no longer referenced in gate_room.gd" % id)
+			_fail("cold-open nametag suppression wiring missing: '%s'" % n)
 
 
-func _ids_in(text: String) -> Array[String]:
-	var out: Array[String] = []
-	var re: RegEx = RegEx.new()
-	re.compile("open-[a-z0-9]+(?:-[a-z0-9]+)*")
-	for m: RegExMatch in re.search_all(text):
-		var id: String = m.get_string()
-		if not out.has(id):
-			out.append(id)
-	return out
+# The master soundtrack must be referenced in code and actually exist on disk.
+func test_cold_open_master_track_referenced_and_present(code: String) -> void:
+	if code.find(MASTER_AUDIO) != -1:
+		_passes += 1
+	else:
+		_fail("master cold-open track '%s' is not referenced in gate_room.gd" % MASTER_AUDIO)
+	if FileAccess.file_exists(MASTER_AUDIO):
+		_passes += 1
+	else:
+		_fail("master cold-open track file missing on disk: %s" % MASTER_AUDIO)
+
+
+# The Find-Rush climax captions must all still be present.
+func test_cold_open_handoff_captions_present(code: String) -> void:
+	for cap: String in REQUIRED_CAPTIONS:
+		if code.find(cap) != -1:
+			_passes += 1
+		else:
+			_fail("required hand-off caption '%s' is no longer present in gate_room.gd" % cap)
+
+
+# The cinematic must end by handing the player the quest itself — NOT by walking
+# Scott over to brief them.
+func test_cold_open_advances_quest_without_scott_walkup(code: String) -> void:
+	if code.find("GameState.met_scott = true") != -1:
+		_passes += 1
+	else:
+		_fail("cold open no longer marks Scott met (GameState.met_scott = true) at hand-off")
+	if code.find("advance_air_quest()") != -1:
+		_passes += 1
+	else:
+		_fail("cold open no longer advances the e1_air quest (advance_air_quest()) at hand-off")
+	# The whole point of the redesign: Scott does not auto-greet after the cold open.
+	if code.find("_set_scott_autogreet(true)") == -1:
+		_passes += 1
+	else:
+		_fail("cold open re-enables Scott's walk-up (_set_scott_autogreet(true)) — the player " +
+			"should already hold the Find-Rush quest, not be briefed by Scott")
 
 
 func _read(path: String) -> String:

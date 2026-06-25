@@ -121,6 +121,18 @@ const THROW_CRATE_SPIN: float = 6.0      # crate tumble rate (rad/s)
 var _thud_players: Array[AudioStreamPlayer] = []
 var _thud_streams: Array[AudioStream] = []
 var _thud_i: int = 0
+# Metallic deck-ring overlay played under each thud (the floor is steel grating).
+var _thud_metal: AudioStreamPlayer = null
+# Round-robin pool for the wormhole "puddle" splash — every body/crate that breaks
+# the gate surface gets a short watery punch-through (built lazily).
+var _splash_players: Array[AudioStreamPlayer] = []
+var _splash_streams: Array[AudioStream] = []
+var _splash_i: int = 0
+# Vocal effort grunts as bodies slam onto the deck — the human panic layer the
+# no-vocals ambience bed strips out (built lazily; no-op if assets are absent).
+var _grunt_players: Array[AudioStreamPlayer] = []
+var _grunt_streams: Array[AudioStream] = []
+var _grunt_i: int = 0
 # Crates hurled through the gate this cold-open, so crew can shove them to the
 # walls afterward (out of the way so nobody trips over them).
 var _arrival_crates: Array[Node3D] = []
@@ -133,6 +145,12 @@ var _gate_ring: Node3D = null
 # (world Z) with an accelerating ramp — the "stargate dialing" read.
 var _dialing: bool = false
 var _dial_elapsed: float = 0.0
+# Per-chevron lock SFX: fire stargate_chevron_incom.mp3 once each time a chevron locks
+# (round-robin pool so consecutive locks don't cut each other off).
+var _chevrons_lit_prev: int = 0
+var _chevron_lock_players: Array[AudioStreamPlayer] = []
+var _chevron_lock_idx: int = 0
+var _dial_with_sfx: bool = true
 # Latch: keep the gate open after a dial/cinematic regardless of story flags.
 var _gate_forced_open: bool = false
 const DIAL_TIME: float = 3.2          # seconds the ring spins before lock + kawoosh
@@ -309,8 +327,15 @@ func _process(delta: float) -> void:
 		# degenerate and would drift the rig. Identical incremental rotate() = perfect sync.
 		if _chevron_rig != null and is_instance_valid(_chevron_rig):
 			_chevron_rig.rotate(Vector3(0.0, 0.0, 1.0), spin_speed * delta)
-		# Chevrons light progressively across the dial (the "locking" read).
-		_light_chevrons(int(ramp * float(CHEVRON_COUNT)))
+		# Chevrons light progressively across the dial (the "locking" read), and the
+		# chevron-lock sound fires once for each chevron at the moment it lights.
+		var lit: int = int(ramp * float(CHEVRON_COUNT))
+		_light_chevrons(lit)
+		if lit > _chevrons_lit_prev:
+			if _dial_with_sfx:
+				for _i in range(_chevrons_lit_prev, lit):
+					_play_chevron_lock()
+			_chevrons_lit_prev = lit
 		return
 	_refresh_gate_state()
 
@@ -352,6 +377,23 @@ func _build_chevron_glows() -> void:
 		_chevron_glows.append(mi)
 
 
+# Fire one chevron-lock one-shot (round-robin pool, built lazily) — called once per
+# chevron as it lights during the dial.
+func _play_chevron_lock() -> void:
+	if _chevron_lock_players.is_empty():
+		var stream: AudioStream = load("res://sounds/stargate_chevron_incom.mp3") as AudioStream
+		if stream == null:
+			return
+		for _i in 3:
+			var pl: AudioStreamPlayer = AudioStreamPlayer.new()
+			pl.stream = stream
+			add_child(pl)
+			_chevron_lock_players.append(pl)
+	var p: AudioStreamPlayer = _chevron_lock_players[_chevron_lock_idx % _chevron_lock_players.size()]
+	_chevron_lock_idx += 1
+	p.play()
+
+
 # Light the first `count` chevrons (0..CHEVRON_COUNT); the rest stay dark.
 func _light_chevrons(count: int) -> void:
 	for i in _chevron_glows.size():
@@ -375,6 +417,7 @@ func dial_and_open(with_sfx: bool = true) -> void:
 		return
 	_dialing = true
 	_dial_elapsed = 0.0
+	_chevrons_lit_prev = 0
 	_light_chevrons(0)
 	# Reset the ring + chevron rig to a known, in-sync pose so a repeat dial can't
 	# accumulate drift (ring base orientation = yaw +90°; the rig is unrotated).
@@ -382,9 +425,9 @@ func dial_and_open(with_sfx: bool = true) -> void:
 		_gate_ring.rotation = Vector3(0.0, PI * 0.5, 0.0)
 	if _chevron_rig != null and is_instance_valid(_chevron_rig):
 		_chevron_rig.rotation = Vector3.ZERO
-	# (1)+(2) Dial rumble (chevron-incoming) while the ring spins and chevrons lock.
-	if with_sfx and _gate_loop_sfx != null and _gate_loop_sfx.stream != null:
-		_gate_loop_sfx.play()
+	# (1)+(2) The chevron-lock sound now fires per-chevron in _process as each locks
+	# (gated on _dial_with_sfx); no single dial-start rumble.
+	_dial_with_sfx = with_sfx
 	await get_tree().create_timer(DIAL_TIME).timeout
 	# Ring STOPS spinning; all chevrons locked.
 	_dialing = false
@@ -532,167 +575,341 @@ func _run_arrival() -> void:
 	_arrival_running = false
 
 
-# The cold open. Beats:
+# The cold open — now driven by the REAL "Air" recording (sounds/dialog/prologue/
+# cold_open_master.mp3) played as ONE master track. Every visual beat is timed
+# against that clip's playhead (_await_audio) and the captions subtitle its own
+# dialogue, so the scene stays locked to the audio across its full ~4:15 runtime.
+# Beats:
 #   • The gate DIALS (spin → chevrons lock → portal flushes open → stabilises).
-#   • WAVE 1: Lt Scott is flung through first, rolls clear, gets to his feet and
-#     radios that it's safe to send the rest.
-#   • WAVE 2: the others are hurled through hard — Colonel Young is thrown the
-#     FARTHEST and lands badly (his injury); Eli (the player) is tossed about half
-#     that distance; Rush and James land between. Eli ends up sprawled, then
-#     groggily climbs to his feet.
-#   • The gate collapses; James kneels to triage Young; Scott walks over to talk.
+#   • WAVE 1: Lt Scott flung through first, kneels, rises, waves the rest through.
+#   • WAVES 2–8: the flood — Young thrown hardest (injured, face-down), James the
+#     medic, Park/Volker to consoles, soldiers + civilians in pairs, crates raining.
+#   • Eli (the player) last through, closest to the gate; he groggily stands.
+#   • The hush → wonder → Scott can't find Rush → "Eli! NOW!". The recording carries
+#     the voices; we subtitle them and stage Scott's looks.
+# The old per-line baked TTS clips (open-*.wav) are retired by this single track.
 func _play_prologue_cinematic() -> void:
 	# Score the cold open: tense, urgent bed for the evac chaos. Shifts to wonder at the
 	# ship-shudder beat below, then _start_ambient() resolves to ship_calm afterward.
 	MusicDirector.set_mood("tension")
 	_set_arrival_crew_visible(false)
-	# Hold Scott's auto-greet until the cold open is over — otherwise he walks up
-	# and triggers the dialog camera mid-cinematic, hijacking the gate framing.
+	# Hold Scott's auto-greet for the WHOLE cold open — and, per the synced-audio
+	# design, we DON'T turn it back on at the end: by the time the recording finishes
+	# the player already holds the Find-Rush objective (set below), so Scott never
+	# walks over to brief them (the "first stop is the quest, not a Scott chat" beat).
 	_set_scott_autogreet(false)
 	# The player body stays hidden until his wave delivers him.
 	_show_player_model(false)
 	# Consoles are dead/offline on the derelict during the cold open.
 	_set_consoles_offline()
 
-	# Wide, pulled-back cinematic camera so we see the whole gate room + where
-	# everyone lands (the body that flies through BECOMES the character there).
-	var cam: Camera3D = _make_cinematic_camera()
+	# A cinematic carries NO floating UI labels — the captions name the speaker.
+	# Hide any nametag already in the room (pre-built Scott/James/Young) and arm
+	# the flag so every crew body built mid-flood spawns its tag hidden too.
+	_cold_open_active = true
+	_set_crew_nametags_visible(false)
 
-	# DIAL: ring spins → chevrons light up → portal flushes open → stabilises.
-	await get_tree().create_timer(0.8).timeout
+	# Camera cuts (cut-to-speaker) own the framing for the whole verbatim cold open.
+	# OPEN on the SGU establishing shot: low, down the dark amber-lit walkway to the
+	# gate at the far end — held through the dial so we arrive on the reference still.
+	_begin_cuts()
+	_cut_establishing(0.5)
+
+	# THE soundtrack: the ~165s ambience BED, played ONCE. _cold_open_start_ms anchors
+	# the wall-clock fallback if the stream fails (real play has it; headless skips this
+	# whole path via instant_mode). Our designed per-character VO plays on top via _cap.
+	_cold_open_start_ms = Time.get_ticks_msec()
+	var audio: AudioStreamPlayer = AudioStreamPlayer.new()
+	audio.name = "ColdOpenMaster"
+	add_child(audio)
+	var bed: AudioStream = load(COLD_OPEN_BED) as AudioStream
+	if bed != null:
+		if "loop" in bed:
+			bed.set("loop", false)
+		audio.stream = bed
+		audio.play()
+
+	# Crush the lights to near-black so the establishing shot + the gate dial play in
+	# the SGU gloom — only the gate and the amber floor strips glow (matches the
+	# reference still). _flicker_lights_up() restores them as the crew flood in.
+	_open_dark()
+
+	await Cinematic.letterbox_in()
+
+	# DIAL (≈0.5–3.5s): ring spins → chevrons lock one-by-one (sound per chevron) →
+	# kawoosh. Held on the LOW establishing shot down the dark amber walkway → we land
+	# on the reference image (dark room, active gate at the far end).
+	await get_tree().create_timer(0.5).timeout
 	await dial_and_open(true)
 
-	# Crew come RUNNING through the gate head-first (escaping a planet about to blow)
-	# and CRASH onto the deck, ≤2 in the air at once. Each one is a REAL persistent
-	# body — the body that flies through IS the character that stays where it lands.
-	# Eli lands CLOSEST to the gate; everyone else is thrown FURTHER in.
+	# Hold a beat on the dark establishing shot with the gate now ACTIVE — this is the
+	# exact SGU "Air" opening still (black room, amber walkway, bright gate far off).
+	await get_tree().create_timer(1.6).timeout
 
-	# WAVE 1 — Scott (solo). The PRE-BUILT LtScott node IS the body that flies through
-	# (no throwaway-then-reveal swap), so it lands exactly where thrown, kneels, then
-	# stands — and keeps its walk-up/talk auto-greet.
-	# Scott lands DEEP in the room — well past where Eli (z≈6.0) ends up — so he can
-	# turn back toward the gate and wave the rest through.
-	var scott_spot: Vector3 = Vector3(2.0, 0.05, 2.0)
-	var scott: StaticBody3D = _world.get_node_or_null("LtScott") as StaticBody3D
-	scott = _throw_persistent_crew("Lt Scott", "", scott_spot, scott)
+	# §1.2 FIRST THROUGH — Scott ALONE. He's flung out of the active wormhole, hits the
+	# deck and GRUNTS (no line yet). Hold WIDE so we see him thrown into the dark room.
+	# This beat is paced by real timers off the dial + throw-flight (NOT the bed
+	# playhead — the dial runs on timers, so absolute playhead cues desync here).
+	_cut_wide(0.6)
+	# §1.1: "a little lighting flickers on" — the derelict's lights stutter up to full
+	# now, as the first crew come barrelling through (not before — the dial is dark).
+	_flicker_lights_up()
+	var scott: StaticBody3D = _co_arrival("Lt Scott", "", Vector3(1.6, 0.05, GATE_Z - 4.5),
+			Vector3(2.2, 0.05, GATE_Z - 5.5), "scott", _world.get_node_or_null("LtScott") as StaticBody3D)
 	GameState.add_log("Lt Scott comes barrelling through the gate!")
-	GameState.narrate("Lt Scott comes barrelling through the gate!")  # white chat line (#141)
-	await get_tree().create_timer(2.0).timeout
-	_settle_persistent_crew(scott, "repair")   # lands kneeling, same body
-	await get_tree().create_timer(1.3).timeout
-	_rise_npc(scott, "idle")                    # push up to his feet
-	await get_tree().create_timer(0.9).timeout  # let the stand read before he turns
-	# Marshalling bark as the rest pile up at the gate mouth.
-	_bark("LT. SCOTT", "Slow down the evac — we're coming in too high!", "open-scott-evac")
-	# He turns back to the gate and calls the rest through — voiced, with a
-	# letterbox closed-caption.
-	await _scott_radio_line(scott)
+	GameState.narrate("Lt Scott comes barrelling through the gate!")
+	await get_tree().create_timer(THROW_FLIGHT_TIME + 0.15).timeout
+	_grunt(scott)                                # impact grunt as he hits the deck
+	# Frame Scott in the foreground with the GATE behind him (camera on the room side,
+	# looking back toward the wormhole) so the two who follow are SEEN coming through.
+	_cut_follow(scott, Vector3(2.4, 1.7, -4.5))
 
-	# NOW that Scott's signalled it's safe, the rest pour through — and supplies with
-	# them: 10 crates rain in (fire-and-forget) while waves 2-8 arrive. Two-person
-	# teams stack them at the walls once everyone's up.
-	_launch_crate_wave()
-	_bark("SGT. GREER", "Clear! Keep 'em moving!", "open-greer-clear")
-	_bark("LT. SCOTT", "There's no time to explain — off to the side!", "open-scott-side")
-
-	# WAVE 2 — Colonel Young + Lt James. Young is thrown the HARDEST — clean OFF-SCREEN
-	# (behind the camera) and STAYS down face-down, injured. Lt James lands in view and
-	# kneels working over the deck (looping the repair animation — tending the wounded).
-	var young_spot: Vector3 = Vector3(-3.0, 0.05, -15.0)   # behind the camera = off-screen
-	var young: StaticBody3D = _world.get_node_or_null("ColonelYoung") as StaticBody3D
-	young = _throw_persistent_crew("Colonel Young", "", young_spot, young)
-	await get_tree().create_timer(0.35).timeout
-	var james: StaticBody3D = _throw_persistent_crew("Lt James", "", Vector3(1.5, 0.05, -2.0))
-	await get_tree().create_timer(2.0).timeout
-	_settle_persistent_crew(young, "facedown")   # stays down, on his front (injured)
-	_settle_persistent_crew(james, "repair")     # kneels, loops the repair anim (medic)
-	await get_tree().create_timer(0.8).timeout
-	# Medic pocket: James/TJ working a wounded arm, overlapping the ongoing flood.
-	_bark("TJ", "Can you move your fingers?", "open-tj-fingers")
+	# §1.3 …a BEAT (~1.1s) later, the first TWO follow him through and scramble aside.
+	# Scott only barks "get out of the way" once there are actually people to clear.
 	await get_tree().create_timer(1.1).timeout
-	_bark("CREW", "I think it's broken.", "open-wounded-broken")
-	await get_tree().create_timer(1.0).timeout
-	_bark("TJ", "Okay — hold your arm there, we'll get it in a sling.", "open-tj-sling")
+	_co_arrival("mil_0", "greer", Vector3(-1.2, 0.05, GATE_Z - 4.0),
+			Vector3(-12.5, 0.05, GATE_Z - 6.0), "mil", null, true)
+	_co_arrival("civ_1", "", Vector3(1.0, 0.05, GATE_Z - 4.6),
+			Vector3(12.5, 0.05, GATE_Z - 7.0), "civ", null, true)
+	_grunt(scott)                                # the two crash in (grunts on the punch-through)
+	await get_tree().create_timer(THROW_FLIGHT_TIME).timeout   # let the two land first
+	_cut_to(scott, 3.2, 1.5, 1.6, 0.5)
+	_cap_now("LT. SCOTT", "All right, get out of here. Get out of the way!", "open-scott-clearway")
 
-	# WAVE 3 — Dr Park.
-	var park: StaticBody3D = _throw_persistent_crew("Dr Park", "park", Vector3(-3.5, 0.05, GATE_CONSOLE_Z - 1.0))
-	await get_tree().create_timer(2.2).timeout
-	_settle_persistent_crew(park, "crouch_idle")
-	await get_tree().create_timer(0.6).timeout
+	# §1.3b PANDEMONIUM — NOW the continuous flood ramps as Scott marshals it. Tapers by
+	# ~38s (the named principals keep the gate flowing after) so it's a believable evac
+	# that clears to the walls, not an endless clone-wall.
+	await get_tree().create_timer(2.0).timeout
+	_cut_wide(0.8)                               # WIDE: the flood + gate + room as one shot
+	var flood_from: float = audio.get_playback_position() if (audio != null and is_instance_valid(audio)) else 9.0
+	_co_crowd_flood(audio, flood_from, 38.0, 0.9)
+	_cap_now("LT. SCOTT", "This is Scott! Slow down the evac — we are comin' in too hot!", "open-scott-evac")
+	# §1.3c WRAY grabs at Scott. She comes through, scrambles UP to him, and the two
+	# KNEEL together amid the chaos as he turns to her and she asks where they are —
+	# staged as a walk-up (not a cut to her landing spot). Timer-paced; we re-lock to
+	# the bed playhead afterward (downstream _cap calls self-heal if it has advanced).
+	await get_tree().create_timer(0.5).timeout
+	var wray_at_scott: Vector3 = scott.global_position + Vector3(-1.4, 0.0, 0.25)
+	var wray: StaticBody3D = _co_arrival("Camile Wray", "", Vector3(0.2, 0.05, GATE_Z - 4.2),
+			wray_at_scott, "civ")
+	_grunt(wray)
+	_cut_follow(scott, Vector3(2.2, 1.6, -3.6))   # hold on Scott (gate behind) as she crosses to him
+	await get_tree().create_timer(THROW_FLIGHT_TIME + 3.0).timeout   # land, roll up, scramble to his side
+	if is_instance_valid(wray):
+		_rise_npc(wray, "crouch_idle")            # she drops to a knee beside him
+		_face_node(wray, scott)
+	_rise_npc(scott, "crouch_idle")               # Scott crouched amid the wounded, turns to her
+	_face_node(scott, wray)
+	_cut_to_spot(scott.global_position, 2.6, 1.2, 1.5, 0.5)   # low two-shot of the kneeling pair
+	_cap_now("CAMILE WRAY", "Where are we? Why didn't we come through to Earth?", "open-wray-whereare")
+	await get_tree().create_timer(2.9).timeout
+	_face_node(scott, wray)
+	_cap_now("LT. SCOTT", "There's no time to explain. Off to the side!", "open-scott-side")
+	await get_tree().create_timer(2.0).timeout
+	# Scott rises and waves her off to the side; re-lock to the bed playhead.
+	_rise_npc(scott, "idle")
+	if is_instance_valid(wray) and wray.has_method("walk_to"):
+		wray.call("walk_to", Vector3(-11.5, 0.05, GATE_Z - 7.0), 2.8, 0.0)
+	await _await_audio(audio, 17.5)
+	_launch_crate_wave()                       # gear now raining in (after the first people)
+	_cap("LT. SCOTT", "This is Scott — come in!", 18.5, "open-scott-comein")
 
-	# WAVE 4 — Dr Volker.
-	var volker: StaticBody3D = _throw_persistent_crew("Dr Volker", "volker", Vector3(3.5, 0.05, GATE_CONSOLE_Z - 1.0))
-	await get_tree().create_timer(2.2).timeout
-	_settle_persistent_crew(volker, "crouch_idle")
-	# Park & Volker gather themselves, step onto their stations and FACE the consoles
-	# (GateControlConsole at x=-3.5, FTLConsole at x=+3.5, both at z=GATE_CONSOLE_Z).
-	_man_console_after(park, Vector3(-3.5, 0.05, GATE_CONSOLE_Z - 1.1), 1.0)
-	_man_console_after(volker, Vector3(3.5, 0.05, GATE_CONSOLE_Z - 1.1), 1.8)
-	await get_tree().create_timer(0.6).timeout
+	# §1.4 "I NEED A MEDIC" — TJ working the broken-arm man; a crate hits him.
+	# Reveal TJ at the medic pocket and place the wounded man beside her.
+	var tj: StaticBody3D = _world.get_node_or_null("LtJames") as StaticBody3D
+	var medic_spot: Vector3 = Vector3(3.4, 0.05, GATE_Z - 8.0)
+	if tj != null:
+		tj.visible = true
+		if "enabled" in tj: tj.set("enabled", true)
+		tj.global_position = medic_spot
+		_rise_npc(tj, "crouch_idle")
+	var man_spot: Vector3 = medic_spot + Vector3(0.85, 0.0, 0.2)   # close beside TJ
+	var man: StaticBody3D = _co_arrival("Wounded Marine", "", man_spot, man_spot, "hard")
+	_cap("MARINE", "I need a medic!", 20.0, "open-marine-medic")
+	await _await_audio(audio, 23.0)
+	# TIGHT LOW two-shot centred on the pair so TJ + the wounded marine fill the frame
+	# (was a wide shot that blended them into the crouched crowd).
+	var medic_mid: Vector3 = medic_spot.lerp(man_spot, 0.5)
+	_cut_to_spot(medic_mid, 2.1, 0.95, -1.5, 0.6)
+	_cap("TJ", "Over here! Can you move your fingers?", 24.0, "open-tj-fingers")
+	await _await_audio(audio, 27.0)
+	_launch_impact_crate(man, "arm")           # a crate skids in and clips his arm
+	_cap("MARINE", "No. I think my arm is broken.", 29.0, "open-man-broken")
+	_cap("TJ", "Okay, just hold your arm there and we'll put it in a sling, okay?", 32.0, "open-tj-sling")
 
-	# WAVES 5-8 — the rest pour through in pairs (+ crates): 4 soldiers + 4 sci/civ,
-	# real SGU cast names. ALL land further from the gate than Eli will.
-	await _extra_pair("Sgt Greer", "greer", Vector3(5.5, 0.05, 1.0),
-			"Sgt Spencer", "", Vector3(-5.5, 0.05, 0.5))
-	_bark("CREW", "Where are we?", "open-crowd-where")
-	# Greer (not Young) marshals the flood — Young landed unconscious in wave 2.
-	_bark("SGT. GREER", "Move, move, move!", "open-greer-move")
-	await _extra_pair("Dr Brody", "", Vector3(6.2, 0.05, -3.0),
-			"Dr Franklin", "", Vector3(-6.2, 0.05, -2.5))
-	_bark("CREW", "What's going on?", "open-crowd-what")
-	await _extra_pair("Sgt Riley", "", Vector3(4.2, 0.05, -7.0),
-			"Camile Wray", "", Vector3(-4.2, 0.05, -7.5))
-	await _extra_pair("Sgt Dunning", "", Vector3(7.0, 0.05, -1.0),
-			"Chloe Armstrong", "", Vector3(-7.0, 0.05, -0.5))
+	# §1.5 RUSH/ELI + the staircase; Scott marshals; Senator + Chloe arrive.
+	await _await_audio(audio, 36.0)
+	_cut_wide(0.8)
+	_cap("LT. SCOTT", "Clear this area! There could still be more incoming!", 38.0, "open-scott-cleararea")
+	# The Senator comes through, lands HARD and stays down (injured); Chloe scrambles to
+	# him and drops to a KNEE to tend him — a kneeling pair, framed low, not lost among
+	# standing extras. Captions fire via _cap_now once she's posed at his side.
+	await _await_audio(audio, 39.5)
+	# Land the pair in the VACATED central landing zone (crew cleared to the walls),
+	# not the -X transit lane — so no standing extra blocks the downed Senator.
+	var senator_spot: Vector3 = Vector3(-2.5, 0.05, GATE_Z - 5.0)
+	var senator: StaticBody3D = _co_arrival("Senator Armstrong", "", senator_spot, senator_spot, "hard")
+	var chloe_spot: Vector3 = senator_spot + Vector3(-1.2, 0.0, 0.45)
+	var chloe: StaticBody3D = _co_arrival("Chloe Armstrong", "", Vector3(-3.6, 0.05, GATE_Z - 5.6),
+			chloe_spot, "civ")
+	# Tight LOW two-shot on the pair's midpoint — a low angle crops the standing
+	# background crew above the frame so the downed Senator + kneeling Chloe read.
+	var sen_mid: Vector3 = senator_spot.lerp(chloe_spot, 0.5)
+	_cut_to_spot(sen_mid, 1.9, 0.78, 1.5, 0.6)
+	await _await_audio(audio, 44.0)
+	# Guarantee the staged pair is posed by their lines (snap past any walk-in). The
+	# Senator is hurt and DOWN at Chloe's level — the "hard" role leaves the body
+	# upright in a crash clip, so force a low crouch — and Chloe kneels facing him.
+	# Both low → the low two-shot crops the standing background crew above frame.
+	if is_instance_valid(senator):
+		senator.global_position = senator_spot
+		_rise_npc(senator, "crouch_idle")
+		_face_node(senator, chloe)
+	if is_instance_valid(chloe):
+		chloe.global_position = chloe_spot
+		_rise_npc(chloe, "crouch_idle")
+		_face_node(chloe, senator)
+	_cap_now("CHLOE", "Are you okay?", "open-chloe-areyouok")
+	await _await_audio(audio, 47.0)
+	_cap_now("SENATOR", "Yeah.", "open-senator-yeah")
+	await _await_audio(audio, 49.0)
+	if is_instance_valid(chloe):
+		_face_node(chloe, senator)
+	_cap_now("SENATOR", "Where the hell are we?", "open-senator-whereare")
 
-	# FINAL — Eli (solo, the player): last through, lands CLOSEST to the gate of
-	# anyone, then groggily climbs to his feet.
+	# §1.6 "Where's Colonel Young?" — Scott to Greer.
+	await _await_audio(audio, 51.0)
+	var greer: StaticBody3D = _co_arrival("Sgt Greer", "greer", Vector3(4.4, 0.05, GATE_Z - 5.0),
+			Vector3(5.6, 0.05, GATE_Z - 6.5), "mil")
+	# Eli (the player) is delivered last-ish, closest to the gate.
+	await _await_audio(audio, 53.0)
 	var eli_spot: Vector3 = Vector3(-0.6, 0.05, GATE_Z - 6.2)
 	var r_eli: Node3D = _launch_ragdoll("Eli", eli_spot)
 	GameState.add_log("Eli is hurled through and slams into the deck!")
-	await get_tree().create_timer(2.0).timeout
+	_cut_to(scott, 3.2, 1.5, 1.6, 0.5)
+	_cap("LT. SCOTT", "Greer? Where's Colonel Young?", 55.0, "open-scott-greerwhere")
+	await _await_audio(audio, 54.5)
 	if _player != null:
 		_player.global_position = eli_spot
 		_lay_player_prone(true)
 		_show_player_model(true)
 	if is_instance_valid(r_eli): r_eli.queue_free()
 	_thud()
+	_cut_to(greer, 3.0, 1.5, 1.5, 0.5)
+	_cap("SGT. GREER", "He was right behind me.", 58.0, "open-greer-behindme")
 
-	# Gate collapses behind the last arrival.
-	await get_tree().create_timer(0.7).timeout
+	# §1.7 YOUNG arrives HARDEST → a crate clips his head → the gate shuts.
+	await _await_audio(audio, 60.5)
+	# Young soars across the room but lands in the CLEARED central landing zone (not
+	# deep aft where the evac crowd settles) so the command hand-off frames him + Scott,
+	# not a wall of standing extras behind them.
+	var young_spot: Vector3 = Vector3(-2.0, 0.05, GATE_Z - 7.5)
+	var young: StaticBody3D = _co_arrival("Colonel Young", "", young_spot, young_spot, "hard",
+			_world.get_node_or_null("ColonelYoung") as StaticBody3D)
+	_cut_to_spot(young_spot, 3.0, 1.0, 1.6, 0.6)   # low on his landing, not the gate mouth mid-flight
+	await _await_audio(audio, 63.0)
+	_launch_impact_crate(young, "head")        # head wound
+	await _await_audio(audio, 64.0)
+	_cut_wide(0.5)                                     # SEE the gate shut + vent
 	_collapse_gate()
+	_vent_gate_sides()                                 # flame/steam plumes from the gate sides
+	_collapse_blackout()                               # room plunged into darkness; flames glow through
+	_flashlights_during_dark()                         # crew flick on flashlights in the gloom
+	if _cut_cam != null and is_instance_valid(_cut_cam) and _cut_cam.has_method("shake"):
+		_cut_cam.call("shake", 0.22, 0.55)             # the room shudders as the gate snuffs out
+	await _await_audio(audio, 66.0)
+	_cut_follow(greer, Vector3(2.0, 1.6, 3.0))
+	_cap("SGT. GREER", "Move, move, move. Stay calm! Keep it down! Move, move, move, move, move.", 66.0, "open-greer-move")
 
 	# Eli groggily climbs to his feet.
-	await get_tree().create_timer(0.6).timeout
+	await _await_audio(audio, 68.0)
 	_lay_player_prone(false)
-	await get_tree().create_timer(1.7).timeout
 
-	# Closing beat: ship-shudder wonder → Scott can't find Rush → he rounds on Eli
-	# ("Eli! NOW!") and Eli scrambles after him. Still on the cinematic camera so the
-	# yell lands before control snaps back. (#142)
-	await _play_rush_handoff(scott)
+	# §1.8 COMMAND HAND-OFF — Scott crosses to Young; Young passes command; blood; TJ called.
+	_co_command_handoff(scott, young)
+	_cut_follow(scott, Vector3(1.8, 1.5, 3.0))
+	_cap("LT. SCOTT", "Colonel? Colonel?", 72.0, "open-scott-colonel")
+	_cap("SGT. GREER", "Don't move!", 74.0, "open-greer-dontmove")
+	await _await_audio(audio, 76.0)
+	_cut_to(young, 2.2, 0.65, 1.2, 0.6)        # LOW close on Young (floor drama; standing crew sit above frame)
+	_cap("COL. YOUNG", "Where are we? Where are we?", 76.0, "open-young-whereare")
+	_cap("LT. SCOTT", "I don't know, sir.", 78.0, "open-scott-idontknow")
+	_cap("COL. YOUNG", "You're in charge, okay? You're...", 80.0, "open-young-incharge")
+	_cut_to(scott, 2.6, 1.4, 1.4, 0.6)
+	_cap("LT. SCOTT", "Yes, sir.", 83.5, "open-scott-yessir")   # blood-on-the-hand beat
+	_cap("LT. SCOTT", "TJ!", 86.0, "open-scott-tj")
+	_cut_follow(tj, Vector3(1.8, 1.5, 2.8))
+	_cap("TJ", "I'm coming!", 88.0, "open-tj-coming")
+	_cap("SGT. GREER", "Is he okay?", 91.0, "open-greer-isheok")
+	_cap("TJ", "Uh, I dunno.", 93.0, "open-tj-dunno")
 
-	# Hand control back: restore the player camera, wake the consoles (offline →
-	# Ancient glyphs), and release Scott to walk over (auto_greet) and talk.
-	_restore_player_camera(cam)
+	# §1.8b Scott rounds on Eli (Wallace) to find Rush.
+	await _await_audio(audio, 96.0)
+	_cut_to(scott, 3.0, 1.5, 1.5, 0.5)
+	_cap("LT. SCOTT", "Wallace!", 96.0, "open-scott-wallace")
+	_cut_to(_player, 3.0, 1.5, 1.5, 0.5)
+	_cap("LT. SCOTT", "What is this place?", 99.0, "open-scott-whatisplace")
+	_cap("ELI", "Look, I just did what Rush told me.", 101.0, "open-eli-didwhat")
+	_cut_to(scott, 3.0, 1.5, 1.5, 0.5)
+	_cap("LT. SCOTT", "Where is he?", 104.0, "open-scott-whereishe")
+	_cut_to(_player, 3.0, 1.5, 1.5, 0.5)
+	_cap("ELI", "I don't know if he went ahead of me.", 106.0, "open-eli-wentahead")
+	await _await_audio(audio, 108.5)
+	_face_gate(scott)
+	_cut_to(scott, 3.4, 1.6, 1.6, 0.5)
+	_cap("LT. SCOTT", "Rush!", 109.0, "open-scott-rush")
+	_cap("LT. SCOTT", "Rush! Eli, help me find him.", 112.0, "open-scott-findhim")
+	_cap("ELI", "Well, I...", 114.5, "open-eli-welli")
+
+	# §1.9 THE SHIMMER — the ship jumps to FTL (left-right shake + blur), then the button.
+	await _await_audio(audio, 118.0)
+	_ftl_jump()
+	MusicDirector.play_sting("impact_jump")           # musical hit on the FTL lurch
+	MusicDirector.set_mood("mystery")                 # evac panic gives way to awe
+	Cinematic.flash(Color(0.6, 0.8, 1.0, 0.5), 0.6)   # a brief blue shimmer envelops everyone
+	_cut_wide(0.8)
+	_cap("SGT. GREER", "What in the hell was that?!", 120.0, "open-greer-whatwasthat")
+	_cut_to(scott, 3.2, 1.5, 1.6, 0.5)
+	_cap("LT. SCOTT", "I don't know. Sergeant, I need you to get these people settled here. I need you to find out who and what we've got. Nobody leaves this room.", 123.0, "open-scott-settle")
+	_cut_to(greer, 3.0, 1.5, 1.5, 0.5)
+	_cap("SGT. GREER", "Yes, sir.", 133.0, "open-greer-yessir")
+	await _await_audio(audio, 137.0)
+	_face_player(scott)
+	_cut_to(_player, 2.8, 1.5, 1.4, 0.5)
+	_cap("LT. SCOTT", "Eli! Now!", 139.0, "open-scott-elinow")
+
+	# §1.10 THE TAKEOVER — Scott RUNS OFF toward the exit to find Rush, and control
+	# returns to the player AS Eli, to follow him (the SGU hand-off into gameplay).
+	await _await_audio(audio, 142.0)
+	Cinematic.set_caption("")
+	# Scott bolts for the exit archway (the route out to the control room / Rush) — a
+	# fast walk_to reads as a run. He's running OFF to find Rush; Eli gives chase.
+	var exit_spot: Vector3 = Vector3(0.0, 0.05, -room_size.y * 0.5 + 3.5)
+	if is_instance_valid(scott) and scott.has_method("walk_to"):
+		scott.call("walk_to", exit_spot, 5.5, 0.0)   # run speed toward the exit (walk_to faces the heading)
+	# Follow Scott with the cut cam for a beat as he breaks for the door, THEN lift the
+	# bars so the reveal is on Scott already running off.
+	_cut_follow(scott, Vector3(2.2, 1.8, 4.5))
+	await get_tree().create_timer(0.8).timeout
+	await Cinematic.letterbox_out()
+	if is_instance_valid(audio):
+		audio.queue_free()
+	_end_cuts()
+
+	# Hand control to the player AS Eli — Scott is already running off; Eli follows.
+	_restore_player_camera(null)
 	_wake_consoles()
-	_set_scott_autogreet(true)
-
-	# Two-person teams pick themselves up and carry the loose crates to the side walls
-	# (one crew on each side, crate lifted between them) so nobody trips over them.
-	var team_names: Array = [
-		["ReturnTeam_SgtGreer", "ReturnTeam_SgtSpencer"],
-		["ReturnTeam_DrBrody", "ReturnTeam_DrFranklin"],
-		["ReturnTeam_SgtRiley", "ReturnTeam_CamileWray"],
-		["ReturnTeam_SgtDunning", "ReturnTeam_ChloeArmstrong"],
-	]
-	var teams: Array = []
-	for pair in team_names:
-		var a: Node = _world.get_node_or_null(pair[0])
-		var b: Node = _world.get_node_or_null(pair[1])
-		if a != null and b != null:
-			teams.append([a, b])
-	_carry_crates_to_edges(teams)
+	# Cinematic over: restore crew nametags so the player can ID who's who in the
+	# room (anonymous flood extras carry no tag, so only named crew light up).
+	_cold_open_active = false
+	_set_crew_nametags_visible(true)
+	GameState.met_scott = true
+	GameState.advance_air_quest()
+	_set_scott_autogreet(false)
+	# The player regains control here, mid-chase. Wipe the cinematic chatter so the
+	# only standing message is Scott calling Eli after him.
+	GameState.clear_chat()
+	GameState.say("Lt Scott", "Eli — with me! We have to find Rush.")
 
 
 # Throw a pair of crew (and optionally a crate) head-first through the gate, ≤2 in
@@ -720,8 +937,12 @@ func _extra_pair(a_name: String, a_kind: String, a_spot: Vector3,
 # call _settle_persistent_crew() to stop the sim and leave the same body in place.
 func _throw_persistent_crew(display_name: String, kind: String, spot: Vector3,
 		existing: StaticBody3D = null) -> StaticBody3D:
-	# Spawn clear of the ring collider so the body flies cleanly into the room.
-	var origin: Vector3 = Vector3(0.0, _gate_center_y(), GATE_Z - 2.0)
+	# The gate is a PORTAL: crew RUN through it and emerge at FLOOR level from the
+	# BOTTOM of the ring (the puddle meets the deck) — not flung from the centre. Spawn
+	# low, just in front of the gate plane, with a slight random side so they don't all
+	# come through dead-centre. _fly_projectile then carries them low + tumbling.
+	var lateral: float = (float((display_name.hash()) % 7) - 3.0) * 0.35
+	var origin: Vector3 = Vector3(lateral, 0.55, GATE_Z - 1.2)
 	var npc: StaticBody3D = existing
 	if npc == null:
 		# Generic returned-crew body (extras who have no authored scene node).
@@ -766,21 +987,27 @@ func _throw_persistent_crew(display_name: String, kind: String, spot: Vector3,
 func _fly_projectile(npc: StaticBody3D, spot: Vector3, flight: float) -> void:
 	if npc == null or not is_instance_valid(npc):
 		return
+	_splash()   # punch-through the wormhole surface as the body leaves the gate
 	var origin: Vector3 = npc.global_position
 	var g: float = float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
 	var disp: Vector3 = spot - origin
-	# Ballistic solve: horizontal at constant speed; vertical launched so the body
-	# returns to spot.y at t=flight (apex height grows with flight → taller arc).
-	var vel: Vector3 = Vector3(disp.x / flight, (disp.y + 0.5 * g * flight * flight) / flight, disp.z / flight)
+	# RUN-THROUGH-A-PORTAL trajectory: the crew emerge LOW (from the bottom of the gate)
+	# with forward momentum and TUMBLE across the deck — NOT flung from the centre on a
+	# high arc. Horizontal carries them to the landing spot; the vertical pop is CAPPED
+	# low so the arc stays flat (a stumble-and-fall, not a launch). A kinematic arc, not
+	# a thrown ragdoll (the solver bleeds those into a floor-flop). Snapped to spot at end.
+	var vy0: float = clampf((disp.y + 0.5 * g * flight * flight) / flight, 0.0, 3.0)
+	var vel: Vector3 = Vector3(disp.x / flight, vy0, disp.z / flight)
 	var model: Node3D = npc.get_node_or_null("Model") as Node3D
-	# Face-DOWN dive, HEAD pointing along the horizontal travel — held FIXED (no
-	# tumble) so the crew don't flip head-over-heels and so the mesh can't rotate
-	# below the deck. rotation.x = +PI/2 is face-down (same as the player prone); the
-	# yaw is set so the HEAD leads (not feet-first).
 	var yaw: float = atan2(disp.x, disp.z)
+	# Per-body tumble STYLE so arrivals don't all do the same rigid dive:
+	#   0 = forward somersault, 1 = barrel roll (around travel axis), 2 = mixed flail.
+	var style: int = absi(npc.name.hash()) % 3
+	var fwd_spin: float = TAU * (2.0 if style != 1 else 0.6)    # head-over-heels turns (pitch)
+	var roll_spin: float = TAU * (1.6 if style != 0 else 0.0)   # barrel-roll turns (around forward)
 	if model != null and is_instance_valid(model):
-		model.rotation = Vector3(PI * 0.5, yaw, 0.0)
-		model.position.y = 0.1
+		model.rotation = Vector3(PI * 0.35, yaw, 0.0)
+		model.position.y = 0.55
 	var t: float = 0.0
 	while t < flight and is_instance_valid(npc):
 		var dt: float = get_process_delta_time()
@@ -791,6 +1018,15 @@ func _fly_projectile(npc: StaticBody3D, spot: Vector3, flight: float) -> void:
 		# Collision floor: never let the body sink through the deck while airborne.
 		if npc.global_position.y < 0.05:
 			npc.global_position.y = 0.05
+		# Tumble in the air: forward somersault (pitch) + barrel roll (roll), easing
+		# toward a flat sprawl for touchdown so _co_roll_settle's roll clip blends in.
+		if model != null and is_instance_valid(model):
+			var f: float = clampf(t / flight, 0.0, 1.0)
+			var land_blend: float = clampf((f - 0.8) / 0.2, 0.0, 1.0)
+			var pitch: float = PI * 0.35 + fwd_spin * f
+			var roll: float = roll_spin * f * (1.0 - land_blend)
+			model.rotation = Vector3(pitch, yaw, roll)
+			model.position.y = lerpf(0.55, 0.1, land_blend)
 		t += dt
 		await get_tree().process_frame
 	# Arrive exactly on the aimed spot, FACE DOWN. _settle_persistent_crew then either
@@ -858,74 +1094,55 @@ func _first_mc(npc: Node) -> Node3D:
 	return null
 
 
-# Scott, on his feet, turns back toward the gate and radios the rest through —
-# delivered as letterbox closed-captioning (Cinematic autoload) over a baked
-# LuxTTS voice line (his enrolled `scott` voice). Awaitable: the cinematic holds
-# on this beat until the line has played and the bars lift.
-func _scott_radio_line(scott: Node3D) -> void:
-	if scott == null or not is_instance_valid(scott):
-		return
-	# Turn to face the GATE (+Z) — he's calling back through the open wormhole.
-	var gate_pt: Vector3 = Vector3(scott.global_position.x, scott.global_position.y, GATE_Z)
-	if scott.has_method("look_at") and scott.global_position.distance_to(gate_pt) > 0.1:
-		scott.look_at(gate_pt, Vector3.UP)
-	_rise_npc(scott, "idle")   # hold standing while he speaks
-	var line: String = "Okay, it's safe. Start sending people through."
-	GameState.add_log("Lt Scott: %s" % line)
-	GameState.say("Lt Scott", line)  # "Lt Scott: \"...\"" chat line (#141)
-	# Letterbox bars + caption.
-	await Cinematic.letterbox_in()
-	Cinematic.set_caption("LT. SCOTT — \"%s\"" % line)
-	# Voiced line on an AudioStreamPlayer (master bus → Movie Maker captures it too).
-	var vo: AudioStreamPlayer = AudioStreamPlayer.new()
-	vo.name = "ScottRadioVO"
-	add_child(vo)
-	var stream: AudioStream = load("res://sounds/dialog/prologue/scott_clear.wav") as AudioStream
-	var hold: float = 2.6
-	if stream != null:
-		vo.stream = stream
-		vo.play()
-		hold = maxf(stream.get_length() + 0.25, 1.0)
-	# Bounded wait (never blocks on a missing/never-finishing stream).
-	await get_tree().create_timer(hold).timeout
-	Cinematic.set_caption("")
-	await Cinematic.letterbox_out()
-	if is_instance_valid(vo):
-		vo.queue_free()
-
-
-# Cold-open VO lives here; ids match the open-* entries in design/voice-line-manifest.md.
+# The real "Air" cold-open recording, played once as the master soundtrack and
+# anchor for every beat below. The old per-line open-*.wav TTS clips are retired in
+# favour of this single track (left on disk only as a fallback reference).
+const COLD_OPEN_MASTER: String = "res://sounds/dialog/prologue/cold_open_master.mp3"
+# The cold open now plays the Demucs-isolated AMBIENCE bed (music/kawoosh/crowd, the
+# original voices stripped) and layers OUR designed per-character VO clips on top via
+# _cap(...) — so the dialog is our voices, not the recording's. The bed is still the
+# master clock (same 255.3 s timeline as cold_open_master.mp3).
+const COLD_OPEN_BED: String = "res://sounds/dialog/prologue/cold_open_bed.mp3"
 const PROLOGUE_VO_DIR: String = "res://sounds/dialog/prologue/"
 
-# One captioned (optionally voiced) cold-open line. Plays the baked VO at
-# PROLOGUE_VO_DIR + vo_id + ".wav" if it exists; otherwise holds on the caption for
-# `fallback_hold` seconds so the sequence never blocks on un-authored audio. The
-# caller brackets a run of these with a single letterbox_in()/letterbox_out().
-func _cold_open_line(speaker: String, line: String, vo_id: String, fallback_hold: float = 2.2) -> void:
+# Wall-clock anchor (ms) for the cold open, used only when the master stream fails
+# to load so the beats still pace out. Real play reads the audio playhead instead.
+var _cold_open_start_ms: int = 0
+# True for the whole cold-open cinematic. While set, newly-built crew nametags
+# spawn hidden — a cutscene carries NO floating UI labels (captions name the
+# speaker instead). Flipped false at the hand-off, then crew tags are revealed.
+var _cold_open_active: bool = false
+
+
+# Block until the master cold-open track's PLAYHEAD reaches `t` seconds — this is how
+# every visual wave + caption stays locked to the recording instead of free-running
+# on tuned timers. Falls back to a wall-clock measured from _cold_open_start_ms when
+# the stream is missing (so it never hangs and never over-waits cumulatively).
+func _await_audio(player: AudioStreamPlayer, t: float) -> void:
+	if player != null and is_instance_valid(player) and player.stream != null:
+		while is_instance_valid(player) and player.playing and player.get_playback_position() < t:
+			await get_tree().process_frame
+		return
+	var target_ms: int = int(t * 1000.0)
+	while (Time.get_ticks_msec() - _cold_open_start_ms) < target_ms:
+		await get_tree().process_frame
+
+
+# Fire-and-forget caption cue: await the playhead to `at_t`, then subtitle the
+# recording's own line (empty `line` clears the caption). Scheduling these without
+# `await` lets the main flow keep pacing the visual waves while captions land on time.
+func _cap(speaker: String, line: String, at_t: float, vo_id: String = "") -> void:
+	var player: AudioStreamPlayer = get_node_or_null("ColdOpenMaster") as AudioStreamPlayer
+	await _await_audio(player, at_t)
+	if line == "":
+		Cinematic.set_caption("")
+		return
 	GameState.add_log("%s: %s" % [speaker, line])
 	Cinematic.set_caption("%s — \"%s\"" % [speaker, line])
-	var hold: float = fallback_hold
-	var vo: AudioStreamPlayer = null
-	var path: String = PROLOGUE_VO_DIR + vo_id + ".wav"
-	if ResourceLoader.exists(path):
-		var stream: AudioStream = load(path) as AudioStream
-		if stream != null:
-			vo = AudioStreamPlayer.new()
-			vo.name = "ColdOpenVO"
-			add_child(vo)
-			vo.stream = stream
-			vo.play()
-			hold = maxf(stream.get_length() + 0.2, 1.0)
-	await get_tree().create_timer(hold).timeout
-	if vo != null and is_instance_valid(vo):
-		vo.queue_free()
-
-
-# Fire-and-forget cold-open bark: logs the line and plays its baked VO if present
-# (NO caption/letterbox, non-blocking) so marshalling/crowd shouts overlap naturally
-# with the arrival chaos and never perturb the tuned wave timing. (#142)
-func _bark(speaker: String, line: String, vo_id: String) -> void:
-	GameState.add_log("%s: %s" % [speaker, line])
+	# Voiced line (our designed VO) on top of the ambience bed. Fire-and-forget; frees
+	# itself when finished. Lines with no baked clip stay caption-only.
+	if vo_id == "":
+		return
 	var path: String = PROLOGUE_VO_DIR + vo_id + ".wav"
 	if not ResourceLoader.exists(path):
 		return
@@ -933,47 +1150,148 @@ func _bark(speaker: String, line: String, vo_id: String) -> void:
 	if stream == null:
 		return
 	var vo: AudioStreamPlayer = AudioStreamPlayer.new()
-	vo.name = "ColdOpenBark"
-	vo.volume_db = -3.0
+	vo.name = "ColdOpenVO"
 	add_child(vo)
 	vo.stream = stream
 	vo.finished.connect(vo.queue_free)
 	vo.play()
 
 
-# Closing beat of the cold open (issue #142): the ship shudders, Scott can't account
-# for Rush, and he rounds on Eli — "Eli! NOW!" — the button that hands control back to
-# the player and starts the Find-Rush objective. Authored against
-# design/sgu-opening-reference.md. Each beat lights up its baked VO automatically once
-# the matching open-* clip lands in PROLOGUE_VO_DIR; until then it holds on the caption.
-func _play_rush_handoff(scott: Node3D) -> void:
-	await Cinematic.letterbox_in()
+# Show a caption + VO RIGHT NOW (no playhead wait). The opening beat is sequenced by
+# real timers relative to the dial completion + throw-flight (the dial runs on timers,
+# not the bed playhead, so absolute _cap times desync there); this fires each line at
+# the exact staged moment instead.
+func _cap_now(speaker: String, line: String, vo_id: String = "") -> void:
+	if line == "":
+		Cinematic.set_caption("")
+		return
+	GameState.add_log("%s: %s" % [speaker, line])
+	Cinematic.set_caption("%s — \"%s\"" % [speaker, line])
+	if vo_id == "":
+		return
+	var path: String = PROLOGUE_VO_DIR + vo_id + ".wav"
+	if not ResourceLoader.exists(path):
+		return
+	var stream: AudioStream = load(path) as AudioStream
+	if stream == null:
+		return
+	var vo: AudioStreamPlayer = AudioStreamPlayer.new()
+	vo.name = "ColdOpenVO"
+	add_child(vo)
+	vo.stream = stream
+	vo.finished.connect(vo.queue_free)
+	vo.play()
 
-	# The ship shudders — the room turns from evac to wonder.
-	Cinematic.flash(Color(0.7, 0.85, 1.0, 1.0), 0.5)
-	MusicDirector.play_sting("impact_jump")   # the jump hit
-	MusicDirector.set_mood("mystery")          # evac panic gives way to awe
-	await _cold_open_line("CREW", "What the hell was that?", "open-crew-whatwasthat", 1.8)
 
-	# Scott (facing the dead gate) can't account for Rush.
-	if scott != null and is_instance_valid(scott) and scott.has_method("look_at"):
-		var gate_pt: Vector3 = Vector3(scott.global_position.x, scott.global_position.y, GATE_Z)
-		if scott.global_position.distance_to(gate_pt) > 0.1:
-			scott.look_at(gate_pt, Vector3.UP)
-	await _cold_open_line("LT. SCOTT", "I haven't seen Rush. I don't know if he made it through.", "open-scott-norush", 2.6)
-	await _cold_open_line("LT. SCOTT", "Rush! … Rush!", "open-scott-rush", 1.8)
-	await _cold_open_line("LT. SCOTT", "Help me find him.", "open-scott-findhim", 1.6)
+# Turn Scott to face the (dead) gate — he's calling back through the wormhole / for Rush.
+func _face_gate(scott: Node3D) -> void:
+	if scott == null or not is_instance_valid(scott) or not scott.has_method("look_at"):
+		return
+	var pt: Vector3 = Vector3(scott.global_position.x, scott.global_position.y, GATE_Z)
+	if scott.global_position.distance_to(pt) > 0.1:
+		scott.look_at(pt, Vector3.UP)
 
-	# Scott rounds on Eli — the button. Shouted.
-	if scott != null and is_instance_valid(scott) and scott.has_method("look_at") and _player != null:
-		var eli_pt: Vector3 = Vector3(_player.global_position.x, scott.global_position.y, _player.global_position.z)
-		if scott.global_position.distance_to(eli_pt) > 0.1:
-			scott.look_at(eli_pt, Vector3.UP)
-	await _cold_open_line("LT. SCOTT", "Eli! NOW!", "open-scott-eli-now", 1.3)
-	await _cold_open_line("ELI", "Okay! I'm coming!", "open-eli-coming", 1.2)
 
-	Cinematic.set_caption("")
-	await Cinematic.letterbox_out()
+# Turn Scott to face the player (Eli) — for the "Eli! NOW!" button.
+func _face_player(scott: Node3D) -> void:
+	if scott == null or not is_instance_valid(scott) or not scott.has_method("look_at") or _player == null:
+		return
+	var pt: Vector3 = Vector3(_player.global_position.x, scott.global_position.y, _player.global_position.z)
+	if scott.global_position.distance_to(pt) > 0.1:
+		scott.look_at(pt, Vector3.UP)
+
+
+# Turn `node` to face `target` on the horizontal plane (generic version of the two above).
+func _face_node(node: Node3D, target: Node3D) -> void:
+	if node == null or not is_instance_valid(node) or target == null \
+			or not is_instance_valid(target) or not node.has_method("look_at"):
+		return
+	var pt: Vector3 = Vector3(target.global_position.x, node.global_position.y, target.global_position.z)
+	if node.global_position.distance_to(pt) > 0.1:
+		node.look_at(pt, Vector3.UP)
+
+
+# WAVE 1 (fire-and-forget): the pre-built LtScott body flies through, lands kneeling,
+# rises, and turns back to the gate to wave the rest through.
+func _co_wave1_scott(scott: StaticBody3D) -> void:
+	scott = _throw_persistent_crew("Lt Scott", "", Vector3(2.0, 0.05, 2.0), scott)
+	await get_tree().create_timer(1.6).timeout
+	_settle_persistent_crew(scott, "repair")
+	await get_tree().create_timer(1.1).timeout
+	_rise_npc(scott, "idle")
+	await get_tree().create_timer(0.5).timeout
+	_face_gate(scott)
+	# Scott moves toward the crew crashing onto the deck in front of the gate — the
+	# "Get out of the way!" beat (the line plays at ~6 s in _play_prologue_cinematic).
+	if is_instance_valid(scott) and scott.has_method("walk_to"):
+		scott.call("walk_to", Vector3(1.0, 0.05, GATE_Z - 4.5), 2.6, 0.0)
+		await get_tree().create_timer(2.2).timeout
+		if is_instance_valid(scott) and scott.has_method("stop_walk"):
+			scott.call("stop_walk")
+		_face_gate(scott)
+
+
+# WAVE 2 (fire-and-forget): Young thrown hardest (off-screen, stays face-down injured)
+# + Lt James landing in view as the kneeling medic.
+func _co_wave2(young: StaticBody3D) -> void:
+	young = _throw_persistent_crew("Colonel Young", "", Vector3(-3.0, 0.05, -15.0), young)
+	await get_tree().create_timer(0.35).timeout
+	var james: StaticBody3D = _throw_persistent_crew("Lt James", "", Vector3(1.5, 0.05, -2.0))
+	await get_tree().create_timer(2.0).timeout
+	_settle_persistent_crew(young, "facedown")
+	_settle_persistent_crew(james, "repair")
+
+
+# COMMAND HAND-OFF (fire-and-forget): during the post-collapse hush Scott breaks for
+# the downed Young, kneels to check him over, takes his "you're in charge", finds
+# blood on his hand, and calls the medic — who crosses from the medic pocket. Young
+# stays face-down (out cold). Subtitled against the master bed in
+# _play_prologue_cinematic; this only stages the bodies. Every wait is on the audio
+# playhead so it stays locked to the recording (and no-ops via the wall-clock fallback
+# in headless, where the cinematic is skipped entirely).
+func _co_command_handoff(scott: StaticBody3D, young: StaticBody3D) -> void:
+	if not is_instance_valid(scott) or not is_instance_valid(young):
+		return
+	var audio: AudioStreamPlayer = get_node_or_null("ColdOpenMaster") as AudioStreamPlayer
+	# Scott crosses to Young (room-left/gate-side of him) the moment the gate snuffs out.
+	var beside: Vector3 = Vector3(young.global_position.x + 1.6, 0.05, young.global_position.z)
+	await _await_audio(audio, 70.0)
+	if is_instance_valid(scott) and scott.has_method("walk_to"):
+		scott.call("walk_to", beside, 3.2, 0.0)
+	# Arrive, stop, kneel beside him and check him over.
+	await _await_audio(audio, 73.5)
+	if is_instance_valid(scott):
+		if scott.has_method("stop_walk"):
+			scott.call("stop_walk")
+		_face_node(scott, young)
+		_rise_npc(scott, "crouch_idle")
+	# Scott rocks back — blood on his hand — and stands to take charge.
+	await _await_audio(audio, 84.0)
+	if is_instance_valid(scott):
+		_rise_npc(scott, "idle")
+	# The medic breaks from the pocket to Young.
+	await _await_audio(audio, 87.5)
+	var james: StaticBody3D = _world.get_node_or_null("LtJames") as StaticBody3D
+	if is_instance_valid(james):
+		_rise_npc(james, "idle")
+		if james.has_method("walk_to"):
+			james.call("walk_to",
+					Vector3(young.global_position.x - 1.4, 0.05, young.global_position.z), 3.4, 0.0)
+		await get_tree().create_timer(2.2).timeout
+		if is_instance_valid(james):
+			if james.has_method("stop_walk"):
+				james.call("stop_walk")
+			_face_node(james, young)
+			_rise_npc(james, "crouch_idle")
+
+
+# A console scientist (fire-and-forget): flies through, settles low, then steps onto
+# the station and faces the console at x=`console_x`, z=GATE_CONSOLE_Z.
+func _co_console_crew(disp_name: String, kind: String, spot: Vector3, console_x: float) -> void:
+	var n: StaticBody3D = _throw_persistent_crew(disp_name, kind, spot)
+	await get_tree().create_timer(2.2).timeout
+	_settle_persistent_crew(n, "crouch_idle")
+	_man_console_after(n, Vector3(console_x, 0.05, GATE_CONSOLE_Z - 1.1), 1.0)
 
 
 # Play a standing/working clip so a downed crew member rises to their feet. Resets
@@ -1008,7 +1326,72 @@ func _thud() -> void:
 	pl2.stream = _thud_streams[_thud_i % _thud_streams.size()]
 	pl2.pitch_scale = 0.85 + 0.12 * float(_thud_i % 3)   # vary so it's not a metronome
 	pl2.play()
+	# Metallic deck ring layered under the thump — the floor is steel grating, so a
+	# body/crate hitting it clangs, not just thumps. bong_001 is the metal resonance.
+	if _thud_metal == null:
+		var ms: AudioStream = load("res://sounds/bong_001.ogg") as AudioStream
+		if ms != null:
+			_thud_metal = AudioStreamPlayer.new()
+			_thud_metal.stream = ms
+			_thud_metal.volume_db = -11.0
+			add_child(_thud_metal)
+	if _thud_metal != null:
+		_thud_metal.pitch_scale = 0.78 + 0.18 * float(_thud_i % 4)   # deep, varied clang
+		_thud_metal.play()
 	_thud_i += 1
+
+
+# A body or crate breaks the wormhole surface — the "puddle" splash as it punches
+# through the gate. Short watery transient (footstep_water pool, pitched down for
+# mass), so every single arrival is audible over the ambience bed.
+func _splash() -> void:
+	if _splash_streams.is_empty():
+		for p: String in ["res://sounds/footstep_water_00.ogg", "res://sounds/footstep_water_01.ogg",
+				"res://sounds/footstep_water_02.ogg", "res://sounds/footstep_water_03.ogg"]:
+			var s: AudioStream = load(p) as AudioStream
+			if s != null:
+				_splash_streams.append(s)
+		for i in 4:
+			var pl: AudioStreamPlayer = AudioStreamPlayer.new()
+			pl.volume_db = -4.0
+			add_child(pl)
+			_splash_players.append(pl)
+	if _splash_streams.is_empty() or _splash_players.is_empty():
+		return
+	var pl2: AudioStreamPlayer = _splash_players[_splash_i % _splash_players.size()]
+	pl2.stream = _splash_streams[_splash_i % _splash_streams.size()]
+	pl2.pitch_scale = 0.62 + 0.1 * float(_splash_i % 3)   # pitched down = bigger splash
+	pl2.play()
+	_splash_i += 1
+
+
+# Candidate grunt clips (generated via the sound-effects pipeline; any present are
+# used round-robin, and the whole thing no-ops cleanly until they exist on disk).
+const GRUNT_PATHS: Array[String] = [
+	"res://sounds/grunt_01.wav", "res://sounds/grunt_02.wav", "res://sounds/grunt_03.wav",
+]
+
+# A vocal effort grunt as a body slams onto the deck — the human panic layer the
+# no-vocals ambience bed strips out. `_who` is accepted for call-site readability
+# (AudioStreamPlayer is non-positional, so it's unused).
+func _grunt(_who: Node3D = null) -> void:
+	if _grunt_streams.is_empty():
+		for p: String in GRUNT_PATHS:
+			var s: AudioStream = load(p) as AudioStream
+			if s != null:
+				_grunt_streams.append(s)
+		for i in 3:
+			var pl: AudioStreamPlayer = AudioStreamPlayer.new()
+			pl.volume_db = -5.0
+			add_child(pl)
+			_grunt_players.append(pl)
+	if _grunt_streams.is_empty() or _grunt_players.is_empty():
+		return   # no grunt assets yet — silent, never errors
+	var pl2: AudioStreamPlayer = _grunt_players[_grunt_i % _grunt_players.size()]
+	pl2.stream = _grunt_streams[_grunt_i % _grunt_streams.size()]
+	pl2.pitch_scale = 0.9 + 0.13 * float(_grunt_i % 3)
+	pl2.play()
+	_grunt_i += 1
 
 
 # Stand a spawned NPC up after `delay` seconds (fire-and-forget coroutine).
@@ -1119,6 +1502,7 @@ func _launch_crate_wave() -> void:
 # drive it ourselves). It tumbles through the air and lands FLAT on the deck at
 # `target` (which may be on or beside a downed crewman). Returns the crate body.
 func _launch_crate(target: Vector3) -> Node3D:
+	_splash()   # a crate breaks the wormhole surface punching through
 	var crate: StaticBody3D = StaticBody3D.new()
 	crate.name = "ArrivalCrate"
 	crate.collision_layer = 1           # solid once landed (player/crew can't walk through)
@@ -1174,6 +1558,218 @@ func _fly_crate(crate: Node3D, target: Vector3, flight: float) -> void:
 		crate.global_position = land
 		crate.rotation = Vector3.ZERO
 		_thud()
+
+
+# ----- cold-open arrival: roll in → get up → scramble clear -------------------
+
+# Per-character arrival roll clips (imported Mixamo). Scott dives; mil/civ get a
+# varied roll; "hard" crashes (Young, crate victims).
+const ARRIVAL_ROLLS: Array[String] = ["sprint_roll", "roll_to_run", "run_roll", "falling_roll"]
+
+func _arrival_roll_for(role: String, name_hash: int) -> String:
+	match role:
+		"scott": return "dive_roll"
+		"hard":  return "crash"
+		_:       return ARRIVAL_ROLLS[absi(name_hash) % ARRIVAL_ROLLS.size()]
+
+# Build (or reuse `existing`) a crew body, fire it through the gate (kinematic arc),
+# land it, play its assigned ROLL upright, push up with get_up, then scramble to
+# `clear_spot` to dodge incoming crates. Returns the body. `role`: "scott" | "mil" |
+# "civ" | "hard". A "hard" arrival stays down where it lands (crash → prone) — Young.
+# `freeze` drops the body out of _process once settled (cheap nameless extras).
+func _co_arrival(disp_name: String, kind: String, land_spot: Vector3, clear_spot: Vector3,
+		role: String = "mil", existing: StaticBody3D = null, freeze: bool = false) -> StaticBody3D:
+	# _throw_persistent_crew builds/reveals the NPC and fires the ballistic arc.
+	var npc: StaticBody3D = _throw_persistent_crew(disp_name, kind, land_spot, existing)
+	_co_roll_settle(npc, clear_spot, role, freeze)
+	return npc
+
+
+# Post-throw behaviour for an already-launched body: wait out the arc, play the ROLL
+# upright, get up, and scramble to `clear_spot`. Split out so principals can grab the
+# node ref from _throw_persistent_crew synchronously, then fire this and keep going.
+func _co_roll_settle(npc: StaticBody3D, clear_spot: Vector3, role: String = "mil", freeze: bool = false) -> void:
+	await get_tree().create_timer(THROW_FLIGHT_TIME).timeout   # let the arc land
+	if npc == null or not is_instance_valid(npc):
+		return
+	var model: Node3D = npc.get_node_or_null("Model") as Node3D
+	var mc: Node3D = _first_mc(npc)
+	var roll: String = _arrival_roll_for(role, npc.name.hash())
+	# Upright the model so the roll clip drives the pose (the arc left it face-down).
+	if model != null:
+		model.rotation = Vector3(0.0, model.rotation.y, 0.0)
+		model.position.y = 0.0
+	if mc != null and mc.has_method("play_clip"):
+		mc.call("play_clip", roll)
+	_thud()
+	if role == "hard":
+		return   # crashed hard — stays down where it landed
+	await get_tree().create_timer(0.95).timeout
+	if not is_instance_valid(npc):
+		return
+	if mc != null and mc.has_method("play_clip"):
+		mc.call("play_clip", "get_up")
+	await get_tree().create_timer(1.0).timeout
+	# Scramble to the side, out of the landing zone (dodging crates).
+	if is_instance_valid(npc) and npc.has_method("walk_to"):
+		npc.call("walk_to", clear_spot, 3.2, 0.0)
+		await get_tree().create_timer(1.6).timeout
+		if is_instance_valid(npc) and npc.has_method("stop_walk"):
+			npc.call("stop_walk")
+		if is_instance_valid(npc) and mc != null and mc.has_method("play_clip"):
+			# A settled evac crowd is a shell-shocked MIX — most drop to a crouch/knee,
+			# some stay standing — NOT a wall of idle clones at attention. Low poses also
+			# keep heads down so camera cuts to the principals aren't blocked. Deterministic
+			# per body so it's stable across frames. Named principals (not frozen) stay
+			# standing so they read as active.
+			var settle_clip: String = "idle"
+			if freeze:
+				var pool: Array[String] = ["crouch_idle", "repair", "crouch_idle", "crouch_idle", "idle"]
+				settle_clip = pool[absi(npc.name.hash()) % pool.size()]
+			mc.call("play_clip", settle_clip)
+	if freeze and is_instance_valid(npc):
+		npc.set_process(false)   # settled extra — cap cost
+
+
+# Playhead windows where the camera is cut TIGHT on a staged two-shot (the medic
+# tending the marine) — the gate isn't on screen, so we pause spawning so no new
+# arrival walks ACROSS the focus en route to the wall. Invisible (we're not looking
+# at the gate), and it keeps the intimate beats clean.
+const FLOOD_QUIET_WINDOWS: Array = [[22.5, 33.5]]   # medic two-shot
+
+func _flood_quiet(t: float) -> bool:
+	for w in FLOOD_QUIET_WINDOWS:
+		if t >= float(w[0]) and t < float(w[1]):
+			return true
+	return false
+
+# Continuous nameless flood: spawn civ_#/mil_# every ~`gap`s from `from_t` to `to_t`
+# (playhead), each rolling in to a scattered spot then scrambling to the perimeter.
+# Keeps the gate "always flowing" with ~1-2 bodies/sec. Cheap (frozen once settled).
+func _co_crowd_flood(audio: AudioStreamPlayer, from_t: float, to_t: float, gap: float = 0.7) -> void:
+	await _await_audio(audio, from_t)
+	var i: int = 0
+	var t: float = from_t
+	while t < to_t and is_instance_valid(audio):
+		if _flood_quiet(t):
+			t += gap
+			await _await_audio(audio, t)
+			continue
+		var mil: bool = (i % 2) == 0
+		var nm: String = ("mil_%d" % i) if mil else ("civ_%d" % i)
+		# Scatter landings across the front half of the room…
+		var side: float = (-1.0 if (i % 2) else 1.0)
+		var sx: float = side * (2.0 + float(i % 5) * 0.9)
+		var lz: float = GATE_Z - (3.0 + float(i % 6) * 1.4)
+		var land: Vector3 = Vector3(sx * 0.5, 0.05, lz)
+		# …then everyone scrambles ALL the way to the side walls (room half-width 16)
+		# and spreads aft, so the gate mouth + centre landing zone stay clear — nobody
+		# loiters in the arrival path (only the scripted injured stay put). Deeper
+		# arrivals tuck further back along the wall.
+		var clear: Vector3 = Vector3(side * (11.5 + float(i % 4) * 1.2), 0.05,
+				GATE_Z - (6.0 + float(i % 9) * 1.9))
+		_co_arrival(nm, ("greer" if mil else ""), land, clear, ("mil" if mil else "civ"), null, true)
+		i += 1
+		t += gap
+		await _await_audio(audio, t)
+
+
+# ----- cold-open crate impact: REAL RigidBody3D that HITS a victim ------------
+
+const IMPACT_CRATE_TIME: float = 0.55     # ~flight to the victim; sets launch speed
+
+# Hurl a REAL RigidBody crate at `victim` so it physically collides (contact-monitored).
+# On first contact with the victim it fires the scripted wound reaction (`wound`:
+# "arm" = clutch/limp, "head" = down + blood). The crate then tumbles/settles via
+# physics. Returns the crate. Deterministic enough for a headless physics test.
+func _launch_impact_crate(victim: StaticBody3D, wound: String) -> RigidBody3D:
+	_splash()   # the heavy impact crate punches through the wormhole
+	var crate: RigidBody3D = RigidBody3D.new()
+	crate.name = "ImpactCrate"
+	crate.mass = 16.0
+	crate.contact_monitor = true
+	crate.max_contacts_reported = 6
+	crate.collision_layer = 1
+	crate.collision_mask = 1 | 2          # floor, walls, and crew static bodies (layer 1)
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = CRATE_SIZE
+	cs.shape = box
+	crate.add_child(cs)
+	var mi: MeshInstance3D = MeshInstance3D.new()
+	var bm: BoxMesh = BoxMesh.new()
+	bm.size = CRATE_SIZE
+	mi.mesh = bm
+	var mat: StandardMaterial3D = StandardMaterial3D.new()
+	mat.albedo_color = Color(0.30, 0.28, 0.24, 1.0)
+	mat.metallic = 0.2
+	mat.roughness = 0.7
+	mi.material_override = mat
+	crate.add_child(mi)
+	_world.add_child(crate)
+	crate.global_position = Vector3(0.0, _gate_center_y(), GATE_Z - 0.4)
+	_arrival_crates.append(crate)
+	if victim != null and is_instance_valid(victim):
+		var aim: Vector3 = victim.global_position + Vector3(0.0, 0.95, 0.0)
+		var disp: Vector3 = aim - crate.global_position
+		crate.linear_velocity = disp / IMPACT_CRATE_TIME + Vector3.UP * 2.0
+		crate.angular_velocity = Vector3(7.0, 2.0, 4.0)
+		crate.body_entered.connect(_on_impact_crate_hit.bind(crate, victim, wound))
+	return crate
+
+
+func _on_impact_crate_hit(body: Node, crate: RigidBody3D, victim: StaticBody3D, wound: String) -> void:
+	if body != victim or not is_instance_valid(victim):
+		return
+	if crate.get_meta("hit", false):
+		return
+	crate.set_meta("hit", true)
+	_wound_crew(victim, wound)
+	_thud()
+
+
+# Scripted wound reaction (the crew bodies are static — physics doesn't shove them).
+# "arm": clutch and go to a knee (the broken-arm marine). "head": crash flat and stay
+# down with a head-wound mark (Col. Young).
+func _wound_crew(victim: StaticBody3D, wound: String) -> void:
+	if victim == null or not is_instance_valid(victim):
+		return
+	victim.set_meta("wounded", true)
+	var model: Node3D = victim.get_node_or_null("Model") as Node3D
+	var mc: Node3D = _first_mc(victim)
+	if wound == "head":
+		if model != null:
+			model.rotation = Vector3(PI * 0.5, PI, 0.0)   # face-down
+			model.position.y = 0.1
+		if mc != null and mc.has_method("play_clip"):
+			mc.call("play_clip", "idle")
+		_add_head_blood(victim)
+	else:   # "arm"
+		if model != null:
+			model.rotation = Vector3(0.0, model.rotation.y, 0.0)
+			model.position.y = 0.0
+		if mc != null and mc.has_method("play_clip"):
+			mc.call("play_clip", "crouch_idle")   # hunched, favouring the arm
+
+
+# Small dark-red marker at head height to read as a head wound (placeholder VFX).
+func _add_head_blood(victim: Node3D) -> void:
+	if victim == null or not is_instance_valid(victim):
+		return
+	if victim.get_node_or_null("HeadWound") != null:
+		return
+	var blood: MeshInstance3D = MeshInstance3D.new()
+	blood.name = "HeadWound"
+	var sm: SphereMesh = SphereMesh.new()
+	sm.radius = 0.06
+	sm.height = 0.12
+	blood.mesh = sm
+	var bmat: StandardMaterial3D = StandardMaterial3D.new()
+	bmat.albedo_color = Color(0.35, 0.02, 0.02, 1.0)
+	bmat.roughness = 0.3
+	blood.material_override = bmat
+	blood.position = Vector3(0.15, 0.25, 0.0)   # near the head when face-down
+	victim.add_child(blood)
 
 
 const CRATE_CARRY_HEIGHT: float = 1.0     # crate ride height when two crew lift it
@@ -1474,6 +2070,7 @@ func _recover_walker(display_name: String, kind: String, from: Vector3, to: Vect
 # gate (the bones move in world space), so read the landed spot from the hips bone
 # via _ragdoll_rest_pos(). Returns the root so the caller can free it once settled.
 func _launch_ragdoll(character: String, target: Vector3) -> Node3D:
+	_splash()   # the body breaks the wormhole surface (e.g. Eli/Young hurled through)
 	var root: Node3D = _make_ragdoll(character)
 	_world.add_child(root)
 	# Position the body at the event-horizon mouth BEFORE building the bones so they
@@ -1562,7 +2159,7 @@ func _make_cinematic_camera() -> Camera3D:
 	cam.look_at(Vector3(0.0, 1.4, GATE_Z - 9.0), Vector3.UP)
 	cam.make_current()
 	var t: Tween = create_tween()
-	t.tween_property(cam, "global_position:z", end_z, 34.0) \
+	t.tween_property(cam, "global_position:z", end_z, 88.0) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	return cam
 
@@ -1575,6 +2172,93 @@ func _restore_player_camera(cam: Camera3D) -> void:
 			_view.snap_to_target()
 	if cam != null and is_instance_valid(cam):
 		cam.queue_free()
+
+
+# ----- cold-open camera cuts (cut-to-speaker) + FTL jump ----------------------
+
+const StandoffCameraScript: Script = preload("res://scripts/standoff_camera.gd")
+var _cut_cam: Node = null   # active StandoffCamera during the verbatim cold open
+
+# Spin up the cut camera (captures whatever camera is current for restore).
+func _begin_cuts() -> void:
+	if _cut_cam != null and is_instance_valid(_cut_cam):
+		return
+	_cut_cam = StandoffCameraScript.new()
+	_cut_cam.name = "ColdOpenCutCam"
+	add_child(_cut_cam)
+	if _cut_cam.has_method("configure"):
+		_cut_cam.call("configure", 50.0, 0.0)   # centred framing (no dialog window to dodge)
+	if _cut_cam.has_method("activate"):
+		_cut_cam.call("activate")
+
+# Hard-cut/glide to frame `node` (the speaker). side/height/dist compose the shot.
+func _cut_to(node: Node3D, dist: float = 3.4, height: float = 1.5, side: float = 1.6, dur: float = 0.6) -> void:
+	if _cut_cam == null or not is_instance_valid(_cut_cam) or node == null or not is_instance_valid(node):
+		return
+	var look: Vector3 = node.global_position + Vector3.UP * 1.4
+	var pos: Vector3 = node.global_position + Vector3(side, height, dist)
+	if _cut_cam.has_method("frame"):
+		_cut_cam.call("frame", pos, look, dur, 0.05)
+
+# Frame a fixed WORLD spot. Use this for a crew member we cut to in the same breath
+# as _co_arrival(): the body is still at the gate origin mid-flight at that instant,
+# so _cut_to(body) frames the wormhole mouth (fullscreen blue) — cut to where they're
+# LANDING instead and the body rolls into a correctly-composed shot.
+func _cut_to_spot(spot: Vector3, dist: float = 3.4, height: float = 1.5, side: float = 1.6, dur: float = 0.6) -> void:
+	if _cut_cam == null or not is_instance_valid(_cut_cam):
+		return
+	var look: Vector3 = spot + Vector3.UP * 1.2
+	var pos: Vector3 = spot + Vector3(side, height, dist)
+	if _cut_cam.has_method("frame"):
+		_cut_cam.call("frame", pos, look, dur, 0.05)
+
+# Track a moving subject (Scott crossing, TJ crossing in).
+func _cut_follow(node: Node3D, offset: Vector3 = Vector3(1.6, 1.5, 3.0), dur: float = 0.6) -> void:
+	if _cut_cam == null or not is_instance_valid(_cut_cam) or node == null or not is_instance_valid(node):
+		return
+	if _cut_cam.has_method("follow"):
+		_cut_cam.call("follow", node, offset, dur, 1.4)
+
+# Wide establishing shot of the gate/landing zone.
+func _cut_wide(dur: float = 1.0) -> void:
+	if _cut_cam == null or not is_instance_valid(_cut_cam):
+		return
+	var pos: Vector3 = Vector3(0.0, 5.5, GATE_Z - 20.0)
+	var look: Vector3 = Vector3(0.0, 1.4, GATE_Z - 8.0)
+	if _cut_cam.has_method("frame"):
+		_cut_cam.call("frame", pos, look, dur, 0.02)
+
+# The SGU "Air" opening establishing shot: a LOW angle from the back of the dark
+# room looking straight down the amber-lit walkway to the active gate at the far
+# end (matches the reference still). Near-floor camera so the receding floor strips
+# + the bright gate dominate the frame.
+func _cut_establishing(dur: float = 1.0) -> void:
+	if _cut_cam == null or not is_instance_valid(_cut_cam):
+		return
+	var half_z: float = room_size.y * 0.5
+	var pos: Vector3 = Vector3(0.0, 1.0, -half_z + 1.5)
+	var look: Vector3 = Vector3(0.0, 2.4, GATE_Z)
+	if _cut_cam.has_method("frame"):
+		_cut_cam.call("frame", pos, look, dur, 0.0)
+
+func _end_cuts() -> void:
+	if _cut_cam != null and is_instance_valid(_cut_cam):
+		if _cut_cam.has_method("release"):
+			_cut_cam.call("release")
+		_cut_cam.queue_free()
+	_cut_cam = null
+
+# The FTL jump: the ship lurches into faster-than-light. Repeated LEFT-RIGHT shake
+# (shake_y_scale low) + box-blur over the whole world, with the jump whoosh. Spawns
+# the FtlDrop overlay directly (NOT GameState.trigger_ftl_drop, which is gated on the
+# later air-crisis state) so it's purely a cold-open visual.
+const FTL_JUMP_SOUND_COLDOPEN: String = "res://sounds/ftl_jump_destiny.ogg"
+
+func _ftl_jump() -> void:
+	var fx: FtlDrop = FtlDrop.new()
+	fx.sound_path = FTL_JUMP_SOUND_COLDOPEN   # enhanced Destiny FTL-jump whoosh
+	fx.shake_y_scale = 0.2   # bias to a repeated left-right jolt
+	get_tree().root.add_child(fx)
 
 
 # Tip the player's visual body onto its back (prone) or stand it upright. Only
@@ -1785,6 +2469,210 @@ func _stop_anim(root: Node) -> void:
 # Shut the wormhole: drop the forced-open latch, kill the horizon, play the
 # collapse whoosh + fade the dial loop. Returns the room to its dormant, empty,
 # walk-through state for normal gameplay.
+# Script §1.7: as the gate shuts, plumes of flame AND steam vent from either side.
+# Each side gets a fast additive FLAME burst plus a slower, billowing grey STEAM
+# burst — one-shot, brief, fired during the collapse and paired with a wide cut so
+# they're actually on screen. Each burst frees itself after its lifetime.
+func _vent_gate_sides() -> void:
+	var base: Vector3 = Vector3(0.0, 0.4, GATE_Z)
+	for sx: float in [-1.0, 1.0]:
+		var side_pos: Vector3 = base + Vector3(sx * 2.3, 0.0, 0.15)
+		# Flame: fast, additive, hot orange, falls back under gravity.
+		_spawn_vent_burst(side_pos, Vector3(sx * 0.25, 1.0, -0.2), 48, 0.75, 1.1,
+			2.4, 4.6, Vector3(0.0, -1.2, 0.0), 0.25, 0.7, 0.45,
+			Color(1.0, 0.55, 0.2, 0.85), Color(1.0, 0.45, 0.12), 3.5, true)
+		# Steam: slower, billowing, grey, near-buoyant — lingers above the flame.
+		_spawn_vent_burst(side_pos + Vector3(0.0, 0.4, 0.0), Vector3(sx * 0.15, 1.0, -0.15),
+			30, 0.55, 1.8, 1.0, 2.2, Vector3(0.0, 0.2, 0.0), 0.7, 1.5, 0.7,
+			Color(0.72, 0.73, 0.78, 0.32), Color.BLACK, 0.0, false)
+
+
+# Build + fire ONE one-shot particle burst (flame or steam). Frees itself after
+# its lifetime. additive=true → hot/glowing (flame); false → soft alpha (steam).
+func _spawn_vent_burst(pos: Vector3, dir: Vector3, amount: int, explosive: float,
+		life: float, vmin: float, vmax: float, grav: Vector3, smin: float, smax: float,
+		quad_size: float, col: Color, emission: Color, emit_energy: float, additive: bool) -> void:
+	var p: GPUParticles3D = GPUParticles3D.new()
+	p.name = "GateVent"
+	p.amount = amount
+	p.one_shot = true
+	p.explosiveness = explosive
+	p.lifetime = life
+	p.position = pos
+	var pm: ParticleProcessMaterial = ParticleProcessMaterial.new()
+	pm.direction = dir
+	pm.spread = 22.0
+	pm.initial_velocity_min = vmin
+	pm.initial_velocity_max = vmax
+	pm.gravity = grav
+	pm.scale_min = smin
+	pm.scale_max = smax
+	pm.color = col
+	p.process_material = pm
+	var quad: QuadMesh = QuadMesh.new()
+	quad.size = Vector2(quad_size, quad_size)
+	var dm: StandardMaterial3D = StandardMaterial3D.new()
+	dm.albedo_color = col
+	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	dm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	if additive:
+		dm.emission_enabled = true
+		dm.emission = emission
+		dm.emission_energy_multiplier = emit_energy
+		dm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	quad.material = dm
+	p.draw_pass_1 = quad
+	_world.add_child(p)
+	p.emitting = true
+	get_tree().create_timer(life + 1.0).timeout.connect(p.queue_free)
+
+
+# Script §1.7: as the gate snuffs out, the room is plunged into darkness — then
+# recovers. Briefly dims every dynamic light to ~12% and restores, so lit surfaces
+# go dark while the UNSHADED emissive vent flames glow through the gloom. Touches
+# only Light3D energies (snapshotted + restored); the shared Environment resource
+# is left alone. Fire-and-forget coroutine.
+# §1.1: the derelict's lighting flickers on as the gate powers the room. Stutters
+# every dynamic light from near-dark up to full over ~0.8s (a few on/off blips),
+# then settles at full. Snapshots originals so the flicker is relative; no SFX
+# dependency. Fire-and-forget.
+var _flicker_pairs: Array = []
+# Dark-open: the duplicated env + its original ambient energy, so _flicker_lights_up
+# can restore the room ambient it crushed for the establishing shot.
+var _open_env: Environment = null
+var _open_ambient0: float = 1.35
+# The cool-blue ceiling edge-glow strips share ONE material (set in
+# _build_walls_and_ceiling). They're UNSHADED emissive — neither the Light3D crush nor
+# the ambient crush darkens them — so the dark-open must dim this material directly or
+# the establishing shot reads bright (the reference still has a pure-black ceiling line).
+var _glow_mat: StandardMaterial3D = null
+var _glow_energy0: float = 2.6
+
+# Open the cold open DARK: snapshot every dynamic light's energy, then crush them
+# to near-black so the establishing shot + the gate dial play in the SGU gloom (only
+# the gate + amber floor strips glow). _flicker_lights_up() later restores them.
+func _open_dark() -> void:
+	_flicker_pairs = []
+	for ln: Node in find_children("*", "Light3D", true, false):
+		var light: Light3D = ln as Light3D
+		if light != null:
+			_flicker_pairs.append([light, light.light_energy])
+	_apply_flicker_level(0.04)
+	# The room's base glow is the WorldEnvironment AMBIENT (energy 1.35) — dimming the
+	# Light3D nodes alone won't darken it. Crush the ambient too, on a DUPLICATE env so
+	# the shared gate-room-environment.tres isn't mutated. Restored by _flicker_lights_up.
+	var we: WorldEnvironment = get_node_or_null("Environment") as WorldEnvironment
+	if we != null and we.environment != null:
+		we.environment = we.environment.duplicate()
+		_open_env = we.environment
+		_open_ambient0 = _open_env.ambient_light_energy
+		_open_env.ambient_light_energy = _open_ambient0 * 0.10
+	# Snuff the emissive blue ceiling strips too (Light3D/ambient crush can't reach
+	# them) so the ceiling line goes black like the reference; restored on flicker-up.
+	if _glow_mat != null:
+		_glow_energy0 = _glow_mat.emission_energy_multiplier
+		_glow_mat.emission_energy_multiplier = _glow_energy0 * 0.04
+
+
+# §1.1: "a little lighting flickers on." The derelict's lights stutter back up from
+# the dark-open level to full (fired as the crew start flooding through), with the
+# electrical buzz. Uses the energies snapshotted by _open_dark().
+func _flicker_lights_up() -> void:
+	if _flicker_pairs.is_empty():
+		_open_dark()   # safety: snapshot if the dark-open was skipped
+	var fl: AudioStream = load("res://sounds/flicker.ogg") as AudioStream
+	if fl != null:
+		var fp: AudioStreamPlayer = AudioStreamPlayer.new()
+		fp.name = "FlickerSfx"
+		fp.stream = fl
+		fp.volume_db = -6.0
+		add_child(fp)
+		fp.play()
+		fp.finished.connect(fp.queue_free)
+	var t: Tween = create_tween()
+	for level: float in [0.06, 0.55, 0.1, 0.8, 0.25, 1.0, 0.45, 1.0]:
+		t.tween_callback(_apply_flicker_level.bind(level))
+		t.tween_interval(0.1)
+	t.tween_callback(_apply_flicker_level.bind(1.0))   # settle at full
+	# Bring the room ambient back up in step with the lights.
+	if _open_env != null:
+		var et: Tween = create_tween()
+		et.tween_interval(0.3)
+		et.tween_property(_open_env, "ambient_light_energy", _open_ambient0, 0.8)
+	# Flicker the ceiling strips back up with the lights (they were snuffed in _open_dark).
+	if _glow_mat != null:
+		var gt: Tween = create_tween()
+		gt.tween_interval(0.3)
+		gt.tween_property(_glow_mat, "emission_energy_multiplier", _glow_energy0, 0.8)
+
+
+func _apply_flicker_level(level: float) -> void:
+	for pair: Array in _flicker_pairs:
+		if is_instance_valid(pair[0]):
+			(pair[0] as Light3D).light_energy = float(pair[1]) * level
+
+
+func _collapse_blackout() -> void:
+	var pairs: Array = []
+	var dim: Tween = create_tween().set_parallel(true)
+	for ln: Node in find_children("*", "Light3D", true, false):
+		var light: Light3D = ln as Light3D
+		if light == null:
+			continue
+		pairs.append([light, light.light_energy])
+		dim.tween_property(light, "light_energy", light.light_energy * 0.12, 0.3)
+	await get_tree().create_timer(0.8).timeout   # hold the darkness while the flames vent
+	var up: Tween = create_tween().set_parallel(true)
+	for pair: Array in pairs:
+		if is_instance_valid(pair[0]):
+			up.tween_property(pair[0], "light_energy", pair[1], 1.3)
+
+
+# Script §1.7: in the darkness, crew with flashlights switch them on. Two spot
+# beams from perimeter positions cut the gloom toward the arrival zone, fading in
+# with the blackout and out as room lighting recovers, then free themselves.
+func _flashlights_during_dark() -> void:
+	var specs: Array = [
+		[Vector3(7.5, 1.5, GATE_Z - 10.5), Vector3(-0.7, -0.15, 0.4)],
+		[Vector3(-8.0, 1.5, GATE_Z - 9.0), Vector3(0.8, -0.15, 0.45)],
+	]
+	var beams: Array[SpotLight3D] = []
+	for spec: Array in specs:
+		var sl: SpotLight3D = SpotLight3D.new()
+		sl.name = "CrewFlashlight"
+		sl.position = spec[0]
+		sl.light_energy = 0.0
+		sl.light_color = Color(0.86, 0.91, 1.0)
+		sl.spot_range = 15.0
+		sl.spot_angle = 16.0
+		sl.spot_attenuation = 1.3
+		_world.add_child(sl)
+		sl.look_at(sl.global_position + (spec[1] as Vector3), Vector3.UP)
+		beams.append(sl)
+	# Slow back-and-forth yaw sweep so each reads as a held flashlight scanning the
+	# dark, not a static pool. Opposite directions; only rotation.y so the pitch holds.
+	for i: int in beams.size():
+		var b: SpotLight3D = beams[i]
+		var y0: float = b.rotation.y
+		var dir: float = 1.0 if i == 0 else -1.0
+		var sweep: Tween = create_tween()
+		sweep.tween_property(b, "rotation:y", y0 + dir * 0.30, 1.5).set_trans(Tween.TRANS_SINE)
+		sweep.tween_property(b, "rotation:y", y0 - dir * 0.18, 1.4).set_trans(Tween.TRANS_SINE)
+	var up: Tween = create_tween().set_parallel(true)
+	for b: SpotLight3D in beams:
+		up.tween_property(b, "light_energy", 4.5, 0.3)
+	await get_tree().create_timer(1.0).timeout
+	var down: Tween = create_tween().set_parallel(true)
+	for b: SpotLight3D in beams:
+		if is_instance_valid(b):
+			down.tween_property(b, "light_energy", 0.0, 1.3)
+	await get_tree().create_timer(1.6).timeout
+	for b: SpotLight3D in beams:
+		if is_instance_valid(b):
+			b.queue_free()
+
+
 func _collapse_gate() -> void:
 	_gate_forced_open = false
 	_light_chevrons(0)
@@ -2046,6 +2934,34 @@ func _spawn_returned_away_team() -> void:
 # _build_npcs Lt-Scott pattern so the returned trio share that one code path.
 # `kind` picks the dialogue wiring: "scott" (quest-aware repeat line), "greer"
 # (Greer hint script), or "park" (short authored wrap-up).
+# Nameless crowd built by _co_crowd_flood: internal ids, not characters to label.
+func _is_anonymous_extra(display_name: String) -> bool:
+	return display_name.begins_with("mil_") or display_name.begins_with("civ_")
+
+
+# A muted per-civilian clothing tint so the evac crowd's civvies aren't identical
+# cream clones. Deterministic by name hash; deliberately desaturated (a derelict-ship
+# evac, not a parade). Multiplies the cream "Peasant" texture, so values stay <1.
+func _civ_tint(display_name: String) -> Color:
+	var pool: Array[Color] = [
+		Color(0.46, 0.52, 0.60), Color(0.62, 0.46, 0.44),   # dusty blue, faded brick
+		Color(0.50, 0.54, 0.48), Color(0.42, 0.48, 0.52),   # sage, steel
+		Color(0.66, 0.60, 0.48), Color(0.55, 0.50, 0.58),   # khaki, mauve-grey
+	]
+	return pool[absi(display_name.hash()) % pool.size()]
+
+
+# Show/hide every crew nametag in the room at once. Used to strip floating UI
+# labels for the duration of the cold-open cinematic and restore them at the
+# hand-off (so gameplay can still ID Scott/Greer across the room).
+func _set_crew_nametags_visible(vis: bool) -> void:
+	if _world == null:
+		return
+	for tag in _world.find_children("Nametag", "Label3D", true, false):
+		if tag is Label3D:
+			(tag as Label3D).visible = vis
+
+
 func _build_returned_crew_npc(display_name: String, kind: String, glb_path: String,
 		tint: Color) -> StaticBody3D:
 	var body: StaticBody3D = StaticBody3D.new()
@@ -2087,6 +3003,12 @@ func _build_returned_crew_npc(display_name: String, kind: String, glb_path: Stri
 		model_holder.add_child(mc)
 		# Back aboard: ship dress code (duty tint + sidearm for military).
 		CharacterFactoryRef.dress_modular(mc, display_name, CharacterFactoryRef.CTX_SHIP)
+		# Break the identical-civvies look: give each anonymous CIVILIAN extra a muted
+		# per-body clothing tint so the evac crowd reads as varied clothes, not clones.
+		# Military keep their uniform (a uniform SHOULD be uniform). Deterministic by name.
+		if _is_anonymous_extra(display_name) and display_name.begins_with("civ_") \
+				and mc.has_method("tint_clothing"):
+			mc.call("tint_clothing", _civ_tint(display_name))
 	else:
 		model_holder.scale = Vector3(2.6, 2.6, 2.6)
 		var glb: PackedScene = load(CharacterFactoryRef.model_for(display_name, glb_path))
@@ -2099,17 +3021,22 @@ func _build_returned_crew_npc(display_name: String, kind: String, glb_path: Stri
 			# Legacy per-instance tint for unregistered characters.
 			_tint_kenney_model(model_holder, tint)
 
-	var tag: Label3D = Label3D.new()
-	tag.name = "Nametag"
-	tag.text = display_name
-	tag.pixel_size = 0.0042
-	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	tag.outline_size = 6
-	tag.shaded = false
-	tag.modulate = Color(0.95, 0.92, 0.78, 1.0)
-	tag.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
-	tag.position = Vector3(0.0, 2.05, 0.0)
-	body.add_child(tag)
+	# Anonymous flood extras (mil_#/civ_#) are nameless crowd — never stamp their
+	# internal id over their head (the "mil_22 floating over an extra" cinematic
+	# tell). Named crew get a tag, but it spawns hidden during the cold open.
+	if not _is_anonymous_extra(display_name):
+		var tag: Label3D = Label3D.new()
+		tag.name = "Nametag"
+		tag.text = display_name
+		tag.pixel_size = 0.0042
+		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		tag.outline_size = 6
+		tag.shaded = false
+		tag.modulate = Color(0.95, 0.92, 0.78, 1.0)
+		tag.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
+		tag.position = Vector3(0.0, 2.05, 0.0)
+		tag.visible = not _cold_open_active
+		body.add_child(tag)
 	return body
 
 
@@ -2332,6 +3259,49 @@ func _build_floor() -> void:
 	# (Removed the glowing blue floor inlay ring around the gate — it read as a
 	# stray hexagon on the deck. The floor is clean grating now.)
 
+	# Twin rows of AMBER floor lights running down the walkway toward the gate — the
+	# iconic Destiny gate-room look from the SGU "Air" opening establishing shot.
+	_build_floor_light_strips(half_x, half_z)
+
+
+# Two receding rows of amber floor lights flanking the central walkway, marching
+# toward the gate. Emissive (unshaded) segments carry the glow; a few low amber
+# OmniLights per side wash the deck without lifting the room out of its gloom.
+func _build_floor_light_strips(_half_x: float, half_z: float) -> void:
+	var strip_x: float = 3.8                 # walkway half-width
+	var z0: float = -half_z + 2.0            # near the front (exit) wall
+	var z1: float = GATE_Z - 2.6             # stop short of the gate dais
+	var spacing: float = 1.7
+	var amber: Color = Color(1.0, 0.52, 0.14)
+	var seg_mat: StandardMaterial3D = StandardMaterial3D.new()
+	seg_mat.albedo_color = amber
+	seg_mat.emission_enabled = true
+	seg_mat.emission = amber
+	seg_mat.emission_energy_multiplier = 3.4
+	seg_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	var count: int = int((z1 - z0) / spacing)
+	for side: float in [-1.0, 1.0]:
+		for i in range(count + 1):
+			var z: float = z0 + float(i) * spacing
+			var seg: MeshInstance3D = MeshInstance3D.new()
+			seg.name = "FloorStrip"
+			var bm: BoxMesh = BoxMesh.new()
+			bm.size = Vector3(0.5, 0.05, 1.05)
+			seg.mesh = bm
+			seg.material_override = seg_mat
+			seg.position = Vector3(side * strip_x, 0.03, z)   # flush on the floor top (y≈0)
+			_world.add_child(seg)
+		for i in range(4):
+			var lz: float = lerpf(z0, z1, float(i) / 3.0)
+			var l: OmniLight3D = OmniLight3D.new()
+			l.name = "FloorStripGlow"
+			l.light_color = amber
+			l.light_energy = 1.1
+			l.omni_range = 6.5
+			l.shadow_enabled = false
+			l.position = Vector3(side * strip_x, 0.5, lz)
+			_world.add_child(l)
+
 
 func _build_walls_and_ceiling() -> void:
 	var half_x: float = room_size.x * 0.5
@@ -2396,6 +3366,8 @@ func _build_walls_and_ceiling() -> void:
 	glow_mat.emission_energy_multiplier = 2.6
 	glow_mat.metallic = 0.0
 	glow_mat.roughness = 0.4
+	_glow_mat = glow_mat                 # so _open_dark can crush these emissive strips
+	_glow_energy0 = glow_mat.emission_energy_multiplier
 	var strip_thickness: float = 0.18
 	var strip_y: float = ceiling_height - 0.35
 	# +X strip
@@ -3030,6 +4002,7 @@ func _build_npcs() -> void:
 	tag.modulate = Color(0.95, 0.92, 0.78, 1.0)
 	tag.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
 	tag.position = Vector3(0.0, 2.05, 0.0)
+	tag.visible = not _cold_open_active
 	scott.add_child(tag)
 
 	_world.add_child(scott)
@@ -3264,6 +4237,7 @@ func _build_tableau_npc(
 		tag.position = Vector3(0.0, 1.5, 0.0)
 	else:
 		tag.position = Vector3(0.0, 2.05, 0.0)
+	tag.visible = not _cold_open_active
 	body.add_child(tag)
 
 	_world.add_child(body)

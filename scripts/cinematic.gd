@@ -65,14 +65,21 @@ func _build() -> void:
 	_bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_layer.add_child(_bottom)
 
-	# Caption rides on the bottom bar (slides in with it). Subtitle-style.
+	# Subtitle floats in the image JUST ABOVE the bottom bar, not inside it — a
+	# caption parented to the (thin) bar gets pinned to the bar's top edge and
+	# clipped to half-height. Anchoring to the bar's TOP edge (anchor_top/bottom
+	# = 0) and lifting the box upward keeps it readable regardless of bar height.
 	_caption = Label.new()
+	_caption.anchor_left = 0.0
 	_caption.anchor_right = 1.0
-	_caption.anchor_bottom = 1.0
+	_caption.anchor_top = 0.0
+	_caption.anchor_bottom = 0.0
+	_caption.offset_top = -74.0      # box sits 74px above the bar's top edge…
+	_caption.offset_bottom = -10.0   # …down to 10px above it (64px tall band)
 	_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_caption.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
 	_caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_caption.add_theme_font_size_override("font_size", 20)
+	_caption.add_theme_font_size_override("font_size", 24)
 	_caption.add_theme_color_override("font_color", Color(0.95, 0.97, 1.0, 1.0))
 	_caption.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.9))
 	_caption.add_theme_constant_override("outline_size", 5)

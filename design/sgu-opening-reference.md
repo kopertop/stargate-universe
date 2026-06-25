@@ -112,13 +112,20 @@ stages (see waves 1–8 + Eli). Bold = new authoring this issue adds.
    behind him — `_collapse_gate()`.
 6. **The hush → wonder.** Lights/consoles wake (`_wake_consoles()`); the ship shudders.
    **Add** the turn: "What is this place?" → "**What the hell was that?**".
-7. **Hand-off to Rush.** Scott released to greet (`_set_scott_autogreet(true)`). **Add**
-   the Rush hand-off — in the show Young calls it, but our staging has Young unconscious,
-   so **Scott** carries it: "I haven't seen Rush… **Help me find him.**" → then **Scott
-   rounds on Eli and yells "Eli! NOW!"**, Eli answers "Okay! I'm coming!". Both lines play
-   on the cinematic camera; once the hand-off returns, `_restore_player_camera()` snaps
-   control back and `_set_scott_autogreet(true)` walks Scott over to brief the player →
-   `met_scott` → quest `find_rush`, waypoint to the Control Interface Room.
+7. **Hand-off to Rush.** **Scott's auto-greet stays OFF for the whole cold open and is NOT
+   re-enabled at the end** — by the time the recording finishes the player already holds the
+   *Find Rush* objective, so Scott does **not** walk over to brief them ("first stop is the
+   quest, not a Scott chat"). The Rush hand-off — in the show Young calls it, but our Young is
+   unconscious, so **Scott** carries it: "I haven't seen Rush… **Help me find him.**" → then
+   **Scott rounds on Eli and yells "Eli! NOW!"**, Eli answers "Okay! I'm coming!" — plays on
+   the cinematic camera. Once the recording ends, `_restore_player_camera()` snaps control
+   back, `_wake_consoles()` powers Destiny up, then `GameState.met_scott = true` +
+   `GameState.advance_air_quest()` advance `e1_air` `talk_scott → find_rush` (waypoint to the
+   Control Interface Room) with `_set_scott_autogreet(false)`.
+
+   > **Beat-by-beat shot list with timestamps:** see `docs/OPENING_SCENE_SCRIPT.md` (the
+   > authoritative playhead-keyed script). The command hand-off (Young "you're in charge" →
+   > "TJ!" / "Coming!") is staged in the 196–233 s lull by `_co_command_handoff()`.
 
 ---
 

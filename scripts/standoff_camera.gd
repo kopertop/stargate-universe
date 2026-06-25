@@ -29,6 +29,11 @@ var _active: bool = false
 var _track_target: Node3D = null
 var _track_offset: Vector3 = Vector3.ZERO
 var _track_look_height: float = 1.25
+# Brief decaying positional jolt (deterministic sin/cos, no RNG) — e.g. the
+# gate-collapse shudder. Added on top of the composed shot position in _apply.
+var _shake_amp: float = 0.0
+var _shake_t: float = 0.0
+var _shake_dur: float = 0.0
 
 
 func _ready() -> void:
@@ -103,9 +108,19 @@ func follow(target: Node3D, offset: Vector3, dur: float = 1.2, look_height: floa
 	_track_look_height = look_height
 
 
+# A brief decaying camera jolt (gate-collapse shudder). Deterministic so it's
+# stable under Movie Maker; decays to nothing over `dur`.
+func shake(amp: float = 0.18, dur: float = 0.5) -> void:
+	_shake_amp = amp
+	_shake_dur = maxf(dur, 0.01)
+	_shake_t = 0.0
+
+
 func _process(delta: float) -> void:
 	if not _active or _cam == null or not _cam.current:
 		return
+	if _shake_t < _shake_dur:
+		_shake_t += delta
 	if _track_target != null and is_instance_valid(_track_target):
 		_shot_pos = _track_target.global_position + _track_offset
 		_shot_look = _track_target.global_position + Vector3.UP * _track_look_height
@@ -119,6 +134,10 @@ func _apply(a: float) -> void:
 	var pos: Vector3 = _from_pos.lerp(_orbited(_shot_pos), a)
 	var look: Vector3 = _from_look.lerp(_shot_look, a)
 	pos = _pull_clear(pos, look)
+	if _shake_t < _shake_dur and _shake_amp > 0.0:
+		var d: float = 1.0 - (_shake_t / _shake_dur)   # decay
+		var f: float = _shake_t * 60.0
+		pos += Vector3(sin(f * 1.7), cos(f * 2.3), sin(f * 1.1)) * (_shake_amp * d * d)
 	_cam.global_position = pos
 	if pos.distance_to(look) > 0.05:
 		_cam.look_at(look, Vector3.UP)

@@ -51,6 +51,10 @@ signal dialogue_shown(character_name: String, line: String)
 # resources, saves, …). speaker == "" → a white narration / stage-direction line;
 # speaker set → a "Speaker: line" dialogue line. Emit via narrate()/say().
 signal narrative_added(speaker: String, text: String)
+# Wipe the HUD Chat transcript (the HUD listens and clears its chat stream). Used
+# at the cold-open hand-off so the player regains control with a CLEAN chat showing
+# only the single standing instruction, not the whole cinematic's stage-directions.
+signal chat_cleared()
 # Fired by npc.gd when a choice-tree dialog should open. The HUD listens
 # and shows the full-screen DialogScreen targeting `npc`.
 signal kino_closed()
@@ -1089,6 +1093,11 @@ func narrate(text: String) -> void:
 
 func say(speaker: String, text: String) -> void:
 	narrative_added.emit(speaker, text)
+
+
+# Clear the HUD Chat transcript. The HUD wipes its chat stream on this signal.
+func clear_chat() -> void:
+	chat_cleared.emit()
 
 # Resource shims over the Inventory pool. These keep the game-logic side
 # effects (log line, resource_changed signal, quest advance) here while the

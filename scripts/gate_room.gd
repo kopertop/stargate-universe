@@ -542,6 +542,9 @@ func _run_arrival() -> void:
 #     groggily climbs to his feet.
 #   • The gate collapses; James kneels to triage Young; Scott walks over to talk.
 func _play_prologue_cinematic() -> void:
+	# Score the cold open: tense, urgent bed for the evac chaos. Shifts to wonder at the
+	# ship-shudder beat below, then _start_ambient() resolves to ship_calm afterward.
+	MusicDirector.set_mood("tension")
 	_set_arrival_crew_visible(false)
 	# Hold Scott's auto-greet until the cold open is over — otherwise he walks up
 	# and triggers the dialog camera mid-cinematic, hijacking the gate framing.
@@ -948,6 +951,8 @@ func _play_rush_handoff(scott: Node3D) -> void:
 
 	# The ship shudders — the room turns from evac to wonder.
 	Cinematic.flash(Color(0.7, 0.85, 1.0, 1.0), 0.5)
+	MusicDirector.play_sting("impact_jump")   # the jump hit
+	MusicDirector.set_mood("mystery")          # evac panic gives way to awe
 	await _cold_open_line("CREW", "What the hell was that?", "open-crew-whatwasthat", 1.8)
 
 	# Scott (facing the dead gate) can't account for Rush.
@@ -1876,8 +1881,12 @@ func _refresh_gate_state() -> void:
 		_gate_portal.monitoring = gate_open and not _gate_player_locked
 
 func _start_ambient() -> void:
+	# The procedural AmbientHum stays as a quiet sub-bass rumble; the MusicDirector
+	# now owns the actual bed/mood on top of it (ship_calm normally, crisis during the
+	# air-crisis quest steps — refresh() derives which from live world state).
 	if _ambient_sfx != null and not _ambient_sfx.playing:
 		_ambient_sfx.play()
+	MusicDirector.refresh()
 
 # ----- Phase E gate beats ----------------------------------------------------
 

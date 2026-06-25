@@ -1,0 +1,49 @@
+{
+	"_comment": "Composable-music mood table for scripts/music_director.gd. A mood = a set of stems (sounds/music/loops/<id>.ogg) each held at a target volume in dB; set_mood() crossfades the live mix toward it. Stem prompts/list live in tools/music-bake/palette.py. ONE table, no per-mood branching code (collection-fork policy). 0 dB = full; negative = quieter. Missing stem files are tolerated (that track just stays silent) so a half-baked library never crashes the game.",
+
+	"defaults": {
+		"fade_s": 3.0,
+		"duck_db": -10.0,
+		"silence_db": -40.0,
+		"melodic_gap_min": 6.0,
+		"melodic_gap_max": 16.0,
+		"default_room_mood": "ship_calm",
+		"start_mood": "ship_calm"
+	},
+
+	"_melodic_note": "Non-looping stems the director plays once then replays after a randomized rest (lonely-phrase feel). braam_danger is a one-shot impact, so it belongs here too — it surfaces as occasional ominous swells during the crisis, NOT a stuttering loop.",
+	"melodic_stems": ["mel_cello_lonely", "mel_violin_hope", "mel_piano_sparse", "braam_danger"],
+
+	"moods": {
+		"silent":    { "stems": {} },
+		"ship_calm": { "stems": { "bed_ship_warm": 0.0, "pad_strings_warm": -9.0, "mel_piano_sparse": -7.0 } },
+		"mystery":   { "stems": { "bed_ship_warm": -4.0, "pad_shimmer": -5.0, "bed_derelict_cold": -12.0 } },
+		"tension":   { "stems": { "bed_ship_warm": -5.0, "pad_strings_tense": -6.0, "pulse_slow": -10.0 } },
+		"crisis":    { "stems": { "bed_ship_warm": -10.0, "pad_strings_tense": -4.0, "pulse_drive": -6.0, "braam_danger": -16.0 } },
+		"combat":    { "stems": { "perc_action": -3.0, "pulse_drive": -5.0, "pad_strings_tense": -7.0 } },
+		"somber":    { "stems": { "bed_space_vast": -10.0, "mel_cello_lonely": -3.0 } },
+		"planet":    { "stems": { "bed_planet_open": 0.0, "pad_strings_warm": -9.0, "mel_violin_hope": -7.0 } }
+	},
+
+	"crisis_intensity": {
+		"_comment": "While the crisis mood is active, scrubber_level (0..100, lower = worse) lerps these stems' gain: at full charge they sit near min_db (barely there), at empty they reach the mood's authored target. Makes the air crisis musically tighten as O2 drains.",
+		"mood": "crisis",
+		"scale_stems": ["pulse_drive", "braam_danger"],
+		"min_db": -22.0
+	},
+
+	"rooms": {
+		"_comment": "current_room_id -> base mood. Anything not listed uses defaults.default_room_mood. gate_room stays calm here; gate_room.gd overrides it during cinematics.",
+		"breached_section_south": "tension",
+		"sealed_section_north": "mystery",
+		"infirmary": "somber"
+	},
+
+	"quest_steps": {
+		"_comment": "Active quest step -> mood override (beats the room mood). The air-crisis spine plays as crisis until the scrubber is repaired.",
+		"diagnose_life_support": "crisis",
+		"seal_breach": "crisis",
+		"find_scrubber": "crisis",
+		"repair_scrubber": "crisis"
+	}
+}

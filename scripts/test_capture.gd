@@ -43,6 +43,15 @@ func _preset_quest(which: String) -> void:
 		"find_rush":
 			GameState.met_scott = true
 			GameState.advance_air_quest()   # talk_scott → find_rush (met_rush stays false)
+		"coldopen_done":
+			# Post-cold-open gate room: skip the cinematic and drop the player into the
+			# playable hand-off state (Find Rush active), spawned mid-room facing the
+			# exit so the waypoint/minimap guidance toward the control room is framed.
+			GameState.met_scott = true
+			GameState.advance_air_quest()   # → find_rush
+			GameState.skip_arrival_cinematic = true
+			GameState.pending_spawn_position = Vector3(0.0, 0.05, 3.5)
+			GameState.pending_spawn_yaw = 0.0   # face -Z (the exit wall / corridors)
 	print("[test_capture] quest preset=%s step=%s" % [which, GameState.get("quest_step")])
 
 func _process(_delta: float) -> void:

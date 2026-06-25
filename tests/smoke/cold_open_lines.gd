@@ -51,7 +51,29 @@ func _initialize() -> void:
 	test_cold_open_advances_quest_without_scott_walkup(code)
 	test_cold_open_mechanics_wired(code)
 	test_cold_open_nametags_suppressed(code)
+	test_cold_open_skip_wired(code)
 	_report()
+
+
+# Hold-to-skip (2026-06-25): the player can abort the cold open by holding Jump. Guard
+# the load-bearing wiring — the skip flag, the gated wait primitives that let the
+# coroutine unwind, the once-only finalize, and the input detection — so a refactor
+# can't silently drop the ability to skip (or let the hand-off run twice).
+func test_cold_open_skip_wired(code: String) -> void:
+	var needles: Array[String] = [
+		"func _trigger_cold_open_skip(",          # the skip entry point
+		"func _finalize_cold_open(",              # the once-only hand-off
+		"if _co_finalized:",                      # run-exactly-once guard
+		"func _cwait(",                           # gated timer used so a skip collapses pauses
+		"Input.is_action_pressed(\"jump\")",      # hold-Jump detection
+		"_skip_hold_t >= SKIP_HOLD_SEC",          # hold threshold triggers the skip
+		"if _co_skip:",                           # waits/arrivals no-op once skipping
+	]
+	for n: String in needles:
+		if code.find(n) != -1:
+			_passes += 1
+		else:
+			_fail("cold-open hold-to-skip wiring missing: '%s'" % n)
 
 
 # The new staging mechanics must stay wired (rolls, crate-impact physics, camera cuts,

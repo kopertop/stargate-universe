@@ -183,6 +183,9 @@ var _prop_cache: Dictionary = {}
 func _ready() -> void:
 	# Tell the save system this is a real gameplay scene.
 	GameState.current_scene_path = "res://scenes/gate_room.tscn"
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("coldopen_autoskip="):
+			_autoskip_after = arg.substr(18).to_float()
 
 	# Build the room and gate furniture before anything else looks for nodes.
 	_build_floor()
@@ -313,6 +316,25 @@ func _ready() -> void:
 		_start_ambient()
 
 func _process(delta: float) -> void:
+	# Hold-to-skip: during the cold open, holding Jump (Space / gamepad A) for
+	# SKIP_HOLD_SEC aborts the cinematic straight to the playable hand-off.
+	if _cold_open_active and not _co_skip:
+		# Dev/QA: `--cli-arg coldopen_autoskip=<secs>` fires the skip automatically (no
+		# input device in a headless render). Harmless in normal play (arg absent).
+		if _autoskip_after > 0.0:
+			_skip_hold_t += delta
+			if _skip_hold_t >= _autoskip_after:
+				_trigger_cold_open_skip()
+				return
+		if Input.is_action_pressed("jump"):
+			_skip_hold_t += delta
+			_show_skip_hint(true)
+			if _skip_hold_t >= SKIP_HOLD_SEC:
+				_trigger_cold_open_skip()
+		elif _skip_hold_t > 0.0:
+			_skip_hold_t = 0.0
+			_show_skip_hint(true)   # reset the prompt label (drops the progress read-out)
+
 	# While dialing: spin the ring (accelerating, about its facing axis = world Z)
 	# and light the fixed chevrons one-by-one as it locks them in. Runs before
 	# _refresh_gate_state so the dial sequence owns the gate state while active.
@@ -607,7 +629,11 @@ func _play_prologue_cinematic() -> void:
 	# Hide any nametag already in the room (pre-built Scott/James/Young) and arm
 	# the flag so every crew body built mid-flood spawns its tag hidden too.
 	_cold_open_active = true
+	_co_skip = false
+	_co_finalized = false
+	_skip_hold_t = 0.0
 	_set_crew_nametags_visible(false)
+	_show_skip_hint(true)
 
 	# Camera cuts (cut-to-speaker) own the framing for the whole verbatim cold open.
 	# OPEN on the SGU establishing shot: low, down the dark amber-lit walkway to the
@@ -628,6 +654,7 @@ func _play_prologue_cinematic() -> void:
 			bed.set("loop", false)
 		audio.stream = bed
 		audio.play()
+	_co_audio = audio   # so a skip can stop the bed immediately
 
 	# Crush the lights to near-black so the establishing shot + the gate dial play in
 	# the SGU gloom — only the gate and the amber floor strips glow (matches the
@@ -639,12 +666,12 @@ func _play_prologue_cinematic() -> void:
 	# DIAL (≈0.5–3.5s): ring spins → chevrons lock one-by-one (sound per chevron) →
 	# kawoosh. Held on the LOW establishing shot down the dark amber walkway → we land
 	# on the reference image (dark room, active gate at the far end).
-	await get_tree().create_timer(0.5).timeout
+	await _cwait(0.5)
 	await dial_and_open(true)
 
 	# Hold a beat on the dark establishing shot with the gate now ACTIVE — this is the
 	# exact SGU "Air" opening still (black room, amber walkway, bright gate far off).
-	await get_tree().create_timer(1.6).timeout
+	await _cwait(1.6)
 
 	# §1.2 FIRST THROUGH — Scott ALONE. He's flung out of the active wormhole, hits the
 	# deck and GRUNTS (no line yet). Hold WIDE so we see him thrown into the dark room.
@@ -658,7 +685,7 @@ func _play_prologue_cinematic() -> void:
 			Vector3(2.2, 0.05, GATE_Z - 5.5), "scott", _world.get_node_or_null("LtScott") as StaticBody3D)
 	GameState.add_log("Lt Scott comes barrelling through the gate!")
 	GameState.narrate("Lt Scott comes barrelling through the gate!")
-	await get_tree().create_timer(THROW_FLIGHT_TIME + 0.15).timeout
+	await _cwait(THROW_FLIGHT_TIME + 0.15)
 	_grunt(scott)                                # impact grunt as he hits the deck
 	# Frame Scott in the foreground with the GATE behind him (camera on the room side,
 	# looking back toward the wormhole) so the two who follow are SEEN coming through.
@@ -666,20 +693,20 @@ func _play_prologue_cinematic() -> void:
 
 	# §1.3 …a BEAT (~1.1s) later, the first TWO follow him through and scramble aside.
 	# Scott only barks "get out of the way" once there are actually people to clear.
-	await get_tree().create_timer(1.1).timeout
+	await _cwait(1.1)
 	_co_arrival("mil_0", "greer", Vector3(-1.2, 0.05, GATE_Z - 4.0),
 			Vector3(-12.5, 0.05, GATE_Z - 6.0), "mil", null, true)
 	_co_arrival("civ_1", "", Vector3(1.0, 0.05, GATE_Z - 4.6),
 			Vector3(12.5, 0.05, GATE_Z - 7.0), "civ", null, true)
 	_grunt(scott)                                # the two crash in (grunts on the punch-through)
-	await get_tree().create_timer(THROW_FLIGHT_TIME).timeout   # let the two land first
+	await _cwait(THROW_FLIGHT_TIME)            # let the two land first
 	_cut_to(scott, 3.2, 1.5, 1.6, 0.5)
 	_cap_now("LT. SCOTT", "All right, get out of here. Get out of the way!", "open-scott-clearway")
 
 	# §1.3b PANDEMONIUM — NOW the continuous flood ramps as Scott marshals it. Tapers by
 	# ~38s (the named principals keep the gate flowing after) so it's a believable evac
 	# that clears to the walls, not an endless clone-wall.
-	await get_tree().create_timer(2.0).timeout
+	await _cwait(2.0)
 	_cut_wide(0.8)                               # WIDE: the flood + gate + room as one shot
 	var flood_from: float = audio.get_playback_position() if (audio != null and is_instance_valid(audio)) else 9.0
 	_co_crowd_flood(audio, flood_from, 38.0, 0.9)
@@ -688,13 +715,13 @@ func _play_prologue_cinematic() -> void:
 	# KNEEL together amid the chaos as he turns to her and she asks where they are —
 	# staged as a walk-up (not a cut to her landing spot). Timer-paced; we re-lock to
 	# the bed playhead afterward (downstream _cap calls self-heal if it has advanced).
-	await get_tree().create_timer(0.5).timeout
+	await _cwait(0.5)
 	var wray_at_scott: Vector3 = scott.global_position + Vector3(-1.4, 0.0, 0.25)
 	var wray: StaticBody3D = _co_arrival("Camile Wray", "", Vector3(0.2, 0.05, GATE_Z - 4.2),
 			wray_at_scott, "civ")
 	_grunt(wray)
 	_cut_follow(scott, Vector3(2.2, 1.6, -3.6))   # hold on Scott (gate behind) as she crosses to him
-	await get_tree().create_timer(THROW_FLIGHT_TIME + 3.0).timeout   # land, roll up, scramble to his side
+	await _cwait(THROW_FLIGHT_TIME + 3.0)      # land, roll up, scramble to his side
 	if is_instance_valid(wray):
 		_rise_npc(wray, "crouch_idle")            # she drops to a knee beside him
 		_face_node(wray, scott)
@@ -702,10 +729,10 @@ func _play_prologue_cinematic() -> void:
 	_face_node(scott, wray)
 	_cut_to_spot(scott.global_position, 2.6, 1.2, 1.5, 0.5)   # low two-shot of the kneeling pair
 	_cap_now("CAMILE WRAY", "Where are we? Why didn't we come through to Earth?", "open-wray-whereare")
-	await get_tree().create_timer(2.9).timeout
+	await _cwait(2.9)
 	_face_node(scott, wray)
 	_cap_now("LT. SCOTT", "There's no time to explain. Off to the side!", "open-scott-side")
-	await get_tree().create_timer(2.0).timeout
+	await _cwait(2.0)
 	# Scott rises and waves her off to the side; re-lock to the bed playhead.
 	_rise_npc(scott, "idle")
 	if is_instance_valid(wray) and wray.has_method("walk_to"):
@@ -881,24 +908,83 @@ func _play_prologue_cinematic() -> void:
 	# §1.10 THE TAKEOVER — Scott RUNS OFF toward the exit to find Rush, and control
 	# returns to the player AS Eli, to follow him (the SGU hand-off into gameplay).
 	await _await_audio(audio, 142.0)
-	Cinematic.set_caption("")
-	# Scott bolts for the exit archway (the route out to the control room / Rush) — a
-	# fast walk_to reads as a run. He's running OFF to find Rush; Eli gives chase.
-	var exit_spot: Vector3 = Vector3(0.0, 0.05, -room_size.y * 0.5 + 3.5)
-	if is_instance_valid(scott) and scott.has_method("walk_to"):
-		scott.call("walk_to", exit_spot, 5.5, 0.0)   # run speed toward the exit (walk_to faces the heading)
-	# Follow Scott with the cut cam for a beat as he breaks for the door, THEN lift the
-	# bars so the reveal is on Scott already running off.
-	_cut_follow(scott, Vector3(2.2, 1.8, 4.5))
-	await get_tree().create_timer(0.8).timeout
-	await Cinematic.letterbox_out()
-	if is_instance_valid(audio):
-		audio.queue_free()
-	_end_cuts()
+	if not _co_skip:
+		# Theatrical hand-off: follow Scott breaking for the door before the bars lift.
+		Cinematic.set_caption("")
+		var exit_spot: Vector3 = Vector3(0.0, 0.05, -room_size.y * 0.5 + 3.5)
+		if is_instance_valid(scott) and scott.has_method("walk_to"):
+			scott.call("walk_to", exit_spot, 5.5, 0.0)   # run speed toward the exit
+		_cut_follow(scott, Vector3(2.2, 1.8, 4.5))
+		await _cwait(0.8)
+	await _finalize_cold_open()
 
+
+# The cold-open hand-off, run EXACTLY ONCE whether the cinematic played out or was
+# skipped (guarded by _co_finalized). Stops the bed, lifts the bars, restores the
+# player camera, and arms the Find-Rush objective — Scott is left running off toward
+# the exit so the reveal is "Eli gives chase". Both the normal tail and the
+# hold-to-skip path funnel through here.
+# Player held Jump long enough: silence the cinematic and funnel to the hand-off. The
+# still-running coroutine sees _co_skip and unwinds in a frame (gated waits no-op, crew
+# snap to settled spots), then hits the guarded _finalize_cold_open() — which we also
+# call here so the skip resolves immediately even if the coroutine is mid-await.
+func _trigger_cold_open_skip() -> void:
+	if _co_skip:
+		return
+	_co_skip = true
+	if is_instance_valid(_co_audio):
+		_co_audio.stop()
+	_finalize_cold_open()
+
+
+# Show/hide the "Hold to skip" prompt on the HUD layer (built lazily). Reflects hold
+# progress while the button is down so the player knows it's working.
+func _show_skip_hint(show: bool) -> void:
+	var layer: CanvasLayer = get_node_or_null("HUDLayer") as CanvasLayer
+	if layer == null:
+		return
+	var hint: Label = layer.get_node_or_null("SkipHint") as Label
+	if not show:
+		if hint != null:
+			hint.queue_free()
+		return
+	if hint == null:
+		hint = Label.new()
+		hint.name = "SkipHint"
+		hint.add_theme_color_override("font_color", Color(0.85, 0.88, 0.95, 0.75))
+		hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+		hint.add_theme_constant_override("outline_size", 6)
+		hint.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+		hint.position = Vector2(-260.0, -56.0)
+		layer.add_child(hint)
+	if _skip_hold_t > 0.05:
+		hint.text = "Skipping… %d%%" % int(clampf(_skip_hold_t / SKIP_HOLD_SEC, 0.0, 1.0) * 100.0)
+	else:
+		hint.text = "Hold [Space] to skip"
+
+
+func _finalize_cold_open() -> void:
+	if _co_finalized:
+		return
+	_co_finalized = true
+	_show_skip_hint(false)
+	Cinematic.set_caption("")
+	# Make sure Scott is running off to find Rush (the skip path never issued this).
+	var scott_node: Node = _world.get_node_or_null("LtScott")
+	var exit_spot: Vector3 = Vector3(0.0, 0.05, -room_size.y * 0.5 + 3.5)
+	if scott_node != null and is_instance_valid(scott_node) and scott_node.has_method("walk_to"):
+		scott_node.call("walk_to", exit_spot, 5.5, 0.0)
+	if is_instance_valid(_co_audio):
+		_co_audio.queue_free()
+	_co_audio = null
+	# Lights/ambient back to full in case a skip landed during the dark establishing beat.
+	_flicker_lights_up()
+	await Cinematic.letterbox_out()
+	_end_cuts()
 	# Hand control to the player AS Eli — Scott is already running off; Eli follows.
 	_restore_player_camera(null)
 	_wake_consoles()
+	_set_arrival_crew_visible(true)
 	# Cinematic over: restore crew nametags so the player can ID who's who in the
 	# room (anonymous flood extras carry no tag, so only named crew light up).
 	_cold_open_active = false
@@ -1112,6 +1198,27 @@ var _cold_open_start_ms: int = 0
 # spawn hidden — a cutscene carries NO floating UI labels (captions name the
 # speaker instead). Flipped false at the hand-off, then crew tags are revealed.
 var _cold_open_active: bool = false
+# Skip support. Hold the Jump action for SKIP_HOLD_SEC during the cold open to abort:
+# _co_skip makes every wait primitive (_await_audio / _cap / _cwait) and the cut helpers
+# no-op, so the cinematic coroutine unwinds in a single frame — spawning the remaining
+# crew straight into their settled spots — and lands on _finalize_cold_open() (guarded
+# by _co_finalized so the normal end and a skip can't both run the hand-off).
+const SKIP_HOLD_SEC: float = 0.9
+var _co_skip: bool = false
+var _co_finalized: bool = false
+var _co_audio: AudioStreamPlayer = null
+var _skip_hold_t: float = 0.0
+# Dev/QA only: seconds into the cold open to auto-fire the skip (set via the
+# `coldopen_autoskip=<secs>` cmdline arg). 0 = disabled (normal play).
+var _autoskip_after: float = 0.0
+
+
+# Gated wait used by the cold-open coroutine in place of bare create_timer awaits, so a
+# skip collapses every pause to nothing instead of ticking out in real time.
+func _cwait(t: float) -> void:
+	if _co_skip:
+		return
+	await get_tree().create_timer(t).timeout
 
 
 # Block until the master cold-open track's PLAYHEAD reaches `t` seconds — this is how
@@ -1119,6 +1226,8 @@ var _cold_open_active: bool = false
 # on tuned timers. Falls back to a wall-clock measured from _cold_open_start_ms when
 # the stream is missing (so it never hangs and never over-waits cumulatively).
 func _await_audio(player: AudioStreamPlayer, t: float) -> void:
+	if _co_skip:
+		return
 	if player != null and is_instance_valid(player) and player.stream != null:
 		while is_instance_valid(player) and player.playing and player.get_playback_position() < t:
 			await get_tree().process_frame
@@ -1132,8 +1241,12 @@ func _await_audio(player: AudioStreamPlayer, t: float) -> void:
 # recording's own line (empty `line` clears the caption). Scheduling these without
 # `await` lets the main flow keep pacing the visual waves while captions land on time.
 func _cap(speaker: String, line: String, at_t: float, vo_id: String = "") -> void:
+	if _co_skip:
+		return
 	var player: AudioStreamPlayer = get_node_or_null("ColdOpenMaster") as AudioStreamPlayer
 	await _await_audio(player, at_t)
+	if _co_skip:
+		return
 	if line == "":
 		Cinematic.set_caption("")
 		return
@@ -1162,6 +1275,8 @@ func _cap(speaker: String, line: String, at_t: float, vo_id: String = "") -> voi
 # not the bed playhead, so absolute _cap times desync there); this fires each line at
 # the exact staged moment instead.
 func _cap_now(speaker: String, line: String, vo_id: String = "") -> void:
+	if _co_skip:
+		return
 	if line == "":
 		Cinematic.set_caption("")
 		return
@@ -1250,6 +1365,8 @@ func _co_wave2(young: StaticBody3D) -> void:
 # playhead so it stays locked to the recording (and no-ops via the wall-clock fallback
 # in headless, where the cinematic is skipped entirely).
 func _co_command_handoff(scott: StaticBody3D, young: StaticBody3D) -> void:
+	if _co_skip:
+		return
 	if not is_instance_valid(scott) or not is_instance_valid(young):
 		return
 	var audio: AudioStreamPlayer = get_node_or_null("ColdOpenMaster") as AudioStreamPlayer
@@ -1581,6 +1698,13 @@ func _co_arrival(disp_name: String, kind: String, land_spot: Vector3, clear_spot
 		role: String = "mil", existing: StaticBody3D = null, freeze: bool = false) -> StaticBody3D:
 	# _throw_persistent_crew builds/reveals the NPC and fires the ballistic arc.
 	var npc: StaticBody3D = _throw_persistent_crew(disp_name, kind, land_spot, existing)
+	# On skip: don't fly/roll — drop the body straight onto its settled perimeter spot
+	# so the unwinding coroutine populates the room without a shower of late arrivals.
+	if _co_skip:
+		if is_instance_valid(npc):
+			npc.global_position = clear_spot
+			_rise_npc(npc, "idle")
+		return npc
 	_co_roll_settle(npc, clear_spot, role, freeze)
 	return npc
 
@@ -1650,7 +1774,7 @@ func _co_crowd_flood(audio: AudioStreamPlayer, from_t: float, to_t: float, gap: 
 	await _await_audio(audio, from_t)
 	var i: int = 0
 	var t: float = from_t
-	while t < to_t and is_instance_valid(audio):
+	while t < to_t and is_instance_valid(audio) and not _co_skip:
 		if _flood_quiet(t):
 			t += gap
 			await _await_audio(audio, t)

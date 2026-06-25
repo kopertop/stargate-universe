@@ -239,6 +239,13 @@ static var _texture_cache: Dictionary = {}
 
 # --------------------------- profile resolution ----------------------------
 
+# Named crew with an explicit registered profile — the roster the in-game Crew
+# Viewer cycles through (generic keyword fallbacks aren't enumerable). Single source
+# of truth: the PROFILES dictionary keys.
+static func profile_names() -> Array:
+	return PROFILES.keys()
+
+
 static func profile_for(character_name: String) -> Dictionary:
 	if PROFILES.has(character_name):
 		return PROFILES[character_name]

@@ -624,6 +624,10 @@ func _play_prologue_cinematic() -> void:
 		audio.stream = bed
 		audio.play()
 
+	# §1.1: "a little lighting flickers on" — the derelict's lights stutter up from
+	# near-dark to full as the gate powers the room, before the crew start arriving.
+	_lights_flicker_on()
+
 	await Cinematic.letterbox_in()
 
 	# DIAL (≈0.5–3.5s): ring spins → chevrons lock one-by-one (sound per chevron) → kawoosh.
@@ -2479,6 +2483,32 @@ func _spawn_vent_burst(pos: Vector3, dir: Vector3, amount: int, explosive: float
 # go dark while the UNSHADED emissive vent flames glow through the gloom. Touches
 # only Light3D energies (snapshotted + restored); the shared Environment resource
 # is left alone. Fire-and-forget coroutine.
+# §1.1: the derelict's lighting flickers on as the gate powers the room. Stutters
+# every dynamic light from near-dark up to full over ~0.8s (a few on/off blips),
+# then settles at full. Snapshots originals so the flicker is relative; no SFX
+# dependency. Fire-and-forget.
+var _flicker_pairs: Array = []
+
+func _lights_flicker_on() -> void:
+	_flicker_pairs = []
+	for ln: Node in find_children("*", "Light3D", true, false):
+		var light: Light3D = ln as Light3D
+		if light != null:
+			_flicker_pairs.append([light, light.light_energy])
+	_apply_flicker_level(0.06)   # start near-dark
+	var t: Tween = create_tween()
+	for level: float in [0.06, 0.55, 0.1, 0.8, 0.25, 1.0, 0.45, 1.0]:
+		t.tween_callback(_apply_flicker_level.bind(level))
+		t.tween_interval(0.1)
+	t.tween_callback(_apply_flicker_level.bind(1.0))   # settle at full
+
+
+func _apply_flicker_level(level: float) -> void:
+	for pair: Array in _flicker_pairs:
+		if is_instance_valid(pair[0]):
+			(pair[0] as Light3D).light_energy = float(pair[1]) * level
+
+
 func _collapse_blackout() -> void:
 	var pairs: Array = []
 	var dim: Tween = create_tween().set_parallel(true)

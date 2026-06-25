@@ -589,6 +589,9 @@ func _run_arrival() -> void:
 #     the voices; we subtitle them and stage Scott's looks.
 # The old per-line baked TTS clips (open-*.wav) are retired by this single track.
 func _play_prologue_cinematic() -> void:
+	# Score the cold open: tense, urgent bed for the evac chaos. Shifts to wonder at the
+	# ship-shudder beat below, then _start_ambient() resolves to ship_calm afterward.
+	MusicDirector.set_mood("tension")
 	_set_arrival_crew_visible(false)
 	# Hold Scott's auto-greet for the WHOLE cold open — and, per the synced-audio
 	# design, we DON'T turn it back on at the end: by the time the recording finishes
@@ -861,6 +864,8 @@ func _play_prologue_cinematic() -> void:
 	# §1.9 THE SHIMMER — the ship jumps to FTL (left-right shake + blur), then the button.
 	await _await_audio(audio, 118.0)
 	_ftl_jump()
+	MusicDirector.play_sting("impact_jump")           # musical hit on the FTL lurch
+	MusicDirector.set_mood("mystery")                 # evac panic gives way to awe
 	Cinematic.flash(Color(0.6, 0.8, 1.0, 0.5), 0.6)   # a brief blue shimmer envelops everyone
 	_cut_wide(0.8)
 	_cap("SGT. GREER", "What in the hell was that?!", 120.0, "open-greer-whatwasthat")
@@ -2764,8 +2769,12 @@ func _refresh_gate_state() -> void:
 		_gate_portal.monitoring = gate_open and not _gate_player_locked
 
 func _start_ambient() -> void:
+	# The procedural AmbientHum stays as a quiet sub-bass rumble; the MusicDirector
+	# now owns the actual bed/mood on top of it (ship_calm normally, crisis during the
+	# air-crisis quest steps — refresh() derives which from live world state).
 	if _ambient_sfx != null and not _ambient_sfx.playing:
 		_ambient_sfx.play()
+	MusicDirector.refresh()
 
 # ----- Phase E gate beats ----------------------------------------------------
 

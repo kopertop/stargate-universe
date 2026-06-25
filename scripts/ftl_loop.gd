@@ -21,6 +21,10 @@ extends Node
 
 enum Phase { IDLE, SHIP, JUMPING, PLANET }
 
+# Emitted on every phase transition so reactive systems (e.g. MusicDirector) can score
+# the loop without polling. Carries the new Phase enum value.
+signal phase_changed(phase: int)
+
 # ±20 % jitter band applied to both ship and planet durations.
 const JITTER: float = 0.20
 
@@ -83,11 +87,13 @@ func _begin_ship_phase() -> void:
 	var gs: Node = _autoload("GameState")
 	if gs != null:
 		gs.call("add_log", "Destiny is in FTL. Next gate drop in %.0f minutes." % (phase_remaining / 60.0))
+	phase_changed.emit(phase)
 
 
 func _begin_jump() -> void:
 	phase = Phase.JUMPING
 	jump_count += 1
+	phase_changed.emit(phase)
 
 	var gs: Node = _autoload("GameState")
 	if gs != null:
@@ -108,6 +114,7 @@ func _begin_jump() -> void:
 	# Arm the gate (post-episode branch: is_gate_open() returns true when
 	# episode_complete AND gate_window_active — both are now set).
 	phase = Phase.PLANET
+	phase_changed.emit(phase)
 
 	# FTL visual — skip in instant_mode (headless determinism).
 	var router: Node = _autoload("SceneRouter")

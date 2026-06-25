@@ -48,6 +48,7 @@ ShipLayout="*res://scripts/ship_layout.gd"
 ProceduralShip="*res://scripts/procedural_ship.gd"
 RepairRobot="*res://scripts/repair_robot.gd"
 KinoMapCapture="*res://scripts/kino_map_capture.gd"
+MusicDirector="*res://scripts/music_director.gd"
 
 [editor_plugins]
 

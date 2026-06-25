@@ -406,6 +406,26 @@ func set_skin_variant(variant: String) -> void:
 				mi.set_surface_override_material(s, mat)
 
 
+# Recolour the bare-skin body regions (face / hands / neck) by MULTIPLYING `color`
+# over the base skin texture's albedo. The pack's only alternate body texture
+# ("_Dark") is actually a light/tan skin — useless for darker complexions — so a
+# colour multiply is the reliable way to give a character (e.g. Greer) dark skin.
+func set_skin_tint(color: Color) -> void:
+	if _skel == null:
+		_pending.append(["set_skin_tint", [color]])
+		return
+	for region in _region_meshes:
+		var mi: MeshInstance3D = _region_meshes[region]
+		for s in range(mi.mesh.get_surface_count()):
+			var src: Material = mi.get_surface_override_material(s)
+			if src == null:
+				src = mi.mesh.surface_get_material(s)
+			if src is BaseMaterial3D:
+				var mat: BaseMaterial3D = (src as BaseMaterial3D).duplicate()
+				mat.albedo_color = color
+				mi.set_surface_override_material(s, mat)
+
+
 # Multiply a tint over every equipped garment's albedo (ship duty blacks vs
 # natural "field" colors) and optionally the base skin texture variant.
 func tint_clothing(tint: Color) -> void:

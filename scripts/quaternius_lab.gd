@@ -8,6 +8,15 @@ extends Node3D
 #   godot --path . scenes/quaternius_lab.tscn
 
 const ModularScript: Script = preload("res://scripts/modular_character.gd")
+const CharacterFactoryRef: Script = preload("res://scripts/character_factory.gd")
+
+# Dev/QA: `--cli-arg profile=<Name>` builds that registered crew profile (Greer, "Lt
+# James", …) through CharacterFactory instead of the picker default, and `shot=1`
+# auto-captures user://char_probe.png after a few frames then quits — so the crew look
+# can be render-verified headlessly. profile= accepts '+' for spaces ("Lt+James").
+var _probe_profile: String = ""
+var _probe_shot: bool = false
+var _probe_frames: int = 0
 
 var _char: Node3D = null
 var _cam: Camera3D = null
@@ -25,15 +34,44 @@ var _aim_box: CheckBox
 
 
 func _ready() -> void:
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("profile="):
+			_probe_profile = arg.substr(8).replace("+", " ")
+		elif arg == "shot=1" or arg == "shot":
+			_probe_shot = true
 	_build_stage()
 	_build_ui()
-	_rebuild_character()
+	if _probe_profile != "":
+		_build_profile_character(_probe_profile)
+	else:
+		_rebuild_character()
+
+
+# Build a registered crew profile through CharacterFactory (the real in-game path):
+# the modular body + the profile's hair/skin + the ship outfit. Used by the preview
+# hook so the lab shows exactly what the cold open renders.
+func _build_profile_character(profile_name: String) -> void:
+	if _char != null:
+		_char.queue_free()
+	_char = CharacterFactoryRef.build_modular(profile_name)
+	add_child(_char)
+	CharacterFactoryRef.dress_modular(_char, profile_name, CharacterFactoryRef.CTX_SHIP)
+	_turntable = true
 
 
 func _process(delta: float) -> void:
 	if _turntable and _char != null:
 		_char.rotation.y += delta * 0.7
 	_update_camera()
+	if _probe_shot:
+		_probe_frames += 1
+		if _probe_frames == 1:
+			_char.rotation.y = 0.0   # face camera for the shot
+		if _probe_frames >= 30:
+			var img: Image = get_viewport().get_texture().get_image()
+			img.save_png("user://char_probe.png")
+			print("[quaternius_lab] saved user://char_probe.png profile=%s" % _probe_profile)
+			get_tree().quit()
 
 
 func _unhandled_input(event: InputEvent) -> void:

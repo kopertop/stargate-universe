@@ -200,8 +200,11 @@ const PROFILES: Dictionary = {
 		"mod": {"gender": "Male", "hair": "Hair_Beard", "hair_color": Color(0.30, 0.24, 0.18)}},
 	"Dr Park": {"model": "park", "ship": "civvies", "mission": "fatigues", "military": false,
 		"mod": {"gender": "Female", "hair": "Hair_Buns", "hair_color": Color(0.08, 0.07, 0.07)}},
+	# TJ (Lt/Dr James, Tamara Johansen) is a BLONDE woman — long blonde hair, not the
+	# near-black buzz she shipped with. The pack has no curly mesh, so Hair_Long is the
+	# closest available; hair_color is a warm blonde. Both James entries share the look.
 	"Dr James": {"model": "james", "ship": "civvies", "mission": "fatigues", "military": false,
-		"mod": {"gender": "Female", "hair": "Hair_Long", "hair_color": Color(0.42, 0.27, 0.14)}},
+		"mod": {"gender": "Female", "hair": "Hair_Long", "hair_color": Color(0.83, 0.69, 0.40)}},
 	"Chloe Armstrong": {"model": "chloe", "ship": "civvies", "mission": "fatigues", "military": false,
 		"mod": {"gender": "Female", "hair": "Hair_Long", "hair_color": Color(0.45, 0.32, 0.16)}},
 	"Lt Scott": {"model": "scott", "vrm": "res://models/vrm/scott.vrm", "ship": "duty_black", "mission": "combat", "military": true,
@@ -211,12 +214,12 @@ const PROFILES: Dictionary = {
 	"Sgt Greer": {
 		"model": "greer", "ship": "duty_black", "mission": "combat", "military": true,
 		"skin": Color(0.46, 0.28, 0.18), "hair": Color(0.10, 0.09, 0.08),
-		"mod": {"gender": "Male", "hair": "Hair_Buzzed", "skin": "Dark", "hair_color": Color(0.05, 0.05, 0.05)},
+		"mod": {"gender": "Male", "hair": "Hair_Buzzed", "skin_tint": Color(0.40, 0.24, 0.16), "hair_color": Color(0.05, 0.05, 0.05)},
 	},
 	"Colonel Young": {"model": "young", "ship": "duty_black", "mission": "combat", "military": true,
 		"mod": {"gender": "Male", "hair": "Hair_Buzzed", "hair_color": Color(0.35, 0.30, 0.26)}},
 	"Lt James": {"model": "lt_james", "ship": "duty_black", "mission": "combat", "military": true,
-		"mod": {"gender": "Female", "hair": "Hair_BuzzedFemale", "hair_color": Color(0.10, 0.08, 0.07)}},
+		"mod": {"gender": "Female", "hair": "Hair_Long", "hair_color": Color(0.83, 0.69, 0.40)}},
 }
 
 # Modular outfit loadouts per mini-outfit id: which Quaternius outfit family
@@ -382,6 +385,10 @@ static func dress_modular(c: Node3D, character_name: String, context: String = C
 		c.call("tint_slot", String(slot), style["tints"][slot])
 	if String(mod.get("skin", "")) != "":
 		c.call("set_skin_variant", String(mod["skin"]))
+	# Skin recolour by multiply (reliable darker complexions — the pack's "_Dark"
+	# body texture is actually light/tan). Applied after any variant swap.
+	if mod.has("skin_tint"):
+		c.call("set_skin_tint", mod["skin_tint"])
 	c.call("set_sidearm", bool(loadout["sidearm"]), false)
 	c.call("set_rifle", bool(loadout["rifle"]), false)
 

@@ -2516,6 +2516,15 @@ func _flashlights_during_dark() -> void:
 		_world.add_child(sl)
 		sl.look_at(sl.global_position + (spec[1] as Vector3), Vector3.UP)
 		beams.append(sl)
+	# Slow back-and-forth yaw sweep so each reads as a held flashlight scanning the
+	# dark, not a static pool. Opposite directions; only rotation.y so the pitch holds.
+	for i: int in beams.size():
+		var b: SpotLight3D = beams[i]
+		var y0: float = b.rotation.y
+		var dir: float = 1.0 if i == 0 else -1.0
+		var sweep: Tween = create_tween()
+		sweep.tween_property(b, "rotation:y", y0 + dir * 0.30, 1.5).set_trans(Tween.TRANS_SINE)
+		sweep.tween_property(b, "rotation:y", y0 - dir * 0.18, 1.4).set_trans(Tween.TRANS_SINE)
 	var up: Tween = create_tween().set_parallel(true)
 	for b: SpotLight3D in beams:
 		up.tween_property(b, "light_energy", 4.5, 0.3)

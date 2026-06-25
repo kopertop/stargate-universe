@@ -49,6 +49,10 @@ func _preset_quest(which: String) -> void:
 			GameState.advance_air_quest()   # → find_rush
 			GameState.met_rush = true
 			GameState.advance_air_quest()   # → find_rest
+		"air_crisis":
+			# Air crisis active, no breach sealed yet → ShipAlert.is_alert_active()
+			# returns true, so rooms render under the red-alert tint (the breach beat).
+			GameState.air_crisis_started = true
 		"coldopen_done":
 			# Post-cold-open gate room: skip the cinematic and drop the player into the
 			# playable hand-off state (Find Rush active), spawned mid-room facing the

@@ -572,5 +572,38 @@
     "assignable": false,
     "authored_setdressing": true,
     "key_room": true
+  },
+  {
+    "id": "quarters",
+    "display_name": "Crew Quarters",
+    "category": "preset",
+    "template_id": "quarters-template",
+    "max_count": 1,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": true,
+    "key_room": true,
+    "setdressing": {
+      "accent_color": [0.95, 0.86, 0.72],
+      "hero_props": [
+        {
+          "glb": "res://models/props/space_station_kit/container-tall.glb",
+          "pos": [3.4, 0.0, -4.6],
+          "yaw": 0.0,
+          "scale": 2.0,
+          "tint": [0.44, 0.47, 0.52]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/container-tall.glb",
+          "pos": [-3.6, 0.0, -4.6],
+          "yaw": 3.14159,
+          "scale": 2.0,
+          "tint": [0.40, 0.43, 0.49]
+        }
+      ],
+      "accent_lights": [
+        {"pos": [0.0, 3.0, 0.0], "energy": 1.8, "range": 12.0}
+      ]
+    }
   }
 ]

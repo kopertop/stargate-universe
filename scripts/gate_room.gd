@@ -794,9 +794,9 @@ func _play_prologue_cinematic() -> void:
 	_cut_wide(0.5)                                     # SEE the gate shut + vent
 	_collapse_gate()
 	_vent_gate_sides()                                 # flame/steam plumes from the gate sides
+	_collapse_blackout()                               # room plunged into darkness; flames glow through
 	if _cut_cam != null and is_instance_valid(_cut_cam) and _cut_cam.has_method("shake"):
 		_cut_cam.call("shake", 0.22, 0.55)             # the room shudders as the gate snuffs out
-	Cinematic.flash(Color(1.0, 0.6, 0.25, 1.0), 0.5)
 	await _await_audio(audio, 66.0)
 	_cut_follow(greer, Vector3(2.0, 1.6, 3.0))
 	_cap("SGT. GREER", "Move, move, move. Stay calm! Keep it down! Move, move, move, move, move.", 66.0, "open-greer-move")
@@ -2471,6 +2471,27 @@ func _spawn_vent_burst(pos: Vector3, dir: Vector3, amount: int, explosive: float
 	_world.add_child(p)
 	p.emitting = true
 	get_tree().create_timer(life + 1.0).timeout.connect(p.queue_free)
+
+
+# Script §1.7: as the gate snuffs out, the room is plunged into darkness — then
+# recovers. Briefly dims every dynamic light to ~12% and restores, so lit surfaces
+# go dark while the UNSHADED emissive vent flames glow through the gloom. Touches
+# only Light3D energies (snapshotted + restored); the shared Environment resource
+# is left alone. Fire-and-forget coroutine.
+func _collapse_blackout() -> void:
+	var pairs: Array = []
+	var dim: Tween = create_tween().set_parallel(true)
+	for ln: Node in find_children("*", "Light3D", true, false):
+		var light: Light3D = ln as Light3D
+		if light == null:
+			continue
+		pairs.append([light, light.light_energy])
+		dim.tween_property(light, "light_energy", light.light_energy * 0.12, 0.3)
+	await get_tree().create_timer(0.8).timeout   # hold the darkness while the flames vent
+	var up: Tween = create_tween().set_parallel(true)
+	for pair: Array in pairs:
+		if is_instance_valid(pair[0]):
+			up.tween_property(pair[0], "light_energy", pair[1], 1.3)
 
 
 func _collapse_gate() -> void:

@@ -794,6 +794,8 @@ func _play_prologue_cinematic() -> void:
 	_cut_wide(0.5)                                     # SEE the gate shut + vent
 	_collapse_gate()
 	_vent_gate_sides()                                 # flame/steam plumes from the gate sides
+	if _cut_cam != null and is_instance_valid(_cut_cam) and _cut_cam.has_method("shake"):
+		_cut_cam.call("shake", 0.22, 0.55)             # the room shudders as the gate snuffs out
 	Cinematic.flash(Color(1.0, 0.6, 0.25, 1.0), 0.5)
 	await _await_audio(audio, 66.0)
 	_cut_follow(greer, Vector3(2.0, 1.6, 3.0))

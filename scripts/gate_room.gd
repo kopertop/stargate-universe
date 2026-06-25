@@ -607,8 +607,10 @@ func _play_prologue_cinematic() -> void:
 	_set_crew_nametags_visible(false)
 
 	# Camera cuts (cut-to-speaker) own the framing for the whole verbatim cold open.
+	# OPEN on the SGU establishing shot: low, down the dark amber-lit walkway to the
+	# gate at the far end — held through the dial so we arrive on the reference still.
 	_begin_cuts()
-	_cut_wide(0.5)
+	_cut_establishing(0.5)
 
 	# THE soundtrack: the ~165s ambience BED, played ONCE. _cold_open_start_ms anchors
 	# the wall-clock fallback if the stream fails (real play has it; headless skips this
@@ -624,21 +626,31 @@ func _play_prologue_cinematic() -> void:
 		audio.stream = bed
 		audio.play()
 
-	# §1.1: "a little lighting flickers on" — the derelict's lights stutter up from
-	# near-dark to full as the gate powers the room, before the crew start arriving.
-	_lights_flicker_on()
+	# Crush the lights to near-black so the establishing shot + the gate dial play in
+	# the SGU gloom — only the gate and the amber floor strips glow (matches the
+	# reference still). _flicker_lights_up() restores them as the crew flood in.
+	_open_dark()
 
 	await Cinematic.letterbox_in()
 
-	# DIAL (≈0.5–3.5s): ring spins → chevrons lock one-by-one (sound per chevron) → kawoosh.
+	# DIAL (≈0.5–3.5s): ring spins → chevrons lock one-by-one (sound per chevron) →
+	# kawoosh. Held on the LOW establishing shot down the dark amber walkway → we land
+	# on the reference image (dark room, active gate at the far end).
 	await get_tree().create_timer(0.5).timeout
 	await dial_and_open(true)
+
+	# Hold a beat on the dark establishing shot with the gate now ACTIVE — this is the
+	# exact SGU "Air" opening still (black room, amber walkway, bright gate far off).
+	await get_tree().create_timer(1.6).timeout
 
 	# §1.2 FIRST THROUGH — Scott ALONE. He's flung out of the active wormhole, hits the
 	# deck and GRUNTS (no line yet). Hold WIDE so we see him thrown into the dark room.
 	# This beat is paced by real timers off the dial + throw-flight (NOT the bed
 	# playhead — the dial runs on timers, so absolute playhead cues desync here).
 	_cut_wide(0.6)
+	# §1.1: "a little lighting flickers on" — the derelict's lights stutter up to full
+	# now, as the first crew come barrelling through (not before — the dial is dark).
+	_flicker_lights_up()
 	var scott: StaticBody3D = _co_arrival("Lt Scott", "", Vector3(1.6, 0.05, GATE_Z - 4.5),
 			Vector3(2.2, 0.05, GATE_Z - 5.5), "scott", _world.get_node_or_null("LtScott") as StaticBody3D)
 	GameState.add_log("Lt Scott comes barrelling through the gate!")
@@ -2191,6 +2203,19 @@ func _cut_wide(dur: float = 1.0) -> void:
 	if _cut_cam.has_method("frame"):
 		_cut_cam.call("frame", pos, look, dur, 0.02)
 
+# The SGU "Air" opening establishing shot: a LOW angle from the back of the dark
+# room looking straight down the amber-lit walkway to the active gate at the far
+# end (matches the reference still). Near-floor camera so the receding floor strips
+# + the bright gate dominate the frame.
+func _cut_establishing(dur: float = 1.0) -> void:
+	if _cut_cam == null or not is_instance_valid(_cut_cam):
+		return
+	var half_z: float = room_size.y * 0.5
+	var pos: Vector3 = Vector3(0.0, 1.0, -half_z + 1.5)
+	var look: Vector3 = Vector3(0.0, 2.4, GATE_Z)
+	if _cut_cam.has_method("frame"):
+		_cut_cam.call("frame", pos, look, dur, 0.0)
+
 func _end_cuts() -> void:
 	if _cut_cam != null and is_instance_valid(_cut_cam):
 		if _cut_cam.has_method("release"):
@@ -2488,14 +2513,38 @@ func _spawn_vent_burst(pos: Vector3, dir: Vector3, amount: int, explosive: float
 # then settles at full. Snapshots originals so the flicker is relative; no SFX
 # dependency. Fire-and-forget.
 var _flicker_pairs: Array = []
+# Dark-open: the duplicated env + its original ambient energy, so _flicker_lights_up
+# can restore the room ambient it crushed for the establishing shot.
+var _open_env: Environment = null
+var _open_ambient0: float = 1.35
 
-func _lights_flicker_on() -> void:
+# Open the cold open DARK: snapshot every dynamic light's energy, then crush them
+# to near-black so the establishing shot + the gate dial play in the SGU gloom (only
+# the gate + amber floor strips glow). _flicker_lights_up() later restores them.
+func _open_dark() -> void:
 	_flicker_pairs = []
 	for ln: Node in find_children("*", "Light3D", true, false):
 		var light: Light3D = ln as Light3D
 		if light != null:
 			_flicker_pairs.append([light, light.light_energy])
-	# Electrical flicker buzz under the visual stutter (frees itself when done).
+	_apply_flicker_level(0.04)
+	# The room's base glow is the WorldEnvironment AMBIENT (energy 1.35) — dimming the
+	# Light3D nodes alone won't darken it. Crush the ambient too, on a DUPLICATE env so
+	# the shared gate-room-environment.tres isn't mutated. Restored by _flicker_lights_up.
+	var we: WorldEnvironment = get_node_or_null("Environment") as WorldEnvironment
+	if we != null and we.environment != null:
+		we.environment = we.environment.duplicate()
+		_open_env = we.environment
+		_open_ambient0 = _open_env.ambient_light_energy
+		_open_env.ambient_light_energy = _open_ambient0 * 0.10
+
+
+# §1.1: "a little lighting flickers on." The derelict's lights stutter back up from
+# the dark-open level to full (fired as the crew start flooding through), with the
+# electrical buzz. Uses the energies snapshotted by _open_dark().
+func _flicker_lights_up() -> void:
+	if _flicker_pairs.is_empty():
+		_open_dark()   # safety: snapshot if the dark-open was skipped
 	var fl: AudioStream = load("res://sounds/flicker.ogg") as AudioStream
 	if fl != null:
 		var fp: AudioStreamPlayer = AudioStreamPlayer.new()
@@ -2505,12 +2554,16 @@ func _lights_flicker_on() -> void:
 		add_child(fp)
 		fp.play()
 		fp.finished.connect(fp.queue_free)
-	_apply_flicker_level(0.06)   # start near-dark
 	var t: Tween = create_tween()
 	for level: float in [0.06, 0.55, 0.1, 0.8, 0.25, 1.0, 0.45, 1.0]:
 		t.tween_callback(_apply_flicker_level.bind(level))
 		t.tween_interval(0.1)
 	t.tween_callback(_apply_flicker_level.bind(1.0))   # settle at full
+	# Bring the room ambient back up in step with the lights.
+	if _open_env != null:
+		var et: Tween = create_tween()
+		et.tween_interval(0.3)
+		et.tween_property(_open_env, "ambient_light_energy", _open_ambient0, 0.8)
 
 
 func _apply_flicker_level(level: float) -> void:
@@ -3160,6 +3213,49 @@ func _build_floor() -> void:
 	body.add_child(cs)
 	# (Removed the glowing blue floor inlay ring around the gate — it read as a
 	# stray hexagon on the deck. The floor is clean grating now.)
+
+	# Twin rows of AMBER floor lights running down the walkway toward the gate — the
+	# iconic Destiny gate-room look from the SGU "Air" opening establishing shot.
+	_build_floor_light_strips(half_x, half_z)
+
+
+# Two receding rows of amber floor lights flanking the central walkway, marching
+# toward the gate. Emissive (unshaded) segments carry the glow; a few low amber
+# OmniLights per side wash the deck without lifting the room out of its gloom.
+func _build_floor_light_strips(_half_x: float, half_z: float) -> void:
+	var strip_x: float = 3.8                 # walkway half-width
+	var z0: float = -half_z + 2.0            # near the front (exit) wall
+	var z1: float = GATE_Z - 2.6             # stop short of the gate dais
+	var spacing: float = 1.7
+	var amber: Color = Color(1.0, 0.52, 0.14)
+	var seg_mat: StandardMaterial3D = StandardMaterial3D.new()
+	seg_mat.albedo_color = amber
+	seg_mat.emission_enabled = true
+	seg_mat.emission = amber
+	seg_mat.emission_energy_multiplier = 3.4
+	seg_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	var count: int = int((z1 - z0) / spacing)
+	for side: float in [-1.0, 1.0]:
+		for i in range(count + 1):
+			var z: float = z0 + float(i) * spacing
+			var seg: MeshInstance3D = MeshInstance3D.new()
+			seg.name = "FloorStrip"
+			var bm: BoxMesh = BoxMesh.new()
+			bm.size = Vector3(0.5, 0.05, 1.05)
+			seg.mesh = bm
+			seg.material_override = seg_mat
+			seg.position = Vector3(side * strip_x, 0.03, z)   # flush on the floor top (y≈0)
+			_world.add_child(seg)
+		for i in range(4):
+			var lz: float = lerpf(z0, z1, float(i) / 3.0)
+			var l: OmniLight3D = OmniLight3D.new()
+			l.name = "FloorStripGlow"
+			l.light_color = amber
+			l.light_energy = 1.1
+			l.omni_range = 6.5
+			l.shadow_enabled = false
+			l.position = Vector3(side * strip_x, 0.5, lz)
+			_world.add_child(l)
 
 
 func _build_walls_and_ceiling() -> void:

@@ -43,6 +43,12 @@ func _preset_quest(which: String) -> void:
 		"find_rush":
 			GameState.met_scott = true
 			GameState.advance_air_quest()   # talk_scott → find_rush (met_rush stays false)
+		"find_rest":
+			# Past the Rush standoff: Eli heads to his quarters to cool off.
+			GameState.met_scott = true
+			GameState.advance_air_quest()   # → find_rush
+			GameState.met_rush = true
+			GameState.advance_air_quest()   # → find_rest
 		"coldopen_done":
 			# Post-cold-open gate room: skip the cinematic and drop the player into the
 			# playable hand-off state (Find Rush active), spawned mid-room facing the

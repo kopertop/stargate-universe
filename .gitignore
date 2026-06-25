@@ -1,6 +1,9 @@
 dist
 node_modules
 bun.lock
+.env
+.env*
+.local
 
 # Session state (ephemeral)
 production/session-state/

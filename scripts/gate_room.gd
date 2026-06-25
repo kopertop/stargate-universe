@@ -932,8 +932,12 @@ func _extra_pair(a_name: String, a_kind: String, a_spot: Vector3,
 # call _settle_persistent_crew() to stop the sim and leave the same body in place.
 func _throw_persistent_crew(display_name: String, kind: String, spot: Vector3,
 		existing: StaticBody3D = null) -> StaticBody3D:
-	# Spawn clear of the ring collider so the body flies cleanly into the room.
-	var origin: Vector3 = Vector3(0.0, _gate_center_y(), GATE_Z - 2.0)
+	# The gate is a PORTAL: crew RUN through it and emerge at FLOOR level from the
+	# BOTTOM of the ring (the puddle meets the deck) — not flung from the centre. Spawn
+	# low, just in front of the gate plane, with a slight random side so they don't all
+	# come through dead-centre. _fly_projectile then carries them low + tumbling.
+	var lateral: float = (float((display_name.hash()) % 7) - 3.0) * 0.35
+	var origin: Vector3 = Vector3(lateral, 0.55, GATE_Z - 1.2)
 	var npc: StaticBody3D = existing
 	if npc == null:
 		# Generic returned-crew body (extras who have no authored scene node).
@@ -982,20 +986,23 @@ func _fly_projectile(npc: StaticBody3D, spot: Vector3, flight: float) -> void:
 	var origin: Vector3 = npc.global_position
 	var g: float = float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
 	var disp: Vector3 = spot - origin
-	# Ballistic solve: horizontal at constant speed; vertical launched so the body
-	# returns to spot.y at t=flight (apex height grows with flight → taller arc).
-	var vel: Vector3 = Vector3(disp.x / flight, (disp.y + 0.5 * g * flight * flight) / flight, disp.z / flight)
+	# RUN-THROUGH-A-PORTAL trajectory: the crew emerge LOW (from the bottom of the gate)
+	# with forward momentum and TUMBLE across the deck — NOT flung from the centre on a
+	# high arc. Horizontal carries them to the landing spot; the vertical pop is CAPPED
+	# low so the arc stays flat (a stumble-and-fall, not a launch). A kinematic arc, not
+	# a thrown ragdoll (the solver bleeds those into a floor-flop). Snapped to spot at end.
+	var vy0: float = clampf((disp.y + 0.5 * g * flight * flight) / flight, 0.0, 3.0)
+	var vel: Vector3 = Vector3(disp.x / flight, vy0, disp.z / flight)
 	var model: Node3D = npc.get_node_or_null("Model") as Node3D
-	# Tuck-and-roll OUT of the wormhole: the body follows a clean kinematic arc (NOT a
-	# thrown ragdoll — the solver bleeds those into a floor-flop), while the MODEL
-	# somersaults forward head-over-heels. The head leads (yaw along travel) and the
-	# spin is exactly TWO full turns, so it lands face-down (PI/2 + 2·TAU ≡ PI/2) with
-	# no snap. The pivot rides at torso height mid-air, easing to the feet for landing.
 	var yaw: float = atan2(disp.x, disp.z)
-	var spins: float = TAU * 2.0
+	# Per-body tumble STYLE so arrivals don't all do the same rigid dive:
+	#   0 = forward somersault, 1 = barrel roll (around travel axis), 2 = mixed flail.
+	var style: int = absi(npc.name.hash()) % 3
+	var fwd_spin: float = TAU * (2.0 if style != 1 else 0.6)    # head-over-heels turns (pitch)
+	var roll_spin: float = TAU * (1.6 if style != 0 else 0.0)   # barrel-roll turns (around forward)
 	if model != null and is_instance_valid(model):
-		model.rotation = Vector3(PI * 0.5, yaw, 0.0)
-		model.position.y = 0.9
+		model.rotation = Vector3(PI * 0.35, yaw, 0.0)
+		model.position.y = 0.55
 	var t: float = 0.0
 	while t < flight and is_instance_valid(npc):
 		var dt: float = get_process_delta_time()
@@ -1006,11 +1013,15 @@ func _fly_projectile(npc: StaticBody3D, spot: Vector3, flight: float) -> void:
 		# Collision floor: never let the body sink through the deck while airborne.
 		if npc.global_position.y < 0.05:
 			npc.global_position.y = 0.05
-		# Drive the forward tumble; unwind the torso pivot to the feet for touchdown.
+		# Tumble in the air: forward somersault (pitch) + barrel roll (roll), easing
+		# toward a flat sprawl for touchdown so _co_roll_settle's roll clip blends in.
 		if model != null and is_instance_valid(model):
 			var f: float = clampf(t / flight, 0.0, 1.0)
-			model.rotation = Vector3(PI * 0.5 + spins * f, yaw, 0.0)
-			model.position.y = lerpf(0.9, 0.1, clampf((f - 0.82) / 0.18, 0.0, 1.0))
+			var land_blend: float = clampf((f - 0.8) / 0.2, 0.0, 1.0)
+			var pitch: float = PI * 0.35 + fwd_spin * f
+			var roll: float = roll_spin * f * (1.0 - land_blend)
+			model.rotation = Vector3(pitch, yaw, roll)
+			model.position.y = lerpf(0.55, 0.1, land_blend)
 		t += dt
 		await get_tree().process_frame
 	# Arrive exactly on the aimed spot, FACE DOWN. _settle_persistent_crew then either

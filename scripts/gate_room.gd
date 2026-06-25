@@ -873,16 +873,25 @@ func _play_prologue_cinematic() -> void:
 	_cut_to(_player, 2.8, 1.5, 1.4, 0.5)
 	_cap("LT. SCOTT", "Eli! Now!", 139.0, "open-scott-elinow")
 
-	# End: drop the bars, release the cut camera, hand control back.
+	# §1.10 THE TAKEOVER — Scott RUNS OFF toward the exit to find Rush, and control
+	# returns to the player AS Eli, to follow him (the SGU hand-off into gameplay).
 	await _await_audio(audio, 142.0)
 	Cinematic.set_caption("")
+	# Scott bolts for the exit archway (the route out to the control room / Rush) — a
+	# fast walk_to reads as a run. He's running OFF to find Rush; Eli gives chase.
+	var exit_spot: Vector3 = Vector3(0.0, 0.05, -room_size.y * 0.5 + 3.5)
+	if is_instance_valid(scott) and scott.has_method("walk_to"):
+		scott.call("walk_to", exit_spot, 5.5, 0.0)   # run speed toward the exit (walk_to faces the heading)
+	# Follow Scott with the cut cam for a beat as he breaks for the door, THEN lift the
+	# bars so the reveal is on Scott already running off.
+	_cut_follow(scott, Vector3(2.2, 1.8, 4.5))
+	await get_tree().create_timer(0.8).timeout
 	await Cinematic.letterbox_out()
 	if is_instance_valid(audio):
 		audio.queue_free()
 	_end_cuts()
 
-	# Hand control back. The player ALREADY holds the Find-Rush quest — Scott does NOT
-	# walk over to brief them. Mark him met and advance e1_air talk_scott → find_rush.
+	# Hand control to the player AS Eli — Scott is already running off; Eli follows.
 	_restore_player_camera(null)
 	_wake_consoles()
 	# Cinematic over: restore crew nametags so the player can ID who's who in the
@@ -892,10 +901,10 @@ func _play_prologue_cinematic() -> void:
 	GameState.met_scott = true
 	GameState.advance_air_quest()
 	_set_scott_autogreet(false)
-	# The player regains control here. Wipe the cinematic's chatter so the ONLY chat
-	# message standing is Scott's instruction — the single thing to act on next.
+	# The player regains control here, mid-chase. Wipe the cinematic chatter so the
+	# only standing message is Scott calling Eli after him.
 	GameState.clear_chat()
-	GameState.say("Lt Scott", "Eli, help me find Rush.")
+	GameState.say("Lt Scott", "Eli — with me! We have to find Rush.")
 
 
 # Throw a pair of crew (and optionally a crate) head-first through the gate, ≤2 in

@@ -595,10 +595,13 @@ func _run_arrival() -> void:
 
 	await _play_prologue_cinematic()
 
-	_start_ambient()
-	if _player != null and _player.has_method("set_input_locked"):
-		_player.set_input_locked(false)
-	_arrival_running = false
+	# A skip funnels this same cleanup through _finalize_cold_open() already, so only
+	# run it here for a cinematic that played out to the end.
+	if not _co_finalized:
+		_start_ambient()
+		if _player != null and _player.has_method("set_input_locked"):
+			_player.set_input_locked(false)
+		_arrival_running = false
 
 
 # The cold open — now driven by the REAL "Air" recording (sounds/dialog/prologue/
@@ -943,29 +946,31 @@ func _trigger_cold_open_skip() -> void:
 
 
 # Show/hide the "Hold to skip" prompt on the HUD layer (built lazily). Reflects hold
-# progress while the button is down so the player knows it's working.
+# progress while the button is down so the player knows it's working. The label is
+# cached (_skip_hint) so the per-frame progress update during a hold doesn't re-scan
+# the HUDLayer node path each frame.
 func _show_skip_hint(show: bool) -> void:
-	var layer: CanvasLayer = get_node_or_null("HUDLayer") as CanvasLayer
-	if layer == null:
-		return
-	var hint: Label = layer.get_node_or_null("SkipHint") as Label
 	if not show:
-		if hint != null:
-			hint.queue_free()
+		if _skip_hint != null and is_instance_valid(_skip_hint):
+			_skip_hint.queue_free()
+		_skip_hint = null
 		return
-	if hint == null:
-		hint = Label.new()
-		hint.name = "SkipHint"
-		hint.add_theme_color_override("font_color", Color(0.85, 0.88, 0.95, 0.75))
-		hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
-		hint.add_theme_constant_override("outline_size", 6)
-		hint.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-		hint.position = Vector2(-260.0, -56.0)
-		layer.add_child(hint)
+	if _skip_hint == null or not is_instance_valid(_skip_hint):
+		var layer: CanvasLayer = get_node_or_null("HUDLayer") as CanvasLayer
+		if layer == null:
+			return
+		_skip_hint = Label.new()
+		_skip_hint.name = "SkipHint"
+		_skip_hint.add_theme_color_override("font_color", Color(0.85, 0.88, 0.95, 0.75))
+		_skip_hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+		_skip_hint.add_theme_constant_override("outline_size", 6)
+		_skip_hint.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+		_skip_hint.position = Vector2(-260.0, -56.0)
+		layer.add_child(_skip_hint)
 	if _skip_hold_t > 0.05:
-		hint.text = "Skipping… %d%%" % int(clampf(_skip_hold_t / SKIP_HOLD_SEC, 0.0, 1.0) * 100.0)
+		_skip_hint.text = "Skipping… %d%%" % int(clampf(_skip_hold_t / SKIP_HOLD_SEC, 0.0, 1.0) * 100.0)
 	else:
-		hint.text = "Hold [Space] to skip"
+		_skip_hint.text = "Hold [Space] to skip"
 
 
 func _finalize_cold_open() -> void:
@@ -1020,11 +1025,9 @@ func _finalize_cold_open() -> void:
 	# room (anonymous flood extras carry no tag, so only named crew light up).
 	_cold_open_active = false
 	_set_crew_nametags_visible(true)
-	# Run _run_arrival's post-cinematic cleanup HERE too: a skip funnels through finalize
-	# while the awaited coroutine may not have returned yet, so don't wait on it. Clearing
-	# _arrival_running lets _refresh_gate_state run again each frame and snuff the gate
-	# (gate_open is false post-cold-open); unlock movement; start the ambient bed.
-	_arrival_running = false
+	# Finish _run_arrival's post-cinematic cleanup here (a skip funnels through finalize
+	# before the awaited coroutine returns): unlock movement and start the ambient bed.
+	# (_arrival_running was already cleared above so _refresh_gate_state snuffed the gate.)
 	if _player != null and _player.has_method("set_input_locked"):
 		_player.set_input_locked(false)
 	_start_ambient()
@@ -1247,6 +1250,7 @@ var _co_skip: bool = false
 var _co_finalized: bool = false
 var _co_audio: AudioStreamPlayer = null
 var _skip_hold_t: float = 0.0
+var _skip_hint: Label = null   # cached "Hold to skip" HUD label (built lazily)
 # Dev/QA only: seconds into the cold open to auto-fire the skip (set via the
 # `coldopen_autoskip=<secs>` cmdline arg). 0 = disabled (normal play).
 var _autoskip_after: float = 0.0

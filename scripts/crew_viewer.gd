@@ -350,21 +350,28 @@ func _refresh_labels() -> void:
 	]
 
 
+# Hair STYLE and OUTFIT swap the equipped GLB parts, so they need a rebuild. Hair
+# COLOUR and SKIN tone are just material recolours on the already-built body — call the
+# light setters directly instead of reloading every part GLB on each nudge.
 func _cycle_hair() -> void:
 	_hair_i = (_hair_i + 1) % HAIR_STYLES.size()
-	_rebuild_char()
-
-func _cycle_haircol() -> void:
-	_haircol_i = (_haircol_i + 1) % HAIR_COLORS.size()
-	_rebuild_char()
-
-func _cycle_skin() -> void:
-	_skin_i = (_skin_i + 1) % SKIN_TONES.size()
 	_rebuild_char()
 
 func _cycle_ctx() -> void:
 	_ctx_i = (_ctx_i + 1) % CONTEXTS.size()
 	_rebuild_char()
+
+func _cycle_haircol() -> void:
+	_haircol_i = (_haircol_i + 1) % HAIR_COLORS.size()
+	if _char != null and is_instance_valid(_char) and HAIR_STYLES[_hair_i] != "(none)":
+		_char.call("set_hair_color", HAIR_COLORS[_haircol_i][1])
+	_refresh_labels()
+
+func _cycle_skin() -> void:
+	_skin_i = (_skin_i + 1) % SKIN_TONES.size()
+	if _char != null and is_instance_valid(_char):
+		_char.call("set_skin_tint", SKIN_TONES[_skin_i][1])   # WHITE = pack default (identity multiply)
+	_refresh_labels()
 
 
 # Put the current tweaks on the clipboard as a profile `"mod"` snippet so they can be

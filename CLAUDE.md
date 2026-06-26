@@ -13,7 +13,7 @@ _Snapshot — refresh with `/help`. Last updated: 2026-05-21._
 - **Done:** Concept, Systems Design (15 GDDs in `design/gdd/`), engine pivot to Godot 4.6, E1 gate-room slice + headless smoke tests
 - **Sprint format:** Task tables in `production/sprints/sprint-NNN.md` (no `production/epics/` hierarchy)
 - **Sprints 1–4 archived:** `production/sprints/archive-browser-stack/` — all pre-pivot Three.js work. Do not resume; conceptual notes folded into design GDDs + memory.
-- **Tech debt — not blocking:** missing `docs/architecture/architecture.md`, `docs/architecture/control-manifest.md`, `design/accessibility-requirements.md` (4 ADRs exist in `docs/architecture/`)
+- **Tech debt:** tracked in `docs/tech-debt-register.md`. Architecture docs now exist (`docs/architecture/architecture.md`, `control-manifest.md`, `design/accessibility-requirements.md`, 4 ADRs); `codebase-dependency-graph.md` is stale (lists 8 autoloads; 26 exist).
 
 ## Engine
 

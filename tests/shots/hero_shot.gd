@@ -38,11 +38,22 @@ func _run() -> void:
 	for i in wait_frames:
 		await process_frame
 
-	var cam := root.get_viewport().get_camera_3d()
+	# Camera fallback: scene's Camera3D may not register in headless mode.
+	# Use config from gate_room_hero.gd (CAM_POS, CAM_LOOK_Y, GATE_Z).
+	var cam: Camera3D = root.get_viewport().get_camera_3d()
 	if cam != null:
 		print("CAM pos=", cam.global_position, " fwd=", -cam.global_transform.basis.z)
 	else:
-		print("SHOT_WARN no camera")
+		# Fallback camera targeting the gate from below (low angle, cavernous hall).
+		# These values match gate_room_hero.gd config: CAM_POS(-19, 2.6), CAM_LOOK_Y(9.2), GATE_Z(13.5).
+		var fallback_cam := Camera3D.new()
+		fallback_cam.global_position = Vector3(0.0, 2.6, -19.0)
+		fallback_cam.look_at(Vector3(0.0, 9.2, 13.5), Vector3.UP)
+		fallback_cam.fov = 76.0
+		root.add_child(fallback_cam)
+		# Ensure viewport uses the fallback.
+		root.get_viewport().camera = fallback_cam
+		print("CAM fallback pos=", fallback_cam.global_position, " fwd=", -fallback_cam.global_transform.basis.z)
 
 	var img := root.get_viewport().get_texture().get_image()
 	var err := img.save_png(out_path)

@@ -68,3 +68,5 @@ func _parse_args() -> Dictionary:
 		if eq > 0:
 			out[s.substr(0, eq)] = s.substr(eq + 1)
 	return out
+
+		# Note: Headless tests skip autoloads; fallback_cam is NOT saved to scene.

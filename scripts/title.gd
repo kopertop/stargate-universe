@@ -294,8 +294,17 @@ func _add_profile_row(rows: VBoxContainer, prof: Dictionary) -> void:
 
 	var b: Button = Button.new()
 	b.text = _profile_row_label(prof)
-	b.custom_minimum_size = Vector2(420, 48)
+	# A Button sizes its minimum width to its full text, so a long profile label
+	# would expand the row past the panel and shove the Delete button off-screen.
+	# clip_text lets the button shrink below its text width; the overrun behavior
+	# trims with an ellipsis, and left alignment keeps the readable start visible.
+	b.custom_minimum_size = Vector2(360, 48)
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.clip_text = true
+	b.autowrap_mode = TextServer.AUTOWRAP_OFF
+	b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.tooltip_text = b.text
 	b.pressed.connect(_on_profile_chosen.bind(pid))
 	Audio.attach_ui_hover(b)
 	hbox.add_child(b)

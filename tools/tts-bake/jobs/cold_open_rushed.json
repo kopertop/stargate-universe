@@ -1,0 +1,15 @@
+{
+	"_comment": "Cold-open Scott/Greer/Eli barks re-baked from the Demucs-isolated panic refs (scott_panic/greer_panic/eli_panic). Marshalling barks use the Chris-approved 'rushed' preset (flat, fast, not emo). The Rush hand-off beats use fitted-but-restrained registers (worried dialed down, a searching 'calling', a real 'shout' on 'Eli! NOW!'). Scott's evac line already lives as scott-evac-toohot.wav. Overwrites the old open-* TTS clips in place.",
+	"out_dir": "sounds/dialog/prologue",
+	"lines": [
+		{ "id": "open-scott-side",    "voice": "scott_panic", "emotion": "rushed", "text": "There's no time to explain — off to the side!" },
+		{ "id": "open-greer-clear",   "voice": "greer_panic", "emotion": "rushed", "text": "Clear! Keep 'em moving!" },
+		{ "id": "open-greer-move",    "voice": "greer_panic", "emotion": "rushed", "text": "Move, move, move!" },
+		{ "id": "open-eli-coming",    "voice": "eli_panic",   "emotion": "rushed", "text": "Okay! I'm coming!" },
+
+		{ "id": "open-scott-norush",  "voice": "scott_panic", "emotion": "worried", "emo_alpha": 0.6, "text": "I haven't seen Rush. I don't know if he made it through." },
+		{ "id": "open-scott-rush",    "voice": "scott_panic", "emotion": "calling", "emo_alpha": 0.75, "text": "Rush! … Rush!" },
+		{ "id": "open-scott-findhim", "voice": "scott_panic", "emotion": "worried", "emo_alpha": 0.6, "text": "Help me find him." },
+		{ "id": "open-scott-eli-now", "voice": "scott_panic", "emotion": "shout",   "emo_alpha": 0.9, "text": "Eli! NOW!" }
+	]
+}

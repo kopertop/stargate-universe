@@ -1,0 +1,32 @@
+{
+  "artifact_id": "20260619T040743Z-0169ce87",
+  "created_at": "2026-06-19T04:07:43Z",
+  "provider": "offline-marker",
+  "status": "invalid",
+  "workspace_root": "/home/newstex/stargate-universe",
+  "source_roots": [
+    "/tmp/dream_pattern_test.txt"
+  ],
+  "report": "# Hermes Dreaming Report\n\n- Provider: `offline-marker`\n- Workspace: `/home/newstex/stargate-universe`\n- Live root: `/home/newstex/stargate-universe`\n- Sources scanned: `1`\n- Proposals staged: `0`\n\n## Notes\n\n- No DREAM markers were found in the supplied sources.\n\n## Proposals\n\n- None\n\n## Validation\n\n- artifact contains no proposals\n",
+  "sources": [
+    {
+      "path": "/tmp/dream_pattern_test.txt",
+      "kind": "source",
+      "content": "\nDREAM: Optimize shader compilation\nReasoning: Implementing a dependency-aware compiler could reduce build times by 40%.\nPath: scripts/build_shaders.sh\n\nDREAM: Automate texture compression\nReasoning: An automated pipeline using basis_universal could optimize texture sizes.\nPath: scripts/compress_textures.py\n",
+      "sha256": "eb0ecb12f87805c2f1e90bbb1cf473bf2da646c427a3bf35665e8dfd82e77318",
+      "line_count": 9
+    }
+  ],
+  "proposals": [],
+  "validation_errors": [
+    "artifact contains no proposals"
+  ],
+  "apply_errors": [],
+  "applied_proposal_ids": [],
+  "backup_paths": [],
+  "audit_events": [],
+  "apply_started_at": null,
+  "apply_finished_at": null,
+  "applied_at": null,
+  "discarded_at": null
+}

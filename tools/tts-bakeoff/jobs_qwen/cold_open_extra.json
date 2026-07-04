@@ -1,0 +1,13 @@
+{
+	"_comment": "Principal cold-open lines that were missing or whose wording/speaker didn't match docs/OPENING_SCENE_SCRIPT.md. Base-clone from refs_qwen. Promoted into sounds/dialog/prologue/ over the old ids.",
+	"lines": [
+		{ "id": "open-greer-side",    "char": "greer", "mode": "barked",   "text": "There's no time to explain — off to the side!" },
+		{ "id": "open-young-whereare","char": "young", "mode": "panic",    "text": "Where are we?" },
+		{ "id": "open-young-incharge","char": "young", "mode": "whisper",  "text": "Scott … you're in charge." },
+		{ "id": "open-scott-tj",      "char": "scott", "mode": "barked",   "text": "TJ!" },
+		{ "id": "open-tj-coming",     "char": "tj",    "mode": "barked",   "text": "Coming!" },
+		{ "id": "open-tj-areyouokay", "char": "tj",    "mode": "standard", "text": "Are you okay?" },
+		{ "id": "open-eli-whatisthis","char": "eli",   "mode": "standard", "text": "What is this place?" },
+		{ "id": "open-scott-norush",  "char": "scott", "mode": "standard", "text": "I haven't seen Rush — I don't know if he went through ahead of me." }
+	]
+}

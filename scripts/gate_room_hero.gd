@@ -385,8 +385,9 @@ func _build_ceiling() -> void:
 	ring3.material.metallic = METAL_METALLIC
 	ring3.material.roughness = METAL_ROUGHNESS
 	add_child(ring3)
-	379|	# Add structural beams (ribs) across the ceiling
-	380|	for i in range(4):
+	
+	# Add structural beams (ribs) across the ceiling
+	for i in range(4):
 	381|		var beam = CSGBox3D.new()
 	382|		beam.size = Vector3(HALL_HALF_WIDTH * 2, 0.5, 0.5)
 	383|		beam.rotation.y = i * (3.14159 / 2.0)

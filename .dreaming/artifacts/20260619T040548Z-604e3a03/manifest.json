@@ -1,0 +1,24 @@
+{
+  "artifact_id": "20260619T040548Z-604e3a03",
+  "created_at": "2026-06-19T04:05:48Z",
+  "provider": "offline-marker",
+  "status": "invalid",
+  "workspace_root": "/home/newstex/stargate-universe",
+  "source_roots": [
+    "docs"
+  ],
+  "report": "# Hermes Dreaming Report\n\n- Artifact: `20260619T040548Z-604e3a03`\n- Provider: `offline-marker`\n- Status: `invalid`\n- Sources scanned: `11`\n- Proposals staged: `0`\n\n## Provider/preflight failure\n\n- Error: source preflight blocked provider call: source /home/newstex/stargate-universe/docs/audio-inventory.md contains secret-like content\n",
+  "sources": [],
+  "proposals": [],
+  "validation_errors": [
+    "source /home/newstex/stargate-universe/docs/audio-inventory.md contains secret-like content"
+  ],
+  "apply_errors": [],
+  "applied_proposal_ids": [],
+  "backup_paths": [],
+  "audit_events": [],
+  "apply_started_at": null,
+  "apply_finished_at": null,
+  "applied_at": null,
+  "discarded_at": null
+}

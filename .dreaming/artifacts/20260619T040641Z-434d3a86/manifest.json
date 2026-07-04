@@ -1,0 +1,32 @@
+{
+  "artifact_id": "20260619T040641Z-434d3a86",
+  "created_at": "2026-06-19T04:06:41Z",
+  "provider": "offline-marker",
+  "status": "invalid",
+  "workspace_root": "/home/newstex/stargate-universe",
+  "source_roots": [
+    "/tmp/my_dream_source.txt"
+  ],
+  "report": "# Hermes Dreaming Report\n\n- Provider: `offline-marker`\n- Workspace: `/home/newstex/stargate-universe`\n- Live root: `/home/newstex/stargate-universe`\n- Sources scanned: `1`\n- Proposals staged: `0`\n\n## Notes\n\n- No DREAM markers were found in the supplied sources.\n\n## Proposals\n\n- None\n\n## Validation\n\n- artifact contains no proposals\n",
+  "sources": [
+    {
+      "path": "/tmp/my_dream_source.txt",
+      "kind": "source",
+      "content": "\nDREAM: Optimize the build pipeline\nReasoning: The current build process for shaders takes a long time. Implementing a dependency-aware shader compiler could reduce build times by 40%.\nPath: scripts/build_shaders.sh\n\nDREAM: Implement automated texture compression\nReasoning: Manual texture compression is error-prone. An automated pipeline using basis_universal could optimize texture sizes for web deployment.\nPath: scripts/compress_textures.py\n\nDREAM: Expand documentation coverage\nReasoning: The engine-reference documentation is missing details on the new particle system. Adding comprehensive usage examples would decrease developer onboarding time.\nPath: docs/engine-reference/particles.md\n",
+      "sha256": "1e17220eb0b3d9a99475dd73337170b67ebb07231cb5d9bf45defc3eee265ee7",
+      "line_count": 13
+    }
+  ],
+  "proposals": [],
+  "validation_errors": [
+    "artifact contains no proposals"
+  ],
+  "apply_errors": [],
+  "applied_proposal_ids": [],
+  "backup_paths": [],
+  "audit_events": [],
+  "apply_started_at": null,
+  "apply_finished_at": null,
+  "applied_at": null,
+  "discarded_at": null
+}

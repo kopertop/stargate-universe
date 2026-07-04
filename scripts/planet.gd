@@ -27,6 +27,9 @@ func _ready() -> void:
 	var planet_name: String = String(spec.get("name", "Lime Planet"))
 	var planet_key: String = "planet_%s_%d" % [String(spec.get("biome", "desert")), int(spec.get("seed", 0))]
 	GameState.discover_room(planet_key, planet_name)
+	# Score the gate world — lonely open-planet bed + hopeful solo violin (covers both
+	# the on-foot away team and a piloted Kino recon; FtlLoop's PLANET phase sets this too).
+	MusicDirector.set_mood("planet")
 	# Stream terrain around the player by default; kino recon retargets below.
 	if _chunk_manager != null and _chunk_manager.has_method("configure"):
 		_chunk_manager.set("tracked", _player)
@@ -44,6 +47,10 @@ func _ready() -> void:
 	# _ready already ran (child first) and only set the metal default.
 	if is_instance_valid(_player) and _player.has_method("set_footstep_surface"):
 		_player.call("set_footstep_surface", FootstepLib.surface_for_spec(spec))
+	# Off-ship dress code: the modular avatar swaps the ship civvies for
+	# mission fatigues (same context switch the away-team NPCs use).
+	if is_instance_valid(_player) and _player.has_method("set_dress_context"):
+		_player.call("set_dress_context", "mission")
 	if GameState.pending_spawn_position != null:
 		_player.global_position = GameState.pending_spawn_position
 		_player.rotation.y = GameState.pending_spawn_yaw
@@ -79,6 +86,7 @@ func _ready() -> void:
 		# whole run. Live play only — headless must not have companions auto-mining
 		# lime and skewing resource assertions.
 		if not SceneRouter.instant_mode:
+			_play_split_dialogue()
 			_spawn_away_team(_player.global_position)
 
 
@@ -114,27 +122,87 @@ func _refresh_lime_objective() -> void:
 
 # Greer, Park and Scott followed Eli through the gate. They follow him on the
 # surface and fan out to mine lime, then rush back through the gate when the
-# departure timer fires (group "away_team"). Greer reuses Scott's GLB (Kenney
-# `character-male-d`, beret + uniform — the most military-looking of the six
-# Mini-Characters males) with a warm-brown tint applied per-instance, so on
-# screen the away team reads as two same-silhouette soldiers with different
-# skin tones (none of the Kenney mini-chars ship with a darker-skin variant).
-const SCOTT_GLB: String = "res://models/characters/scott.glb"
-const GREER_TINT: Color = Color(0.66, 0.50, 0.38)   # warm brown — skin reads as brown, uniform as olive-drab
+# departure timer fires (group "away_team"). Appearance (base model, mission
+# fatigues, Greer's skin tone, rifles for military) comes from
+# CharacterFactory — companions dress for CTX_MISSION in _build_body.
+#
+# On arrival Scott splits the team: Greer (north, -Z) follows + mines with the
+# player; Scott + Park (south, +Z) peel off and hold position. "north"=-Z per
+# project convention (planet.gd coordinate frame). Both teams are still members
+# of group "away_team" so the departure muster (planet_timer.gd rush_to()) and
+# compass HUD behave identically. Issue #137.
 func _spawn_away_team(near: Vector3) -> void:
+	# team attribute: "north" = -Z (follows + mines), "south" = +Z (peeled off).
+	# glb is a fallback only — the factory resolves registered crew models.
 	var roster: Array = [
-		{"name": "Greer", "glb": SCOTT_GLB, "tint": GREER_TINT},
-		{"name": "Park", "glb": "res://models/characters/park.glb", "tint": Color.WHITE},
-		{"name": "Lt Scott", "glb": SCOTT_GLB, "tint": Color.WHITE},
+		{"name": "Greer",    "glb": "res://models/characters/greer.glb", "team": "north"},
+		{"name": "Park",     "glb": "res://models/characters/park.glb",  "team": "south"},
+		{"name": "Lt Scott", "glb": "res://models/characters/scott.glb", "team": "south"},
 	]
+	var north_idx: int = 0   # X spread within each team
+	var south_idx: int = 0
 	for i in roster.size():
 		var entry: Dictionary = roster[i]
-		var at: Vector3 = near + Vector3(-2.4 + float(i) * 2.4, 0.0, 2.4)
+		var is_south: bool = entry["team"] == "south"
+		var at: Vector3
+		if is_south:
+			# South team: offset clearly to +Z so Scott + Park visibly peel off.
+			at = near + Vector3(-1.2 + float(south_idx) * 2.4, 0.0, 6.0)
+			south_idx += 1
+		else:
+			# North team: near the player on the -Z side (same side as the gate).
+			at = near + Vector3(-1.2 + float(north_idx) * 2.4, 0.0, -2.4)
+			north_idx += 1
 		var c: Node3D = CompanionScript.new()
 		c.name = "Companion_" + String(entry["name"]).replace(" ", "")
+		# Set peeled_off BEFORE setup() so _process sees the correct value as
+		# soon as the first frame ticks — mirrors gate_room's stationary pattern.
+		c.set("peeled_off", is_south)
 		add_child(c)
 		c.global_position = at
-		c.call("setup", String(entry["name"]), String(entry["glb"]), i, entry["tint"])
+		c.call("setup", String(entry["name"]), String(entry["glb"]), i)
+	# Radio report: Scott's south team found lime on their ridge. Log only —
+	# must NOT call add_resource (would skew the mine_lime count and potentially
+	# auto-advance the quest step). Live play only (whole block is inside the
+	# not instant_mode guard in _ready).
+	GameState.add_log("Lt Scott (radio): South ridge's got lime too — we're pulling some. You grab what's near the gate.")
+
+
+# Arrival split dialogue (issue #137). Scott calls the north/south split on
+# landing. Single beat, emitted via GameState.dialog_started exactly as
+# _play_gate_dialog does in gate_room.gd. Double instant_mode guard: the outer
+# guard in _ready already skips the whole live-play block, but this inner guard
+# is an explicit contract so the function is safe to call standalone in tests.
+func _play_split_dialogue() -> void:
+	if SceneRouter.instant_mode:
+		return
+	GameState.add_log("Lt Scott: Okay, let's split up. Greer and Eli, you head north. Park and I will head south.")
+	# Defer the dialog emit until the arrival transition has finished. The WoW
+	# dialog pauses the scene tree (dialog_screen.gd::start), and SceneRouter's
+	# fade-OUT is a tween bound to the (now-paused) autoload — opening the dialog
+	# mid-fade freezes the full-screen black fade rect up forever, so the planet
+	# "never loads" (it has; the black curtain just never lifts). gate_room.gd's
+	# _play_gate_dialog dodges this by waiting past the fade before emitting; do
+	# the same, polling the router rather than racing a hard-coded timer.
+	var guard: int = 0
+	while SceneRouter.is_transitioning and guard < 120:
+		await get_tree().process_frame
+		guard += 1
+	if not is_inside_tree():
+		return
+	var tree: Array = _split_dialog_tree()
+	var player: Node = get_tree().get_first_node_in_group("player")
+	GameState.dialog_started.emit(player, tree)
+
+
+func _split_dialog_tree() -> Array:
+	return [
+		{
+			"speaker": "Lt Scott",
+			"text": "Okay, let's split up. Greer and Eli, you head north. Park and I will head south.",
+			"choices": [{"text": "...", "next": "exit"}],
+		},
+	]
 
 # Replace the third-person player rig with a pilotable Kino. The drone owns its
 # own camera + overlay; freeing the player/view rig stops their camera and

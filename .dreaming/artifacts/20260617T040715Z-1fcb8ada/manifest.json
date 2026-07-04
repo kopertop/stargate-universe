@@ -1,0 +1,32 @@
+{
+  "artifact_id": "20260617T040715Z-1fcb8ada",
+  "created_at": "2026-06-17T04:07:15Z",
+  "provider": "offline-marker",
+  "status": "invalid",
+  "workspace_root": "/home/newstex/stargate-universe",
+  "source_roots": [
+    "/home/newstex/stargate-universe/.dreaming/artifacts/_sources/recent-sessions.md"
+  ],
+  "report": "# Hermes Dreaming Report\n\n- Provider: `offline-marker`\n- Workspace: `/home/newstex/stargate-universe`\n- Live root: `/home/newstex/stargate-universe`\n- Sources scanned: `1`\n- Proposals staged: `0`\n\n## Notes\n\n- No DREAM markers were found in the supplied sources.\n\n## Proposals\n\n- None\n\n## Validation\n\n- artifact contains no proposals\n",
+  "sources": [
+    {
+      "path": "/home/newstex/stargate-universe/.dreaming/artifacts/_sources/recent-sessions.md",
+      "kind": "session",
+      "content": "# Hermes Dreaming recent session harvest\n\nThis local source bundle was generated from recent Hermes sessions.\nIt is bounded and redacted before providers see it.\n\n## Session 1: AI Research Watchdog · Jun 17 00:01\n\n- Session id: `cron_b2d9577da34f_20260617_000003`\n- Date: `2026-06-17 04:00 UTC`\n- Source: `cron`\n- Messages: `12`\n\n### User turns\n\n- [IMPORTANT: You are running as a scheduled cron job. DELIVERY: Your final response will be automatically delivered to the user — do NOT use send_message or try to deliver the output yourself. Just produce your report/output as your final response and the system handles the rest. SILENT: If there is genuinely nothing new to report, respond with exactly \"[SILENT]\" (nothing else) to suppress delivery…\n",
+      "sha256": "174ccf8f770f62649d193b168e525dbd528e8a1ac212984218a9247becbd0a89",
+      "line_count": 16
+    }
+  ],
+  "proposals": [],
+  "validation_errors": [
+    "artifact contains no proposals"
+  ],
+  "apply_errors": [],
+  "applied_proposal_ids": [],
+  "backup_paths": [],
+  "audit_events": [],
+  "apply_started_at": null,
+  "apply_finished_at": null,
+  "applied_at": null,
+  "discarded_at": null
+}

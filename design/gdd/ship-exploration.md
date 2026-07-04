@@ -1,8 +1,8 @@
 # Ship Exploration System
 
-> **Status**: Designed
+> **Status**: Partially Implemented (Godot 4.6 — see Implemented vs. Designed below)
 > **Author**: User + Claude
-> **Last Updated**: 2026-03-30
+> **Last Updated**: 2026-06-09
 > **Implements Pillar**: Pillar 1 (The Ship IS the World), Pillar 3 (Earned Discovery)
 
 ## Overview
@@ -17,18 +17,149 @@ sensor readings from star systems visited, and environmental storytelling from
 the ship's physical wear. The Ancients never inhabited Destiny — it launched
 unmanned — so the lore is the ship's own history, not a crew's.
 
-Exploration has two phases: **discovery** (first visit — learn what's here, find
-data, identify subsystems to repair) and **navigation** (return visits — use
-accumulated knowledge to unlock efficient routes and access previously impassable
-areas).
+**Implementation status (as of 2026-06-09):** Floors 0–1 are hand-authored rooms
+wired in `data/ship_layout.json`. Floors 2+ are procedurally generated at runtime
+by `ProceduralShip` (see §Procedural Floor Architecture below) and floor-gated
+behind an escalating parts cost. The browser-era ggez/EventBus design in the
+sections below describes the aspirational vision; the Godot 4.6 implementation
+is documented in the new section first.
 
-Ship data is tiered by Eli's growing understanding of Ancient technology and
-language. Early in the game, Ancient consoles display unreadable glyphs and Eli
-comments "I can't read this yet." As the story progresses and Eli's knowledge
-grows, previously opaque data becomes readable — rewarding players who revisit
-old sections with new understanding. The player never receives explicit objectives
-or waypoints; exploration is self-directed, guided by environmental cues, the
-Kino Remote map, and curiosity.
+---
+
+## Procedural Floor Architecture (Implemented — Godot 4.6)
+
+### System Boundary
+
+| Autoload | Role |
+|---|---|
+| `ProceduralShip` | Facade over `ShipLayout`; owns generated floor topology, floor unlocking, room assignment, repair state, save/load |
+| `ShipLayout` | Authored room/edge data from `data/ship_layout.json`; static read-only; ProceduralShip delegates base-room calls to it |
+| `GameState` | Quest flags, player stats, air-crisis phase, `rooms_discovered` collection |
+| `SceneRouter` | Scene transitions; `instant_mode` flag for headless/test runs |
+
+### Floor-Access Model
+
+| Floor | Access Route | Cost |
+|---|---|---|
+| Floor 1 (authored spine) | Always unlocked; authored in `ship_layout.json` | Free |
+| Floor 2 (upper deck) | Gate-room stairs + upper-deck link from `hydroponics`; no parts, no code required | Free |
+| Floors 3 … MAX\_FLOOR | Elevator (powered) + known access code + `floor_unlock_cost(n)` parts | Escalating |
+| Down-floors SL-1, SL-2 … | Elevator-only after Bridge discovered (#138); no stairs shortcut | Same formula, `absi(n)` |
+
+Elevator power is restored by delivering the `ELEVATOR_FUSE_REQUIREMENT`
+(`{"large_fuse": 1, "bus_fuse": 2}`) and completing the elevator minigame
+(issue #132). Signal `elevator_power_changed` fires on restore.
+
+### Room Catalog Categories
+
+Defined in `data/room_types.json`, read at startup by `ProceduralShip._load_catalog()`:
+
+| Category | Examples | Notes |
+|---|---|---|
+| `special_once` | bridge, observation\_deck, infirmary, astrometrics, interface\_chair, weapons\_control | `max_count=1`; drawn without replacement from pool |
+| `special_limited` | stasis\_pods, mess\_hall, engineering, research\_lab | `max_count=2`; capped per type across all floors |
+| `assignable` | armory, recreation, hydroponics\_bay | Unlocked by spending `ROOM_ASSIGN_COST` parts on an unassigned storage room |
+| `filler` | corridor, storage, power\_node, recycling, crew\_quarters | Weighted random draw; forms the bulk of generated floors |
+| `preset` | gate\_room, kino\_room, control\_interface\_room | Hand-authored; never generated |
+
+Per-floor generation caps: specials ≤ 3 per floor; special draw fires only past
+room 3 and at 20% probability (`_draw_child_type`). Floor room count cap is 12–20.
+
+### FTL Loop and Ship Systems (Implemented)
+
+| Issue | System | Key symbol |
+|---|---|---|
+| #130 | `FtlLoop` autoload — warp cycle timer, `ftl_jumped` signal | `scripts/ftl_loop.gd` |
+| #133 | `BridgeLoopConfig` — Bridge consoles tune FTL parameters | `scripts/bridge_loop_config.gd` |
+| #134 | `Consumption` autoload — resource drain per FTL tick | `scripts/consumption.gd` |
+| #131 | `RepairRobot` — heals sealed/damaged rooms, emits `repair_completed` | `scripts/repair_robot.gd` |
+
+### Floor-Gating Cost Curve
+
+Constants (all in `scripts/procedural_ship.gd`):
+
+```
+FLOOR_UNLOCK_COST_BASE  = 5          # parts per floor index
+ROOM_ASSIGN_COST        = 3          # parts to assign an unassigned room
+SALVAGE_PANEL_GRANT     = 3          # parts per salvage-panel interaction
+PARTS_BUDGET_MARGIN_PCT = 120        # 20% headroom over bare unlock cost
+```
+
+Formulas:
+
+```
+floor_unlock_cost(n)  = FLOOR_UNLOCK_COST_BASE * absi(n)
+                       = 5*n   (floors 3,4,5 -> 15,20,25...)
+                       = 5*|n| (down-floors SL-1,SL-2 -> 5,10...)
+
+floor_parts_budget(n) = floor_unlock_cost(n+1) * PARTS_BUDGET_MARGIN_PCT / 100
+                      >= floor_unlock_cost(n+1)    [guaranteed by construction]
+```
+
+**Affordability invariant (validated, no retune required):**
+`floor_parts_budget(n) >= floor_unlock_cost(n+1)` holds for all generated floors
+because `PARTS_BUDGET_MARGIN_PCT=120` ensures the budget always exceeds the bare
+unlock cost by at least 20%. The curve is monotonically escalating: each floor
+costs 5 more parts than the previous. Physical parts seeding (salvage panels in
+`power_node`, `storage`, and `control_room`/`engineering` type rooms; 3 parts each)
+is governed by `room.gd::_spawn_salvage_panel` and tracked via the budget metadata.
+
+Filler floor\_weights (DO NOT MODIFY — changing them perturbs the deterministic
+RNG seed and breaks floor-room-count assertions in `tests/smoke/test_procedural_ship.gd`):
+
+| Type | floor\_weight |
+|---|---|
+| corridor | 5 |
+| storage | 3 |
+| power\_node | 2 |
+| recycling | 2 |
+| crew\_quarters | 2 |
+
+### Per-Type Authored Set-Dressing (Implemented — Issue #135)
+
+Special rooms are built on shared template shells but look generic without
+additional detail. Issue #135 adds a **data-driven, per-room-TYPE set-dressing
+layer** placed on top of the shared shell by `RoomBuilder._add_authored_setdressing()`.
+
+**Architecture:**
+- Data lives in `data/room_types.json` under a `setdressing` key per type.
+- Flag `authored_setdressing: true` + presence of `setdressing` dict gates placement.
+- `RoomBuilder._load_setdressing_catalog()` reads the JSON once (static cache via `_setdressing_loaded` flag).
+- `RoomBuilder.build()` calls `_add_authored_setdressing()` as 4th step after shell + accents + fill light.
+- Hero props placed via existing `_spawn_kenney_prop()` (tint required — glTF import strips Kenney textures, white without it).
+- Walk-blockers via existing `_add_walk_blocker()` at **layer 1 ONLY** (never layer 2 / SpringArm camera layer).
+- Signage via `Label3D` on the named wall face.
+- No per-room `.tscn` files; no fork of `_build_shell` — purely additive.
+
+**Authored iconic types (Issue #135):**
+
+| Type | Template base | Hero props | Signage |
+|---|---|---|---|
+| `bridge` | control-room-template | table-display-planet (central holotable), 2x chair-armrest, computer-wide | "BRIDGE" on -Z wall |
+| `observation_deck` | quarters-template | 3x chair-cushion, table-display, emissive window slab | "OBSERVATION DECK" on +Z wall |
+| `astrometrics` | control-room-template | table-display-planet (central), 2x table-display, chair-cushion | "ASTROMETRICS" on -Z wall |
+| `interface_chair` | control-room-template | chair-armrest (oversized central), 2x computer-system flanking | "INTERFACE CHAIR" on -Z wall |
+| `stasis_pods` | quarters-template | 3x bed-single-cover (stasis units), computer-system monitor | "STASIS POD CHAMBER" on +Z wall |
+| `infirmary` | quarters-template | 2x bed-single, computer-system (medical), container-tall (supplies) | "INFIRMARY" on -Z wall |
+| `weapons_control` | control-room-template | computer-wide (main board), 2x computer-system, chair-armrest | "WEAPONS CONTROL" on -Z wall |
+
+All prop GLBs live under `res://models/props/space_station_kit/`.
+
+**Doorway-clearance rule:** `RoomBuilder` runs before `room.gd` stamps doors.
+Props are authored at centre/back-wall positions (>= 3 m from wall midpoints
+where doors stamp). Smoke test `tests/smoke/setdressing.gd` asserts no set-dressing
+walk-blocker AABB centroid is within 1.5 m of representative door positions
+(wall midpoints at +-half\_width, +-half\_depth on Y=0).
+
+### Pre-Designed Group Clusters (Deferred)
+
+The cluster mechanic (a special anchor forces an adjacent annex via
+`_compute_child_rect`/`_has_collision`/`_pick_free_dir`) is designed in issue #135
+§3 but **not implemented** in this sprint. An optional `cluster: {annex_type, dir_pref}`
+key in `room_types.json` is reserved for future use. No data-off flag is needed
+— the field is simply absent from all current entries.
+
+---
 
 ## Player Fantasy
 
@@ -51,7 +182,7 @@ map of Destiny from the Ancient schematics — every section, every room, every
 system is marked. But the labels are in Ancient. Early on, the map is a maze of
 unreadable glyphs. You can see where rooms are, but not what they are. As Eli
 learns the language, labels resolve into meaning: that room isn't just "Section
-Γ-7" anymore, it's "Hydroponics Bay." The map was always complete — *your
+G-7" anymore, it's "Hydroponics Bay." The map was always complete — *your
 understanding* is what grows. Over hours of play, Destiny transforms from a
 foreign labyrinth into a home you know by name.
 
@@ -62,13 +193,21 @@ Ship IS the World)**: exploration IS the core gameplay, and the map itself is a
 progression system — your understanding of Destiny deepens with every translated
 label.
 
-## Detailed Design
+---
+
+## Detailed Design (Aspirational / Forward-Looking)
+
+> The sections below describe the full designed vision. Items noted
+> [FORWARD-LOOKING] are designed but not yet built. The browser-era references
+> to `ggez`, `EventBus`, and `player:entered:section` have been superseded by
+> the Godot autoload architecture described in the Procedural Floor Architecture
+> section above.
 
 ### Core Rules
 
-1. **Section discovery**: When the player enters a section for the first time
+1. **Section discovery** [FORWARD-LOOKING]: When the player enters a section for the first time
    (detected via trigger volume at section boundaries), the system:
-   - Publishes `player:entered:section` with `first_visit: true`
+   - Publishes a section-entry signal via `GameState` (replaces `player:entered:section` / EventBus)
    - Ship State marks the section as Explored
    - Plays a brief discovery moment: lights activate (if powered), Eli reacts
      ("What is this place?"), ambient audio shifts
@@ -85,14 +224,10 @@ label.
    - **Environmental storytelling**: Damage patterns, emergency seals, scorch
      marks, hull repairs, rerouted conduits. Visual narrative, not interactive.
 
-3. **Ancient knowledge tier**: Data readability scales with a global
+3. **Ancient knowledge tier** [FORWARD-LOOKING]: Data readability scales with a global
    `ancient_knowledge_level` (0-5) that increases through story progression.
-   **This system formally owns the value** — it exposes `getKnowledgeLevel()`
-   and `setKnowledgeLevel(tier)` as its public API. For MVP, knowledge tier
-   is set via story flags (episode events call `setKnowledgeLevel`). The
-   Episode Narrative system (Vertical Slice) will eventually drive tier
-   progression, but until then, Ship Exploration is the canonical source.
-   Tiers:
+   This system formally owns the value — it exposes `getKnowledgeLevel()`
+   and `setKnowledgeLevel(tier)` as its public API. Tiers:
    - **Tier 0** (start): Can read nothing. Glyphs everywhere.
    - **Tier 1** (early S1): Basic symbols — numbers, directions, warnings.
      Critical map labels (bridge, gate room) become readable.
@@ -102,108 +237,64 @@ label.
    - **Tier 4** (S2): Technical Ancient. Complex system data, diagnostics.
    - **Tier 5** (S3): Fluent. Everything readable, including encrypted text.
 
-4. **Barrier types**: Navigation obstacles gating access to new areas:
-   - **Power-gated doors**: Require power to section. Repair upstream conduits
-     → door opens automatically.
-   - **Mechanically jammed doors**: Physical damage. Interact + Ship Parts to
-     force/repair. May be a contextual traversal (squeeze through partial
-     opening).
-   - **Emergency sealed doors**: Locked by Destiny's safety protocols
-     (compromised section behind). Requires console override or remote hazard
-     repair.
-   - **Debris blockage**: Collapsed structure. Requires clearing (Ship Parts)
-     or alternate route (vent, maintenance shaft) via contextual traversal.
-   - **Knowledge-gated consoles**: Ancient interface requires minimum
-     knowledge tier. Eli can see it but can't use it until he understands
-     enough Ancient.
+4. **Barrier types** [FORWARD-LOOKING]: Navigation obstacles gating access to new areas.
+   In Godot 4.6, sealed rooms are handled by `ProceduralShip._room_conditions`
+   (state: "sealed" | "damaged" | "repairing" | "repaired") with repair via
+   `RepairRobot` (#131). The designed barrier taxonomy below is aspirational:
+   - **Power-gated doors**: Require power to section.
+   - **Mechanically jammed doors**: Physical damage. Interact + Ship Parts to force/repair.
+   - **Emergency sealed doors**: Locked by Destiny's safety protocols.
+   - **Debris blockage**: Collapsed structure.
+   - **Knowledge-gated consoles**: Ancient interface requires minimum knowledge tier.
 
-5. **Section boundary detection**: Sections defined by trigger volumes in the
-   ggez scene. Player position entering a new volume fires section-entry
-   logic. Overlapping volumes at doorways use hysteresis to prevent rapid
-   toggling.
+5. **Section boundary detection** [FORWARD-LOOKING]: Sections defined by trigger volumes.
+   Player position entering a new volume fires section-entry logic.
+   (Currently rooms are discovered via `GameState.rooms_discovered` collection.)
 
-6. **Points of interest (POIs)**: Discoverable content and interactable
+6. **Points of interest (POIs)** [FORWARD-LOOKING]: Discoverable content and interactable
    subsystems register as POIs for the Camera System's auto-framing offset.
-   POIs include: unread data nodes, supply caches, damaged subsystems,
-   barrier-solving consoles.
 
-7. **Revisit value**: Previously explored sections gain new value when:
-   - Ancient knowledge tier increases (unreadable → readable)
-   - Ship State changes (conduit repair powers up a console in old room)
-   - Episode events create new content in old sections
+7. **Revisit value** [FORWARD-LOOKING]: Previously explored sections gain new value when
+   Ancient knowledge tier increases or Ship State changes.
 
 8. **Guided exploration**: Exploration is free-form but the game provides
-   clear guidance toward story objectives:
-   - **Objective markers**: The current story objective is marked on the Kino
-     Remote map and shown as a waypoint in the world (subtle, diegetic —
-     e.g., a pulsing indicator on the Kino Remote's HUD overlay, not a
-     floating diamond in the sky).
-   - **Kino Remote map**: Complete Ancient schematics with labels that resolve
-     as Eli learns. Objective destination is highlighted.
-   - **Environmental cues**: Light, sound, power humming, crew activity — all
-     reinforce where the story is pulling.
-   - **Crew hints**: NPCs mention locations and objectives in dialogue.
-   - **Free to ignore**: The player can always ignore the objective and
-     explore freely. The story waits. But the guidance is always there when
-     you want it.
+   clear guidance toward story objectives via Kino Remote map, environmental
+   cues, crew hints, and world-space waypoints. Player can always ignore the
+   objective — the story waits.
 
 ### States and Transitions
 
 | State | Entry Condition | Exit Condition | Behavior |
 |-------|----------------|----------------|----------|
-| **Free Exploration** | Default. No active interaction. | Approach barrier → Barrier Encounter. Approach data node → Data Reading. | Player moves freely. POIs trigger camera auto-frame. Section boundaries detect entry. |
-| **Barrier Encounter** | Player approaches a barrier | Barrier resolved or player leaves | Radial menu shows available actions (repair, force, bypass, override). Ship State and resources checked. |
-| **Data Reading** | Player interacts with Ancient data node | Reading complete or cancelled | If knowledge tier sufficient: data displays with translation. If insufficient: glyphs shown, Eli comments. Game pauses during reading. |
-| **Discovery Moment** | First entry into a new section | Moment completes (2-3s) | Brief cinematic beat: lights activate, Eli reacts, ambient audio shifts. Player retains movement, camera may subtly reframe. |
-| **Cache Looting** | Player interacts with supply cache | Items collected | Cache opens, contents shown, resources added to inventory. Cache marked empty (persistent). |
-
-All states respect universal pause — pausing freezes any active state and
-resumes exactly.
+| **Free Exploration** | Default. No active interaction. | Approach barrier or data node. | Player moves freely. POIs trigger camera auto-frame. |
+| **Barrier Encounter** | Player approaches a barrier | Barrier resolved or player leaves | Radial menu shows available actions. |
+| **Data Reading** | Player interacts with Ancient data node | Reading complete or cancelled | If knowledge tier sufficient: data displays. If insufficient: glyphs shown. |
+| **Discovery Moment** | First entry into a new section | Moment completes (2-3s) | Brief cinematic beat. |
+| **Cache Looting** | Player interacts with supply cache | Items collected | Cache opens, contents shown, resources added. |
 
 ### Interactions with Other Systems
 
 | System | Direction | Interface |
 |--------|-----------|-----------|
-| **Player Controller** | Inbound | Receives `player:entered:section` for discovery. Radial menu interactions trigger barrier resolution, data reading, cache looting. |
-| **Camera System** | Outbound (POI registration) | Registers discoverable content and subsystems as POIs for auto-frame offset. Triggers Discovery Moment camera reframe on first section entry. |
-| **Ship State** | Inbound (read) | Reads section states (Explored, Accessible, Compromised), subsystem conditions, power levels, atmosphere. Determines what barriers are present and whether they can be resolved. |
-| **Ship State** | Outbound (write via events) | Section discovery updates (`ship:section:discovered`). Barrier resolution may trigger `ship:subsystem:repaired` or `ship:section:unlocked`. |
-| **Event Bus** | Both | Subscribes to `ship:power:changed` (may open power-gated doors), `episode:*` (new content in sections). Publishes section discovery and barrier events. |
-| **Resource & Inventory** *(undesigned)* | Bidirectional | Checks resource availability for barrier resolution (Ship Parts). Adds resources from supply caches. |
-| **Episode Narrative** *(undesigned)* | Inbound | Episodes set the current objective and its location. Exploration system displays the objective marker on Kino Remote and as a world-space waypoint. |
-| **Kino Remote** *(undesigned)* | Outbound | Provides section discovery state, Ancient labels (with knowledge tier filtering), objective marker position, and POI locations for the map display. |
-| **Ancient Tech Puzzles** *(undesigned)* | Outbound | Some barriers are resolved by puzzles rather than simple interaction. Exploration hands off to the puzzle system and receives completion callback. |
-| **ggez Scene Management** | Inbound | Sections map to ggez scenes or sub-scenes. Scene loading/unloading triggered by section transitions. |
+| **Player Controller** | Inbound | Section entry detection, radial menu interactions |
+| **Camera System** | Outbound | POI auto-framing, Discovery Moment reframe |
+| **ProceduralShip** | Inbound (read) | Section states, room conditions, floor access costs |
+| **ProceduralShip** | Outbound (write) | Section discovery, barrier resolution, floor unlock |
+| **GameState** | Both | `rooms_discovered` collection, quest flags |
+| **SceneRouter** | Inbound | Scene transitions, `instant_mode` for headless tests |
+| **Inventory / Parts** | Bidirectional | Parts for floor unlock / room repair / salvage panels |
+| **Episode Narrative** [forward-looking] | Inbound | Episodes set the current objective and its location |
+| **Kino Remote** [forward-looking] | Outbound | Section discovery state, Ancient labels, objective marker, POI locations |
 
-**Provisional contracts:**
-- Episode Narrative: objective data format (location, description, priority) TBD
-- Resource & Inventory: cache content schema TBD
-- Kino Remote: map data format and label rendering protocol TBD
+### Formulas
 
-## Formulas
-
-### Data Node Readability
+#### Data Node Readability [forward-looking]
 
 ```
 readable = data_node.required_tier <= ancient_knowledge_level
 ```
 
-| Variable | Type | Range | Source | Description |
-|----------|------|-------|--------|-------------|
-| `data_node.required_tier` | int | 0-5 | level design | Minimum knowledge tier to read this node |
-| `ancient_knowledge_level` | int | 0-5 | story progression | Eli's current Ancient comprehension |
-
-### Map Label Resolution
-
-```
-label_readable = label.knowledge_tier <= ancient_knowledge_level
-display_text = label_readable ? label.translated : label.ancient_glyphs
-```
-
-Labels are pre-authored with both Ancient glyph text and English translations.
-The system selects which to display based on Eli's current tier.
-
-### Barrier Resolution Cost
+#### Barrier Resolution Cost [forward-looking]
 
 ```
 can_resolve = player_has(barrier.resource_cost)
@@ -211,121 +302,90 @@ can_resolve = player_has(barrier.resource_cost)
               AND (barrier.power_requirement <= section.power_level)
 ```
 
-| Variable | Type | Range | Source | Description |
-|----------|------|-------|--------|-------------|
-| `barrier.resource_cost` | int | 0-20 Ship Parts | level design | Ship Parts required |
-| `barrier.knowledge_requirement` | int | 0-5 | level design | Minimum Ancient tier |
-| `barrier.power_requirement` | float | 0-1.0 | level design | Minimum section power |
-
-### Discovery Moment Duration
+#### Discovery Moment Duration [forward-looking]
 
 ```
 moment_duration = BASE_DISCOVERY_DURATION * section_importance_multiplier
 ```
 
-| Variable | Type | Range | Source | Description |
-|----------|------|-------|--------|-------------|
-| `BASE_DISCOVERY_DURATION` | float | 2.0 s | config | Standard discovery beat |
-| `section_importance_multiplier` | float | 1.0-2.0 | level design | Longer moments for major areas (bridge, observation deck) |
-
 ## Edge Cases
 
 | Scenario | Expected Behavior | Rationale |
 |----------|------------------|-----------|
-| **Player enters section with no power** | Discovery moment plays in darkness — Eli's phone light activates (per Player Controller), minimal ambient light from hull breaches/starlight. Data nodes are dark and non-functional. | Unpowered sections are explorable but limited. Adds motivation to restore power. |
-| **Player re-reads a data node after knowledge tier increases** | New content appears. Previously shown glyphs now have translations. Eli comments on understanding it now. | Core revisit value mechanic. |
-| **Player tries to resolve barrier without resources** | Radial menu shows the action greyed out with "Requires X Ship Parts" label. | Clear feedback, no confusion. |
-| **Knowledge-gated console at current tier** | Console shows glyphs. Eli says "I'm not sure what this does yet." Interaction logged so Kino Remote can show "unresolved data node" on map. | Player knows to come back later. |
-| **Two section trigger volumes overlap** | Hysteresis: player must fully exit one volume before entering another. If straddling boundary, remains in previous section. | Prevents rapid section-toggling at doorways. |
-| **Supply cache already looted** | Cache shows as open/empty. No interaction prompt. | Persistent state — caches are one-time. |
-| **Section becomes compromised after exploration** | Section marked as Compromised on Kino Remote (flashing red). Player cannot re-enter until breach repaired. Previously discovered data is retained. | Story events can seal off explored areas. Adds drama. |
-| **Episode changes content in explored section** | New content silently appears. No notification — the player discovers it on revisit. Unless it's critical, in which case crew dialogue hints at it. | Rewards exploration without spoiling surprise. |
-| **Player ignores story objective entirely** | No penalty. Objective marker persists on Kino Remote. Crew may comment but never block. Story waits for the player. | Free exploration is a pillar. Story guides but never forces. |
+| **Player enters section with no power** | Discovery moment plays in darkness. Data nodes dark and non-functional. | Unpowered sections explorable but limited. |
+| **Player re-reads data node after knowledge tier increase** | New content appears. | Core revisit value mechanic. |
+| **Player tries to resolve barrier without resources** | Action greyed out with cost display. | Clear feedback. |
+| **Supply cache already looted** | Cache shows as open/empty. No interaction prompt. | Persistent state. |
+| **Section compromised after exploration** | Marked Compromised on Kino Remote. Previously discovered data retained. | Story events can seal explored areas. |
+| **Player ignores story objective** | No penalty. Objective marker persists. Story waits. | Free exploration is a pillar. |
 
 ## Dependencies
 
-**Upstream (this system depends on):**
+**Upstream:**
 
 | System | Dependency Type | Interface |
 |--------|----------------|-----------|
-| Player Controller | Hard | Section entry detection, radial menu interactions, contextual traversals |
-| Camera System | Hard | POI auto-framing, Discovery Moment camera reframe |
-| Ship State | Hard | Section states, subsystem conditions, power levels, atmosphere |
-| Event Bus | Hard | Section discovery events, ship state change subscriptions |
-| ggez Scene Management | Hard | Scene loading for section transitions |
+| Player Controller | Hard | Section entry detection, radial menu, contextual traversals |
+| Camera System | Hard | POI auto-framing, Discovery Moment reframe |
+| ProceduralShip | Hard (Godot 4.6) | Section states, floor unlock, room conditions, save/load |
+| GameState | Hard (Godot 4.6) | rooms_discovered collection, quest flags |
+| SceneRouter | Hard (Godot 4.6) | Scene transitions, instant_mode |
 
-**Downstream (depends on this system):**
+**Downstream:**
 
 | System | Dependency Type | What They Need |
 |--------|----------------|----------------|
-| Kino Remote | Hard | Section map data, Ancient labels with tier filtering, objective markers, POI locations |
+| Kino Remote | Hard | Section map data, Ancient labels, objective markers, POI locations |
 | Episode Narrative | Soft | Section discovery state for story triggers |
 
 ## Tuning Knobs
 
 | Parameter | Default | Safe Range | Effect of Increase | Effect of Decrease |
 |-----------|---------|------------|-------------------|-------------------|
-| `BASE_DISCOVERY_DURATION` | 2.0 s | 1.0-4.0 | Longer discovery beats. Above 4.0 disrupts flow. | Briefer. Below 1.0 barely noticeable. |
-| `SECTION_BOUNDARY_HYSTERESIS` | 1.0 m | 0.5-2.0 | Wider boundary overlap before section switch. | Tighter. Below 0.5 may rapid-toggle. |
-| `POI_DETECTION_RANGE` | 8.0 m | 4.0-15.0 | POIs influence camera from further away. | Must be closer before auto-frame activates. |
-| `BARRIER_REPAIR_COST_DOOR` | 3 SP | 1-10 | Doors cost more to repair. Resources scarcer. | Doors cheap. Faster progression. |
-| `BARRIER_REPAIR_COST_DEBRIS` | 5 SP | 2-15 | Debris clearance expensive. | Cheaper debris clearing. |
-| `BARRIER_REPAIR_COST_CONSOLE` | 0 SP | 0-5 | Console overrides cost Ship Parts. | Free to use (just knowledge-gated). |
-| `CACHE_SHIP_PARTS_MIN` | 2 | 1-5 | Minimum Ship Parts per cache. | Caches less rewarding. |
-| `CACHE_SHIP_PARTS_MAX` | 8 | 3-15 | Maximum Ship Parts per cache. | Smaller cache rewards. |
-| `OBJECTIVE_MARKER_OPACITY` | 0.7 | 0.3-1.0 | More visible waypoint. | Subtler marker. Below 0.3 easy to miss. |
-| `ANCIENT_KNOWLEDGE_TIER_*` | per story | 0-5 per event | Faster knowledge growth. | Slower unlock of readable content. |
-
-## Visual/Audio Requirements
-
-| Event | Visual Feedback | Audio Feedback | Priority |
-|-------|----------------|---------------|----------|
-| Section discovery (first entry) | Lights activate (if powered), dust particles, environmental reveal | Power-up hum, Eli's reaction voice line, ambient shift | High |
-| Data node interaction (readable) | Ancient text with English translation overlay | Console activation sound, data processing tone | High |
-| Data node interaction (unreadable) | Ancient glyphs displayed, no translation | Console beep, Eli's "I can't read this" | Medium |
-| Supply cache opened | Cache lid/door opens, contents glow briefly | Mechanical open, resource pickup chime | High |
-| Barrier resolved (door opens) | Door animation, light floods through | Door mechanism, atmosphere equalization hiss | High |
-| Objective marker (world-space) | Subtle diegetic pulse on Kino Remote HUD overlay | None (silent — not intrusive) | Medium |
-| POI nearby | Camera auto-frame offset (handled by Camera System) | None | Low |
-
-## UI Requirements
-
-| Information | Display Location | Update Trigger | Condition |
-|-------------|-----------------|----------------|-----------|
-| Objective waypoint | World-space Kino Remote HUD overlay | Episode sets/clears objective | Active story objective exists |
-| Data node content | Screen overlay (pause-style) | Player reads a data node | Interaction with data node |
-| Barrier info | Radial menu labels | Player approaches barrier | Within interaction range |
-| "New data available" | Kino Remote notification | Ancient knowledge tier increases | Previously unreadable nodes now readable |
-
-No persistent HUD for exploration. Objective marker is the only always-visible
-element, and it's rendered as a diegetic Kino Remote overlay, not a game UI
-element.
+| `FLOOR_UNLOCK_COST_BASE` | 5 | **Do not change** — RNG-sensitive | Higher cost per floor | Lower cost per floor |
+| `ROOM_ASSIGN_COST` | 3 | 2-6 | Room assignment costs more | Cheaper assignment |
+| `SALVAGE_PANEL_GRANT` | 3 | 2-6 | More parts per panel | Fewer parts per panel |
+| `PARTS_BUDGET_MARGIN_PCT` | 120 | 110-150 | More headroom above unlock cost | Less headroom |
+| `BASE_DISCOVERY_DURATION` | 2.0 s | 1.0-4.0 | Longer discovery beats | Briefer |
+| `BARRIER_REPAIR_COST_DOOR` | 3 SP | 1-10 | Doors cost more to repair | Cheaper repair |
+| `CACHE_SHIP_PARTS_MIN` | 2 | 1-5 | More parts per cache minimum | Less rewarding |
+| `CACHE_SHIP_PARTS_MAX` | 8 | 3-15 | More parts per cache maximum | Smaller rewards |
 
 ## Acceptance Criteria
 
-- [ ] **Section discovery**: Entering a new section triggers discovery moment, marks section as Explored in Ship State, and logs on Kino Remote.
-- [ ] **Discovery moment**: Lights activate (if powered), Eli reacts, audio shifts. Duration matches config. Player retains movement.
-- [ ] **Ancient data nodes**: Readable nodes display translated content. Unreadable nodes show glyphs + Eli comment. Tier check is correct.
-- [ ] **Data node revisit**: Increasing ancient_knowledge_level makes previously unreadable nodes readable on revisit.
-- [ ] **Supply caches**: Caches grant Ship Parts / resources. Looted caches persist as empty. Cannot loot twice.
-- [ ] **Barrier types**: All 5 barrier types (power-gated, jammed, sealed, debris, knowledge-gated) function correctly with their resolution conditions.
-- [ ] **Barrier resource check**: Insufficient resources greys out the action with clear cost display.
-- [ ] **POI registration**: Data nodes, caches, and subsystems register as POIs for Camera auto-framing.
-- [ ] **Objective markers**: Active story objective shows on Kino Remote map and as a world-space waypoint. Free to ignore.
-- [ ] **Map labels**: Ancient labels on Kino Remote resolve to English as ancient_knowledge_level increases.
-- [ ] **Section boundary detection**: Trigger volumes correctly detect entry/exit. Hysteresis prevents rapid toggling at doorways.
-- [ ] **Revisit value**: Ship State changes (power restored, episode events) create new interactable content in previously explored sections.
-- [ ] **Universal pause**: All exploration states pause and resume correctly.
-- [ ] **Performance**: Section entry logic completes within 1ms. POI detection within 0.5ms per frame.
-- [ ] **All tuning values externalized**: Barrier costs, cache amounts, discovery durations loaded from config.
+### Implemented (Godot 4.6)
+
+- [x] Procedural floor generation: floors 3+ generated deterministically; 12-20 rooms; <=3 specials per floor.
+- [x] Floor-access gating: floor 1 always free; floor 2 via stairs (no cost); floors 3+ require elevator power + code + parts.
+- [x] Elevator power restore via fuse delivery + minigame (#132).
+- [x] Floor unlock cost curve: `floor_unlock_cost(n) = 5*absi(n)`; budget >= next unlock cost guaranteed.
+- [x] FTL loop: `FtlLoop` autoload warp cycle with Bridge tuning (#130, #133).
+- [x] Consumption: resource drain per FTL tick (#134).
+- [x] Repair robot: sealed/damaged rooms healed over time (#131).
+- [x] Room assignment: unassigned storage rooms assignable for `ROOM_ASSIGN_COST` parts.
+- [x] Save/load: full round-trip for generated topology, conditions, assignments.
+- [x] Authored set-dressing: 7 iconic special room types have per-TYPE hero props + signage + accent lights (#135).
+
+### Forward-Looking (not yet implemented)
+
+- [ ] Section discovery trigger volumes and first-visit events.
+- [ ] Discovery moment: lights activate, Eli reacts, audio shifts.
+- [ ] Ancient data nodes: knowledge-tier readable/unreadable pipeline.
+- [ ] Supply caches: grant resources, persist as empty.
+- [ ] Full barrier taxonomy: all 5 barrier types functional.
+- [ ] POI registration for camera auto-framing.
+- [ ] Objective markers on Kino Remote map and in world-space.
+- [ ] Map label resolution: Ancient to English as knowledge tier grows.
+- [ ] Pre-designed group clusters: anchor special + forced-adjacent annex.
 
 ## Open Questions
 
 | Question | Owner | Deadline | Resolution |
 |----------|-------|----------|-----------|
-| How many total sections should Destiny have? Each needs level design, content placement, and barrier design. | Level Designer | Before content planning | — |
-| Should the objective marker be toggleable in settings (for players who want harder exploration)? | UX Designer | Before UI implementation | — |
-| How does ancient_knowledge_level increase? Discrete story events, or gradual via reading data nodes? | Episode Narrative GDD | When Episode Narrative designed | — |
-| Should environmental storytelling include "ghost" holograms showing Ancient construction/launch? (High production cost but very cool) | Creative Director | Pre-production | — |
-| How many data nodes per section is the right density? Too few = boring. Too many = overwhelming. Needs playtesting. | Level Designer | During prototype | — |
-| Should the Kino drone be deployable to scout ahead into unpowered sections before Eli enters? | Kino Drone GDD | When Kino Drone designed | — |
+| How many total sections should Destiny have? | Level Designer | Before content planning | — |
+| Should the objective marker be toggleable in settings? | UX Designer | Before UI implementation | — |
+| How does ancient_knowledge_level increase — discrete events or gradual? | Episode Narrative GDD | When Episode Narrative designed | — |
+| Should environmental storytelling include ghost holograms of Ancient construction? | Creative Director | Pre-production | — |
+| How many data nodes per section is the right density? | Level Designer | During prototype | — |
+| Should the Kino drone scout ahead into unpowered sections? | Kino Drone GDD | When Kino Drone designed | — |
+| Cluster mechanic: which specials form clusters, what adjacency preferences? | Systems Designer | Post-E1 | Deferred from #135 |

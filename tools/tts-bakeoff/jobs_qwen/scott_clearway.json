@@ -1,0 +1,6 @@
+{
+	"_comment": "Scott yells 'Get out of the way!' as he moves to the downed crew (replaces the generic MARINE opener). Base-clone from scott_barked ref.",
+	"lines": [
+		{ "id": "open-scott-clearway", "char": "scott", "mode": "barked", "text": "Get out of the way!" }
+	]
+}

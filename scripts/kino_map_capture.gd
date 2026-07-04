@@ -150,14 +150,15 @@ func _setup_full() -> void:
 		"control_approach_north",
 		"control_interface_room",
 		"cr_corridor_2",
-		"engineering_bay",
+		"aft_storage_hall",
+		"aft_crew_corridor",
 		"eli_quarters",
 		"elevator_north",
 		"elevator_room_floor_1",
 		"hydroponics",
 		"quarters_room_1",
 	]:
-		var row: Dictionary = ShipLayout.room(room_id)
+		var row: Dictionary = ProceduralShip.room(room_id)
 		var display: String = String(row.get("name", room_id))
 		GameState.discover_room(room_id, display)
 	# Traverse roughly the prologue → air-crisis path so half the pips

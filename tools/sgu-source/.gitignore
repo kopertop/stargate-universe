@@ -1,0 +1,10 @@
+# Raw copyrighted source + heavy/derived intermediates — do not commit.
+*.m4a
+*.wav
+*.mp3
+*.wav.import
+demucs_out/
+*.log
+
+# Verbatim ASR text = copyrighted dialogue; keep local only.
+asr/

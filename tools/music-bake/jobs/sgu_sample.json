@@ -1,0 +1,13 @@
+{
+	"_comment": "Audition batch — one stem per layer so the SGU palette/prompts can be vetted (and compared against the free Kenney music loops in build_index.py) BEFORE committing API spend on the full library (sgu_full.json). Stem defs live in palette.py; this just selects ids.",
+	"out_dir": "sounds/music/loops",
+	"stems": [
+		"bed_ship_warm",
+		"bed_planet_open",
+		"pad_strings_warm",
+		"pad_strings_tense",
+		"mel_cello_lonely",
+		"pulse_drive",
+		"sting_discovery"
+	]
+}

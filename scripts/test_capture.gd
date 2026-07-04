@@ -20,6 +20,10 @@ const DEFAULT_CAMERA_YAW_OFFSET: float = 28.0
 
 var _state: int = 0   # 0=settle, 1=walking, 2=done
 var _frames: int = 0
+# Camera mode: "" = default over-the-shoulder walk-in; "overview" = elevated
+# pulled-back establishing shot (for outdoor scenes / large rooms the 3/4 walk
+# can't frame). Parsed from `cam=overview` user arg.
+var _cam_mode: String = ""
 
 func _ready() -> void:
 	if not _capture_requested():
@@ -32,20 +36,86 @@ func _ready() -> void:
 		if arg.begins_with("room_id="):
 			GameState.next_room_id = arg.substr(8)
 			print("[test_capture] room_id=", GameState.next_room_id)
-	print("[test_capture] active")
+		elif arg.begins_with("quest="):
+			_preset_quest(arg.substr(6))
+		elif arg.begins_with("cam="):
+			_cam_mode = arg.substr(4)
+	print("[test_capture] active cam=%s" % _cam_mode)
+
+# Put GameState into a named quest state so room.gd stages the right beat (e.g.
+# the control-room Rush standoff needs find_rush + met_rush==false). Dev-only.
+func _preset_quest(which: String) -> void:
+	match which:
+		"find_rush":
+			GameState.met_scott = true
+			GameState.advance_air_quest()   # talk_scott → find_rush (met_rush stays false)
+		"find_rest":
+			# Past the Rush standoff: Eli heads to his quarters to cool off.
+			GameState.met_scott = true
+			GameState.advance_air_quest()   # → find_rush
+			GameState.met_rush = true
+			GameState.advance_air_quest()   # → find_rest
+		"air_crisis":
+			# Air crisis active, no breach sealed yet → ShipAlert.is_alert_active()
+			# returns true, so rooms render under the red-alert tint (the breach beat).
+			GameState.air_crisis_started = true
+		"coldopen_done":
+			# Post-cold-open gate room: skip the cinematic and drop the player into the
+			# playable hand-off state (Find Rush active), spawned mid-room facing the
+			# exit so the waypoint/minimap guidance toward the control room is framed.
+			GameState.met_scott = true
+			GameState.advance_air_quest()   # → find_rush
+			GameState.skip_arrival_cinematic = true
+			GameState.pending_spawn_position = Vector3(0.0, 0.05, 3.5)
+			GameState.pending_spawn_yaw = 0.0   # face -Z (the exit wall / corridors)
+	print("[test_capture] quest preset=%s step=%s" % [which, GameState.get("quest_step")])
 
 func _process(_delta: float) -> void:
 	if _state == 2:
 		return
 	_frames += 1
 	if _state == 0 and _frames >= SETTLE_FRAMES:
-		_start_walk()
+		if _cam_mode == "overview":
+			_setup_overview()
+		else:
+			_start_walk()
 		_frames = 0
 		_state = 1
 		return
 	if _state == 1 and _frames >= WALK_FRAMES:
 		_state = 2
 		_capture()
+
+# Elevated pulled-back establishing shot — for outdoor scenes / large rooms the
+# over-the-shoulder walk can't frame. Spawns a temp Camera3D looking down at the
+# player (or scene origin), makes it current. Overridable via cam_h=/cam_back=/fov=.
+func _setup_overview() -> void:
+	var tree: SceneTree = get_tree()
+	var focus: Vector3 = Vector3.ZERO
+	var player: Node = tree.get_first_node_in_group("player")
+	if player is Node3D:
+		focus = (player as Node3D).global_position
+	var height: float = 11.0
+	var back: float = 16.0
+	var side: float = 6.0
+	var fov: float = 62.0
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("cam_h="):
+			height = arg.substr(6).to_float()
+		elif arg.begins_with("cam_back="):
+			back = arg.substr(9).to_float()
+		elif arg.begins_with("fov="):
+			fov = arg.substr(4).to_float()
+	var cam: Camera3D = Camera3D.new()
+	cam.name = "OverviewCaptureCam"
+	cam.fov = fov
+	var scene: Node = tree.current_scene
+	if scene != null:
+		scene.add_child(cam)               # in tree before look_at
+		cam.global_position = focus + Vector3(side, height, back)
+		cam.look_at(focus + Vector3(0.0, 1.0, 0.0), Vector3.UP)
+		cam.current = true
+
 
 func _start_walk() -> void:
 	var tree: SceneTree = get_tree()

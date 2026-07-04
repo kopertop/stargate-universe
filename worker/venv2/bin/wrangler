@@ -1,0 +1,4 @@
+#!/home/newstex/stargate-universe/worker/venv2/bin/python3.11
+import wrangler
+wrangler.start()
+

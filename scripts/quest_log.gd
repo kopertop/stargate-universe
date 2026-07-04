@@ -52,6 +52,12 @@ var _loaded: bool = false
 
 func _ready() -> void:
 	_ensure_initialized()
+	# D5: start the post-E1 exploration quest when Episode 1 completes.
+	# Connect after init so GameState is available; guard against double-connect.
+	var gs: Node = _autoload_node("GameState")
+	if gs != null and gs.has_signal("episode_completed"):
+		if not gs.episode_completed.is_connected(_on_episode_completed):
+			gs.episode_completed.connect(_on_episode_completed)
 
 
 # Idempotent lazy init. Run from _ready for normal autoload boot AND from
@@ -387,6 +393,16 @@ func _evaluate_predicate(key: String) -> bool:
 			# early-exit. Preserve the same semantics here so the final step's
 			# completion never gates on the wrong flag combination.
 			return gs.scrubber_repaired or gs.episode_complete
+		"floor_unlocked_beyond_2":
+			# D5: true once any floor >= 3 is unlocked via ProceduralShip.
+			var ps: Node = _autoload_node("ProceduralShip")
+			if ps == null:
+				return false
+			# Check floors 3..10 for any that are unlocked.
+			for fn: int in range(3, 11):
+				if ps.call("is_floor_unlocked", fn):
+					return true
+			return false
 		_:
 			push_warning("QuestLog: unknown predicate '%s'" % key)
 			return false
@@ -477,11 +493,24 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	advance("")
 
 
+# D5: fired by GameState.episode_completed when E1 finishes. Starts the
+# post-E1 exploration quest and switches the HUD to track it.
+func _on_episode_completed() -> void:
+	start_quest("e2_explore")
+	_tracked_quest_id = "e2_explore"
+	advance("e2_explore")
+
+
 # Wipe progress so a fresh game starts at step 1 of every auto_start quest.
 # Called from GameState.reset().
 func reset() -> void:
 	_ensure_initialized()
 	_progress.clear()
+	# Re-wire the episode_completed listener in case GameState reconnects.
+	var gs: Node = _autoload_node("GameState")
+	if gs != null and gs.has_signal("episode_completed"):
+		if not gs.episode_completed.is_connected(_on_episode_completed):
+			gs.episode_completed.connect(_on_episode_completed)
 	for quest_id in _quests.keys():
 		var q: Dictionary = _quests[quest_id]
 		if q.get("auto_start", false) == true:

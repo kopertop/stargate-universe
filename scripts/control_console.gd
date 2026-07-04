@@ -49,6 +49,19 @@ func _ensure_collider() -> void:
 
 
 func _on_interact(_by: Node) -> void:
+	# Post-standoff examine: Eli walks up to the console right after Rush pushed
+	# the button. The console is ancient and inscrutable; nothing happens.
+	# GDD ref: issue #136 §4 "Console no-op".
+	# Gate: met_rush==true AND still on QUEST_FIND_RUSH (pre-crisis path only).
+	# Must mutate ZERO ship state — no diagnose_life_support, no breach beat,
+	# no flags. Gate BEFORE the DIAGNOSE_LIFE_SUPPORT branch so the real
+	# crisis flow is completely untouched.
+	if GameState.met_rush and GameState.quest_step == GameState.QUEST_FIND_RUSH:
+		var noop_line: String = "Apparently that did nothing…"
+		GameState.add_log(noop_line)
+		GameState.dialogue_shown.emit("Eli", noop_line)
+		return
+
 	GameState.add_log("Console: Ancient interface comes online.")
 
 	# First post-crisis access runs the diagnostic (advances the quest to the

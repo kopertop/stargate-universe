@@ -35,6 +35,7 @@ var mouselook_active: bool = false
 
 @onready var camera: Camera3D = $SpringArm/Camera
 @onready var spring: SpringArm3D = $SpringArm
+@onready var xray: CameraXRay = $CameraXRay if has_node("CameraXRay") else null
 
 func _ready() -> void:
 	# Preserve the scene's tuned pitch/distance; only nudge yaw to sit behind the target.
@@ -51,6 +52,10 @@ func _ready() -> void:
 	GameState.dialog_started.connect(_on_dialog_started)
 	GameState.dialog_closed.connect(_on_dialog_closed)
 	GameState.kino_closed.connect(_on_dialog_closed)
+
+	# Initialize xray occluder registry
+	if xray:
+		xray.track_subject(self)  # Camera rig tracks itself as primary subject
 
 
 func _on_dialog_started(_npc: Node3D, _tree: Array) -> void:

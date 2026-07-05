@@ -9,15 +9,18 @@ extends SceneTree
 # Run WITHOUT --headless (that disables rendering → blank PNG) and with the
 # project's default Forward+ renderer so SSR / volumetric fog / glow all apply.
 #
-#   godot --quit-after 600 -s res://tests/shots/hero_shot.gd ++ out=user://hero.png wait=120
-
-func _initialize() -> void:
+#
+func _initialize():
+	print("hero_shot: _initialize called")
 	call_deferred("_run")
 
-func _run() -> void:
+func _run():
+	print("hero_shot: _run called")
 	var args := _parse_args()
+	print("hero_shot: args=", args)
 	var out_path := String(args.get("out", "user://hero.png"))
 	var wait_frames := int(args.get("wait", "120"))
+	print("hero_shot: out_path=", out_path, " wait_frames=", wait_frames)
 
 	# Keep autosave off the player's real file even though this scene is decoupled.
 	var save_mgr: Node = root.get_node_or_null("SaveManager")
@@ -25,6 +28,7 @@ func _run() -> void:
 		save_mgr.call("configure_test_paths", "hero_shot")
 
 	DisplayServer.window_set_size(Vector2i(1280, 720))
+	print("hero_shot: window size set")
 
 	var packed := load("res://scenes/gate_room_hero.tscn") as PackedScene
 	if packed == null:
@@ -34,32 +38,27 @@ func _run() -> void:
 	var inst := packed.instantiate()
 	root.add_child(inst)
 	current_scene = inst
+	print("hero_shot: scene loaded and instantiated")
+
+	# Camera: scene's Camera3D may not register in headless mode — create one immediately.
+	# Use config from gate_room_hero.gd (CAM_POS, CAM_LOOK_Y, GATE_Z).
+	var cam := Camera3D.new()
+	cam.global_position = Vector3(0.0, 2.6, -19.0)
+	cam.look_at(Vector3(0.0, 9.2, 13.5), Vector3.UP)
+	cam.fov = 76.0
+	cam.current = true  # Ensure this camera renders (Godot quirk)
+	root.get_viewport().camera_3d = cam
+	print("CAM created pos=", cam.global_position, " fwd=", -cam.global_transform.basis.z)
+	print("Viewport camera_3d=", root.get_viewport().camera_3d)
 
 	for i in wait_frames:
 		await process_frame
 
-	# Camera fallback: scene's Camera3D may not register in headless mode.
-	# Use config from gate_room_hero.gd (CAM_POS, CAM_LOOK_Y, GATE_Z).
-	var cam: Camera3D = root.get_viewport().get_camera_3d()
-	if cam != null:
-		print("CAM pos=", cam.global_position, " fwd=", -cam.global_transform.basis.z)
-	else:
-		# Fallback camera targeting the gate from below (low angle, cavernous hall).
-		# These values match gate_room_hero.gd config: CAM_POS(-19, 2.6), CAM_LOOK_Y(9.2), GATE_Z(13.5).
-		var fallback_cam := Camera3D.new()
-		fallback_cam.global_position = Vector3(0.0, 2.6, -19.0)
-		fallback_cam.look_at(Vector3(0.0, 9.2, 13.5), Vector3.UP)
-		fallback_cam.fov = 76.0
-		root.add_child(fallback_cam)
-		# Ensure viewport uses the fallback.
-		root.get_viewport().camera = fallback_cam
-		print("CAM fallback pos=", fallback_cam.global_position, " fwd=", -fallback_cam.global_transform.basis.z)
-
+	await process_frame
 	var img := root.get_viewport().get_texture().get_image()
 	var err := img.save_png(out_path)
 	print("SHOT ", out_path, " (save err=", err, ")")
 	quit(0)
-
 func _parse_args() -> Dictionary:
 	var out := {}
 	for a in OS.get_cmdline_user_args():

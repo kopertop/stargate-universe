@@ -386,57 +386,57 @@ func _build_ceiling() -> void:
 	ring3.material.metallic = METAL_METALLIC
 	ring3.material.roughness = METAL_ROUGHNESS
 	add_child(ring3)
-	379|	# Add structural beams (ribs) across the ceiling
-	380|	for i in range(4):
-	381|		var beam = CSGBox3D.new()
-	382|		beam.size = Vector3(HALL_HALF_WIDTH * 2, 0.5, 0.5)
-	383|		beam.rotation.y = i * (3.14159 / 2.0)
-	384|		beam.material = StandardMaterial3D.new()
-	385|		beam.material.albedo_color = METAL_COLOR
-	386|		beam.material.metallic = METAL_METALLIC
-	387|		beam.material.roughness = METAL_ROUGHNESS
-	388|		add_child(beam)
-	389|
-	390|func _build_console_banks() -> void:
-	391|	# Grounded ANGLED CONTROL BANKS — the target's defining foreground furniture:
-	392|	# continuous low desk masses hugging both side walls, each a solid plinth + a
-	393|	# back-leaning bank of MANY small faint-blue screens. The prior version made
-	394|	# floating flat cards drifting in black (judges' #1 gap, hit 3x); these sit ON
-	395|	# the floor, butt against the wall, and run as an unbroken row from foreground
-	396|	# to gate so they read as a manned control room, not cartoon tablets.
-	397|	var desk_mat := _metal(0.42)
-	398|	desk_mat.albedo_color = Color(0.105, 0.115, 0.135)
-	399|	var hood_mat := _metal(0.5)
-	400|	hood_mat.albedo_color = Color(0.07, 0.078, 0.092)
-	401|	# Screen base: dark glass with a faint cool emission so each panel is a small
-	402|	# DIM blue glow, not a saturated cyan card. The bank's many screens collectively
-	403|	# light the desk; no single panel blows out.
-	404|	for sgn: float in [-1.0, 1.0]:
-	405|		var x_wall: float = sgn * (HALL_HALF_WIDTH - 0.55)
-	406|		var x_desk: float = sgn * 8.2
-	407|		var yaw: float = -sgn * 0.16
-	408|		# Continuous angled row of console modules from near camera toward the gate.
-	409|		for i in range(6):
-	410|			var z: float = CAM_POS.z + 3.0 + float(i) * 3.0
-	411|			# Solid plinth base on the floor, angled slightly toward room centre.
-	412|			_box(Vector3(1.7, 1.05, 2.7), Vector3(x_desk, 0.52, z), desk_mat, yaw)
-	413|			# Slanted screen hood rising off the back of the plinth toward the wall.
-	414|			var hood := _box(Vector3(1.5, 1.5, 0.22), Vector3(x_desk + sgn * 0.25, 1.55, z), hood_mat, yaw)
-	415|			hood.rotation.x = sgn * 0.0 + (-0.55)
-	416|			# Grid of MANY small faint-blue screens set into the hood face.
-	417|			for col in range(3):
-	418|				for row in range(3):
-	419|					var sx: float = x_desk + sgn * 0.18 + (float(col) - 1.0) * 0.62
-	420|					var sz: float = z + (float(row) - 1.0) * 0.62
-	421|					var sy: float = 1.42 + (float(row) - 1.0) * 0.5
-	422|					# Vary brightness/tint per screen so the bank reads as live displays.
-	423|					var lit: float = 0.55 + float((i + col + row) % 3) * 0.22
-	424|					var scr_mat := _emissive(Color(0.16, 0.34, 0.62) * (0.7 + lit * 0.4), SCREEN_ENERGY * lit)
-	425|					var ms := _box(Vector3(0.5, 0.42, 0.05), Vector3(sx, sy, sz), scr_mat, yaw)
-	426|					ms.rotation.x = -0.55
-	427|			# Thin lit edge strip along the desk lip — cool console glow grounding it.
-	428|			var lip := _emissive(Color(0.16, 0.32, 0.58), 0.22)
-	429|			_box(Vector3(1.6, 0.06, 0.1), Vector3(x_desk, 1.06, z + 1.25), lip, yaw)
+	# Add structural beams (ribs) across the ceiling
+	for i in range(4):
+		var beam = CSGBox3D.new()
+		beam.size = Vector3(HALL_HALF_WIDTH * 2, 0.5, 0.5)
+		beam.rotation.y = i * (3.14159 / 2.0)
+		beam.material = StandardMaterial3D.new()
+		beam.material.albedo_color = METAL_COLOR
+		beam.material.metallic = METAL_METALLIC
+		beam.material.roughness = METAL_ROUGHNESS
+		add_child(beam)
+
+func _build_console_banks() -> void:
+	# Grounded ANGLED CONTROL BANKS — the target's defining foreground furniture:
+	# continuous low desk masses hugging both side walls, each a solid plinth + a
+	# back-leaning bank of MANY small faint-blue screens. The prior version made
+	# floating flat cards drifting in black (judges' #1 gap, hit 3x); these sit ON
+	# the floor, butt against the wall, and run as an unbroken row from foreground
+	# to gate so they read as a manned control room, not cartoon tablets.
+	var desk_mat := _metal(0.42)
+	desk_mat.albedo_color = Color(0.105, 0.115, 0.135)
+	var hood_mat := _metal(0.5)
+	hood_mat.albedo_color = Color(0.07, 0.078, 0.092)
+	# Screen base: dark glass with a faint cool emission so each panel is a small
+	# DIM blue glow, not a saturated cyan card. The bank's many screens collectively
+	# light the desk; no single panel blows out.
+	for sgn: float in [-1.0, 1.0]:
+		var x_wall: float = sgn * (HALL_HALF_WIDTH - 0.55)
+		var x_desk: float = sgn * 8.2
+		var yaw: float = -sgn * 0.16
+		# Continuous angled row of console modules from near camera toward the gate.
+		for i in range(6):
+			var z: float = CAM_POS.z + 3.0 + float(i) * 3.0
+			# Solid plinth base on the floor, angled slightly toward room centre.
+			_box(Vector3(1.7, 1.05, 2.7), Vector3(x_desk, 0.52, z), desk_mat, yaw)
+			# Slanted screen hood rising off the back of the plinth toward the wall.
+			var hood := _box(Vector3(1.5, 1.5, 0.22), Vector3(x_desk + sgn * 0.25, 1.55, z), hood_mat, yaw)
+			hood.rotation.x = sgn * 0.0 + (-0.55)
+			# Grid of MANY small faint-blue screens set into the hood face.
+			for col in range(3):
+				for row in range(3):
+					var sx: float = x_desk + sgn * 0.18 + (float(col) - 1.0) * 0.62
+					var sz: float = z + (float(row) - 1.0) * 0.62
+					var sy: float = 1.42 + (float(row) - 1.0) * 0.5
+					# Vary brightness/tint per screen so the bank reads as live displays.
+					var lit: float = 0.55 + float((i + col + row) % 3) * 0.22
+					var scr_mat := _emissive(Color(0.16, 0.34, 0.62) * (0.7 + lit * 0.4), SCREEN_ENERGY * lit)
+					var ms := _box(Vector3(0.5, 0.42, 0.05), Vector3(sx, sy, sz), scr_mat, yaw)
+					ms.rotation.x = -0.55
+			# Thin lit edge strip along the desk lip — cool console glow grounding it.
+			var lip := _emissive(Color(0.16, 0.32, 0.58), 0.22)
+			_box(Vector3(1.6, 0.06, 0.1), Vector3(x_desk, 1.06, z + 1.25), lip, yaw)
 
 func _build_buttresses() -> void:
 	# Large DIAGONAL buttress beams flanking the gate — the dominant foreground

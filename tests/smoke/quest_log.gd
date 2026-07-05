@@ -77,7 +77,7 @@ func _initialize() -> void:
 	# Each iteration flips the world-state flag that satisfies the current
 	# active step's complete_when predicate, then asserts QuestLog moved on
 	# to the next step. Mirrors the way every E1 beat advances in production.
-	_walk_predicate_sequence(gs, ql)
+	_walk_predicate_sequence(gs, ql, inv)
 
 	# Reset for the event-advance section.
 	gs.reset()
@@ -157,7 +157,7 @@ func _initialize() -> void:
 	_report()
 
 
-func _walk_predicate_sequence(gs: Node, ql: Node) -> void:
+func _walk_predicate_sequence(gs: Node, ql: Node, inv: Node) -> void:
 	# Each entry: { step, flag_setter (Callable on gs), next_step }.
 	# The setter is run, gs.advance_air_quest() is called, and we assert
 	# the active step is `next_step`. The terminal `complete` step is

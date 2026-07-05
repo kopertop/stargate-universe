@@ -10,6 +10,10 @@ code.
   (autoload `ShipLayout`). Each row: `id`, `name`, `floor` (0 or 1), `width`,
   `height`, `startX`, `endX`, `startY`, `endY`, `template_id`, `type`, plus
   state booleans (`found`, `locked`, `explored`, `discovered`).
+- `room_modules.json` — Build-mode module catalog (hydroponics unit, quarters,
+  research lab, machine shop, ...). Loaded by `scripts/ship_state.gd`
+  (autoload `ShipState`); consumed by the room consoles' BuildPanel. See
+  `../design/gdd/ship-building-mode.md`.
 - `room_connections.json` — Dictionary of `room_id -> Array[{dir, to, plaque}]`.
   Connections are listed in ONE direction; consumers mirror reverse edges (see
   `scripts/room.gd::_setup_doors` and `scripts/ship_layout.gd::_load_connections`).

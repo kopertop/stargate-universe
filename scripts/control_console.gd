@@ -51,6 +51,15 @@ func _ensure_collider() -> void:
 func _on_interact(_by: Node) -> void:
 	GameState.add_log("Console: Ancient interface comes online.")
 
+	# Merged-deck flow: the control-room consoles ARE the ship-systems surface
+	# — remote door open/close/lock plus the per-room damage/shield/module
+	# readout. The deck scene owns the panel so the classic room.tscn flow
+	# (and its E1 quest beats below) is untouched.
+	var deck: Node = get_tree().current_scene
+	if deck != null and deck.has_method("open_ship_systems_panel"):
+		deck.call("open_ship_systems_panel")
+		return
+
 	# First post-crisis access runs the diagnostic (advances the quest to the
 	# seal-breach objective) and downloads the affected section to the map.
 	# The narrative — Scott flagging the door, the red-alert panic — is played

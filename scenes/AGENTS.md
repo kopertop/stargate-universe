@@ -13,6 +13,12 @@ prefabs they instance live in `../objects/`.
 - `room.tscn` — Generic data-driven room. Backed by `../scripts/room.gd`;
   reads `next_room_id` from GameState and dispatches to `room_builder.gd` +
   per-room interactable spawners.
+- `deck.tscn` — MERGED floor scene: every `ship_layout.json` room on one
+  floor built at absolute plan coordinates in a single navigable scene
+  (`../scripts/deck.gd`). Physical stateful doors between rooms (ShipState),
+  room build consoles, control-room door panel. Gate room + elevator stay
+  scene transitions. F6 previews `floor_index`; `--decks` routes the game
+  through it; classic room.tscn flow remains the E1/test default.
 - `planet.tscn` — Off-ship planet scene (lime planet).
 - `*.tres` — Environment + lighting resources used by the scenes.
 

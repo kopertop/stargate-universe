@@ -29,6 +29,15 @@ extends Interactable
 @export var requires_kino: bool = false
 @export var requires_kino_message: String = "I need the Kino Remote first."
 
+# Merged-deck physical door (scenes/deck.tscn). When true the door never
+# scene-transitions: E toggles the leaves open/shut IN PLACE, the state
+# persists in ShipState under `door_id` (GameState.door_key(a, b) format),
+# and remote open/close/lock commands from the control-room console arrive
+# via ShipState.door_changed. target_room_id may still be set — it only
+# feeds the plaque text in this mode.
+@export var physical_mode: bool = false
+@export var door_id: String = ""
+
 # Plaque shown above the door's frame: the destination room's display name.
 # Leave empty to auto-derive — `target_room_id` looks up `ShipLayout.room(id).name`
 # (the canonical JSON name); `target_scene` falls back to title-casing the
@@ -70,6 +79,13 @@ func _ready() -> void:
 	# beyond the door and, in the gate room, off the edge of the floor.
 	collision_layer = 1 | 4
 	_build_visual()
+	# Physical doors restore their persisted state before the first prompt /
+	# status-light refresh, and stay subscribed for remote (console) commands.
+	if physical_mode and door_id != "":
+		_is_open = ShipState.is_door_open(door_id)
+		_apply_leaf_positions(_is_open, false)
+		_apply_passability()
+		ShipState.door_changed.connect(_on_ship_door_changed)
 	_refresh_prompt()
 	_refresh_status_light()
 	# Decode the plaque in place when the destination room becomes discovered.
@@ -78,7 +94,7 @@ func _ready() -> void:
 		GameState.room_discovered.connect(_on_room_discovered)
 
 func _refresh_prompt() -> void:
-	if locked:
+	if _effective_locked():
 		prompt = lock_message
 	elif requires_kino and not Inventory.has("kino_remote"):
 		prompt = requires_kino_message
@@ -90,39 +106,92 @@ func _refresh_prompt() -> void:
 		prompt = open_prompt
 
 func _on_interact(by: Node) -> void:
-	if locked:
+	if _effective_locked():
 		return
 	if requires_kino and not Inventory.has("kino_remote"):
 		return
 	if _is_transition_door():
 		_transition(by)
+	elif physical_mode and door_id != "":
+		# Route the toggle through the registry — the door_changed signal
+		# animates us, so a console-driven change and a hand-toggle share one
+		# code path (and the state persists across scene reloads + saves).
+		ShipState.set_door_open(door_id, not _is_open)
 	else:
 		_toggle()
 
 
+# Legacy `locked` export (elevator power gate) OR'd with the persistent
+# ShipState lock the control-room console drives.
+func _effective_locked() -> bool:
+	if locked:
+		return true
+	return physical_mode and door_id != "" and ShipState.is_door_locked(door_id)
+
+
 func _is_transition_door() -> bool:
+	if physical_mode:
+		return false
 	return target_scene != "" or target_room_id != ""
 
 func _toggle() -> void:
 	_is_open = not _is_open
 	_refresh_prompt()
 	_refresh_status_light()
+	_apply_leaf_positions(_is_open, true)
+
+
+# Remote command from the control-room console (or any other ShipState
+# writer). Locking an open door also arrives here as open=false.
+func _on_ship_door_changed(changed_id: String, open: bool, _locked_state: bool) -> void:
+	if changed_id != door_id:
+		return
+	if open != _is_open:
+		_is_open = open
+		_apply_leaf_positions(_is_open, is_inside_tree())
+		# Pneumatic-ish servo cue — menu_open/close are the closest kit sounds
+		# until a dedicated blast-door sample lands (see sounds/AGENTS.md).
+		Audio.play("res://sounds/menu_open.ogg" if _is_open else "res://sounds/menu_close.ogg")
+	_apply_passability()
+	_refresh_prompt()
+	_refresh_status_light()
+
+
+# Physical doors block the player capsule only while shut; open doors keep
+# layer 4 so the interact ray can still close them from either side.
+func _apply_passability() -> void:
+	if not physical_mode:
+		return
+	collision_layer = 4 if _is_open else (1 | 4)
+
+
+# Slide both leaves to the open/shut pose — tweened in play, snapped when
+# `animate` is false (initial state restore, headless tests).
+func _apply_leaf_positions(open: bool, animate: bool) -> void:
+	var left_target: float = -OPEN_OFFSET if open else 0.0
+	var right_target: float = OPEN_OFFSET if open else 0.0
+	var left_pos: Vector3 = Vector3(-LEAF_WIDTH * 0.5 + left_target, 0.0, 0.0)
+	var right_pos: Vector3 = Vector3(LEAF_WIDTH * 0.5 + right_target, 0.0, 0.0)
 	if _tween != null and _tween.is_valid():
 		_tween.kill()
+	if not animate or not is_inside_tree():
+		if _left_leaf != null:
+			_left_leaf.position = Vector3(left_pos.x, _left_leaf.position.y, _left_leaf.position.z)
+		if _right_leaf != null:
+			_right_leaf.position = Vector3(right_pos.x, _right_leaf.position.y, _right_leaf.position.z)
+		return
 	_tween = create_tween()
 	_tween.set_parallel(true)
 	_tween.set_trans(Tween.TRANS_SINE)
 	_tween.set_ease(Tween.EASE_IN_OUT)
-	var left_target: float = -OPEN_OFFSET if _is_open else 0.0
-	var right_target: float = OPEN_OFFSET if _is_open else 0.0
 	if _left_leaf != null:
 		var lp: Vector3 = _left_leaf.position
 		_tween.tween_property(_left_leaf, "position",
-			Vector3(-LEAF_WIDTH * 0.5 + left_target, lp.y, lp.z), TOGGLE_DURATION)
+			Vector3(left_pos.x, lp.y, lp.z), TOGGLE_DURATION)
 	if _right_leaf != null:
 		var rp: Vector3 = _right_leaf.position
 		_tween.tween_property(_right_leaf, "position",
-			Vector3(LEAF_WIDTH * 0.5 + right_target, rp.y, rp.z), TOGGLE_DURATION)
+			Vector3(right_pos.x, rp.y, rp.z), TOGGLE_DURATION)
 
 func _transition(by: Node) -> void:
 	# Walk-through sequence: open the leaves, drive the player up to (and a bit
@@ -180,6 +249,11 @@ func _route_to_destination() -> void:
 	if target_room_id != "":
 		if target_room_id == "gate_room":
 			SceneRouter.change_to("res://scenes/gate_room.tscn", target_spawn)
+		elif ShipState.merged_decks_enabled:
+			# Merged-deck flow: land on the destination room's floor scene at
+			# the deck-stamped arrival marker beside the door we came through.
+			GameState.next_room_id = target_room_id
+			SceneRouter.change_to("res://scenes/deck.tscn", _deck_spawn_key())
 		else:
 			GameState.next_room_id = target_room_id
 			SceneRouter.change_to("res://scenes/room.tscn", target_spawn)
@@ -187,10 +261,23 @@ func _route_to_destination() -> void:
 		SceneRouter.change_to(target_scene, target_spawn)
 
 
+# Deck arrival markers are namespaced "Deck_<room>_From_<room>" (deck.gd stamps
+# them) — per-pair unique across the whole floor, unlike the per-room-scene
+# "From<Camel>" convention where several rooms can hold same-named markers.
+func _deck_spawn_key() -> String:
+	if source_room_id == "":
+		return ""
+	return "Deck_%s_From_%s" % [target_room_id, source_room_id]
+
+
 func unlock() -> void:
 	locked = false
 	_refresh_prompt()
 	_refresh_status_light()
+
+
+func is_open() -> bool:
+	return _is_open
 
 # ----- visual build ----------------------------------------------------------
 
@@ -261,9 +348,10 @@ func _build_visual() -> void:
 	visual.add_child(_right_leaf)
 	_build_leaf(_right_leaf, leaf_mat, bronze_mat, -1.0)
 
-	# Destination plaque — only meaningful for transition doors. Toggle-only
-	# doors (no target at all) get no plaque.
-	if _is_transition_door():
+	# Destination plaque — any door that knows where it leads gets one:
+	# transition doors AND merged-deck physical doors (their target_room_id
+	# feeds the sign). Plain toggle doors (no target at all) get no plaque.
+	if target_scene != "" or target_room_id != "" or plaque_label != "":
 		_add_plaque(visual, frame_mat)
 
 
@@ -414,7 +502,7 @@ func _refresh_status_light() -> void:
 	if _status_mat == null:
 		return
 	var c: Color
-	if locked:
+	if _effective_locked():
 		c = Color(1.0, 0.20, 0.10, 1.0)    # red — locked
 	elif _is_open:
 		c = Color(0.30, 1.0, 0.55, 1.0)    # green — passable

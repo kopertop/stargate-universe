@@ -43,6 +43,7 @@ Settings="*res://scripts/settings.gd"
 Gamepad="*res://scripts/gamepad.gd"
 GamepadConfigDialog="*res://scripts/gamepad_config_dialog.gd"
 ShipLayout="*res://scripts/ship_layout.gd"
+ShipState="*res://scripts/ship_state.gd"
 KinoMapCapture="*res://scripts/kino_map_capture.gd"
 
 [display]

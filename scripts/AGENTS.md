@@ -17,6 +17,10 @@ extension. Most have an adjacent `.uid` sidecar (Godot 4.6 resource UID).
   CONDITIONS + OBJECTIVE_FNS registries are `match`-on-string in the
   same file; adding a predicate = one `match` arm + a JSON reference.
 - `scene_router.gd` — Cross-scene transitions with named spawn markers.
+- `ship_state.gd` — DYNAMIC per-room + per-door state registries: damage %,
+  shield %, installed module; door open/locked. Save-registered
+  (`ship_state`). Gates building on damage (repair-robot hook) and owns the
+  `merged_decks_enabled` routing flag. See `../design/gdd/ship-building-mode.md`.
 - `ship_layout.gd` — Room data loader + BFS pathfinding over
   `data/room_connections.json` (`path_through_rooms`, `next_room_toward`).
 - `kino_remote.gd` — Pip-Boy-style pause menu (Map / Status / Objectives /
@@ -29,6 +33,13 @@ extension. Most have an adjacent `.uid` sidecar (Godot 4.6 resource UID).
 - `gate_room.gd` — Hand-authored gate hall layout + arrival cinematic.
 - `room.gd` — Generic data-driven room scene. Stamps doors, dispatches to
   template builders, spawns the quest waypoint.
+- `deck.gd` — Merged per-floor scene (scenes/deck.tscn): builds EVERY room
+  of a floor at plan coordinates, physical stateful doors, room consoles,
+  module visuals + damage overlays, player-position room tracking.
+- `console_panel.gd` / `ship_systems_panel.gd` / `build_panel.gd` — code-built
+  console UIs (pause-while-open): shared frame base, control-room door/room
+  panel, per-room build panel.
+- `room_console.gd` — per-room build console interactable (deck flow).
 - `room_builder.gd` — Procedural floor/walls/ceiling + per-template accents.
 - `view.gd` — Third-person camera rig (mouselook, follow modes).
 - `hud.gd` — Player HUD: objective, health/oxygen, log, dialog panel,
@@ -36,7 +47,9 @@ extension. Most have an adjacent `.uid` sidecar (Godot 4.6 resource UID).
 - `playthrough_runner.gd` — Drives the end-to-end playthrough test.
 
 ### Interactables (per-prop scripts)
-- `door.gd` — Room-to-room transition door + plaque.
+- `door.gd` — Room-to-room transition door + plaque. Also has a merged-deck
+  `physical_mode`: opens/closes in place, state keyed into ShipState by
+  `door_id`, remote console commands via `ShipState.door_changed`.
 - `npc.gd` — Generic NPC body, dialog choice-tree handler.
 - `kino_pickup.gd`, `bed.gd`, `co2_scrubber.gd`, `power_console.gd`,
   `hull_seal_switch.gd`, `gate_console.gd`, `planet_gate.gd` — One per

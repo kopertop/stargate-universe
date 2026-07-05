@@ -136,6 +136,147 @@ static func build(world: Node3D, room_data: Dictionary) -> void:
 	_add_fill_light(world, width_m, depth_m, ceiling_m, palette)
 
 
+# ----- merged-deck variant ----------------------------------------------------
+# Doorway cut sizes for merged floors. Slightly wider/taller than the door
+# prop's frame (1.8 × 2.4) so the frame reads as trim inside the opening —
+# but narrow enough that the door collider (1.6 wide) leaves no side slit a
+# player capsule (r≈0.32) could squeeze through while the door is shut.
+const DOOR_OPENING_WIDTH: float = 2.0
+const DOOR_OPENING_HEIGHT: float = 2.6
+
+
+# Merged-deck build: same shell + accents as build(), but the four walls are
+# stamped as SEGMENTS with gaps cut for doorways so rooms placed side-by-side
+# on one deck scene connect physically. `openings` is an Array of
+# { "dir": "+x"|"-x"|"+z"|"-z", "along": float (m, from wall centre),
+#   "width": float?, "height": float? }.
+static func build_merged(world: Node3D, room_data: Dictionary, openings: Array) -> void:
+	if room_data.is_empty() or world == null:
+		return
+	var template_id: String = String(room_data.get("template_id", ""))
+	var width_m: float = float(room_data.get("width", 200)) * ShipLayout.SCALE
+	var depth_m: float = float(room_data.get("height", 200)) * ShipLayout.SCALE
+	var ceiling_m: float = CEILING_BY_TEMPLATE.get(template_id, 3.5)
+	var palette: Dictionary = _palette_for(template_id)
+	_build_shell_with_openings(world, template_id, width_m, depth_m, ceiling_m, palette, openings)
+	_add_template_accents(world, template_id, width_m, depth_m, ceiling_m, palette)
+	_add_fill_light(world, width_m, depth_m, ceiling_m, palette)
+
+
+# PUBLIC wrapper over the private accent dispatcher — the build-mode module
+# system re-dresses generic rooms with another template's accent set (e.g.
+# building a Hydroponics Unit inside a spare quarters room). Palette follows
+# the accent template so the dressing reads correctly.
+static func apply_template_accents(world: Node3D, template_id: String, width: float, depth: float, height: float) -> void:
+	if world == null or template_id == "":
+		return
+	_add_template_accents(world, template_id, width, depth, height, _palette_for(template_id))
+
+
+# _build_shell with door openings: floor + ceiling identical; each wall is a
+# run of solid segments between doorway cuts, with a lintel strip above every
+# cut so the wall stays continuous overhead.
+static func _build_shell_with_openings(world: Node3D, template_id: String, width: float, depth: float, height: float, palette: Dictionary, openings: Array) -> void:
+	var half_x: float = width * 0.5
+	var half_z: float = depth * 0.5
+	var wall_thickness: float = 0.4
+
+	var floor_mat: StandardMaterial3D
+	if FLOOR_TEMPLATE_SKIP.has(template_id):
+		floor_mat = _make_mat(_scale_rgb(palette["floor"], FLOOR_BRIGHTNESS), 0.25, 0.55)
+	else:
+		floor_mat = make_floor_mat(palette["floor"], width, depth)
+	var ceil_mat: StandardMaterial3D = _make_mat(palette["ceiling"], 0.25, 0.65)
+
+	var floor_body: StaticBody3D = StaticBody3D.new()
+	floor_body.name = "Floor"
+	floor_body.collision_layer = 1 | 2
+	floor_body.collision_mask = 0
+	world.add_child(floor_body)
+	_add_box(floor_body, floor_mat, Vector3(0.0, -0.1, 0.0), Vector3(width, 0.2, depth))
+
+	var walls: StaticBody3D = StaticBody3D.new()
+	walls.name = "Walls"
+	walls.collision_layer = 1 | 2
+	walls.collision_mask = 0
+	world.add_child(walls)
+	var by_dir: Dictionary = {"+x": [], "-x": [], "+z": [], "-z": []}
+	for o in openings:
+		var dir: String = String((o as Dictionary).get("dir", ""))
+		if by_dir.has(dir):
+			(by_dir[dir] as Array).append(o)
+	for dir: String in by_dir.keys():
+		_add_wall_segments(walls, palette["wall"], dir, half_x, half_z, height,
+			wall_thickness, by_dir[dir] as Array)
+
+	var ceil_body: StaticBody3D = StaticBody3D.new()
+	ceil_body.name = "Ceiling"
+	ceil_body.collision_layer = 2
+	ceil_body.collision_mask = 0
+	world.add_child(ceil_body)
+	_add_box(ceil_body, ceil_mat,
+		Vector3(0.0, height + wall_thickness * 0.5, 0.0),
+		Vector3(width, wall_thickness, depth))
+
+
+# One wall of the merged shell, as solid segments around sorted doorway cuts.
+# `openings` entries carry "along" (m from the wall's centre, along the wall's
+# run axis) plus optional "width"/"height" overrides.
+static func _add_wall_segments(walls: StaticBody3D, wall_color: Color, dir: String,
+		half_x: float, half_z: float, height: float, t: float, openings: Array) -> void:
+	var span: float = (half_z if (dir == "+x" or dir == "-x") else half_x) * 2.0
+	var cuts: Array = []
+	for o in openings:
+		var od: Dictionary = o
+		var w: float = minf(float(od.get("width", DOOR_OPENING_WIDTH)), span)
+		var c: float = clampf(float(od.get("along", 0.0)),
+			-span * 0.5 + w * 0.5, span * 0.5 - w * 0.5)
+		cuts.append({
+			"lo": c - w * 0.5,
+			"hi": c + w * 0.5,
+			"height": minf(float(od.get("height", DOOR_OPENING_HEIGHT)), height),
+		})
+	cuts.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["lo"]) < float(b["lo"]))
+	# Merge overlapping cuts (two doors stamped close together) so segment
+	# arithmetic below never goes negative.
+	var merged: Array = []
+	for c: Dictionary in cuts:
+		if merged.is_empty() or float(c["lo"]) > float((merged[-1] as Dictionary)["hi"]) + 0.01:
+			merged.append(c)
+		else:
+			var last: Dictionary = merged[-1]
+			last["hi"] = maxf(float(last["hi"]), float(c["hi"]))
+			last["height"] = maxf(float(last["height"]), float(c["height"]))
+	var cursor: float = -span * 0.5
+	for c: Dictionary in merged:
+		_add_wall_piece(walls, wall_color, dir, half_x, half_z, t, cursor, float(c["lo"]), 0.0, height)
+		# Lintel above the cut keeps the wall continuous overhead.
+		_add_wall_piece(walls, wall_color, dir, half_x, half_z, t, float(c["lo"]), float(c["hi"]), float(c["height"]), height)
+		cursor = float(c["hi"])
+	_add_wall_piece(walls, wall_color, dir, half_x, half_z, t, cursor, span * 0.5, 0.0, height)
+
+
+static func _add_wall_piece(walls: StaticBody3D, wall_color: Color, dir: String,
+		half_x: float, half_z: float, t: float,
+		lo: float, hi: float, y_lo: float, y_hi: float) -> void:
+	var seg_len: float = hi - lo
+	var seg_h: float = y_hi - y_lo
+	if seg_len < 0.02 or seg_h < 0.02:
+		return
+	var mid: float = (lo + hi) * 0.5
+	var y_mid: float = (y_lo + y_hi) * 0.5
+	var mat: StandardMaterial3D = make_wall_mat(wall_color, seg_len, seg_h)
+	match dir:
+		"+x":
+			_add_box(walls, mat, Vector3(half_x + t * 0.5, y_mid, mid), Vector3(t, seg_h, seg_len))
+		"-x":
+			_add_box(walls, mat, Vector3(-half_x - t * 0.5, y_mid, mid), Vector3(t, seg_h, seg_len))
+		"+z":
+			_add_box(walls, mat, Vector3(mid, y_mid, half_z + t * 0.5), Vector3(seg_len, seg_h, t))
+		"-z":
+			_add_box(walls, mat, Vector3(mid, y_mid, -half_z - t * 0.5), Vector3(seg_len, seg_h, t))
+
+
 # ----- shell (floor + walls + ceiling, identical structure across templates) --
 
 static func _build_shell(world: Node3D, template_id: String, width: float, depth: float, height: float, palette: Dictionary) -> void:

@@ -273,6 +273,21 @@ func is_complete(quest_id: String) -> bool:
 	return step.get("terminal", false) == true
 
 
+# All started, non-complete quest ids — the multi-quest tracker (#66) iterates
+# this to render N quests under the minimap. Follows the one-registry pattern
+# (collection-fork lint): a single pass over `_progress`, no per-quest bools.
+# Order is insertion order of `_progress` (auto_start order), which is stable
+# across save/load because deserialize() preserves the saved quest order.
+func active_quests() -> Array[String]:
+	_ensure_initialized()
+	var out: Array[String] = []
+	for qid in _progress.keys():
+		var prog: Dictionary = _progress[qid]
+		if prog.get("started", false) == true and not is_complete(String(qid)):
+			out.append(String(qid))
+	return out
+
+
 # --- Internals ---------------------------------------------------------------
 
 func _resolve_quest_id(quest_id: String) -> String:

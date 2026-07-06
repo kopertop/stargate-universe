@@ -160,8 +160,11 @@ const TRACKER_OUTLINE: Color = SKIN_TEXT_OUTLINE
 const LOG_GAP_BELOW_TRACKER: float = 12.0
 const LOG_TOP_NO_TRACKER: float = 18.0
 var _tracker_root: Control = null
-var _tracker_title: Label = null
-var _tracker_objective: Label = null
+# Multi-quest tracker (#66, Phase 7): one entry per active quest, each holding
+# a gold title Label + an objective Label. Rebuilt on every refresh so the
+# panel tracks active_quests() dynamically. Kept as an Array of {title, objective}
+# Dicts so the cohesion test can assert the entry count.
+var _tracker_entries: Array = []
 
 # NOTE: the atmosphere readout is a KINO recon affordance — it lives on the
 # drone's overlay (kino_drone.gd::_build_atmo_readout) and is only visible while

@@ -7,7 +7,7 @@
 		"allowed_types": [],
 		"provides": ["food", "co2_scrubbing"],
 		"power_cost": 3,
-		"build_cost": { "ship_parts": 6 }
+		"build_cost": { "parts": 6 }
 	},
 	{
 		"id": "sleeping_quarters",
@@ -17,7 +17,7 @@
 		"allowed_types": [],
 		"provides": ["rest", "morale"],
 		"power_cost": 1,
-		"build_cost": { "ship_parts": 4 }
+		"build_cost": { "parts": 4 }
 	},
 	{
 		"id": "research_lab",
@@ -27,7 +27,7 @@
 		"allowed_types": [],
 		"provides": ["research"],
 		"power_cost": 4,
-		"build_cost": { "ship_parts": 8 }
+		"build_cost": { "parts": 8 }
 	},
 	{
 		"id": "machine_shop",
@@ -37,7 +37,7 @@
 		"allowed_types": [],
 		"provides": ["ship_parts"],
 		"power_cost": 4,
-		"build_cost": { "ship_parts": 8 }
+		"build_cost": { "parts": 8 }
 	},
 	{
 		"id": "infirmary_ward",
@@ -47,7 +47,7 @@
 		"allowed_types": ["infirmary", "quarters", "control_room"],
 		"provides": ["healing"],
 		"power_cost": 2,
-		"build_cost": { "ship_parts": 5 }
+		"build_cost": { "parts": 5 }
 	},
 	{
 		"id": "storage_depot",
@@ -57,6 +57,6 @@
 		"allowed_types": [],
 		"provides": ["storage"],
 		"power_cost": 0,
-		"build_cost": { "ship_parts": 2 }
+		"build_cost": { "parts": 2 }
 	}
 ]

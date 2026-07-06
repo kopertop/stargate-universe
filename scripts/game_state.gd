@@ -27,6 +27,10 @@ signal scrubber_unit_changed(id: String)
 # The gate-window departure countdown hit 0:00 — planet_timer.gd plays the
 # scramble-back-through-the-gate cutscene.
 signal gate_window_expired()
+# FTL resupply cycle (post-E1 core loop) phase transitions. Payload is the new
+# phase: FTL_PHASE_FTL / FTL_PHASE_STOPPED / FTL_PHASE_AWAY. HUD listens to fire
+# the FtlDrop screen effect; gate consoles re-read their readouts.
+signal ftl_cycle_changed(phase: String)
 # Fired when the player enters a new room. Drives the Kino Remote player
 # marker and the in-world quest-waypoint diamond's re-targeting.
 signal current_room_changed(room_id: String)
@@ -354,6 +358,38 @@ var knockout_cause: String = ""
 # gate room spawns the away team that came back WITH the player and lands them
 # past the platform. Consumed (cleared) by gate_room on arrival.
 var pending_planet_return: bool = false
+
+# --- FTL resupply cycle (post-E1 core loop) ----------------------------------
+#
+# Once Episode 1 resolves, Destiny settles into the series' rhythm and the
+# game's core loop (design/gdd/ship-building-mode.md — "systems payoff"):
+#   FTL  --timer-->  STOPPED (drop-out; the gate may dial a new world)
+#   STOPPED --dial + cross--> AWAY (gate-window mining run on the surface)
+#   AWAY --return / recall / knockout--> FTL (jump; repair + build en route)
+#   STOPPED --timer, never dialed--> FTL (missed the window; jump anyway)
+# The scripted E1 beats (trigger_ftl_drop / dial_lime_planet) are untouched —
+# this state machine only engages at FTL_PHASE_NONE→FTL when the episode
+# completes. Ticked in _process (skipped headless, like the gate window);
+# tests drive _tick_ftl_cycle directly.
+const FTL_PHASE_NONE: String = ""          # pre-E1: story beats own FTL
+const FTL_PHASE_FTL: String = "ftl"        # in FTL between stops
+const FTL_PHASE_STOPPED: String = "stopped"  # normal space: gate may dial
+const FTL_PHASE_AWAY: String = "away"      # away team on the surface
+
+# In-FTL leg length. Long enough to walk the decks, repair and build; short
+# enough that the next mining stop is always in sight.
+const FTL_CYCLE_FTL_SECONDS: float = 300.0
+# How long Destiny holds in normal space waiting for a dial before jumping on.
+const FTL_CYCLE_STOP_SECONDS: float = 240.0
+
+var ftl_cycle_phase: String = FTL_PHASE_NONE
+var ftl_cycle_remaining: float = 0.0
+# Completed FTL drop-outs (resupply stops reached so far). Diagnostic /
+# flavor counter; planets_dialed drives the per-run seeds.
+var ftl_cycle_count: int = 0
+# Gate locked to the current stop's rolled planet (dial_next_planet). Cleared
+# when the ship jumps — a cycle planet can never be re-dialed after the stop.
+var cycle_planet_dialed: bool = false
 # E1 story milestones — set by NPC interacts (npc.gd via met_flag).
 # met_scott: Lt Scott briefs the player on arrival; gates objective priority
 # to "Find a Map" once true.
@@ -469,6 +505,8 @@ func _process(delta: float) -> void:
 	# instant_mode (start_gate_window is never called there anyway).
 	if gate_window_active and not headless:
 		_tick_gate_window(delta)
+	if not headless:
+		_tick_ftl_cycle(delta)
 	if not scrubber_repaired:
 		return
 	if headless:
@@ -609,6 +647,10 @@ func reset() -> void:
 	run_start_resources = {}
 	recovering_in_infirmary = false
 	knockout_cause = ""
+	ftl_cycle_phase = FTL_PHASE_NONE
+	ftl_cycle_remaining = 0.0
+	ftl_cycle_count = 0
+	cycle_planet_dialed = false
 	# Items live in the Inventory store now — wipe it too (autoload-tolerant).
 	var inv: Node = _inv()
 	if inv != null and inv.has_method("reset"):
@@ -1565,6 +1607,11 @@ func dial_lime_planet() -> void:
 # flag; when multiple/selectable destinations land, the dial state generalizes
 # behind this same query and callers don't change.
 func is_gate_open() -> bool:
+	# Post-E1 resupply stops: the gate is open from the cycle dial until the
+	# ship jumps (return/recall clears cycle_planet_dialed via complete_cycle_run).
+	if cycle_planet_dialed and (ftl_cycle_phase == FTL_PHASE_STOPPED \
+			or ftl_cycle_phase == FTL_PHASE_AWAY):
+		return true
 	return lime_planet_dialed and not scrubber_repaired
 
 # Whether the player on foot may step through to the lime planet right now. The
@@ -1577,6 +1624,16 @@ func can_travel_to_lime_planet() -> bool:
 	return is_gate_open() and (quest_step == QUEST_MINE_LIME \
 			or quest_step == QUEST_RETURN_DESTINY \
 			or quest_step == QUEST_REPAIR_SCRUBBER)
+
+
+# Destination-agnostic on-foot crossing permission: the E1 lime window OR a
+# post-E1 cycle stop with a dialed address. planet_gate.gd's to_planet path
+# reads this so the same portal serves both eras.
+func can_travel_to_planet() -> bool:
+	if cycle_planet_dialed and (ftl_cycle_phase == FTL_PHASE_STOPPED \
+			or ftl_cycle_phase == FTL_PHASE_AWAY):
+		return true
+	return can_travel_to_lime_planet()
 
 func return_from_lime_planet() -> void:
 	if returned_from_lime_planet:
@@ -1606,6 +1663,9 @@ func recall_after_window_close() -> void:
 	# re-entering a planet they can no longer reach.
 	lime_planet_dialed = false
 	pending_planet_return = true
+	# A cycle-run recall is the same forgiving scramble: the team keeps its haul
+	# and the ship jumps (phase AWAY → FTL). complete_cycle_run no-ops otherwise.
+	complete_cycle_run()
 	if not returned_from_lime_planet:
 		returned_from_lime_planet = true
 		run_start_resources = {}   # forgiving: keep all gathered lime
@@ -1616,6 +1676,89 @@ func recall_after_window_close() -> void:
 	if headless:
 		return
 	router.call("change_to", "res://scenes/gate_room.tscn", "FromPlanet")
+
+
+# --- FTL resupply cycle (post-E1 core loop) ----------------------------------
+
+# Engage the cycle once Episode 1 is resolved. Idempotent — called from
+# complete_episode_air() and from deserialize() (migrates pre-cycle saves
+# already at episode_complete).
+func maybe_start_ftl_cycle() -> void:
+	if ftl_cycle_phase != FTL_PHASE_NONE or not episode_complete:
+		return
+	ftl_cycle_phase = FTL_PHASE_FTL
+	ftl_cycle_remaining = FTL_CYCLE_FTL_SECONDS
+	add_log("Destiny settles into her rhythm: FTL legs between resupply stops.")
+	ftl_cycle_changed.emit(ftl_cycle_phase)
+
+
+# Countdown driver for the FTL and STOPPED legs. AWAY doesn't tick here — on
+# the surface the gate window (start_gate_window/_tick_gate_window) owns time
+# pressure, and the ship holds the stop until the team is back aboard.
+func _tick_ftl_cycle(delta: float) -> void:
+	if ftl_cycle_phase == FTL_PHASE_FTL:
+		ftl_cycle_remaining = maxf(0.0, ftl_cycle_remaining - delta)
+		if ftl_cycle_remaining <= 0.0:
+			_ftl_cycle_drop_out()
+	elif ftl_cycle_phase == FTL_PHASE_STOPPED and not cycle_planet_dialed:
+		ftl_cycle_remaining = maxf(0.0, ftl_cycle_remaining - delta)
+		if ftl_cycle_remaining <= 0.0:
+			_ftl_cycle_jump()
+
+
+func _ftl_cycle_drop_out() -> void:
+	ftl_cycle_phase = FTL_PHASE_STOPPED
+	ftl_cycle_remaining = FTL_CYCLE_STOP_SECONDS
+	ftl_cycle_count += 1
+	add_log("Destiny drops out of FTL. Gate Control reports a viable address in range.")
+	ftl_cycle_changed.emit(ftl_cycle_phase)
+
+
+func _ftl_cycle_jump() -> void:
+	ftl_cycle_phase = FTL_PHASE_FTL
+	ftl_cycle_remaining = FTL_CYCLE_FTL_SECONDS
+	cycle_planet_dialed = false
+	add_log("Destiny jumps back into FTL.")
+	ftl_cycle_changed.emit(ftl_cycle_phase)
+
+
+# Dial the current stop's procedurally-rolled world. Only legal while STOPPED;
+# routes through build_next_planet_spec() so the Nth cycle planet rolls
+# deterministically and persists whole into active_planet_spec.
+func dial_next_planet() -> Dictionary:
+	if ftl_cycle_phase != FTL_PHASE_STOPPED:
+		add_log("The gate will not dial while Destiny is in FTL.")
+		return {}
+	if cycle_planet_dialed:
+		add_log("Gate is already locked to this stop's address.")
+		return active_planet_spec
+	var spec: Dictionary = build_next_planet_spec()
+	cycle_planet_dialed = true
+	add_log("Gate Control locks a viable address: %s." % String(spec.get("name", "unknown world")))
+	return spec
+
+
+# The player stepped through to a cycle planet — the mining run is on. The stop
+# clock stops mattering; the gate window (started by the planet scene) takes over.
+func begin_cycle_run() -> void:
+	if ftl_cycle_phase != FTL_PHASE_STOPPED:
+		return
+	ftl_cycle_phase = FTL_PHASE_AWAY
+	ftl_cycle_changed.emit(ftl_cycle_phase)
+
+
+# The away team is back aboard (walked back through, recalled at 0:00, or
+# carried in after a knockout) — the stop is over and Destiny jumps. Gathered
+# resources are already banked in Inventory; nothing is forfeited here.
+func complete_cycle_run() -> void:
+	if ftl_cycle_phase != FTL_PHASE_AWAY:
+		return
+	gate_window_active = false
+	gate_window_remaining = 0.0
+	gate_window_water_drain = 0.0
+	_water_drain_accum = 0.0
+	run_start_resources = {}
+	_ftl_cycle_jump()
 
 
 # --- No-death knockout → med-bay recovery loop (issue #92) -------------------
@@ -1645,6 +1788,9 @@ func knock_out(cause: String = "generic") -> void:
 	gate_window_active = false
 	gate_window_remaining = 0.0
 	run_start_resources = {}
+	# Downed on a cycle planet: the team drags the player back aboard and
+	# Destiny jumps — the stop is over. No-op outside an AWAY cycle run.
+	complete_cycle_run()
 	# Heal the player fully on wake — health AND oxygen, since asphyxiation is one
 	# of the causes.
 	health = MAX_HEALTH
@@ -1883,6 +2029,9 @@ func complete_episode_air() -> void:
 	episode_complete = true
 	add_log("Episode 1 complete: Destiny can breathe again.")
 	episode_completed.emit()
+	# The resolved crisis hands over to the core loop: FTL legs between
+	# resupply stops (repair + build in FTL, mine at each drop-out).
+	maybe_start_ftl_cycle()
 	# Drive the active-step transition through QuestLog so the legacy
 	# quest_step_changed + objective_changed signals fire via the normal
 	# bridge (_on_quest_log_step_changed). The terminal "complete" step's
@@ -1968,6 +2117,10 @@ func serialize() -> Dictionary:
 		"gate_window_active": gate_window_active,
 		"gate_window_remaining": gate_window_remaining,
 		"gate_window_water_drain": gate_window_water_drain,
+		"ftl_cycle_phase": ftl_cycle_phase,
+		"ftl_cycle_remaining": ftl_cycle_remaining,
+		"ftl_cycle_count": ftl_cycle_count,
+		"cycle_planet_dialed": cycle_planet_dialed,
 		"run_start_resources": run_start_resources.duplicate(true),
 		"recovering_in_infirmary": recovering_in_infirmary,
 		"knockout_cause": knockout_cause,
@@ -2035,6 +2188,12 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	gate_window_remaining = float(data.get("gate_window_remaining", 0.0))
 	gate_window_water_drain = float(data.get("gate_window_water_drain", 0.0))
 	_water_drain_accum = 0.0
+	ftl_cycle_phase = String(data.get("ftl_cycle_phase", FTL_PHASE_NONE))
+	ftl_cycle_remaining = float(data.get("ftl_cycle_remaining", 0.0))
+	ftl_cycle_count = int(data.get("ftl_cycle_count", 0))
+	cycle_planet_dialed = data.get("cycle_planet_dialed", false) == true
+	# Migration: a pre-cycle save already past E1 joins the loop on load.
+	maybe_start_ftl_cycle()
 	run_start_resources = {}
 	var saved_run_res: Variant = data.get("run_start_resources", {})
 	if saved_run_res is Dictionary:

@@ -171,6 +171,7 @@ func _ready() -> void:
 	GameState.dialog_started.connect(_on_dialog_started)
 	GameState.room_discovered.connect(_on_room_discovered)
 	GameState.current_room_changed.connect(_on_current_room_changed)
+	GameState.ftl_cycle_changed.connect(_on_ftl_cycle_changed)
 	# Unit frame builds the relocated health/oxygen bars, so it must exist before
 	# the initial _on_health_changed / _on_oxygen_changed binds below.
 	_build_unit_frame()
@@ -194,6 +195,24 @@ func _ready() -> void:
 		_first_discovery_consumed = true
 	# Defer player lookup so the scene tree is settled.
 	call_deferred("_bind_player")
+
+
+# FTL resupply-cycle transition → the FtlDrop screen jolt. Drop-out (STOPPED)
+# fires the drop cue; jumping back (FTL) fires the reversed jump cue. The AWAY
+# transition is a gate crossing, not an FTL event — no effect. Skipped headless
+# (instant_mode) so smoke tests never animate.
+func _on_ftl_cycle_changed(phase: String) -> void:
+	if SceneRouter.instant_mode:
+		return
+	# Spawned into the tree root like scrubber_rush's drop beat — the layer-5
+	# CanvasLayer sits below the HUD and self-frees after its 2 s ramp.
+	var fx_script: Script = load("res://scripts/ftl_drop.gd")
+	if phase == GameState.FTL_PHASE_STOPPED:
+		get_tree().root.add_child(fx_script.new())
+	elif phase == GameState.FTL_PHASE_FTL:
+		var fx: CanvasLayer = fx_script.new()
+		fx.sound_path = fx.FTL_JUMP_SOUND
+		get_tree().root.add_child(fx)
 
 
 # Build the always-on direction compass as a child of this HUD layer. Single

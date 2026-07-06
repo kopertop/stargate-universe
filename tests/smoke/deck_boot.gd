@@ -98,6 +98,10 @@ func _check_door_registry() -> void:
 
 func _check_build_gating() -> void:
 	_ship.reset()
+	# Builds charge their data-declared build_cost from the shared resource pool
+	# now — stock plenty of Ship Parts so this check stays about the GATING rules
+	# (the cost economics have their own suite in tests/smoke/ftl_cycle.gd).
+	_set_parts(99)
 	_expect(not _ship.modules().is_empty(), "module catalog loads from data/room_modules.json")
 	_expect(not _ship.is_room_buildable("north_corridor"), "corridors are unbuildable")
 	_expect(not _ship.is_room_buildable("elevator_north"), "elevators are unbuildable")
@@ -130,6 +134,7 @@ func _check_build_gating() -> void:
 
 func _check_save_round_trip() -> void:
 	_ship.reset()
+	_set_parts(99)
 	_ship.set_room_damage("infirmary", 42.0)
 	_ship.set_room_shield("infirmary", 61.0)
 	_ship.build_module("eli_quarters", "research_lab")
@@ -224,6 +229,8 @@ func _check_deck_floor_1() -> void:
 		"floor 1: quarters room console present")
 
 	# Module install re-dresses the room live (module_built → ModuleVisuals).
+	# _gs.reset() above left only the seed stock; builds charge build_cost now.
+	_set_parts(99)
 	_expect(_ship.build_module("quarters_room_1", "hydroponics_unit"), "floor 1: module builds")
 	_expect(deck.get_node_or_null("World/Room_quarters_room_1/ModuleVisuals") != null,
 		"floor 1: module visuals applied on build")
@@ -289,6 +296,13 @@ func _gather_doors_walk(node: Node, out: Dictionary) -> void:
 			(out["transitions"] as Dictionary)[String(node.get("target_room_id"))] = node
 	for child in node.get_children():
 		_gather_doors_walk(child, out)
+
+
+# Stock the shared resource pool with Ship Parts (Inventory autoload-backed).
+func _set_parts(count: int) -> void:
+	var inv: Node = root.get_node_or_null("Inventory")
+	if inv != null:
+		inv.call("set_count", "parts", count)
 
 
 func _expect(cond: bool, label: String) -> void:

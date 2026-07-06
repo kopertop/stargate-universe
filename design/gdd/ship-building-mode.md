@@ -68,7 +68,7 @@ starts at 65 % damage / 20 % shield, the sealed north section at 85 % / 0 %.
 | `allowed_types` | room types that accept it (empty = any buildable room) |
 | `provides` | fiction tags → later feed real systems (food, research, …) |
 | `power_cost` | reserved for ship-state power integration (Phase 3) |
-| `build_cost` | reserved for resource-inventory integration (Phase 2) |
+| `build_cost` | **implemented** — charged from the shared Inventory pool (`parts`) by `ShipState.build_module`; insufficient stock surfaces in `build_blocker` |
 
 Buildable = any room whose type is not `corridor` / `elevator` / `gate_room`,
 excluding the control interface room (it is the bridge).
@@ -98,9 +98,16 @@ excluding the control interface room (it is the bridge).
 - Control-room consoles: ship-wide door open/close/lock + room status list.
 - Save/load round-trip of all of it.
 
-**Phase 2 — Costs and construction time**
-- `build_cost` (Ship Parts via resource-inventory) is checked and spent;
-  insufficient parts → grayed Build with cost shown.
+**Phase 2 — Costs and construction time** *(costs implemented; timers ahead)*
+- ✅ `build_cost` (Ship Parts via resource-inventory) is checked and spent;
+  insufficient parts → blocked Build with cost shown (`ShipState.build_cost` /
+  `build_blocker` / `build_module`; tests/smoke/ftl_cycle.gd).
+- ✅ Hand-repair stopgap for Phase 3: `ShipState.repair_room_with_parts` spends
+  1 × Ship Parts per 25 % structural damage from the room's build panel — the
+  repair-robot dispatch later replaces the hand spend, same `repair_room` entry.
+- ✅ The FTL resupply cycle (GameState `ftl_cycle_*`, post-E1) supplies the loop
+  pressure these costs bite against: mine parts at each drop-out stop, spend
+  them on repairs/builds during the FTL leg.
 - Builds take in-game hours (GameClock); the room shows scaffold visuals
   while under construction; a `module_built` toast fires on completion.
 - Dismantling refunds 50 % of parts.

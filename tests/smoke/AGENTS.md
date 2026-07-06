@@ -22,6 +22,11 @@ Headless `SceneTree`-extending tests. Several files, one concern each.
   (damage, shield, module, build gating, save round-trip), deck.tscn boots
   both floors with physical stateful doors + room consoles, door state
   persists across deck rebuilds. `tests/run.sh deck`.
+- `ftl_cycle.gd` — Post-E1 core loop: the FTL resupply cycle state machine
+  (drop-out → dial → away run → return/recall/knockout → jump, repeatable),
+  ResourceNode mining interact, `build_cost` charging, parts-based hand
+  repair unblocking story-damaged rooms, save round-trip + pre-cycle save
+  migration. `tests/run.sh ftl-cycle`.
 - `ancient_metal_shader.gd` — Ancient-metal + event-horizon shaders parse,
   the `.tres` ShaderMaterial variants bind the shader + detail textures +
   uniforms, and `objects/stargate.gd` applies the ShaderMaterials to the

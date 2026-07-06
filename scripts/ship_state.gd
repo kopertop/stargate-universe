@@ -29,6 +29,14 @@ const MODULES_PATH: String = "res://data/room_modules.json"
 # Structural damage (%) above which the build console refuses new modules.
 const BUILD_DAMAGE_THRESHOLD: float = 25.0
 
+# Hand-repair economics: each spend of Ship Parts (Inventory id "parts", mined
+# on planet runs) restores this much structural damage. The mine→repair→build
+# seam of the core loop: damaged rooms refuse modules until repaired, repairs
+# consume the resources planet runs bring home.
+const REPAIR_PARTS_RESOURCE: String = "parts"
+const REPAIR_PARTS_COST: int = 1
+const REPAIR_PER_SPEND_PCT: float = 25.0
+
 # Room types that never take a build console / module (corridors are transit,
 # elevators are machinery, the gate room is the artisan hero scene, and the
 # control interface room is the ship's bridge).
@@ -126,6 +134,28 @@ func repair_room(room_id: String, amount: float) -> float:
 	return before - room_damage(room_id)
 
 
+# Why a hand-repair is currently impossible, or "" when it may proceed.
+func repair_blocker(room_id: String) -> String:
+	if room_damage(room_id) <= 0.0:
+		return "This compartment is structurally sound."
+	var have: int = _resource_count(REPAIR_PARTS_RESOURCE)
+	if have < REPAIR_PARTS_COST:
+		return "Repairs require %d × Ship Parts (have %d). Mine more on the next planet run." % [
+			REPAIR_PARTS_COST, have]
+	return ""
+
+
+# The player-facing repair action: spend REPAIR_PARTS_COST Ship Parts, restore
+# REPAIR_PER_SPEND_PCT structural damage. Returns true when the spend happened.
+func repair_room_with_parts(room_id: String) -> bool:
+	if repair_blocker(room_id) != "":
+		return false
+	if not _spend_resource(REPAIR_PARTS_RESOURCE, REPAIR_PARTS_COST):
+		return false
+	repair_room(room_id, REPAIR_PER_SPEND_PCT)
+	return true
+
+
 func is_room_buildable(room_id: String) -> bool:
 	if UNBUILDABLE_ROOMS.has(room_id):
 		return false
@@ -174,20 +204,43 @@ func build_blocker(room_id: String, module_id: String) -> String:
 	var dmg: float = room_damage(room_id)
 	if dmg > BUILD_DAMAGE_THRESHOLD:
 		return ("Structural damage at %d%% — repairs required before construction. "
-			+ "Dispatch a repair robot once one is found.") % int(round(dmg))
+			+ "Spend Ship Parts at this console to restore the compartment.") % int(round(dmg))
 	if not modules_for_room(room_id).any(
 			func(m: Dictionary) -> bool: return String(m.get("id", "")) == module_id):
 		return "Module incompatible with this compartment type."
+	var cost: Dictionary = build_cost(module_id)
+	for res_id: String in cost:
+		var need: int = int(cost[res_id])
+		var have: int = _resource_count(res_id)
+		if have < need:
+			return "Construction requires %d × %s (have %d). Mine more on the next planet run." % [
+				need, res_id.capitalize(), have]
 	return ""
 
 
-# Returns true and records the module when the build is legal.
+# The module's resource price (Inventory resource id → count). Declared per
+# module in data/room_modules.json; empty when the module is free.
+func build_cost(module_id: String) -> Dictionary:
+	var raw: Variant = module(module_id).get("build_cost", {})
+	var out: Dictionary = {}
+	if raw is Dictionary:
+		for k in (raw as Dictionary).keys():
+			out[String(k)] = int((raw as Dictionary)[k])
+	return out
+
+
+# Returns true and records the module when the build is legal, CHARGING the
+# module's build_cost from the shared resource pool (mined on planet runs).
 func build_module(room_id: String, module_id: String) -> bool:
 	if build_blocker(room_id, module_id) != "":
 		return false
 	var row: Dictionary = room_state(room_id)
 	if String(row["module"]) == module_id:
 		return false
+	var cost: Dictionary = build_cost(module_id)
+	for res_id: String in cost:
+		if not _spend_resource(res_id, int(cost[res_id])):
+			return false
 	row["module"] = module_id
 	module_built.emit(room_id, module_id)
 	room_changed.emit(room_id)
@@ -201,6 +254,24 @@ func clear_room_module(room_id: String) -> void:
 	row["module"] = ""
 	module_built.emit(room_id, "")
 	room_changed.emit(room_id)
+
+
+# Resource pool access, autoload-tolerant like the SaveManager hookup above —
+# costs route through GameState's Inventory shims so resource_changed emits and
+# the HUD stock readouts stay live. With no GameState (bare unit harness) the
+# pool reads as empty, so priced actions refuse rather than silently comp.
+func _resource_count(res_id: String) -> int:
+	var gs: Node = get_node_or_null("/root/GameState")
+	if gs == null:
+		return 0
+	return int(gs.call("resource_count", res_id))
+
+
+func _spend_resource(res_id: String, amount: int) -> bool:
+	var gs: Node = get_node_or_null("/root/GameState")
+	if gs == null:
+		return false
+	return gs.call("spend_resource", res_id, amount) == true
 
 
 func _load_modules() -> void:

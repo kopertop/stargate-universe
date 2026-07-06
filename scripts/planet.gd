@@ -56,6 +56,10 @@ func _ready() -> void:
 	var on_planet_run: bool = (GameState.quest_step == GameState.QUEST_MINE_LIME \
 			or GameState.quest_step == GameState.QUEST_RETURN_DESTINY) \
 			and not GameState.returned_from_lime_planet
+	# Post-E1 resupply stop: every cycle-planet visit is a timed mining run —
+	# same departure countdown, away team, and biome gate window as E1.
+	if GameState.ftl_cycle_phase == GameState.FTL_PHASE_AWAY:
+		on_planet_run = true
 	if on_planet_run:
 		# Departure-countdown view. start_gate_window (in its _ready) is idempotent:
 		# a fresh MINE_LIME entry starts the clock; a save-resume (incl. at

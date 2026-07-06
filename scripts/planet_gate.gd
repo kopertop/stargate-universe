@@ -84,14 +84,26 @@ func _travel(body: Node) -> void:
 	if body == null or not body.is_in_group("player"):
 		return
 	if mode == "to_planet":
-		if not GameState.can_travel_to_lime_planet():
-			GameState.add_log("The Stargate is not locked to the lime planet yet.")
+		if not GameState.can_travel_to_planet():
+			GameState.add_log("The Stargate is not locked to a destination yet.")
 			return
 		_transitioning = true
-		GameState.add_log("You step through the active Stargate to the lime planet.")
+		# Post-E1 cycle stop: crossing out starts the mining run (phase → AWAY).
+		# No-op during the E1 lime window.
+		GameState.begin_cycle_run()
+		GameState.add_log("You step through the active Stargate.")
 		await SceneRouter.change_to(target_scene, target_spawn)
 		return
 	if mode == "to_ship":
+		# Post-E1 cycle run: coming home ends the stop — resources stay banked,
+		# the gate closes and Destiny jumps back to FTL.
+		if GameState.ftl_cycle_phase == GameState.FTL_PHASE_AWAY:
+			_transitioning = true
+			GameState.pending_planet_return = true
+			GameState.add_log("The away team returns to Destiny with the haul.")
+			GameState.complete_cycle_run()
+			await SceneRouter.change_to(target_scene, target_spawn)
+			return
 		if GameState.quest_step == GameState.QUEST_MINE_LIME and not GameState.has_resource(
 				GameState.AIR_LIME_RESOURCE,
 				GameState.AIR_LIME_REQUIRED

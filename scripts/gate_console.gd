@@ -72,8 +72,11 @@ func _apply_kind_defaults() -> void:
 			prompt = "Diagnose life support"
 		elif GameState.quest_step == GameState.QUEST_DIAL_LIME_PLANET:
 			prompt = "Dial lime planet"
+		elif GameState.ftl_cycle_phase == GameState.FTL_PHASE_STOPPED \
+				and not GameState.cycle_planet_dialed:
+			prompt = "Dial next planet"
 		elif GameState.is_gate_open():
-			prompt = "Gate active: lime planet"
+			prompt = "Gate active: %s" % _destination_name()
 
 func _build_screen_readout() -> void:
 	# Find the ScreenPlate built procedurally by RoomBuilder.attach_console_mesh
@@ -119,6 +122,10 @@ func _on_interact(_by: Node) -> void:
 	if kind == "ftl_countdown":
 		if GameState.quest_step == GameState.QUEST_WAIT_FTL:
 			GameState.trigger_ftl_drop()
+		elif GameState.ftl_cycle_phase == GameState.FTL_PHASE_FTL:
+			GameState.add_log("Console: Next resupply drop in %s." % _format_countdown(GameState.ftl_cycle_remaining))
+		elif GameState.ftl_cycle_phase == GameState.FTL_PHASE_STOPPED:
+			GameState.add_log("Console: Normal space. Destiny jumps in %s." % _format_countdown(GameState.ftl_cycle_remaining))
 		else:
 			GameState.add_log("Console: Next FTL drop in %s." % _format_countdown(_ftl_seconds_remaining()))
 			GameState.add_log(_ftl_lines[_line_index % _ftl_lines.size()])
@@ -127,12 +134,23 @@ func _on_interact(_by: Node) -> void:
 			GameState.diagnose_life_support()
 		elif GameState.quest_step == GameState.QUEST_DIAL_LIME_PLANET:
 			GameState.dial_lime_planet()
+		elif GameState.ftl_cycle_phase == GameState.FTL_PHASE_STOPPED \
+				and not GameState.cycle_planet_dialed:
+			GameState.dial_next_planet()
 		elif GameState.is_gate_open():
-			GameState.add_log("Console: Wormhole active to the lime planet. Step through the gate.")
+			GameState.add_log("Console: Wormhole active to %s. Step through the gate." % _destination_name())
 		else:
 			GameState.add_log("Console: Gate is in standby. Address book empty.")
 			GameState.add_log(_gate_lines[_line_index % _gate_lines.size()])
 	_line_index += 1
+
+
+# Player-facing name of the currently dialed destination — the cycle planet's
+# rolled name once the resupply loop owns the gate, the E1 lime world before.
+func _destination_name() -> String:
+	if GameState.cycle_planet_dialed:
+		return String(GameState.active_planet_spec.get("name", "unknown world"))
+	return "lime planet"
 
 func _format_countdown(total_seconds: float) -> String:
 	var t: int = int(total_seconds)
@@ -153,6 +171,12 @@ func _readout_text() -> String:
 	if kind == "ftl_countdown":
 		if GameState.quest_step == GameState.QUEST_WAIT_FTL:
 			return "FTL WINDOW\nDROP NOW"
+		if GameState.ftl_cycle_phase == GameState.FTL_PHASE_FTL:
+			return "NEXT FTL DROP\n" + _format_countdown(GameState.ftl_cycle_remaining)
+		if GameState.ftl_cycle_phase == GameState.FTL_PHASE_STOPPED:
+			return "NORMAL SPACE\nJUMP IN " + _format_countdown(GameState.ftl_cycle_remaining)
+		if GameState.ftl_cycle_phase == GameState.FTL_PHASE_AWAY:
+			return "NORMAL SPACE\nAWAY TEAM OUT"
 		if GameState.ftl_drop_triggered:
 			return "FTL STATUS\nNORMAL SPACE"
 		return "NEXT FTL DROP\n" + _format_countdown(_ftl_seconds_remaining())
@@ -160,6 +184,9 @@ func _readout_text() -> String:
 		return "LIFE SUPPORT\nDIAGNOSTIC READY"
 	if GameState.quest_step == GameState.QUEST_DIAL_LIME_PLANET:
 		return "GATE CONTROL\nLIME WORLD LOCK"
+	if GameState.ftl_cycle_phase == GameState.FTL_PHASE_STOPPED \
+			and not GameState.cycle_planet_dialed:
+		return "GATE CONTROL\nADDRESS IN RANGE"
 	if GameState.is_gate_open():
-		return "GATE ACTIVE\nLIME WORLD"
+		return "GATE ACTIVE\n" + _destination_name().to_upper()
 	return "GATE CONTROL\nSTANDBY"

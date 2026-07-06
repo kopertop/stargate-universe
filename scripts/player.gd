@@ -81,8 +81,11 @@ var _footstep_base_volume_db: float = 0.0
 
 # Kenney Mini Characters share a palette texture; the glTF import loses the
 # embedded baseColorTexture binding so meshes render pure white. Re-apply the
-# shared StandardMaterial3D to every surface in the character hierarchy.
-const _COLORMAP_MAT: Material = preload("res://models/colormap.tres")
+# Mini-Characters atlas via npc.gd's shared utility — the SAME palette the
+# NPC/companion rigs use. (models/colormap.tres is the old platformer-kit
+# palette: applying it here re-skinned rigged Eli as the legacy kit character.)
+const _CHAR_COLORMAP_PATH: String = "res://models/characters/Textures/colormap.png"
+const _NPC_SCRIPT: Script = preload("res://scripts/npc.gd")
 const _EQUIPMENT_MOUNT_SCRIPT: Script = preload("res://scripts/equipment_mount.gd")
 
 # Renders equipped gear (#72) on the character. Lives under $Character so its
@@ -90,7 +93,7 @@ const _EQUIPMENT_MOUNT_SCRIPT: Script = preload("res://scripts/equipment_mount.g
 var _equipment_mount: Node3D = null
 
 func _ready() -> void:
-	_apply_colormap(_model)
+	_NPC_SCRIPT.apply_kenney_colormap(_model, load(_CHAR_COLORMAP_PATH) as Texture2D)
 	_setup_equipment_mount()
 	_init_footsteps()
 
@@ -106,15 +109,6 @@ func _setup_equipment_mount() -> void:
 	# which does the first reconcile against the current loadout.
 	_model.add_child(mount)
 	_equipment_mount = mount
-
-func _apply_colormap(root: Node) -> void:
-	if root is MeshInstance3D:
-		var mi: MeshInstance3D = root
-		if mi.mesh != null:
-			for i in mi.mesh.get_surface_count():
-				mi.set_surface_override_material(i, _COLORMAP_MAT)
-	for c in root.get_children():
-		_apply_colormap(c)
 
 func _find_animation_player(root: Node) -> AnimationPlayer:
 	if root is AnimationPlayer:

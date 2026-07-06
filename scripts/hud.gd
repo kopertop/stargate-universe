@@ -382,11 +382,22 @@ func _build_unit_frame() -> void:
 	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	# Portrait, framed by a thin accent border.
+	# Circular mask: the PortraitFrame is a square Panel whose corner radius is
+	# pushed to half its width so it renders as a circle, and the inner
+	# TextureRect is clipped to the frame's rounded rect (clip_children = CLIP
+	# in Godot 4) so the portrait texture is masked into a disc. This keeps the
+	# .tscn diff empty (code-built) and avoids a shader for the common case.
 	var portrait_frame: Panel = Panel.new()
 	portrait_frame.name = "PortraitFrame"
 	portrait_frame.custom_minimum_size = UNIT_PORTRAIT_SIZE
 	portrait_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	portrait_frame.add_theme_stylebox_override("panel", _make_wow_stylebox())
+	var pframe_style: StyleBoxFlat = _make_wow_stylebox()
+	# Half the portrait size → circular corner radius (Phase 1, #141).
+	pframe_style.set_corner_radius_all(int(UNIT_PORTRAIT_SIZE.x * 0.5))
+	portrait_frame.add_theme_stylebox_override("panel", pframe_style)
+	# Clip the portrait TextureRect to the frame's rounded rect so the image
+	# reads as a disc, not a square. CLIP_ONLY (no AND/OR) keeps it cheap.
+	portrait_frame.clip_contents = true
 
 	var portrait: TextureRect = TextureRect.new()
 	portrait.name = "Portrait"
@@ -401,6 +412,45 @@ func _build_unit_frame() -> void:
 	# Graceful blank if the PNG is missing — texture stays null.
 	portrait.texture = PortraitLoaderScript.portrait_for(UNIT_PORTRAIT_KEY)
 	portrait_frame.add_child(portrait)
+
+	# Role / class icon badge (Phase 1, #141). A small gold-ringed chip over
+	# the portrait's upper-right corner carrying a placeholder sci-fi role
+	# glyph for Eli ("engineer"). Wired to a constant so a future role system
+	# can re-tint without touching every badge. Reads as a TextureRect so the
+	# cohesion test can assert its type.
+	var role_icon: TextureRect = TextureRect.new()
+	role_icon.name = "RoleIcon"
+	role_icon.custom_minimum_size = Vector2(22.0, 22.0)
+	role_icon.size = Vector2(22.0, 22.0)
+	role_icon.position = Vector2(UNIT_PORTRAIT_SIZE.x - 20.0, -6.0)
+	role_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	role_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	role_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Placeholder glyph: a gold "⚙" rendered via a Label drawn into a
+	# viewport texture is heavy; instead use a simple Panel+Label chip so
+	# no external asset is required and the test can assert the node tree.
+	var role_chip: Panel = Panel.new()
+	role_chip.name = "RoleIconChip"
+	role_chip.set_anchors_preset(Control.PRESET_FULL_RECT)
+	role_chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var role_style: StyleBoxFlat = _make_wow_stylebox(SKIN_ACCENT_GOLD)
+	role_style.set_corner_radius_all(11)
+	role_style.bg_color = Color(0.06, 0.05, 0.04, 0.92)
+	role_chip.add_theme_stylebox_override("panel", role_style)
+	var role_glyph: Label = Label.new()
+	role_glyph.name = "RoleGlyph"
+	role_glyph.set_anchors_preset(Control.PRESET_FULL_RECT)
+	role_glyph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	role_glyph.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	role_glyph.text = "⚙"
+	role_glyph.add_theme_font_size_override("font_size", 13)
+	role_glyph.add_theme_color_override("font_color", SKIN_ACCENT_GOLD)
+	role_glyph.add_theme_color_override("font_outline_color", SKIN_TEXT_OUTLINE)
+	role_glyph.add_theme_constant_override("outline_size", 3)
+	role_glyph.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	role_chip.add_child(role_glyph)
+	role_icon.add_child(role_chip)
+	portrait_frame.add_child(role_icon)
 
 	# Level badge — a small gold-ringed pip over the portrait's lower-left corner,
 	# the way a WoW unit frame always carries a level number.

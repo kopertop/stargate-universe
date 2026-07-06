@@ -31,9 +31,12 @@ const HUD_SCRIPT: String = "res://scripts/hud.gd"
 # Mirror of the shared palette in hud.gd (kept in sync intentionally — the test
 # is the contract that the widgets share THESE values).
 # Gold-primary skin (HUD redesign Phase 0, #141) — mirrors hud.gd's SKIN_*.
+# Also cross-references scripts/ui/hud_theme.gd::HudTheme so the single source
+# of truth can't silently drift from the inline literals (Phase 0 cohesion).
 const SKIN_ACCENT: Color = Color(0.83, 0.66, 0.32, 1.0)
 const SKIN_ACCENT_GOLD: Color = Color(1.0, 0.84, 0.42, 1.0)
 const SKIN_CORNER_RADIUS: int = 4
+const HUD_THEME_SCRIPT: String = "res://scripts/ui/hud_theme.gd"
 
 var _failures: Array[String] = []
 var _passes: int = 0
@@ -86,11 +89,30 @@ func _run_checks() -> void:
 		_expect(sb != null, "_make_wow_stylebox returns a StyleBoxFlat")
 		if sb != null:
 			_expect(_color_near(sb.border_color, SKIN_ACCENT),
-				"skin stylebox border is the shared cool-blue accent")
+				"skin stylebox border is the shared gold accent")
 			_expect(sb.corner_radius_top_left == SKIN_CORNER_RADIUS,
 				"skin stylebox corner radius is the shared %d px" % SKIN_CORNER_RADIUS)
-	else:
+else:
 		_expect(false, "hud exposes the shared _make_wow_stylebox factory")
+
+# --- Phase 0 cohesion: HudTheme single source of truth --------------------
+# The inline SKIN_* literals in hud.gd must match HudTheme's constants so
+# the theme file is the real single source of truth (not a silent drift).
+var theme_script: GDScript = load(HUD_THEME_SCRIPT) as GDScript
+_expect(theme_script != null, "scripts/ui/hud_theme.gd loads as a script")
+if theme_script != null:
+	# Duck-type the constants via the script's source (constants are not
+	# runtime-readable on a GDScript resource without an instance, so we
+	# read them through the class_name via a temporary instance).
+	var theme_inst: RefCounted = theme_script.new()
+	if theme_inst != null and "ACCENT_GOLD" in theme_inst:
+		var theme_accent: Color = Color(theme_inst.ACCENT_GOLD)
+		_expect(_color_near(theme_accent, SKIN_ACCENT),
+			"HudTheme.ACCENT_GOLD matches hud.gd::SKIN_ACCENT (no drift)")
+	if theme_inst != null and "ACCENT_GOLD_BRIGHT" in theme_inst:
+		var theme_bright: Color = Color(theme_inst.ACCENT_GOLD_BRIGHT)
+		_expect(_color_near(theme_bright, SKIN_ACCENT_GOLD),
+			"HudTheme.ACCENT_GOLD_BRIGHT matches hud.gd::SKIN_ACCENT_GOLD")
 
 	# Portrait frame + both vital-bar tracks draw from the shared accent.
 	var portrait_frame: Control = unit.get_node_or_null("PortraitFrame") as Control
@@ -101,6 +123,23 @@ func _run_checks() -> void:
 			"portrait frame border uses the shared accent")
 		_expect(pstyle != null and pstyle.corner_radius_top_left == SKIN_CORNER_RADIUS,
 			"portrait frame uses the shared corner radius")
+		# Phase 1 — circular portrait: corner radius pushed to half the
+		# portrait size so the frame reads as a disc, and clip_contents is
+		# on so the inner TextureRect is masked to the rounded rect.
+		_expect(portrait_frame.clip_contents,
+			"portrait frame clips contents (circular mask, Phase 1)")
+		if pstyle != null:
+			var half: int = int(76.0 * 0.5)
+			_expect(pstyle.corner_radius_top_left == half,
+				"portrait frame corner radius is half the portrait size (circular)")
+
+		# Phase 1 — role icon badge exists under the portrait frame as a
+		# TextureRect (the cohesion contract for the new widget).
+		var role_icon: TextureRect = portrait_frame.get_node_or_null("RoleIcon") as TextureRect
+		_expect(role_icon != null, "PortraitFrame has a RoleIcon TextureRect (Phase 1)")
+		if role_icon != null:
+			_expect(role_icon.mouse_filter == Control.MOUSE_FILTER_IGNORE,
+				"RoleIcon is MOUSE_FILTER_IGNORE (display-only)")
 
 	var health: Control = unit.get_node_or_null("Vitals/Health") as Control
 	if health != null:
@@ -116,13 +155,13 @@ func _run_checks() -> void:
 		_expect(_color_near(title_color, SKIN_ACCENT_GOLD),
 			"quest tracker title uses the shared gold accent")
 
-	# --- discovery header shares the cool-blue hue ------------------------
+	# --- discovery header shares the gold hue ------------------------
 	var header: Label = toast.get_node_or_null("Stack/Header") as Label
 	_expect(header != null, "discovery toast has a Header label")
 	if header != null:
 		var hc: Color = header.get_theme_color("font_color")
 		_expect(_color_near(hc, SKIN_ACCENT),
-			"discovery header shares the cool-blue accent hue (full opacity)")
+			"discovery header shares the gold accent hue (full opacity)")
 
 	# --- anchor audit: corners are pinned, not absolute-positioned --------
 	_expect(action_bar.anchor_right == 1.0 and action_bar.anchor_bottom == 1.0,

@@ -1046,9 +1046,11 @@ func _on_action_slot_input(event: InputEvent, item_id: String) -> void:
 				_player.call("try_interact")
 	accept_event()
 
-# Upper-right quest tracker: a transparent VBox holding the accent quest title
-# over the active objective line. Anchored to the top-right edge, grows down.
-# Built empty + hidden; _refresh_quest_tracker fills it from QuestLog.
+# Upper-right multi-quest tracker (#66, Phase 7): one entry per active quest,
+# each a gold title over its objective line. Anchored top-right, grows down,
+# sitting under the minimap. Built empty + hidden; _refresh_quest_tracker fills
+# it from QuestLog.active_quests(). Rebuilt on every refresh so the panel
+# tracks the active-quest set dynamically (quests start, advance, complete).
 func _build_quest_tracker() -> void:
 	if _tracker_root != null and is_instance_valid(_tracker_root):
 		return
@@ -1062,69 +1064,85 @@ func _build_quest_tracker() -> void:
 	box.offset_left = -(TRACKER_WIDTH)
 	box.offset_right = TRACKER_POS_RIGHT
 	box.offset_top = TRACKER_POS_TOP
-	box.add_theme_constant_override("separation", 4)
+	box.add_theme_constant_override("separation", 8)
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.visible = false
-
-	var title: Label = Label.new()
-	title.name = "Title"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	title.add_theme_font_size_override("font_size", 17)
-	title.add_theme_color_override("font_color", TRACKER_TITLE_COLOR)
-	title.add_theme_color_override("font_outline_color", TRACKER_OUTLINE)
-	title.add_theme_constant_override("outline_size", 5)
-	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	box.add_child(title)
-
-	var objective: Label = Label.new()
-	objective.name = "Objective"
-	objective.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	objective.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	objective.custom_minimum_size = Vector2(TRACKER_WIDTH, 0.0)
-	objective.add_theme_font_size_override("font_size", 14)
-	objective.add_theme_color_override("font_color", TRACKER_OBJECTIVE_COLOR)
-	objective.add_theme_color_override("font_outline_color", TRACKER_OUTLINE)
-	objective.add_theme_constant_override("outline_size", 4)
-	objective.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	box.add_child(objective)
-
 	add_child(box)
 	_tracker_root = box
-	_tracker_title = title
-	_tracker_objective = objective
-	# The objective wraps to a variable number of lines, so the tracker's height
-	# isn't known until layout settles. Re-stack the log feed whenever the
-	# tracker resizes (incl. the deferred first layout) so they never overlap.
+	# The tracker's height isn't known until layout settles (variable number of
+	# entries + wrapped objectives). Re-stack the log feed whenever the tracker
+	# resizes (incl. the deferred first layout) so they never overlap.
 	box.resized.connect(_apply_log_feed_position)
 
 
-# Pull the tracked quest's title + active objective from QuestLog and render
-# them. Hides the whole panel when nothing is tracked / there's no objective,
-# keeping the empty state clean. Also repositions the recent-log feed below the
-# tracker so they don't overlap in the top-right corner.
+# Pull every active quest from QuestLog and render one entry per quest: gold
+# title + objective line (prefixed with an empty checkbox glyph, WoW-style).
+# Hides the whole panel when no quests are active, keeping the empty state
+# clean. Also repositions the recent-log feed below the tracker so they don't
+# overlap in the top-right corner. (#66, Phase 7)
 func _refresh_quest_tracker() -> void:
 	if _tracker_root == null or not is_instance_valid(_tracker_root):
 		return
+	# Clear old entries.
+	for child in _tracker_root.get_children():
+		child.queue_free()
+	_tracker_entries.clear()
 	var ql: Node = get_node_or_null("/root/QuestLog")
-	var quest_title: String = ""
-	var objective_text: String = ""
-	if ql != null:
-		if ql.has_method("title"):
-			quest_title = String(ql.call("title"))
-		if ql.has_method("objective"):
-			objective_text = String(ql.call("objective"))
-	# Empty/again state: nothing tracked → hide the panel and restore the log
-	# feed to its standalone top position.
-	if quest_title == "" and objective_text == "":
+	if ql == null or not ql.has_method("active_quests"):
 		_tracker_root.visible = false
 		_reposition_log_feed()
 		return
-	_tracker_title.text = quest_title
-	# Active objective line, prefixed with an empty checkbox glyph (WoW-style).
-	_tracker_objective.text = "☐ %s" % objective_text if objective_text != "" else ""
-	_tracker_root.visible = true
+	var active: Array[String] = ql.call("active_quests")
+	if active.is_empty():
+		_tracker_root.visible = false
+		_reposition_log_feed()
+		return
+	for qid in active:
+		var quest_title: String = String(ql.call("title", qid))
+		var objective_text: String = String(ql.call("objective", qid))
+		# Skip quests with no title + no objective (defensive — keeps the
+		# empty state clean even if a quest is started before its steps load).
+		if quest_title == "" and objective_text == "":
+			continue
+		var entry: VBoxContainer = VBoxContainer.new()
+		entry.add_theme_constant_override("separation", 2)
+		entry.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+		var title: Label = Label.new()
+		title.name = "Title"
+		title.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		title.add_theme_font_size_override("font_size", 17)
+		title.add_theme_color_override("font_color", TRACKER_TITLE_COLOR)
+		title.add_theme_color_override("font_outline_color", TRACKER_OUTLINE)
+		title.add_theme_constant_override("outline_size", 5)
+		title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		title.text = quest_title
+		entry.add_child(title)
+
+		var objective: Label = Label.new()
+		objective.name = "Objective"
+		objective.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		objective.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		objective.custom_minimum_size = Vector2(TRACKER_WIDTH, 0.0)
+		objective.add_theme_font_size_override("font_size", 14)
+		objective.add_theme_color_override("font_color", TRACKER_OBJECTIVE_COLOR)
+		objective.add_theme_color_override("font_outline_color", TRACKER_OUTLINE)
+		objective.add_theme_constant_override("outline_size", 4)
+		objective.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		objective.text = "☐ %s" % objective_text if objective_text != "" else ""
+		entry.add_child(objective)
+
+		_tracker_root.add_child(entry)
+		_tracker_entries.append({"quest_id": qid, "title": title, "objective": objective})
+	_tracker_root.visible = not _tracker_entries.is_empty()
 	_reposition_log_feed()
+
+
+# Count of quest entries currently rendered in the tracker. Exposed for the
+# cohesion test to assert the multi-quest render count.
+func tracker_entry_count() -> int:
+	return _tracker_entries.size()
 
 
 # Stack the recent-log feed under the quest tracker so they share the corner

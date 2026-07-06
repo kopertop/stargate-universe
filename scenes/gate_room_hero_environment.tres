@@ -1,0 +1,33 @@
+[gd_resource type="Environment" load_steps=3 format=3]
+
+[ext_resource type="ViewportTexture" uid="uid://b8n3n6q5r7k2l" path="res://scenes/render_viewport.tres" id="1"]
+
+[sub_resource type="Sky" id="Sky1"]
+
+[resource]
+background_mode = 1
+background_color = Color(0.004, 0.005, 0.008, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.22, 0.25, 0.32, 1)
+ambient_light_energy = 0.3
+tonemap_mode = 1
+tonemap_exposure = 0.8
+ssr_enabled = true
+ssr_max_steps = 64
+ssr_fade_in = 0.15
+ssr_fade_out = 2.0
+ssao_enabled = true
+ssao_intensity = 1.4
+glow_enabled = true
+glow_intensity = 0.16
+glow_bloom = 0.0
+glow_strength = 0.35
+glow_hdr_threshold = 4.2
+glow_hdr_scale = 1.6
+volumetric_fog_enabled = true
+volumetric_fog_density = 0.005
+volumetric_fog_albedo = Color(0.6, 0.66, 0.8, 1)
+volumetric_fog_length = 48.0
+adjustment_enabled = true
+adjustment_saturation = 0.64
+adjustment_brightness = 0.96

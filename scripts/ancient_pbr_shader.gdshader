@@ -187,6 +187,5 @@ void fragment() {
 	ROUGHNESS = rough;
 	METALLIC = metal;
 	NORMAL_MAP = dn;
-	NORMAL_MAP_BLEND = 0.0;  // full replace (triplanar already reoriented)
 	EMISSION = emission;
 }

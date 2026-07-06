@@ -217,8 +217,7 @@ func _test_footfall_sounds() -> void:
 	fs.register_surface("custom_biome", ["res://sounds/footstep_custom_00.ogg"], -2.0)
 	_expect(fs.has_surface("custom_biome"), "register_surface adds a new surface")
 	_expect(fs.gain_db("custom_biome") == -2.0, "registered surface has the given gain")
-
-	fs.free()
+	# FootfallSounds is RefCounted — it frees when the reference goes out of scope.
 
 
 # ── #37 CrateStyles ──────────────────────────────────────────────────────────

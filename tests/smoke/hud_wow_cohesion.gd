@@ -127,12 +127,16 @@ func _run_checks() -> void:
 	toast_inst.free()
 
 	# --- 4. DoorPlaque.build stamps Label3D refs ----------------------------
+	# DoorPlaque.build() expects a Node3D parent (it stamps Label3D children),
+	# so create a real Node3D host instead of passing the SceneTree root (Window).
+	var plaque_host: Node3D = Node3D.new()
+	root.add_child(plaque_host)
 	var plaque_inst: Node3D = plaque_script.new()
 	root.add_child(plaque_inst)
 	await process_frame
 	_plate_calls_counted = 0
 	var plate_builder: Callable = Callable(self, "_fake_plate_builder")
-	plaque_inst.call("build", root, "Plaque Room", [1.0, -1.0], 2.4, 0.04, 1.7, 0.30, plate_builder)
+	plaque_inst.call("build", plaque_host, "Plaque Room", [1.0, -1.0], 2.4, 0.04, 1.7, 0.30, plate_builder)
 	var labels: Array = plaque_inst.call("labels")
 	_expect(labels.size() == 2,
 		"DoorPlaque.build stamps 2 mirrored Label3D refs (got %d)" % labels.size())

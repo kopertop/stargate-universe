@@ -1,5 +1,7 @@
 extends Node
 
+# @no-save: Recovery state is ephemeral — restored from InjurySystem on load.
+
 # Med-Bay recovery loop (issue #148). The companion to InjurySystem: once a
 # recoverable injury is registered, the MedBay accepts the patient, runs a
 # time-based recovery countdown scaled by injury severity, emits TJ dialog

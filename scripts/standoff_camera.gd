@@ -29,6 +29,10 @@ var _active: bool = false
 var _track_target: Node3D = null
 var _track_offset: Vector3 = Vector3.ZERO
 var _track_look_height: float = 1.25
+# X-ray occlusion fade (issue #139): fades geometry between the cinematic
+# camera and the tracked subject so the actor stays readable. Gated on
+# instant_mode (headless smoke tests never create this node).
+var _xray: CameraXRay = null
 # Brief decaying positional jolt (deterministic sin/cos, no RNG) — e.g. the
 # gate-collapse shudder. Added on top of the composed shot position in _apply.
 var _shake_amp: float = 0.0

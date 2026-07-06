@@ -1,4 +1,3 @@
-class_name InjurySystem
 extends Node
 
 # No-Death Knockout → Med-Bay Recovery Loop (issue #148).

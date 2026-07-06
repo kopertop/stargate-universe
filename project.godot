@@ -50,6 +50,8 @@ ProceduralShip="*res://scripts/procedural_ship.gd"
 RepairRobot="*res://scripts/repair_robot.gd"
 KinoMapCapture="*res://scripts/kino_map_capture.gd"
 MusicDirector="*res://scripts/music_director.gd"
+InjurySystem="*res://scripts/injury_system.gd"
+MedBay="*res://scripts/med_bay.gd"
 
 [editor_plugins]
 

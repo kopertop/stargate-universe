@@ -24,19 +24,19 @@ uniform vec3  body_color  : source_color = vec3(0.20, 0.52, 0.95);  // main blue
 uniform vec3  rim_color   : source_color = vec3(0.03, 0.10, 0.30);  // deep blue rim
 uniform vec3  hole_color  : source_color = vec3(0.0, 0.01, 0.04);   // dark unstable centre
 
-uniform float energy        : hint_range(0.0, 8.0) = 3.4;
+uniform float energy        : hint_range(0.0, 8.0) = 4.8;
 uniform float swirl         : hint_range(0.0, 16.0) = 7.0;    // angular twist per radius
 uniform float spin_speed                            = 0.35;   // whole-vortex rotation
 uniform float flow_speed                            = 0.55;   // churn / drift rate
 uniform float warp_amount   : hint_range(0.0, 2.0)  = 0.85;
-uniform float detail                                = 3.0;    // base fBm frequency
+uniform float detail                                = 4.0;    // base fBm frequency
 
 // Radial annulus profile (in 0..1 disc radius). The bright churning band now
 // spans most of the disc (peak pushed outward) with a clear dark centre, so the
 // vortex reads as a LARGE energy mass filling the ring, not a small hot dot.
-uniform float hole_radius   : hint_range(0.0, 0.7)  = 0.30;   // dark centre extent
+uniform float hole_radius   : hint_range(0.0, 0.7)  = 0.25;   // dark centre extent
 uniform float ring_peak     : hint_range(0.1, 0.95) = 0.66;   // brightest band radius
-uniform float rim_fade      : hint_range(0.6, 1.15) = 1.02;   // outer fade edge
+uniform float rim_fade      : hint_range(0.6, 1.15) = 1.08;   // outer fade edge
 uniform float ring_sharp    : hint_range(0.3, 4.0)  = 0.7;    // band tightness (low = broad)
 
 // TEXTURE-SAMPLED churn (skill hint: pure fBm read as a single comma arm across 44

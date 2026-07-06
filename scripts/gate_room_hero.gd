@@ -668,7 +668,7 @@ func _build_gate() -> void:
 		chev.position = center + Vector3(px, py, 0.18)
 		chev.rotation.z = spin
 		# LARGE contained glowing triangular insert on each bracket — the lit chevron tip,
-		# the strongest read of "this is a Stargate". CRITICAL: the glow is BRIGHT (energy 7.0)
+		# the strongest read of "this is a Stargate". CRITICAL: the glow is BRIGHT (energy 7.5)
 		# but CONTAINED — the insert is large enough to read as a sharp triangle against the
 		# vortex bloom, but the dark bracket frames it so the triangular shape survives.
 		# A darker border wedge frames the glow so the triangular silhouette is unmistakable.
@@ -676,7 +676,7 @@ func _build_gate() -> void:
 		var bpm := PrismMesh.new()
 		bpm.size = Vector3(3.2, 2.6, 0.5)
 		border.mesh = bpm
-		border.material_override = _emissive(Color(0.05, 0.07, 0.12), 0.18)
+		border.material_override = _emissive(Color(0.08, 0.10, 0.15), 0.20)
 		add_child(border)
 		border.position = center + Vector3(px, py, -0.62)
 		border.rotation.z = spin
@@ -684,7 +684,7 @@ func _build_gate() -> void:
 		var gpm := PrismMesh.new()
 		gpm.size = Vector3(2.8, 2.1, 0.26)
 		glow.mesh = gpm
-		glow.material_override = _emissive(Color(0.7, 0.85, 1.0), 7.0)
+		glow.material_override = _emissive(Color(0.7, 0.85, 1.0), 7.5)
 		add_child(glow)
 		glow.position = center + Vector3(px, py, -0.86)
 		glow.rotation.z = spin

@@ -49,6 +49,16 @@ func _ready() -> void:
 	# Compose the look target right of centre, clear of the dialog window.
 	_cam.h_offset = -0.85
 	add_child(_cam)
+	# X-ray occlusion fade (issue #139). Headless / instant_mode skips it so
+	# smoke tests and Movie Maker captures stay deterministic. The CameraXRay
+	# script is preloaded via the class_name registration in view.gd's scene.
+	var sr: Node = get_tree().root.get_node_or_null("SceneRouter")
+	var instant: bool = sr != null and bool(sr.get("instant_mode"))
+	if not instant:
+		_xray = CameraXRay.new()
+		_xray.name = "CameraXRay"
+		add_child(_xray)
+		_xray.setup(_cam)
 
 
 # Per-use lens setup (call after add_child): the standoff uses a wide lens
@@ -75,6 +85,9 @@ func release() -> void:
 	_active = false
 	if _cam != null:
 		_cam.current = false
+	# Clear X-ray tracking so occluders restore once the cinematic is over.
+	if _xray != null and is_instance_valid(_xray):
+		_xray.clear_subjects()
 	if _prev_cam != null and is_instance_valid(_prev_cam):
 		_prev_cam.current = true
 
@@ -125,6 +138,12 @@ func _process(delta: float) -> void:
 		return
 	if _shake_t < _shake_dur:
 		_shake_t += delta
+	# X-ray: track the active subject so geometry between camera and actor fades.
+	# Refreshed every frame so a walking character (follow shot) stays readable.
+	if _xray != null and is_instance_valid(_xray):
+		_xray.clear_subjects()
+		if _track_target != null and is_instance_valid(_track_target):
+			_xray.track_subject(_track_target)
 	if _track_target != null and is_instance_valid(_track_target):
 		_shot_pos = _track_target.global_position + _track_offset
 		_shot_look = _track_target.global_position + Vector3.UP * _track_look_height

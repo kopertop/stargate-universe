@@ -84,6 +84,9 @@ const METAL_METALLIC: float = 0.85
 const FLOOR_ROUGHNESS: float = 0.28
 const SCREEN_COLOR: Color = Color(0.22, 0.45, 0.85)
 const SCREEN_ENERGY: float = 0.55
+# Chevron glow parameters for better visibility
+const GATE_RING_GLOW_SIZE: float = 3.0
+const GATE_RING_GLOW_COLOR: Color = Color(0.75, 0.88, 0.96)
 # Fog
 const FOG_DENSITY: float = 0.005
 

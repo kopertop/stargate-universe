@@ -670,7 +670,7 @@ func _build_gate() -> void:
 		# LARGE contained glowing triangular insert on each bracket — the lit chevron tip,
 		# the strongest read of "this is a Stargate". CRITICAL: the glow is BRIGHT (energy 7.5)
 		# but CONTAINED — the insert is large enough to read as a sharp triangle against the
-		# vortex bloom, but the dark bracket frames it so the triangular shape survives.
+		# vortex bloom, but the dark bracket frames it so the triangular silhouette is unmistakable.
 		# A darker border wedge frames the glow so the triangular silhouette is unmistakable.
 		var border := MeshInstance3D.new()
 		var bpm := PrismMesh.new()
@@ -682,9 +682,9 @@ func _build_gate() -> void:
 		border.rotation.z = spin
 		var glow := MeshInstance3D.new()
 		var gpm := PrismMesh.new()
-		gpm.size = Vector3(2.8, 2.1, 0.26)
+		gpm.size = Vector3(3.0, 2.4, 0.26)
 		glow.mesh = gpm
-		glow.material_override = _emissive(Color(0.7, 0.85, 1.0), 7.5)
+		glow.material_override = _emissive(Color(0.75, 0.88, 0.96), 7.5)
 		add_child(glow)
 		glow.position = center + Vector3(px, py, -0.86)
 		glow.rotation.z = spin

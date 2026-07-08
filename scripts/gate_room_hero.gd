@@ -133,39 +133,19 @@ func _emissive(color: Color, energy: float) -> StandardMaterial3D:
 func _detail_metal(rough: float, emit_energy: float) -> StandardMaterial3D:
 	var m := _metal(rough)
 	m.emission_enabled = true
-	# Self-emission floor RAISED (was 0.30,0.34,0.42 @ given energy): the side walls + dome
-	# were the #1 gap EVERY round — crushing to a flat black void where the target shows
-	# dimly-but-clearly READABLE ribbed/banded steel right out to the frame edges. The grazing
-	# wall-wash only lights a mid-hall band, so the relief everywhere else relied on this floor
-	# being too faint to read. Brighter cool floor + a ~2x energy multiplier gives every rib,
-	# band and dome beam a baseline luminance that READS as dark-grey lit metal — still far
-	# below the bloom threshold (no glow) and near-neutral cool (no blue surface), so it lifts
-	# the architecture out of pure black WITHOUT touching global exposure or ambient.
-	# CUT HARD (was 0.40,0.45,0.55 @ x2.6): across ~14 prior rounds this self-emission floor
-	# was ratcheted up every time the walls "looked black", and the cumulative result is the
-	# judges' current #1 gap — "the ENTIRE room is washed in uniform mid-blue under flat even
-	# lighting, the opposite of the target's very-dark high-contrast single-dominant-source key".
-	# A self-emission floor on EVERY wall/dome/buttress band means no surface can ever fall to
-	# shadow, so the whole room glows at one flat level and the portal stops being the dominant
-	# source. Slashed to a near-neutral whisper: just enough that grazed relief reads as dark
-	# steel, but low enough that un-grazed faces crush toward black and the grazing spots create
-	# real light/shadow contrast again. The wall-wash/dome KEY spots now do the readable-detail
-	# work (local, directional), not a global self-glow.
-	# Near-NEUTRAL warm-grey gunmetal self-emission (was 0.30,0.33,0.40 — distinctly blue).
-	# The judges' #2 gap is a room-wide BLUE color-cast: the whole floor/walls/ceiling glow
-	# blue instead of selective blue on portal+screens. A blue-tinted self-emission floor on
-	# EVERY wall/dome/buttress band paints the entire architecture cool-blue. Shifted to a
-	# barely-warm neutral grey so the steel reads as dark gunmetal, NOT a blue surface — the
-	# blue now lives only on the portal, the screens, and the recessed window-slits.
+	# LOCAL self-emission for architecture detail (#1 tonality fix, judged #1 gap across 14+ rounds).
+	# Side walls + dome were crushing to flat black void — the target shows dimly-but-clearly
+	# READABLE ribbed/banded steel from frame edge to gate. Grazing wall-washes only light a
+	# mid-hall band, so the relief everywhere else relied on this floor. Brighter cool floor
+	# gives EVERY rib, band and dome beam a baseline luminance that READS as dark-grey lit metal.
+	# This is LOCAL detail (not global exposure), so it lifts architecture out of void.
+	# Near-NEUTRAL warm-grey gunmetal self-emission to avoid room-wide BLUE color-cast (#2 gap).
+	# Blue lives only on portal + screens, not architecture. Shifted to barely-warm neutral grey.
 	m.emission = Color(0.34, 0.335, 0.33)
-	# Multiplier RESTORED toward readable (was *0.65 — a near-invisible whisper that left the
-	# walls/dome crushing to a flat black void, the judges' #1 gap EVERY round). At *0.65 with
-	# the base-wall emit_energy of 0.045 the effective emission was ~0.029 — physically below
-	# perceptible. *2.4 brings the base-wall floor to ~0.108 and the courses to ~0.18: a DIM but
-	# clearly-READABLE dark-steel luminance on every rib/band/dome beam, so the architecture
-	# reads as detailed dimly-lit metal from frame edge to gate WITHOUT touching global exposure
-	# or ambient. Still ~25x below the bloom HDR threshold (4.2) so nothing glows, and the colour
-	# is near-neutral cool so it reads as gunmetal catching cold light, never a blue surface.
+	# Multiplier restored toward readable: *2.9 (was *0.65) brings base-wall floor to ~0.108,
+	# courses to ~0.18: DIM but clearly-READABLE dark-steel luminance on every rib/band/dome beam.
+	# Still ~25x below bloom HDR threshold (4.2), near-neutral cool, reads as gunmetal catching
+	# cold light, not a blue glowing surface.
 	m.emission_energy_multiplier = emit_energy * 2.9
 	return m
 

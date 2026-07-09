@@ -1390,9 +1390,13 @@ static func _accent_hydroponics(world: Node3D, width: float, depth: float, heigh
 # their strips read as visual noise stacked on top of the panel surface.
 static func _accent_elevator(world: Node3D, width: float, depth: float, height: float, palette: Dictionary) -> void:
 	var accent: Color = palette["accent"]
-	var disc_mat: StandardMaterial3D = _emissive_mat(accent, 2.4)
-	var ring_mat: StandardMaterial3D = _emissive_mat(accent, 3.4)
-	var cap_mat: StandardMaterial3D = _emissive_mat(accent, 2.0)
+	# The pad disc spans nearly the whole floor and the player STANDS on it on
+	# arrival — at full-accent albedo + high emission it floods the camera into
+	# a solid cyan blowout (gallery finding, sprint-005). Keep the disc a dim
+	# lit panel and let the thin rim ring carry the glow.
+	var disc_mat: StandardMaterial3D = _emissive_mat(accent.darkened(0.55), 0.5)
+	var ring_mat: StandardMaterial3D = _emissive_mat(accent, 2.0)
+	var cap_mat: StandardMaterial3D = _emissive_mat(accent.darkened(0.35), 1.0)
 	var panel_mat: StandardMaterial3D = _make_mat((palette["wall"] as Color).darkened(0.25), 0.55, 0.4)
 	var panel_screen_mat: StandardMaterial3D = _emissive_mat(accent, 3.2)
 

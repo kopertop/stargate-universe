@@ -48,12 +48,35 @@ func _refresh() -> void:
 	var damage_blocked: bool = dmg > ShipState.BUILD_DAMAGE_THRESHOLD
 	if damage_blocked:
 		_blocker_label.text = ("Construction offline — structural damage exceeds %d%%. "
-			+ "Dispatch a repair robot to restore this compartment first.") % int(ShipState.BUILD_DAMAGE_THRESHOLD)
+			+ "Spend Ship Parts below to restore the compartment first.") % int(ShipState.BUILD_DAMAGE_THRESHOLD)
 	else:
 		_blocker_label.text = ""
 
 	for child in _list.get_children():
 		child.queue_free()
+
+	# Hand-repair action (the mine→repair seam of the core loop): visible while
+	# the room carries any structural damage, priced in Ship Parts.
+	if dmg > 0.0:
+		var repair_row: HBoxContainer = HBoxContainer.new()
+		repair_row.add_theme_constant_override("separation", 10)
+		_list.add_child(repair_row)
+		var repair_text: VBoxContainer = VBoxContainer.new()
+		repair_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		repair_row.add_child(repair_text)
+		repair_text.add_child(make_label("Structural repairs", TEXT_COLOR, 16))
+		repair_text.add_child(make_label(
+			"Spend %d × Ship Parts to restore %d%% structural damage (have %d)." % [
+				ShipState.REPAIR_PARTS_COST, int(ShipState.REPAIR_PER_SPEND_PCT),
+				GameState.resource_count(ShipState.REPAIR_PARTS_RESOURCE)],
+			DIM_TEXT_COLOR, 13))
+		var repair_btn: Button = Button.new()
+		repair_btn.text = "Repair"
+		repair_btn.disabled = ShipState.repair_blocker(room_id) != ""
+		repair_btn.pressed.connect(_on_repair_pressed)
+		Audio.attach_ui_hover(repair_btn)
+		repair_row.add_child(repair_btn)
+		_list.add_child(HSeparator.new())
 	var catalog: Array = ShipState.modules_for_room(room_id)
 	if catalog.is_empty():
 		_list.add_child(make_label("No compatible modules for this compartment.", DIM_TEXT_COLOR))
@@ -73,6 +96,13 @@ func _refresh() -> void:
 		var desc: Label = make_label(String(m.get("description", "")), DIM_TEXT_COLOR, 13)
 		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		text.add_child(desc)
+		var cost: Dictionary = ShipState.build_cost(mid)
+		if not cost.is_empty():
+			var parts_list: Array[String] = []
+			for res_id: String in cost:
+				parts_list.append("%d × %s (have %d)" % [
+					int(cost[res_id]), res_id.capitalize(), GameState.resource_count(res_id)])
+			text.add_child(make_label("Cost: " + ", ".join(parts_list), DIM_TEXT_COLOR, 13))
 
 		var build_btn: Button = Button.new()
 		build_btn.text = "Build"
@@ -101,6 +131,16 @@ func _on_build_pressed(module_id: String) -> void:
 		var m_name: String = String(ShipState.module(module_id).get("name", module_id))
 		GameState.add_log("Construction: %s installed in %s." % [
 			m_name, String(ShipLayout.room(room_id).get("name", room_id))])
+	_refresh()
+
+
+func _on_repair_pressed() -> void:
+	if ShipState.repair_room_with_parts(room_id):
+		GameState.add_log("Repairs: structural damage in %s reduced to %d%%." % [
+			String(ShipLayout.room(room_id).get("name", room_id)),
+			int(round(ShipState.room_damage(room_id)))])
+	else:
+		_blocker_label.text = ShipState.repair_blocker(room_id)
 	_refresh()
 
 

@@ -18,6 +18,10 @@ Headless `SceneTree`-extending tests. Several files, one concern each.
   the full 16-flag golden sequence, complete_step event channel,
   serialize/deserialize round-trip, old-format save migration.
 - `kino_autopilot.gd` — Multi-drone coordination + avoid-radius + sweep.
+- `build_economy.gd` — The mine→build/repair economy seam: ResourceNode
+  mining interact banks into Inventory, `build_cost` charging on module
+  builds, parts-priced hand repair unblocking story-damaged rooms.
+  `tests/run.sh economy`. (The FTL loop itself is `ftl_loop.gd`.)
 - `deck_boot.gd` — Merged-deck gameplay core: ShipState room/door registries
   (damage, shield, module, build gating, save round-trip), deck.tscn boots
   both floors with physical stateful doors + room consoles, door state

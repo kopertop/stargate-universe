@@ -17,6 +17,7 @@ of truth.
 - `ship-atmosphere-lighting.md` — Lighting bible per region.
 - `ship-exploration.md` — Room graph, door rules, discovery flow.
 - `ship-state-system.md` — Per-room state machine (power, breach, lockdown).
+- `ship-building-mode.md` — Room modules + build consoles on the merged decks; repair-robot loop, phased plan (Phase 1 implemented).
 - `stargate-planetary-runs.md` — Off-ship missions via the Stargate.
 
 ## Conventions

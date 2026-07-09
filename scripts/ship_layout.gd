@@ -120,6 +120,39 @@ func is_key_room(id: String) -> bool:
 	return _KEY_ROOMS_FALLBACK.has(id)
 
 
+# Rooms whose `floor` field matches (0 = main deck, 1 = upper deck).
+func rooms_on_floor(floor_index: int) -> Array:
+	var out: Array = []
+	for r: Dictionary in all_rooms():
+		if int(r.get("floor", 0)) == floor_index:
+			out.append(r)
+	return out
+
+
+# Every unique door connection, ONE entry per pair regardless of the JSON's
+# single-direction authoring. Each entry: { "a": String, "b": String,
+# "dir": String (a's wall toward b), "plaque": String }. Used by the merged
+# deck builder and the ship-systems door list.
+func door_pairs() -> Array:
+	_load_connections()
+	var seen: Dictionary = {}
+	var out: Array = []
+	for from_id: String in _outgoing_edges.keys():
+		for edge: Dictionary in _outgoing_edges[from_id] as Array:
+			var to_id: String = String(edge.get("to", ""))
+			var key: String = "%s|%s" % [from_id, to_id] if from_id <= to_id else "%s|%s" % [to_id, from_id]
+			if seen.has(key):
+				continue
+			seen[key] = true
+			out.append({
+				"a": from_id,
+				"b": to_id,
+				"dir": String(edge.get("dir", "")),
+				"plaque": String(edge.get("plaque", "")),
+			})
+	return out
+
+
 # JSON width/height converted to metres. Returns Vector2(width, depth) in the
 # Godot XZ plane (JSON 2D plan maps to ship's floor plan).
 func size_metres(id: String) -> Vector2:

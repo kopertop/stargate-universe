@@ -18,6 +18,10 @@ Headless `SceneTree`-extending tests. Several files, one concern each.
   the full 16-flag golden sequence, complete_step event channel,
   serialize/deserialize round-trip, old-format save migration.
 - `kino_autopilot.gd` — Multi-drone coordination + avoid-radius + sweep.
+- `deck_boot.gd` — Merged-deck gameplay core: ShipState room/door registries
+  (damage, shield, module, build gating, save round-trip), deck.tscn boots
+  both floors with physical stateful doors + room consoles, door state
+  persists across deck rebuilds. `tests/run.sh deck`.
 - `ancient_metal_shader.gd` — Ancient-metal + event-horizon shaders parse,
   the `.tres` ShaderMaterial variants bind the shader + detail textures +
   uniforms, and `objects/stargate.gd` applies the ShaderMaterials to the

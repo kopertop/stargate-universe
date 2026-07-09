@@ -27,6 +27,11 @@ code.
   > list** so this JSON is the single source of truth (no duplicate key-room
   > lists — project anti-pattern). If your definitions live elsewhere instead,
   > point `is_key_room()` at them and keep it the only key-room query.
+
+- `room_modules.json` — Build-mode module catalog (hydroponics unit, quarters,
+  research lab, machine shop, ...). Loaded by `scripts/ship_state.gd`
+  (autoload `ShipState`); consumed by the room consoles' BuildPanel. See
+  `../design/gdd/ship-building-mode.md`.
 - `room_connections.json` — Dictionary of `room_id -> Array[{dir, to, plaque}]`.
   Connections are listed in ONE direction; consumers mirror reverse edges (see
   `scripts/room.gd::_setup_doors` and `scripts/ship_layout.gd::_load_connections`).

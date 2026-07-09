@@ -1,0 +1,62 @@
+[
+	{
+		"id": "hydroponics_unit",
+		"name": "Hydroponics Unit",
+		"description": "Grow beds, nutrient feeds and grow-lights. Produces food and helps scrub CO2.",
+		"accent_template": "hydroponics-template",
+		"allowed_types": [],
+		"provides": ["food", "co2_scrubbing"],
+		"power_cost": 3,
+		"build_cost": { "ship_parts": 6 }
+	},
+	{
+		"id": "sleeping_quarters",
+		"name": "Sleeping Quarters",
+		"description": "Bunks, lockers and sconce lighting. Raises crew rest quality and morale.",
+		"accent_template": "quarters-template",
+		"allowed_types": [],
+		"provides": ["rest", "morale"],
+		"power_cost": 1,
+		"build_cost": { "ship_parts": 4 }
+	},
+	{
+		"id": "research_lab",
+		"name": "Research Lab",
+		"description": "Ancient database taps and analysis benches. Unlocks tech and translation progress.",
+		"accent_template": "kino-room-template",
+		"allowed_types": [],
+		"provides": ["research"],
+		"power_cost": 4,
+		"build_cost": { "ship_parts": 8 }
+	},
+	{
+		"id": "machine_shop",
+		"name": "Machine Shop",
+		"description": "Fabricators and tool benches. Converts salvage into Ship Parts for repairs.",
+		"accent_template": "kino-room-template",
+		"allowed_types": [],
+		"provides": ["ship_parts"],
+		"power_cost": 4,
+		"build_cost": { "ship_parts": 8 }
+	},
+	{
+		"id": "infirmary_ward",
+		"name": "Infirmary Ward",
+		"description": "Med beds and diagnostic consoles. Speeds crew recovery from injury.",
+		"accent_template": "quarters-template",
+		"allowed_types": ["infirmary", "quarters", "control_room"],
+		"provides": ["healing"],
+		"power_cost": 2,
+		"build_cost": { "ship_parts": 5 }
+	},
+	{
+		"id": "storage_depot",
+		"name": "Storage Depot",
+		"description": "Crates, racks and barrels. Raises the ship-wide resource stockpile cap.",
+		"accent_template": "",
+		"allowed_types": [],
+		"provides": ["storage"],
+		"power_cost": 0,
+		"build_cost": { "ship_parts": 2 }
+	}
+]

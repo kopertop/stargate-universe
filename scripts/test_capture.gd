@@ -20,6 +20,9 @@ const DEFAULT_CAMERA_YAW_OFFSET: float = 28.0
 
 var _state: int = 0   # 0=settle, 1=walking, 2=done
 var _frames: int = 0
+# Walk-phase frame budget — WALK_FRAMES for the short in-room stroll, longer
+# when `toward=<group>` covers real distance to an interactable.
+var _walk_frames: int = WALK_FRAMES
 # Camera mode: "" = default over-the-shoulder walk-in; "overview" = elevated
 # pulled-back establishing shot (for outdoor scenes / large rooms the 3/4 walk
 # can't frame). Parsed from `cam=overview` user arg.
@@ -82,7 +85,7 @@ func _process(_delta: float) -> void:
 		_frames = 0
 		_state = 1
 		return
-	if _state == 1 and _frames >= WALK_FRAMES:
+	if _state == 1 and _frames >= _walk_frames:
 		_state = 2
 		_capture()
 
@@ -123,28 +126,76 @@ func _start_walk() -> void:
 	if player == null or not (player is Node3D) or not player.has_method("auto_walk_to"):
 		return
 	var pn: Node3D = player as Node3D
-	# Authored Player facings are inconsistent across scenes (some face into the
-	# room, some face back at the door they "came from"). Derive direction from
-	# geometry: nearest Door is "behind", walk AWAY from it.
-	var root: Node = tree.current_scene
-	var forward: Vector3 = _direction_into_room(root, pn)
-	if forward.length() < 0.01:
-		return
 	var walk_distance: float = WALK_DISTANCE
 	var yaw_offset: float = DEFAULT_CAMERA_YAW_OFFSET
+	var toward_group: String = ""
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("yaw="):
 			yaw_offset = arg.substr(4).to_float()
 		elif arg.begins_with("walk="):
 			walk_distance = arg.substr(5).to_float()
+		elif arg.begins_with("toward="):
+			toward_group = arg.substr(7)
+	if toward_group != "":
+		_walk_to_group_member(tree, pn, toward_group)
+		_apply_yaw_offset(tree, yaw_offset)
+		return
+	# Authored Player facings are inconsistent across scenes (some face into the
+	# room, some face back at the door they "came from"). Derive direction from
+	# geometry: nearest Door is "behind", walk AWAY from it. Scenes with no doors
+	# at all (planet surfaces) use the facing fallback inside — planet spawns are
+	# authored to face open terrain, away from the return gate.
+	var root: Node = tree.current_scene
+	var forward: Vector3 = _direction_into_room(root, pn)
+	if forward.length() < 0.01:
+		return
 	player.call("auto_walk_to", pn.global_position + forward * walk_distance, 4.0)
-	# Offset the camera into a 3/4 angle so character isn't directly between
-	# camera and any central prop. snap_to_target reads initial_yaw_offset.
+	_apply_yaw_offset(tree, yaw_offset)
+
+
+# Offset the camera into a 3/4 angle so character isn't directly between
+# camera and any central prop. snap_to_target reads initial_yaw_offset.
+func _apply_yaw_offset(tree: SceneTree, yaw_offset: float) -> void:
 	var root_view: Node = tree.current_scene.get_node_or_null("View")
 	if root_view != null and "initial_yaw_offset" in root_view:
 		root_view.initial_yaw_offset = yaw_offset
 		if root_view.has_method("snap_to_target"):
 			root_view.call("snap_to_target")
+
+
+# `toward=<group>`: frame an INTERACTION — jump the player to just outside the
+# nearest member of a node group (e.g. lime_node on a planet run), then walk
+# the last stretch toward it so the shot lands with the interactable in front
+# of the character and its prompt live. The long-range teleport keeps captures
+# fast; the short real walk keeps facing/animation/prompt honest.
+const _TOWARD_TELEPORT_DIST: float = 6.5
+const _TOWARD_STOP_DIST: float = 1.6
+const _TOWARD_WALK_FRAMES: int = 170
+
+func _walk_to_group_member(tree: SceneTree, pn: Node3D, group: String) -> void:
+	var best: Node3D = null
+	var best_d: float = INF
+	for n in tree.get_nodes_in_group(group):
+		if not (n is Node3D):
+			continue
+		var d: float = ((n as Node3D).global_position - pn.global_position).length_squared()
+		if d < best_d:
+			best_d = d
+			best = n
+	if best == null:
+		print("[test_capture] toward=%s: no group members found" % group)
+		return
+	# Approach from the spawn side so the camera looks out over where the player
+	# came from (gate/terrain in the far background).
+	var approach: Vector3 = pn.global_position - best.global_position
+	approach.y = 0.0
+	approach = approach.normalized() if approach.length() > 0.5 else Vector3.FORWARD
+	var start: Vector3 = best.global_position + approach * _TOWARD_TELEPORT_DIST
+	start.y = best.global_position.y + 1.2   # drop onto terrain via gravity
+	pn.global_position = start
+	pn.call("auto_walk_to", best.global_position + approach * _TOWARD_STOP_DIST, 4.0)
+	_walk_frames = _TOWARD_WALK_FRAMES
+	print("[test_capture] toward=%s target=%s" % [group, best.name])
 
 func _direction_into_room(root: Node, pn: Node3D) -> Vector3:
 	var nearest: Node3D = _find_nearest_door(root, pn.global_position)

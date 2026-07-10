@@ -38,6 +38,7 @@ func _ready() -> void:
 	_build_inner_glyph_band()
 	_build_chevrons()
 	_build_event_horizon()
+	_build_ring_collider()
 	_set_horizon_visible(active)
 
 func _process(delta: float) -> void:
@@ -109,6 +110,42 @@ func _build_outer_ring() -> void:
 	# Ancient-metal triplanar shader (dark steel, faint amber seam glow).
 	mi.material_override = load("res://shaders/ancient_metal_ring.tres")
 	add_child(mi)
+
+# Solid-ring collision: box segments along the torus circumference so the
+# player body AND the camera SpringArm treat the ring as solid (the planet
+# spawn placed the chase camera INSIDE the collision-less torus — the whole
+# frame was ring-metal at point-blank range). The aperture (r < radius_inner)
+# stays completely open: gate crossings and Kino flights pass through the
+# middle, and the travel trigger is a separate Area3D owned by the room. The
+# lowest arc is skipped so the dais ramp / landing terrain the ring sinks
+# into never grows an invisible bump.
+const _COLLIDER_SEGMENTS: int = 12
+const _COLLIDER_SKIP_BELOW_Y: float = -2.0
+
+func _build_ring_collider() -> void:
+	var body: StaticBody3D = StaticBody3D.new()
+	body.name = "RingCollider"
+	body.collision_layer = 1
+	body.collision_mask = 0
+	var ring_mid: float = (radius_outer + radius_inner) * 0.5
+	var tube: float = radius_outer - radius_inner
+	var chord: float = TAU * ring_mid / float(_COLLIDER_SEGMENTS)
+	for i in _COLLIDER_SEGMENTS:
+		var a: float = TAU * float(i) / float(_COLLIDER_SEGMENTS)
+		var center: Vector3 = Vector3(cos(a) * ring_mid, sin(a) * ring_mid, 0.0)
+		if center.y < _COLLIDER_SKIP_BELOW_Y:
+			continue
+		var cs: CollisionShape3D = CollisionShape3D.new()
+		var box: BoxShape3D = BoxShape3D.new()
+		# Slightly oversized chord so adjacent segments overlap (no camera-width
+		# slits between boxes); depth padded past the torus for the spring arm.
+		box.size = Vector3(chord * 1.15, tube, ring_depth + 0.25)
+		cs.shape = box
+		cs.position = center
+		# Align the box's local Y with the ring's radial direction.
+		cs.rotation = Vector3(0.0, 0.0, a + PI * 0.5)
+		body.add_child(cs)
+	add_child(body)
 
 func _build_inner_glyph_band() -> void:
 	# A second, slightly smaller torus sitting inside the outer ring. Darker,

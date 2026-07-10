@@ -496,6 +496,33 @@ static func _build_return_gate(world: Node3D, params: Dictionary) -> void:
 	gate.set("active", true)
 	world.add_child(gate)
 
+	# Weathered landing dais under the ring so the gate reads planted, not
+	# floating (gallery finding). Low enough (0.12 m lip) that the player
+	# capsule's rounded bottom slides onto it without a step-up mechanic.
+	var dais: MeshInstance3D = MeshInstance3D.new()
+	dais.name = "GateDais"
+	var slab: CylinderMesh = CylinderMesh.new()
+	slab.top_radius = 4.6
+	slab.bottom_radius = 5.4
+	slab.height = 0.24
+	dais.mesh = slab
+	dais.position = Vector3(0.0, ground_y + 0.0, -9.0)   # half-sunk: 0.12 m lip
+	var dais_mat: StandardMaterial3D = StandardMaterial3D.new()
+	dais_mat.albedo_color = Color(0.48, 0.44, 0.38)
+	dais_mat.roughness = 0.92
+	dais.material_override = dais_mat
+	world.add_child(dais)
+	var dais_body: StaticBody3D = StaticBody3D.new()
+	dais_body.name = "GateDaisBody"
+	dais_body.position = dais.position
+	var dais_cs: CollisionShape3D = CollisionShape3D.new()
+	var dais_shape: CylinderShape3D = CylinderShape3D.new()
+	dais_shape.radius = 4.6
+	dais_shape.height = 0.24
+	dais_cs.shape = dais_shape
+	dais_body.add_child(dais_cs)
+	world.add_child(dais_body)
+
 	var portal: Area3D = Area3D.new()
 	portal.set_script(PLANET_GATE_SCRIPT)
 	portal.name = "PlanetReturnGate"

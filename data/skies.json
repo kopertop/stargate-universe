@@ -1,0 +1,105 @@
+{
+	"_readme": "Per-biome alien-sky tuning consumed by scripts/planet_sky.gd. Rolls are seeded from the planet spec, so the Nth planet always wears the same sky. palettes = [top, horizon] color pairs (one rolled per planet; the biome's biomes.json sky_horizon stays the fallback). suns/moons are [min, max] counts. *_chance in 0-1. Cold/harsh worlds carry crowded night skies (more moons, auroras); hot worlds roll binary/trinary suns; alien_tech worlds get the full lightshow.",
+	"default": {
+		"palettes": [[[0.18, 0.32, 0.58], [0.62, 0.74, 0.86]]],
+		"suns": [1, 1],
+		"extra_sun_chance": 0.1,
+		"moons": [0, 2],
+		"gas_giant_chance": 0.15,
+		"ring_chance": 0.15,
+		"aurora_chance": 0.1,
+		"star_density": 0.3
+	},
+	"desert": {
+		"palettes": [
+			[[0.55, 0.30, 0.16], [0.92, 0.72, 0.48]],
+			[[0.42, 0.22, 0.30], [0.95, 0.62, 0.38]],
+			[[0.30, 0.34, 0.52], [0.88, 0.78, 0.55]]
+		],
+		"suns": [1, 3],
+		"extra_sun_chance": 0.65,
+		"moons": [0, 1],
+		"gas_giant_chance": 0.10,
+		"ring_chance": 0.10,
+		"aurora_chance": 0.0,
+		"star_density": 0.15
+	},
+	"temperate": {
+		"palettes": [
+			[[0.16, 0.34, 0.60], [0.62, 0.74, 0.86]],
+			[[0.20, 0.28, 0.55], [0.70, 0.66, 0.78]]
+		],
+		"suns": [1, 1],
+		"extra_sun_chance": 0.15,
+		"moons": [1, 2],
+		"gas_giant_chance": 0.20,
+		"ring_chance": 0.20,
+		"aurora_chance": 0.10,
+		"star_density": 0.3
+	},
+	"winter": {
+		"palettes": [
+			[[0.10, 0.16, 0.34], [0.58, 0.68, 0.84]],
+			[[0.06, 0.10, 0.26], [0.44, 0.56, 0.76]]
+		],
+		"suns": [1, 1],
+		"extra_sun_chance": 0.0,
+		"moons": [2, 4],
+		"gas_giant_chance": 0.35,
+		"ring_chance": 0.30,
+		"aurora_chance": 0.75,
+		"star_density": 0.55
+	},
+	"jungle": {
+		"palettes": [
+			[[0.14, 0.36, 0.30], [0.62, 0.78, 0.58]],
+			[[0.18, 0.30, 0.44], [0.55, 0.68, 0.52]]
+		],
+		"suns": [1, 1],
+		"extra_sun_chance": 0.10,
+		"moons": [1, 3],
+		"gas_giant_chance": 0.45,
+		"ring_chance": 0.15,
+		"aurora_chance": 0.15,
+		"star_density": 0.25
+	},
+	"toxic": {
+		"palettes": [
+			[[0.22, 0.28, 0.10], [0.56, 0.60, 0.28]],
+			[[0.26, 0.22, 0.30], [0.62, 0.58, 0.30]]
+		],
+		"suns": [1, 1],
+		"extra_sun_chance": 0.10,
+		"moons": [1, 3],
+		"gas_giant_chance": 0.25,
+		"ring_chance": 0.25,
+		"aurora_chance": 0.65,
+		"star_density": 0.35
+	},
+	"urban": {
+		"palettes": [
+			[[0.24, 0.24, 0.32], [0.62, 0.58, 0.60]],
+			[[0.18, 0.20, 0.30], [0.66, 0.54, 0.44]]
+		],
+		"suns": [1, 2],
+		"extra_sun_chance": 0.25,
+		"moons": [1, 2],
+		"gas_giant_chance": 0.20,
+		"ring_chance": 0.35,
+		"aurora_chance": 0.10,
+		"star_density": 0.25
+	},
+	"alien_tech": {
+		"palettes": [
+			[[0.16, 0.10, 0.34], [0.46, 0.36, 0.62]],
+			[[0.08, 0.10, 0.28], [0.38, 0.30, 0.58]]
+		],
+		"suns": [1, 2],
+		"extra_sun_chance": 0.35,
+		"moons": [2, 4],
+		"gas_giant_chance": 0.40,
+		"ring_chance": 0.55,
+		"aurora_chance": 0.60,
+		"star_density": 0.5
+	}
+}

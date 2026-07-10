@@ -43,6 +43,14 @@ func _ready() -> void:
 			_preset_quest(arg.substr(6))
 		elif arg.begins_with("cam="):
 			_cam_mode = arg.substr(4)
+		elif arg.begins_with("biome="):
+			# Force a specific biome for planet captures. Autoloads _ready runs
+			# before the scene's, so planet.gd::_active_spec picks this up.
+			# Optional "biome=<id>:<seed>" pins the sky/terrain roll too.
+			var parts: PackedStringArray = arg.substr(6).split(":")
+			var forced_seed: int = int(parts[1]) if parts.size() > 1 else -1
+			GameState.build_next_planet_spec("", parts[0], forced_seed)
+			print("[test_capture] biome=%s seed=%s" % [parts[0], str(forced_seed)])
 	print("[test_capture] active cam=%s" % _cam_mode)
 
 # Put GameState into a named quest state so room.gd stages the right beat (e.g.
@@ -128,6 +136,7 @@ func _start_walk() -> void:
 	var pn: Node3D = player as Node3D
 	var walk_distance: float = WALK_DISTANCE
 	var yaw_offset: float = DEFAULT_CAMERA_YAW_OFFSET
+	var pitch: float = NAN
 	var toward_group: String = ""
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("yaw="):
@@ -136,9 +145,11 @@ func _start_walk() -> void:
 			walk_distance = arg.substr(5).to_float()
 		elif arg.begins_with("toward="):
 			toward_group = arg.substr(7)
+		elif arg.begins_with("pitch="):
+			pitch = arg.substr(6).to_float()
 	if toward_group != "":
 		_walk_to_group_member(tree, pn, toward_group)
-		_apply_yaw_offset(tree, yaw_offset)
+		_apply_yaw_offset(tree, yaw_offset, pitch)
 		return
 	# Authored Player facings are inconsistent across scenes (some face into the
 	# room, some face back at the door they "came from"). Derive direction from
@@ -150,17 +161,25 @@ func _start_walk() -> void:
 	if forward.length() < 0.01:
 		return
 	player.call("auto_walk_to", pn.global_position + forward * walk_distance, 4.0)
-	_apply_yaw_offset(tree, yaw_offset)
+	_apply_yaw_offset(tree, yaw_offset, pitch)
 
 
 # Offset the camera into a 3/4 angle so character isn't directly between
 # camera and any central prop. snap_to_target reads initial_yaw_offset.
-func _apply_yaw_offset(tree: SceneTree, yaw_offset: float) -> void:
+# An explicit pitch (degrees; positive tilts the view up toward the sky —
+# used by the alien-sky showcase shots) overrides the authored rig pitch.
+func _apply_yaw_offset(tree: SceneTree, yaw_offset: float, pitch: float = NAN) -> void:
 	var root_view: Node = tree.current_scene.get_node_or_null("View")
-	if root_view != null and "initial_yaw_offset" in root_view:
-		root_view.initial_yaw_offset = yaw_offset
-		if root_view.has_method("snap_to_target"):
-			root_view.call("snap_to_target")
+	if root_view == null or not ("initial_yaw_offset" in root_view):
+		return
+	root_view.initial_yaw_offset = yaw_offset
+	if root_view.has_method("snap_to_target"):
+		root_view.call("snap_to_target")
+	if not is_nan(pitch) and "camera_rotation" in root_view:
+		var rot: Vector3 = root_view.camera_rotation
+		rot.x = pitch
+		root_view.camera_rotation = rot
+		root_view.rotation_degrees = rot
 
 
 # `toward=<group>`: frame an INTERACTION — jump the player to just outside the

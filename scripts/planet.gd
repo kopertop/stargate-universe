@@ -4,6 +4,7 @@ extends Node3D
 # camera, and HUD nodes; PlanetGenerator owns deterministic world contents.
 
 const PlanetGeneratorRef: Script = preload("res://scripts/planet_generator.gd")
+const PlanetSkyRef: Script = preload("res://scripts/planet_sky.gd")
 const KinoDroneScript: Script = preload("res://scripts/kino_drone.gd")
 const PlanetTimerScript: Script = preload("res://scripts/planet_timer.gd")
 const CompanionScript: Script = preload("res://scripts/companion.gd")
@@ -23,6 +24,9 @@ func _ready() -> void:
 	# smoke test), seed + persist a default desert spec from planets.json so the
 	# world is deterministic and survives save/load like a dialed planet.
 	var spec: Dictionary = _active_spec()
+	# Every world wears its own seeded sky (suns/moons/rings/auroras weighted
+	# per biome — data/skies.json) instead of the ship's shared environment.
+	PlanetSkyRef.apply(self, spec)
 	_chunk_manager = PlanetGeneratorRef.build(_world, spec)
 	var planet_name: String = String(spec.get("name", "Lime Planet"))
 	var planet_key: String = "planet_%s_%d" % [String(spec.get("biome", "desert")), int(spec.get("seed", 0))]

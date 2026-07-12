@@ -721,21 +721,14 @@ func _close_jammed_door(leaf: Node3D) -> void:
 
 
 # Inline StandardMaterial3D helpers for the procedural shuttle-dock props.
+# Delegate to SharedMaterials so identical colour/metallic/roughness combos
+# across props share a single material instance.
 func _flat_mat(col: Color, metallic: float, roughness: float) -> StandardMaterial3D:
-	var m: StandardMaterial3D = StandardMaterial3D.new()
-	m.albedo_color = col
-	m.metallic = metallic
-	m.roughness = roughness
-	return m
+	return SharedMaterials.get_flat(col, metallic, roughness)
 
 
 func _emis_mat(col: Color, energy: float) -> StandardMaterial3D:
-	var m: StandardMaterial3D = StandardMaterial3D.new()
-	m.albedo_color = col
-	m.emission_enabled = true
-	m.emission = col
-	m.emission_energy_multiplier = energy
-	return m
+	return SharedMaterials.get_emis(col, energy)
 
 
 # Engineering Bay power console — wall-mounted breaker switch on the -X wall.
@@ -757,10 +750,7 @@ func _spawn_power_console() -> void:
 	console.add_child(cs)
 	add_child(console)
 
-	var housing_mat: StandardMaterial3D = StandardMaterial3D.new()
-	housing_mat.albedo_color = Color(0.20, 0.20, 0.22)
-	housing_mat.metallic = 0.55
-	housing_mat.roughness = 0.42
+	var housing_mat: StandardMaterial3D = SharedMaterials.get_flat(Color(0.20, 0.20, 0.22), 0.55, 0.42)
 	var housing_mi: MeshInstance3D = MeshInstance3D.new()
 	var housing_box: BoxMesh = BoxMesh.new()
 	housing_box.size = Vector3(0.06, 0.75, 0.65)
@@ -769,12 +759,8 @@ func _spawn_power_console() -> void:
 	housing_mi.position = console.position
 	add_child(housing_mi)
 
-	var btn_mat: StandardMaterial3D = StandardMaterial3D.new()
 	var btn_color: Color = Color(0.35, 1.0, 0.55) if restored else Color(1.0, 0.30, 0.10)
-	btn_mat.albedo_color = btn_color
-	btn_mat.emission_enabled = true
-	btn_mat.emission = btn_color
-	btn_mat.emission_energy_multiplier = 3.2
+	var btn_mat: StandardMaterial3D = SharedMaterials.get_emis(btn_color, 3.2)
 	var btn_mi: MeshInstance3D = MeshInstance3D.new()
 	var btn_box: BoxMesh = BoxMesh.new()
 	btn_box.size = Vector3(0.04, 0.32, 0.32)
@@ -1070,12 +1056,7 @@ func _light_rush_console() -> void:
 		return
 	# Wake the screen: bright tech-blue glow instead of the idle dim panel.
 	var on_color: Color = Color(0.10, 0.30, 0.55)
-	var on_mat: StandardMaterial3D = StandardMaterial3D.new()
-	on_mat.albedo_color = on_color
-	on_mat.emission_enabled = true
-	on_mat.emission = on_color
-	on_mat.emission_energy_multiplier = 1.6
-	on_mat.roughness = 0.25
+	var on_mat: StandardMaterial3D = SharedMaterials.get_emis(on_color, 1.6, 0.0, 0.25)
 	plate.material_override = on_mat
 	if plate.get_node_or_null("AncientReadout") != null:
 		return
@@ -1092,11 +1073,8 @@ func _light_rush_console() -> void:
 	tm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	tm.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	var text_color: Color = Color(0.55, 0.85, 1.0)
-	var text_mat: StandardMaterial3D = StandardMaterial3D.new()
-	text_mat.albedo_color = text_color
-	text_mat.emission_enabled = true
-	text_mat.emission = text_color
-	text_mat.emission_energy_multiplier = 2.6
+	# no_depth_test is overridden below — needs a mutable copy.
+	var text_mat: StandardMaterial3D = SharedMaterials.get_emis_mutable(text_color, 2.6)
 	# DEPTH-TESTED: no_depth_test (the gate-console default) draws the glyphs
 	# THROUGH anyone standing at the console (user screenshot — text floating
 	# over Rush's back). The 12 mm lift off the plate already prevents
@@ -1868,7 +1846,27 @@ func _spawn_npc(
 	# Models face +Z as exported; rotate so they face -Z (parent forward).
 	model_holder.rotation.y = PI
 	body.add_child(model_holder)
-	if CharacterFactoryRef.profile_for(character_name).has("mod"):
+	# VRM-first pipeline: if the profile has a VRM file that exists, use the
+	# full VRoid body (expressions, visemes, spring bones). Falls through to
+	# the modular/mini pipeline if the .vrm file isn't present yet.
+	var profile: Dictionary = CharacterFactoryRef.profile_for(character_name)
+	var vrm_path: String = String(profile.get("vrm", ""))
+	if vrm_path != "" and ResourceLoader.exists(vrm_path):
+		var VrmCharacterScript: Script = preload("res://scripts/vrm_character.gd")
+		var vrm: Node3D = VrmCharacterScript.create(vrm_path, character_name)
+		if vrm != null:
+			model_holder.add_child(vrm)
+			# Apply personality-driven expression profile
+			var MgrScript: Script = preload("res://scripts/vrm_character_manager.gd")
+			var expr_profile: Dictionary = MgrScript.EXPRESSION_PROFILES.get(character_name, {})
+			if not expr_profile.is_empty():
+				var personality: String = String(expr_profile.get("personality", "neutral"))
+				if personality != "neutral":
+					vrm.call("set_emotion", personality, 0.6)
+			# Attach sidearm for military crew in ship context
+			if CharacterFactoryRef.is_military(character_name):
+				vrm.call("attach_gear", "sidearm", false)
+	elif profile.has("mod"):
 		# PRIMARY pipeline: Quaternius ModularCharacter at real-world scale,
 		# dressed for ship context (duty tint + sidearm for military).
 		var mc: Node3D = CharacterFactoryRef.build_modular(character_name)

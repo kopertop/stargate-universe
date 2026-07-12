@@ -3301,7 +3301,22 @@ func _build_returned_crew_npc(display_name: String, kind: String, glb_path: Stri
 	model_holder.name = "Model"
 	model_holder.rotation.y = PI
 	body.add_child(model_holder)
-	if CharacterFactoryRef.profile_for(display_name).has("mod"):
+	# VRM-first: use the full VRoid body when a .vrm file exists for this character.
+	var _vrm_path: String = String(CharacterFactoryRef.profile_for(display_name).get("vrm", ""))
+	if _vrm_path != "" and ResourceLoader.exists(_vrm_path):
+		var VrmCharacterScript: Script = preload("res://scripts/vrm_character.gd")
+		var vrm: Node3D = VrmCharacterScript.create(_vrm_path, display_name)
+		if vrm != null:
+			model_holder.add_child(vrm)
+			var MgrScript: Script = preload("res://scripts/vrm_character_manager.gd")
+			var expr_profile: Dictionary = MgrScript.EXPRESSION_PROFILES.get(display_name, {})
+			if not expr_profile.is_empty():
+				var personality: String = String(expr_profile.get("personality", "neutral"))
+				if personality != "neutral":
+					vrm.call("set_emotion", personality, 0.6)
+			if CharacterFactoryRef.is_military(display_name):
+				vrm.call("attach_gear", "sidearm", false)
+	elif CharacterFactoryRef.profile_for(display_name).has("mod"):
 		var mc: Node3D = CharacterFactoryRef.build_modular(display_name)
 		model_holder.add_child(mc)
 		# Back aboard: ship dress code (duty tint + sidearm for military).
@@ -4174,6 +4189,23 @@ func _build_structural_columns() -> void:
 func _attach_crew_body(model_holder: Node3D, character: String, fallback_glb: String,
 		context: String = "") -> Node:
 	var ctx: String = context if context != "" else CharacterFactoryRef.CTX_SHIP
+	# VRM-first: use the full VRoid body when a .vrm file exists for this character.
+	var vrm_path: String = String(CharacterFactoryRef.profile_for(character).get("vrm", ""))
+	if vrm_path != "" and ResourceLoader.exists(vrm_path):
+		var VrmCharacterScript: Script = preload("res://scripts/vrm_character.gd")
+		var vrm: Node3D = VrmCharacterScript.create(vrm_path, character)
+		if vrm != null:
+			model_holder.add_child(vrm)
+			# Apply personality-driven expression profile
+			var MgrScript: Script = preload("res://scripts/vrm_character_manager.gd")
+			var expr_profile: Dictionary = MgrScript.EXPRESSION_PROFILES.get(character, {})
+			if not expr_profile.is_empty():
+				var personality: String = String(expr_profile.get("personality", "neutral"))
+				if personality != "neutral":
+					vrm.call("set_emotion", personality, 0.6)
+			if CharacterFactoryRef.is_military(character):
+				vrm.call("attach_gear", "sidearm", ctx == CharacterFactoryRef.CTX_SHIP)
+			return vrm
 	if CharacterFactoryRef.profile_for(character).has("mod"):
 		var mc: Node3D = CharacterFactoryRef.build_modular(character)
 		if mc != null:

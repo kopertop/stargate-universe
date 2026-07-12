@@ -4750,4 +4750,36 @@ func _build_lighting_props() -> void:
 	door_spot.spot_angle = 38.0
 	door_spot.position = Vector3(0.0, ceiling_height - 0.6, -half_z + 1.2)
 	_world.add_child(door_spot)
+
+	# --- Volumetric FogVolume at the gate ring -------------------------------
+	# A localized fog cloud around the event horizon — atmospheric haze where
+	# the gate's glow scatters into, giving the ring real depth when viewed
+	# from across the room. Enabled by the gate-room-environment.tres
+	# volumetric_fog_enabled=true; this FogVolume adds localized density on
+	# top of the global low-density haze.
+	var gate_fog := FogVolume.new()
+	gate_fog.name = "GateFogVolume"
+	gate_fog.shape = RenderingServer.FOG_VOLUME_SHAPE_ELLIPSOID
+	gate_fog.size = Vector3(6.0, 5.0, 3.0)
+	gate_fog.position = Vector3(0.0, _gate_center_y(), GATE_Z)
+	var gate_fog_mat := FogMaterial.new()
+	gate_fog_mat.density = 0.15
+	gate_fog_mat.albedo = Color(0.3, 0.5, 0.9)
+	gate_fog_mat.emission = Color(0.15, 0.35, 0.7)
+	gate_fog_mat.emission_energy_multiplier = 1.5
+	gate_fog.material = gate_fog_mat
+	_world.add_child(gate_fog)
+
+	# --- Ancient glow on ceiling strips --------------------------------------
+	# The cool-blue ceiling edge-glow strips (emissive _glow_mat) pulse
+	# subtly — the ship "breathing." Low amplitude so it reads as ambient
+	# life, not a strobe. The glow is dimmed during the dark-open sequence
+	# by _open_dark/_flicker_lights_up (which drive _glow_mat directly).
+	var glow := preload("res://scripts/ancient_glow.gd").new()
+	glow.pulse_amplitude = 0.08
+	glow.pulse_period = 4.0
+	glow.pulse_color = Color(0.42, 0.58, 0.95)
+	add_child(glow)
+	if _glow_mat != null:
+		glow.add_target(_glow_mat)
 	door_spot.look_at(Vector3(0.0, 0.0, -half_z + 0.2), Vector3.UP)

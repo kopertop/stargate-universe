@@ -138,6 +138,8 @@ func _ready() -> void:
 	if ShipAlertScript.is_alert_active():
 		ShipAlertScript.apply_to_scene(self)
 		_alert_applied = true
+	elif ShipAlertScript.is_caution_active():
+		ShipAlertScript.set_caution(self)
 	GameState.discover_room(room_id, String(_room_data.get("name", room_id)))
 	GameState.set_current_room(room_id)
 	# Leaving the infirmary after a recovery beat clears the knockout flag so the
@@ -2275,6 +2277,15 @@ func _refresh_alert_state() -> void:
 	elif _alert_applied and not should_alert:
 		ShipAlertScript.clear_scene(self)
 		_alert_applied = false
+		# After clearing alert, check if caution state applies (scrubber damaged)
+		if ShipAlertScript.is_caution_active():
+			ShipAlertScript.set_caution(self)
+
+
+# Drive the alert pulse flicker. Only does work while alert is active —
+# process_alert_pulse early-returns when alert_state != "alert".
+func _process(delta: float) -> void:
+	ShipAlertScript.process_alert_pulse(self, delta)
 
 
 # Position the floating diamond either above the in-room anchor for the

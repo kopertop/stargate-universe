@@ -29,7 +29,7 @@ func _ready() -> void:
 	GameState.discover_room(planet_key, planet_name)
 	# Score the gate world — lonely open-planet bed + hopeful solo violin (covers both
 	# the on-foot away team and a piloted Kino recon; FtlLoop's PLANET phase sets this too).
-	MusicDirector.set_mood("planet")
+	set_mood("planet")
 	# Stream terrain around the player by default; kino recon retargets below.
 	if _chunk_manager != null and _chunk_manager.has_method("configure"):
 		_chunk_manager.set("tracked", _player)

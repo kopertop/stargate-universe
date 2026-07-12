@@ -620,7 +620,7 @@ func _run_arrival() -> void:
 func _play_prologue_cinematic() -> void:
 	# Score the cold open: tense, urgent bed for the evac chaos. Shifts to wonder at the
 	# ship-shudder beat below, then _start_ambient() resolves to ship_calm afterward.
-	MusicDirector.set_mood("tension")
+	set_mood("tension")
 	_set_arrival_crew_visible(false)
 	# Hold Scott's auto-greet for the WHOLE cold open — and, per the synced-audio
 	# design, we DON'T turn it back on at the end: by the time the recording finishes
@@ -923,8 +923,8 @@ func _play_prologue_cinematic() -> void:
 	# §1.9 THE SHIMMER — the ship jumps to FTL (left-right shake + blur), then the button.
 	await _await_audio(audio, 118.0)
 	_ftl_jump()
-	MusicDirector.play_sting("impact_jump")           # musical hit on the FTL lurch
-	MusicDirector.set_mood("mystery")                 # evac panic gives way to awe
+	play_sting("impact_jump")           # musical hit on the FTL lurch
+	set_mood("mystery")                 # evac panic gives way to awe
 	Cinematic.flash(Color(0.6, 0.8, 1.0, 0.5), 0.6)   # a brief blue shimmer envelops everyone
 	_cut_wide(0.8)
 	_cap("SGT. GREER", "What in the hell was that?!", 120.0, "open-greer-whatwasthat")
@@ -3077,7 +3077,7 @@ func _start_ambient() -> void:
 	# air-crisis quest steps — refresh() derives which from live world state).
 	if _ambient_sfx != null and not _ambient_sfx.playing:
 		_ambient_sfx.play()
-	MusicDirector.refresh()
+	refresh()
 
 # ----- Phase E gate beats ----------------------------------------------------
 
@@ -4765,8 +4765,9 @@ func _build_lighting_props() -> void:
 	var gate_fog_mat := FogMaterial.new()
 	gate_fog_mat.density = 0.15
 	gate_fog_mat.albedo = Color(0.3, 0.5, 0.9)
-	gate_fog_mat.emission = Color(0.15, 0.35, 0.7)
-	gate_fog_mat.emission_energy_multiplier = 1.5
+	# FogMaterial has no emission_energy_multiplier (only StandardMaterial3D
+	# does), so bake the energy into the emission color directly.
+	gate_fog_mat.emission = Color(0.15, 0.35, 0.7) * 1.5
 	gate_fog.material = gate_fog_mat
 	_world.add_child(gate_fog)
 

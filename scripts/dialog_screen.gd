@@ -15,9 +15,18 @@ extends Control
 #
 # Number keys 1-9 trigger choices; Esc closes.
 #
+# TTS integration (P3): each spoken line is voiced via TTSClient when the
+# LuxTTS sidecar is running. Per-character voice profiles resolve from
+# data/characters.json. Dialogue tree nodes may carry optional `emotion`
+# and `ancient` keys for emotional inflection and Ancient-language voice
+# mode. If the sidecar is down or TTS is disabled, the subtitle text alone
+# is shown (text-only fallback).
+#
 # Dialog tree shape (passed to start()):
 #   tree: Array[Dictionary] — each node:
 #     { "speaker": String, "text": String, "action": String?,
+#       "emotion": String?,   # optional: neutral, urgent, calm, angry, etc.
+#       "ancient": bool?,     # optional: true = Ancient-language voice mode
 #       "choices": Array[Dictionary] of
 #         { "text": String, "next": int|"exit", "action": String? } }
 #   `next = "exit"` ends the conversation. `next = <int>` jumps to that index.
@@ -48,9 +57,25 @@ var _cinema: Node = null
 # HUD unit frame) so the .import-sidestep PNG decoder is implemented once.
 const PortraitLoaderScript := preload("res://scripts/portrait_loader.gd")
 const DialogCinemaScript := preload("res://scripts/dialog_cinema.gd")
+const TTSClientScript := preload("res://scripts/tts_client.gd")
+
+# TTS client for voiced dialogue. Created in _ready; nullable so headless
+# tests and scenes without TTS still work.
+var _tts: Node = null
+# Whether the current line's voice is still loading (prevents overlapping
+# requests when advancing quickly through the tree).
+var _voice_loading: bool = false
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	# Create TTS client as a child. It runs in PROCESS_MODE_ALWAYS so voice
+	# playback continues while the tree is paused during dialogue.
+	_tts = TTSClientScript.new()
+	_tts.name = "TTSClient"
+	_tts.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(_tts)
+	_tts.line_ready.connect(_on_tts_line_ready)
+	_tts.line_failed.connect(_on_tts_line_failed)
 
 func start(target: Node3D, tree: Array) -> void:
 	_target = target
@@ -59,7 +84,6 @@ func start(target: Node3D, tree: Array) -> void:
 	get_tree().paused = true
 	_maybe_begin_cinema()
 	_render_node()
-
 
 # Conversation camera + staging — live play with a real NPC target only.
 # Radio/self dialogs (target IS the player) keep the gameplay framing, and
@@ -96,6 +120,9 @@ func _render_node() -> void:
 	# Fable presentation: the spoken line reads as a bottom-centre subtitle.
 	_sub_speaker.text = speaker
 	_sub_line.text = "\"%s\"" % String(node.get("text", ""))
+	# TTS: voice the current line. The subtitle is already displayed; voice
+	# plays on top when available. If TTS is down, the subtitle alone suffices.
+	_speak_current(node, speaker)
 	# Data-driven side effects: a node may carry an "action" id that fires when
 	# it's shown (e.g. the FTL-drop blur on Brody's line). Listeners hook
 	# GameState.dialog_action.
@@ -120,6 +147,36 @@ func _render_node() -> void:
 	if _cinema != null and is_instance_valid(_cinema):
 		_cinema.call("frame_node", speaker)
 	_lay_out_choices(choices)
+
+# Request TTS synthesis for the current dialogue node. Handles per-character
+# voice resolution, emotion overrides, and Ancient-language mode. If the
+# sidecar is unreachable, line_failed fires and the subtitle alone is shown.
+func _speak_current(node: Dictionary, speaker: String) -> void:
+	if _tts == null or not is_instance_valid(_tts):
+		return
+	var text: String = String(node.get("text", ""))
+	if text == "":
+		return
+	# Stop any voice currently playing before requesting a new one.
+	_tts.call("stop")
+	_voice_loading = true
+	var emotion: String = String(node.get("emotion", ""))
+	var ancient: bool = node.get("ancient", false) == true
+	_tts.call("say_line", speaker, text, emotion, ancient)
+
+# TTS succeeded — play the stream on the Voice bus. The subtitle is already
+# visible, so voice plays on top of the text.
+func _on_tts_line_ready(stream: AudioStreamWAV) -> void:
+	_voice_loading = false
+	if _tts != null and is_instance_valid(_tts):
+		_tts.call("play_stream", stream)
+
+# TTS failed — the sidecar is down, the voice is missing, or TTS is disabled.
+# The subtitle text is already visible; no action needed. Just clear the
+# loading flag so the next line can try again (the sidecar may come up later).
+func _on_tts_line_failed(_reason: String) -> void:
+	_voice_loading = false
+	# Silent fallback: subtitle text alone is the full presentation.
 
 # Resolve a speaker display name to the portrait Texture2D defined in
 # data/characters.json. Delegates to PortraitLoader (shared with the HUD unit
@@ -176,6 +233,9 @@ func _on_choice_pressed(next_value: Variant, action: String = "") -> void:
 	# the GameState.dialog_action channel.
 	if action != "":
 		GameState.dialog_action.emit(action)
+	# Stop any voice still playing when advancing.
+	if _tts != null and is_instance_valid(_tts):
+		_tts.call("stop")
 	if next_value is String and String(next_value) == "exit":
 		close()
 		return
@@ -188,6 +248,9 @@ func _on_choice_pressed(next_value: Variant, action: String = "") -> void:
 	close()
 
 func close() -> void:
+	# Stop any voice playback before closing.
+	if _tts != null and is_instance_valid(_tts):
+		_tts.call("stop")
 	if _cinema != null and is_instance_valid(_cinema):
 		_cinema.call("end")
 		_cinema.queue_free()

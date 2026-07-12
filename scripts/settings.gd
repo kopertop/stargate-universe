@@ -40,6 +40,7 @@ enum JumpDestinationPref { ANY = 0 }   # stub — future: NEAREST, RICHEST, etc.
 
 signal music_volume_changed(value: float)
 signal sfx_volume_changed(value: float)
+signal voice_volume_changed(value: float)
 signal difficulty_changed(value: int)
 signal ship_phase_seconds_changed(value: float)
 signal planet_phase_seconds_changed(value: float)
@@ -49,6 +50,7 @@ signal hud_scale_changed(value: float)
 
 var music_volume: float = 0.8     # 0.0 .. 1.0
 var sfx_volume: float = 0.9       # 0.0 .. 1.0
+var voice_volume: float = 1.0    # 0.0 .. 1.0 — TTS dialogue voice bus
 var difficulty: int = Difficulty.NORMAL
 var hud_scale: float = 1.0        # HUD interface size, HUD_SCALE_MIN .. MAX
 
@@ -63,6 +65,7 @@ func _ready() -> void:
 	load_from_disk()
 	_apply_music_volume()
 	_apply_sfx_volume()
+	_apply_voice_volume()
 
 
 func set_music_volume(value: float) -> void:
@@ -76,6 +79,13 @@ func set_sfx_volume(value: float) -> void:
 	sfx_volume = clampf(value, 0.0, 1.0)
 	_apply_sfx_volume()
 	sfx_volume_changed.emit(sfx_volume)
+	save_to_disk()
+
+
+func set_voice_volume(value: float) -> void:
+	voice_volume = clampf(value, 0.0, 1.0)
+	_apply_voice_volume()
+	voice_volume_changed.emit(voice_volume)
 	save_to_disk()
 
 
@@ -150,6 +160,10 @@ func _apply_sfx_volume() -> void:
 	_apply_bus_volume("SFX", sfx_volume)
 
 
+func _apply_voice_volume() -> void:
+	_apply_bus_volume("Voice", voice_volume)
+
+
 func _apply_bus_volume(bus_name: String, linear: float) -> void:
 	var idx: int = AudioServer.get_bus_index(bus_name)
 	if idx < 0:
@@ -169,6 +183,7 @@ func load_from_disk() -> void:
 		return
 	music_volume = clampf(float(cfg.get_value(SECTION, "music_volume", music_volume)), 0.0, 1.0)
 	sfx_volume = clampf(float(cfg.get_value(SECTION, "sfx_volume", sfx_volume)), 0.0, 1.0)
+	voice_volume = clampf(float(cfg.get_value(SECTION, "voice_volume", voice_volume)), 0.0, 1.0)
 	difficulty = clampi(int(cfg.get_value(GAMEPLAY_SECTION, "difficulty", difficulty)),
 		Difficulty.EASY, Difficulty.HARD)
 	hud_scale = clampf(float(cfg.get_value(UI_SECTION, "hud_scale", hud_scale)),
@@ -192,6 +207,7 @@ func save_to_disk() -> void:
 	var cfg: ConfigFile = ConfigFile.new()
 	cfg.set_value(SECTION, "music_volume", music_volume)
 	cfg.set_value(SECTION, "sfx_volume", sfx_volume)
+	cfg.set_value(SECTION, "voice_volume", voice_volume)
 	cfg.set_value(GAMEPLAY_SECTION, "difficulty", difficulty)
 	cfg.set_value(UI_SECTION, "hud_scale", hud_scale)
 	cfg.set_value(LOOP_SECTION, "ship_phase_seconds", ship_phase_seconds)

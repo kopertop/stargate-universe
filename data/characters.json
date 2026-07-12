@@ -1,94 +1,130 @@
 {
-	"_comment": "Character registry. Maps display name → portrait + metadata. dialog_screen.gd looks up the speaker name when rendering a dialog node. Add new characters here, not in the script. NOTE: 'Lt James' is her official name but everyone calls her 'TJ' — all of 'Lt James' / 'Dr James' / 'TJ' / 'TJ Johansen' are ONE character and resolve to the same portrait + short_name 'TJ'.",
+	"_comment": "Character registry. Maps display name → portrait + metadata. dialog_screen.gd looks up the speaker name when rendering a dialog node. Add new characters here, not in the script. NOTE: 'Lt James' is her official name but everyone calls her 'TJ' — all of 'Lt James' / 'Dr James' / 'TJ' / 'TJ Johansen' are ONE character and resolve to the same portrait + short_name 'TJ'. The 'tts_voice' field maps a character to their pre-computed voice embedding in tools/tts-onnx-poc/voices/<name>.voice.pt. Available voices: chloe, default, eli, greer, jack, marine, narrator, rush, scott, telford, tj, wray, young. 'default_emotion' is an optional hint passed to the TTS sidecar for emotional inflection (values: neutral, urgent, calm, angry, afraid, sad, curious, determined).",
 
 	"Eli": {
 		"portrait": "res://sprites/portraits/eli-wallace.png",
 		"role": "civilian",
-		"short_name": "Eli"
+		"short_name": "Eli",
+		"tts_voice": "eli",
+		"default_emotion": "curious"
 	},
 	"Eli Wallace": {
 		"portrait": "res://sprites/portraits/eli-wallace.png",
 		"role": "civilian",
-		"short_name": "Eli"
+		"short_name": "Eli",
+		"tts_voice": "eli",
+		"default_emotion": "curious"
 	},
 	"Lt Scott": {
 		"portrait": "res://sprites/portraits/lt-scott.png",
 		"role": "military",
-		"short_name": "Scott"
+		"short_name": "Scott",
+		"tts_voice": "scott",
+		"default_emotion": "determined"
 	},
 	"Dr Rush": {
 		"portrait": "res://sprites/portraits/dr-rush.png",
 		"role": "civilian",
-		"short_name": "Rush"
+		"short_name": "Rush",
+		"tts_voice": "rush",
+		"default_emotion": "calm"
 	},
 	"Colonel Young": {
 		"portrait": "res://sprites/portraits/colonel-young.png",
 		"role": "military",
-		"short_name": "Young"
+		"short_name": "Young",
+		"tts_voice": "young",
+		"default_emotion": "determined"
 	},
 	"Chloe Armstrong": {
 		"portrait": "res://sprites/portraits/chloe-armstrong.png",
 		"role": "civilian",
-		"short_name": "Chloe"
+		"short_name": "Chloe",
+		"tts_voice": "chloe",
+		"default_emotion": "neutral"
 	},
 	"Dr James": {
 		"portrait": "res://sprites/portraits/tj-johansen.png",
 		"role": "military",
-		"short_name": "TJ"
+		"short_name": "TJ",
+		"tts_voice": "tj",
+		"default_emotion": "calm"
 	},
 	"Lt James": {
 		"portrait": "res://sprites/portraits/tj-johansen.png",
 		"role": "military",
-		"short_name": "TJ"
+		"short_name": "TJ",
+		"tts_voice": "tj",
+		"default_emotion": "calm"
 	},
 	"Dr Park": {
 		"portrait": "res://sprites/portraits/dr-park.png",
 		"role": "civilian",
-		"short_name": "Park"
+		"short_name": "Park",
+		"tts_voice": "default",
+		"default_emotion": "neutral"
 	},
 	"Sgt Greer": {
 		"portrait": "res://sprites/portraits/greer.png",
 		"role": "military",
-		"short_name": "Greer"
+		"short_name": "Greer",
+		"tts_voice": "greer",
+		"default_emotion": "determined"
 	},
 	"Soldier": {
 		"portrait": "res://sprites/portraits/soldier.png",
 		"role": "military",
-		"short_name": "Soldier"
+		"short_name": "Soldier",
+		"tts_voice": "marine",
+		"default_emotion": "neutral"
 	},
 	"Dr Brody": {
 		"portrait": "res://sprites/portraits/brody.png",
 		"role": "civilian",
-		"short_name": "Brody"
+		"short_name": "Brody",
+		"tts_voice": "default",
+		"default_emotion": "neutral"
 	},
 	"Brody": {
 		"portrait": "res://sprites/portraits/brody.png",
 		"role": "civilian",
-		"short_name": "Brody"
+		"short_name": "Brody",
+		"tts_voice": "default",
+		"default_emotion": "neutral"
 	},
 	"TJ": {
 		"portrait": "res://sprites/portraits/tj-johansen.png",
 		"role": "military",
-		"short_name": "TJ"
+		"short_name": "TJ",
+		"tts_voice": "tj",
+		"default_emotion": "calm"
 	},
 	"TJ Johansen": {
 		"portrait": "res://sprites/portraits/tj-johansen.png",
 		"role": "military",
-		"short_name": "TJ"
+		"short_name": "TJ",
+		"tts_voice": "tj",
+		"default_emotion": "calm"
 	},
 	"Dr Volker": {
 		"portrait": "res://sprites/portraits/volker.png",
 		"role": "civilian",
-		"short_name": "Volker"
+		"short_name": "Volker",
+		"tts_voice": "default",
+		"default_emotion": "neutral"
 	},
 	"Camile Wray": {
 		"portrait": "res://sprites/portraits/wray.png",
 		"role": "civilian",
-		"short_name": "Wray"
+		"short_name": "Wray",
+		"tts_voice": "wray",
+		"default_emotion": "calm"
 	},
 	"Varro": {
 		"portrait": "res://sprites/portraits/varro.png",
 		"role": "military",
-		"short_name": "Varro"
+		"short_name": "Varro",
+		"tts_voice": "default",
+		"default_emotion": "neutral"
 	}
 }

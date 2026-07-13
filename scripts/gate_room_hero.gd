@@ -202,8 +202,8 @@ func _build_environment() -> void:
 	env.glow_hdr_threshold = 4.2
 	env.glow_hdr_scale = 1.6
 	env.volumetric_fog_enabled = true
-	env.volumetric_fog_density = FOG_DENSITY * 1.25
-	# True-black fog albedo to maintain rigid black void (judges' top palette gap: room-wide blue
+	env.volumetric_fog_density = FOG_DENSITY * 1.6
+	# Slightly increased density to reduce void-like darkness, helping chevrons + vortex read better
 	# color-cast from fog bleeding blue onto steel). Spot cones light the fog into visible god-ray
 	# shafts by the light hitting it, not from the fog's own color. ZERO emission + low ambient.
 	env.volumetric_fog_albedo = Color(0.0, 0.0, 0.0)

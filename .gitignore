@@ -70,3 +70,10 @@ screenshots/loop/
 
 # Test logs
 out_*.log
+
+# Python virtualenvs (local tooling, not project state)
+venv/
+worker/venv2/
+
+# Dreaming session artifacts
+.dreaming/

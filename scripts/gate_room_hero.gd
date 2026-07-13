@@ -724,7 +724,8 @@ func _build_gate() -> void:
 	# real reason 44 iters of shader churn never read). It sits behind the bright chevron
 	# glow tips (-0.66) so the chevrons still read proud, and the ring inner edge still
 	# frames it. depth_draw_opaque on the shader keeps it occluding the fog behind.
-	puddle.position = center + Vector3(0.0, 0.0, -0.3)
+	# Position adjusted forward to improve visibility.
+	puddle.position = center + Vector3(0.0, 0.0, -1.15)
 	puddle.name = "PortalPuddle"
 
 # ---------------------------------------------------------------------------

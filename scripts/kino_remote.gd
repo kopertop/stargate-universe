@@ -163,6 +163,7 @@ var _level_bar: VBoxContainer = null
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	set_process(false)  # Only tick during breach beat — see begin_breach_beat / _close.
 	# Build UI deferred so it lands on top of every scene's layers.
 	call_deferred("_init_ui")
 	GameState.current_room_changed.connect(_on_current_room_changed)
@@ -740,6 +741,7 @@ func _close() -> void:
 	# klaxon looping after the panel closes.
 	if _breach_active:
 		_breach_active = false
+		set_process(false)
 		_stop_breach_klaxon()
 		_clear_breach_caption()
 	_persist_ui_state()
@@ -1195,6 +1197,7 @@ func _process(delta: float) -> void:
 # shut, revealing the real objective.
 func begin_breach_beat(trap_from: String, trap_to: String, jammed_room: String, flood_rooms: Array) -> void:
 	_breach_active = true
+	set_process(true)
 	_breach_phase = 0
 	_breach_time = 0.0
 	_breach_trap_from = trap_from

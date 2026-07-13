@@ -739,6 +739,10 @@ func reset() -> void:
 	var ql: Node = _autoload_node("QuestLog")
 	if ql != null and ql.has_method("reset"):
 		ql.call("reset")
+	# Reset achievements progress on New Game / Restart.
+	var ach: Node = _autoload_node("Achievements")
+	if ach != null and ach.has_method("reset"):
+		ach.call("reset")
 	advance_air_quest()
 
 # Set by a story beat (E2+) when the crew recovers pressure suits. Idempotent.

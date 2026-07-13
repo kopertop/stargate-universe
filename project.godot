@@ -48,6 +48,12 @@ EpisodeWrap="*res://scripts/episode_wrap.gd"
 
 InjurySystem="*res://scripts/injury_system.gd"
 MedBay="*res://scripts/med_bay.gd"
+Achievements="*res://scripts/achievements.gd"
+AccessibilitySettings="*res://scripts/accessibility_settings.gd"
+InputRemap="*res://scripts/input_remap.gd"
+AimAssist="*res://scripts/aim_assist.gd"
+PuzzleHints="*res://scripts/puzzle_hint_system.gd"
+AutoRetry="*res://scripts/auto_retry_system.gd"
 
 [editor_plugins]
 

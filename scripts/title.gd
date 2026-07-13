@@ -107,6 +107,7 @@ func _ready() -> void:
 	# here rather than in the .tscn to keep the scene minimal (same approach as
 	# the Load button). Inserted just above the Back button.
 	_build_controller_button()
+	_build_accessibility_button()
 
 	# Continue shows as disabled/greyed when there's no save to resume.
 	# Load Game mirrors it — both are meaningless with no slots on disk.
@@ -606,6 +607,41 @@ func _on_configure_controller_pressed() -> void:
 	if guid == "":
 		guid = "manual-config"
 	GamepadConfigDialog.open_wizard(device, guid)
+
+
+# Code-owned "Accessibility" button in the Settings overlay. Opens the
+# full accessibility options panel (colorblind, subtitles, aim assist,
+# hints, auto-retry, input remapping). Same pattern as the controller button.
+var _accessibility_overlay: Control
+
+func _build_accessibility_button() -> void:
+	var settings_vbox: Node = _back_btn.get_parent()
+	if settings_vbox == null:
+		return
+	var btn: Button = Button.new()
+	btn.name = "AccessibilityButton"
+	btn.text = "Accessibility"
+	btn.pressed.connect(_on_accessibility_pressed)
+	Audio.attach_ui_hover(btn)
+	settings_vbox.add_child(btn)
+	# Sit it directly above Back (same slot as controller, but after it).
+	settings_vbox.move_child(btn, _back_btn.get_index())
+
+
+func _on_accessibility_pressed() -> void:
+	if _accessibility_overlay == null:
+		var AccessibilityOverlayScript := preload("res://scripts/accessibility_overlay.gd")
+		_accessibility_overlay = AccessibilityOverlayScript.new()
+		_accessibility_overlay.name = "AccessibilityOverlay"
+		add_child(_accessibility_overlay)
+		_accessibility_overlay.closed.connect(_on_accessibility_closed)
+	_settings_overlay.visible = false
+	_accessibility_overlay.open()
+
+
+func _on_accessibility_closed() -> void:
+	_settings_overlay.visible = true
+	_back_btn.grab_focus()
 
 
 func _on_settings_pressed() -> void:

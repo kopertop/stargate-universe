@@ -33,11 +33,13 @@ var _accum: Dictionary = {}       # id → float
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_PAUSABLE
+	set_process(false)  # Only tick during SHIP phase — see _reevaluate_process.
 	_load_rates()
 	# Register with SaveManager so accumulators survive save/load.
 	var sm: Node = _autoload("SaveManager")
 	if sm != null and sm.has_method("register_system"):
 		sm.call("register_system", "consumption", self)
+	call_deferred("_install_phase_hooks")
 
 
 # --- rate loading -------------------------------------------------------------
@@ -145,9 +147,36 @@ func _phase_active() -> bool:
 	return gs.get("episode_complete") == true
 
 
+# --- phase-gate hooks ----------------------------------------------------------
+
+# Wire to FtlLoop.phase_changed and GameState.episode_completed so
+# _reevaluate_process() fires on every relevant state transition.
+func _install_phase_hooks() -> void:
+	var loop: Node = _autoload("FtlLoop")
+	if loop != null and loop.has_signal("phase_changed"):
+		if not loop.is_connected("phase_changed", _reevaluate_process):
+			loop.connect("phase_changed", _reevaluate_process)
+	var gs: Node = _autoload("GameState")
+	if gs != null and gs.has_signal("episode_completed"):
+		if not gs.is_connected("episode_completed", _reevaluate_process):
+			gs.connect("episode_completed", _reevaluate_process)
+	# Evaluate once on init in case we're resuming mid-SHIP.
+	_reevaluate_process()
+
+
+# Toggle _process based on phase activity and instant_mode guard.
+func _reevaluate_process(_arg: Variant = null) -> void:
+	var router: Node = _autoload("SceneRouter")
+	if router != null and router.get("instant_mode") == true:
+		set_process(false)
+		return
+	set_process(_phase_active())
+
+
 # --- _process -----------------------------------------------------------------
 
 func _process(delta: float) -> void:
+	# set_process(false) gates this when inactive — the checks below are safety nets.
 	var router: Node = _autoload("SceneRouter")
 	if router != null and router.get("instant_mode") == true:
 		return
@@ -160,6 +189,7 @@ func _process(delta: float) -> void:
 
 func reset() -> void:
 	_accum.clear()
+	set_process(false)
 	# Re-seed zero accumulators for all tracked ids after a reset.
 	var gs: Node = _autoload("GameState")
 	if gs != null and gs.has_method("tracked_resource_ids"):

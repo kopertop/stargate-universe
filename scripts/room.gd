@@ -420,99 +420,85 @@ func _start_kino_arrival() -> void:
 		drone.call_deferred("start_ship_autopilot")
 
 
+# Data-driven interactable spawner config. Maps authored room_id to an ordered
+# array of spawner entries loaded from data/room_spawners.json. Each entry:
+#   method     — name of the _spawn_* func on this script (string)
+#   args       — optional array of literal args (int, float, String, bool)
+#   condition  — optional GDScript expression using GS=GameState, PS=ProceduralShip
+#   result_id  — optional tag; captures the method's return value for later entries
+#   depends_on — "@result_id.property" syntax references a prior return value in args
+# Generated rooms (no authored match) fall through to _spawn_generated_room_interactables.
+const SPAWNERS_PATH: String = "res://data/room_spawners.json"
+static var _spawners_config: Dictionary = {}
+
 func _spawn_interactables() -> void:
-	match room_id:
-		"quarters_room_1":
-			_spawn_quarters_bed()
-		"eli_quarters":
-			# Eli's room — Eli IS the player. Houses the Kino Remote pickup on
-			# the desk and his bed for the FIND_REST → SLEEP quest beat.
-			_spawn_eli_kino_pickup()
-			_spawn_quarters_bed("My bed. Time to crash.")
-			# Kino dispenser appears once Phase E begins (Brody's "no MALP" beat
-			# sends Eli back here for a Kino to scout the planet).
-			if GameState.reported_to_gate:
-				_spawn_kino_dispenser()
-		"east_corridor":
-			# Sgt Greer holds the east corridor; the actual breach lives in the
-			# far-south Damaged Section now.
-			_spawn_sgt_greer()
-		"breached_section_south":
-			# Shuttle Dock: jammed door venting atmo from the damaged shuttle to
-			# the west, a dead door panel beside it, and 3 lootable crates (one
-			# holds the actuator). The Phase C seal mini-quest lives here.
-			_spawn_shuttle_dock()
-		"control_interface_room":
-			# Rush works his console ONLY until the standoff: after "Well.
-			# That's that, then." he leaves the room for good (user direction)
-			# and isn't seen again until the scrubber beat in the south
-			# corridor. Post-crisis returns hit _trigger_rush_absent_beat.
-			if not GameState.air_crisis_started and not GameState.met_rush:
-				_spawn_dr_rush()
-			# Floor 2 access-code terminal: always present in the control room
-			# (a data terminal the player can examine). Disabled once collected.
-			_spawn_floor_code_terminal(2)
-		# TODO(#132): engineering_bay removed from authored floor 0; Engineering
-		# now lives as a generated special on floors 2+. Elevator restore via the
-		# power console is deferred to the fuse-based mechanic in issue #132.
-		# GameState.unlock_elevator() remains callable for e1_flow unit tests.
-		"aft_storage_hall":
-			# D4: Aft Storage Hall seeds Floor-1 parts for the player.
-			# Multiple salvage panels + crates help meet the Floor-3 unlock cost (15).
-			_spawn_salvage_panel(0)
-			_spawn_salvage_panel(1)
-		"south_corridor":
-			# The CO2 scrubber wall panel always exists (it's a fixture), but the
-			# corridor stays EMPTY of people until the player seals the Shuttle
-			# Dock breach below — nobody's down here while it's still venting.
-			# After the seal: Chloe is about, and during the Phase D window
-			# (breach sealed, scrubber not yet diagnosed) Rush + Park work the
-			# panel. Once diagnosed they don't respawn (they've moved on).
-			var scrubber: StaticBody3D = _spawn_co2_scrubber()
-			if not GameState.breaches_sealed.is_empty():
-				_spawn_chloe()
-				if GameState.air_crisis_started and not GameState.scrubber_diagnosed:
-					_spawn_scrubber_crew(scrubber.position)
-		"north_corridor":
-			_spawn_soldier()
-			# Optional maintenance scrubber (issue: ship-wide scrubbers). West end
-			# of the long corridor, clear of the mid-wall spur/approach doors.
-			_spawn_co2_scrubber("north_corridor", -350.0)
-		"north_spur":
-			# Repair console for the Sealed Shuttle Bay (issue #131). Only visible
-			# while the bay is still sealed/repairing — clears after repair completes.
-			if ProceduralShip.is_room_sealed("sealed_section_north"):
-				_spawn_repair_console("sealed_section_north")
-		"east_corridor_far":
-			# New maintenance spur off the east corridor — houses a scrubber.
-			_spawn_co2_scrubber("east_far", 0.0)
-		"hydroponics":
-			# The upper-deck hydroponics bay (its door plaque already reads
-			# "Hydroponics — CO2 Scrubber").
-			_spawn_co2_scrubber("hydroponics", 0.0)
-		"infirmary":
-			# A downed player wakes here for the no-death recovery beat (issue
-			# #92): TJ at the bedside with a cause-tagged line. Otherwise, post-
-			# crisis James has moved Young here to recover; pre-crisis the pair
-			# are still in the gate-room arrival tableau (empty ward).
-			if GameState.recovering_in_infirmary:
-				_spawn_recovery_ward()
-			elif GameState.air_crisis_started:
-				_spawn_infirmary_ward()
-		"elevator_north", "elevator_room_floor_1":
-			# Elevator rooms: wall-mounted floor-selection panel (Phase B).
-			_spawn_elevator_panel()
-			# Floor-2 access code lives in control_interface_room (base room)
-			# but the terminal marker for floor 2 belongs here so the player can
-			# find the panel before they know where the code is. The actual
-			# terminal is spawned in control_interface_room via the generated
-			# floor dispatch below.
-			pass
-		_:
-			# Generated room dispatch. Runs AFTER all authored room ids have
-			# been matched (the _ branch only fires when no authored id matched).
-			if ProceduralShip.is_generated(room_id):
-				_spawn_generated_room_interactables()
+	if _spawners_config.is_empty():
+		var f: FileAccess = FileAccess.open(SPAWNERS_PATH, FileAccess.READ)
+		if f == null:
+			push_error("room.gd: cannot read %s" % SPAWNERS_PATH)
+			return
+		_spawners_config = JSON.parse_string(f.get_as_text())
+		f.close()
+
+	var rooms: Dictionary = _spawners_config.get("rooms", {})
+	if rooms.has(room_id):
+		var entries: Array = rooms[room_id]
+		var results: Dictionary = {}
+		for entry in entries:
+			var method: String = String(entry.get("method", ""))
+			if method == "":
+				continue
+			# Evaluate condition if present.
+			var cond_expr: String = String(entry.get("condition", ""))
+			if cond_expr != "" and not _eval_spawner_condition(cond_expr):
+				continue
+			# Resolve args — literal values and @result_id.property references.
+			var args: Array = entry.get("args", [])
+			var resolved_args: Array = _resolve_spawner_args(args, results)
+			# Call the method.
+			var ret: Variant = callv(method, resolved_args)
+			# Capture return value if tagged.
+			var rid: String = String(entry.get("result_id", ""))
+			if rid != "":
+				results[rid] = ret
+	else:
+		# Generated room dispatch. Runs when no authored room_id matched.
+		if ProceduralShip.is_generated(room_id):
+			_spawn_generated_room_interactables()
+
+# Evaluate a condition expression from the spawner config. GS=GameState, PS=ProceduralShip.
+func _eval_spawner_condition(expr_text: String) -> bool:
+	var expr := Expression.new()
+	var err: int = expr.parse(expr_text, ["GS", "PS"])
+	if err != OK:
+		push_error("room.gd: failed to parse spawner condition '%s': %s" % [expr_text, expr.get_error_text()])
+		return false
+	var result: Variant = expr.execute([GameState, ProceduralShip])
+	if expr.has_execute_failed():
+		push_error("room.gd: failed to evaluate spawner condition '%s': %s" % [expr_text, expr.get_error_text()])
+		return false
+	return bool(result)
+
+# Resolve spawner args. Literal values pass through. Strings starting with
+# '@' are references to prior return values: '@scrubber.position' reads
+# results["scrubber"].position.
+func _resolve_spawner_args(args: Array, results: Dictionary) -> Array:
+	var out: Array = []
+	for arg in args:
+		if arg is String and arg.begins_with("@"):
+			var parts: PackedStringArray = arg.substr(1).split(".", true, 2)
+			var rid: String = parts[0]
+			if not results.has(rid):
+				push_error("room.gd: spawner arg references unknown result_id '%s'" % rid)
+				continue
+			var obj: Object = results[rid]
+			if parts.size() == 1:
+				out.append(obj)
+			else:
+				out.append(obj.get(parts[1]))
+		else:
+			out.append(arg)
+	return out
 
 
 # Bed against the -Z wall, matching the position used by RoomBuilder._accent_quarters.

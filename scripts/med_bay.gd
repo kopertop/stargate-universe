@@ -49,6 +49,7 @@ var _initialized: bool = false
 
 
 func _ready() -> void:
+	set_process(false)  # Only tick when recoveries are active — see begin_recovery.
 	_ensure_initialized()
 
 
@@ -133,6 +134,7 @@ func begin_recovery(character_id: String) -> bool:
 		"line_timer": 0.0,  # fire a line immediately
 		"duration": duration,
 	}
+	set_process(true)
 	recovery_started.emit(character_id)
 	# Emit the opening TJ line right away.
 	_emit_tj_line(character_id)
@@ -155,6 +157,8 @@ func finish_now(character_id: String) -> bool:
 # record keeps its recovering flag so a later return can resume.
 func cancel_recovery(character_id: String) -> void:
 	_recoveries.erase(character_id)
+	if _recoveries.is_empty():
+		set_process(false)
 
 
 # Recovery duration (seconds) the MedBay would use for a given severity.
@@ -181,12 +185,15 @@ func is_recovering(character_id: String) -> bool:
 
 func clear_all() -> void:
 	_recoveries.clear()
+	set_process(false)
 
 
 # --- Internals -------------------------------------------------------------
 
 func _finish_recovery(character_id: String) -> void:
 	_recoveries.erase(character_id)
+	if _recoveries.is_empty():
+		set_process(false)
 	var isys: Node = _injury_system()
 	if isys != null and isys.has_method("complete_recovery"):
 		isys.call("complete_recovery", character_id)

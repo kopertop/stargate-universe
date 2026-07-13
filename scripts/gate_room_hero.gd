@@ -50,6 +50,10 @@ const CAM_LOOK_Y: float = 9.2
 const CAM_FOV: float = 76.0
 # Lighting
 const PORTAL_LIGHT_ENERGY: float = 2.0
+# Ceiling downlights — 5 strategic points to lift tiered dome rings out of void (TONALITY gap)
+const CEILING_DOWNLIGHT_ENERGY: float = 15.0
+const CEILING_DOWNLIGHT_COLOR: Color = Color(0.72, 0.80, 0.92)
+const CEILING_DOWNLIGHT_SPREAD: float = 1.2
 const PORTAL_LIGHT_COLOR: Color = Color(0.45, 0.68, 1.0)
 const SPOT_ENERGY: float = 65.0
 const SPOT_COLOR: Color = Color(0.74, 0.82, 0.96)
@@ -886,6 +890,26 @@ func _build_lights() -> void:
 	add_child(downlight)
 	downlight.position = Vector3(0.0, CEILING_HEIGHT - 0.5, GATE_Z - 6.0)
 	downlight.look_at(Vector3(0.0, 4.0, GATE_Z + 5.0), Vector3.UP)
+	# CEILING DOWNLIGHTS — 5 strategic points lifting tiered dome rings out of void (TONALITY gap #1: walls/ceiling DIMLY visible detailed metal, NOT a black void)
+	for dl_idx in range(CEILING_DOWNLIGHT_COUNT):
+		var downlight := SpotLight3D.new()
+		downlight.light_color = CEILING_DOWNLIGHT_COLOR
+		downlight.light_energy = CEILING_DOWNLIGHT_ENERGY
+		downlight.spot_range = 30.0
+		downlight.spot_angle = 15.0
+		downlight.spot_attenuation = 0.5
+		downlight.light_specular = 0.35
+		downlight.light_volumetric_fog_energy = 3.5
+		downlight.shadow_enabled = false
+		add_child(downlight)
+		# Position downlights at dome line, angled slightly down into tiered rings
+		# Ring 0: upper outermost, Ring 1-2: mid tiers, Ring 3-4: inner/center rings
+		var ring_idx := float(dl_idx % 3)  # 0, 1, 2 for outer→inner tiers
+		var side_sgn: float = -1.0 if dl_idx >= 3 else 1.0  # Left half or Right half
+		var ring_offset: float = ring_idx * 3.0
+		downlight.position = Vector3(side_sgn * ring_offset, CEILING_HEIGHT - 0.5, GATE_Z - 4.0)
+		# Aim diagonally down into the tiered rings, reading nested concentric tiers as lit masonry
+		downlight.look_at(Vector3(side_sgn * (ring_offset * 0.3), GATE_CENTER_Y + 1.0, GATE_Z - 8.0), Vector3.UP)
 	# Broad cool WALL-WASH per side: a wide spot raking down each ribbed side wall along
 	# the full hall length so the stacked panels / window-slits / ribs read as detailed
 	# dark steel from foreground to gate, instead of crushing to a flat black void. Aimed

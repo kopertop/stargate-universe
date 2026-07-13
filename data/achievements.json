@@ -1,0 +1,86 @@
+[
+  {
+    "id": "first_gate_dial",
+    "title": "Wormhole Warrior",
+    "description": "Dial a planet through the Stargate for the first time.",
+    "category": "story",
+    "hidden": false
+  },
+  {
+    "id": "first_planet",
+    "title": "One Small Step",
+    "description": "Set foot on an alien world and return safely to Destiny.",
+    "category": "story",
+    "hidden": false
+  },
+  {
+    "id": "sealed_breach",
+    "title": "Hull Patch",
+    "description": "Seal a hull breach and stabilize the ship's atmosphere.",
+    "category": "story",
+    "hidden": false
+  },
+  {
+    "id": "crew_met",
+    "title": "Hello, Crew",
+    "description": "Meet both Lt. Scott and Dr. Rush.",
+    "category": "story",
+    "hidden": false
+  },
+  {
+    "id": "episode_air",
+    "title": "We Can Breathe Again",
+    "description": "Complete Episode 1: Air — repair the CO2 scrubber and save Destiny.",
+    "category": "story",
+    "hidden": true
+  },
+  {
+    "id": "explorer_10",
+    "title": "Cartographer",
+    "description": "Discover 10 rooms aboard the Destiny.",
+    "category": "exploration",
+    "hidden": false
+  },
+  {
+    "id": "room_catalog",
+    "title": "I Know This Ship",
+    "description": "Discover 20 rooms aboard the Destiny.",
+    "category": "exploration",
+    "hidden": false
+  },
+  {
+    "id": "kino_master",
+    "title": "Eye in the Sky",
+    "description": "Complete a full Kino reconnaissance sweep.",
+    "category": "exploration",
+    "hidden": false
+  },
+  {
+    "id": "lime_miner",
+    "title": "Lime Harvester",
+    "description": "Collect lime from an alien planet.",
+    "category": "crafting",
+    "hidden": false
+  },
+  {
+    "id": "scrubber_repair",
+    "title": "Air Filter Engineer",
+    "description": "Repair the CO2 scrubber with harvested lime.",
+    "category": "crafting",
+    "hidden": false
+  },
+  {
+    "id": "gate_runner",
+    "title": "Gate Veteran",
+    "description": "Complete a full gate run: dial, travel, mine, and return.",
+    "category": "exploration",
+    "hidden": false
+  },
+  {
+    "id": "power_restored",
+    "title": "Lights On",
+    "description": "Restore main power to the Destiny.",
+    "category": "story",
+    "hidden": false
+  }
+]

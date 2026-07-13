@@ -76,6 +76,35 @@ func _ready() -> void:
 	add_child(_tts)
 	_tts.line_ready.connect(_on_tts_line_ready)
 	_tts.line_failed.connect(_on_tts_line_failed)
+	# Accessibility: apply subtitle settings and listen for changes.
+	_apply_subtitle_settings()
+	var acc: Node = get_node_or_null("/root/AccessibilitySettings")
+	if acc != null:
+		acc.subtitle_size_changed.connect(_apply_subtitle_settings)
+		acc.subtitle_color_changed.connect(_apply_subtitle_settings)
+		acc.speaker_labels_changed.connect(_apply_subtitle_settings)
+		acc.subtitle_background_changed.connect(_apply_subtitle_settings)
+
+
+# Apply accessibility subtitle settings to the subtitle labels.
+func _apply_subtitle_settings() -> void:
+	var acc: Node = get_node_or_null("/root/AccessibilitySettings")
+	if acc == null:
+		return
+	var font_size: int = acc.subtitle_font_size_value()
+	var color: Color = acc.subtitle_color_value()
+	# Apply to subtitle labels.
+	if _sub_line != null:
+		_sub_line.add_theme_font_size_override("font_size", font_size)
+		_sub_line.add_theme_color_override("font_color", color)
+	if _sub_speaker != null:
+		_sub_speaker.visible = acc.speaker_labels
+		_sub_speaker.add_theme_font_size_override("font_size", font_size)
+		_sub_speaker.add_theme_color_override("font_color", color)
+	# Toggle subtitle background panel visibility.
+	var sub_bg: Node = get_node_or_null("Subtitle/SubBackground")
+	if sub_bg != null:
+		sub_bg.visible = acc.subtitle_background
 
 func start(target: Node3D, tree: Array) -> void:
 	_target = target

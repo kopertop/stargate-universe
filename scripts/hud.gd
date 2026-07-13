@@ -281,6 +281,17 @@ func _ready() -> void:
 		settings.hud_scale_changed.connect(_on_hud_scale_changed)
 	get_viewport().size_changed.connect(_apply_hud_scale)
 	_apply_hud_scale()
+	# Achievement toast: listens to the Achievements autoload and shows a
+	# gold-bordered slide-in panel bottom-right when one unlocks.
+	_build_achievement_toast()
+	var ach: Node = get_node_or_null("/root/Achievements")
+	if ach != null and ach.has_signal("achievement_unlocked"):
+		ach.achievement_unlocked.connect(_on_achievement_unlocked)
+		# Flush any pending toasts from achievements unlocked during a save/load.
+		for aid in ach.call("pending_notifications"):
+			var d: Dictionary = ach.call("get_definition", aid)
+			_show_achievement_toast(String(d.get("title", aid)), String(d.get("description", "")))
+			ach.call("mark_notified", aid)
 	# Defer player lookup so the scene tree is settled.
 	call_deferred("_bind_player")
 
@@ -1353,3 +1364,140 @@ func _update_chat_tab_styles() -> void:
 	if _combat_tab_btn != null:
 		_combat_tab_btn.add_theme_color_override("font_color",
 			SKIN_ACCENT_GOLD if _chat_active == "combat" else SKIN_ACCENT_DIM)
+
+
+# ===========================================================================
+# Achievement notification toast
+# ===========================================================================
+# A gold-bordered panel that slides in from the bottom-right when an
+# achievement unlocks, holds for ACHIEVEMENT_TOAST_HOLD_SECS, then slides
+# back out. Up to ACHIEVEMENT_TOAST_QUEUE_MAX pending toasts queue and show
+# sequentially. Uses the shared WoW-skin palette so it matches the rest of
+# the HUD. Built programmatically so hud.tscn stays untouched.
+
+const ACHIEVEMENT_TOAST_HOLD_SECS: float = 4.0
+const ACHIEVEMENT_TOAST_SLIDE_SECS: float = 0.4
+const ACHIEVEMENT_TOAST_QUEUE_MAX: int = 5
+const ACHIEVEMENT_TOAST_WIDTH: float = 320.0
+const ACHIEVEMENT_TOAST_HEIGHT: float = 80.0
+const ACHIEVEMENT_ICON: String = "★"
+
+var _achievement_root: Control = null
+var _achievement_title_label: Label = null
+var _achievement_desc_label: Label = null
+var _achievement_tween: Tween = null
+# Queue of (title, desc) pairs waiting to be shown.
+var _achievement_queue: Array[Dictionary] = []
+# True while the toast is currently visible (holding or sliding).
+var _achievement_toast_active: bool = false
+
+
+func _build_achievement_toast() -> void:
+	var panel: Panel = Panel.new()
+	panel.name = "AchievementToast"
+	panel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	panel.offset_left = -ACHIEVEMENT_TOAST_WIDTH - 20.0
+	panel.offset_top = -ACHIEVEMENT_TOAST_HEIGHT - 20.0
+	panel.offset_right = -20.0
+	panel.offset_bottom = -20.0
+	panel.custom_minimum_size = Vector2(ACHIEVEMENT_TOAST_WIDTH, ACHIEVEMENT_TOAST_HEIGHT)
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.z_index = 95
+	# Start hidden off-screen (translated right so it slides in from the right edge).
+	panel.modulate.a = 0.0
+	panel.visible = false
+
+	# Gold border, translucent dark fill — matches the WoW skin.
+	panel.add_theme_stylebox_override("panel", _make_wow_stylebox(
+		SKIN_ACCENT_GOLD, SKIN_BORDER_WIDTH, SKIN_PANEL_BG))
+
+	# Layout: icon on the left, title + description stacked on the right.
+	var hbox: HBoxContainer = HBoxContainer.new()
+	hbox.set_anchors_preset(Control.PRESET_FULL_RECT)
+	hbox.offset_left = 10.0
+	hbox.offset_top = 8.0
+	hbox.offset_right = -10.0
+	hbox.offset_bottom = -8.0
+	hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hbox.add_theme_constant_override("separation", 10)
+	panel.add_child(hbox)
+
+	var icon: Label = Label.new()
+	icon.text = ACHIEVEMENT_ICON
+	icon.add_theme_font_size_override("font_size", 28)
+	icon.add_theme_color_override("font_color", SKIN_ACCENT_GOLD)
+	icon.vertical_alignment = Control.VERTICAL_ALIGNMENT_CENTER
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hbox.add_child(icon)
+
+	var vbox: VBoxContainer = VBoxContainer.new()
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hbox.add_child(vbox)
+
+	var header: Label = Label.new()
+	header.text = "ACHIEVEMENT UNLOCKED"
+	header.add_theme_font_size_override("font_size", 9)
+	header.add_theme_color_override("font_color", SKIN_ACCENT_GOLD)
+	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_child(header)
+
+	_achievement_title_label = Label.new()
+	_achievement_title_label.add_theme_font_size_override("font_size", 14)
+	_achievement_title_label.add_theme_color_override("font_color", SKIN_TEXT_PRIMARY)
+	_achievement_title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_child(_achievement_title_label)
+
+	_achievement_desc_label = Label.new()
+	_achievement_desc_label.add_theme_font_size_override("font_size", 11)
+	_achievement_desc_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7, 0.9))
+	_achievement_desc_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_achievement_desc_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	vbox.add_child(_achievement_desc_label)
+
+	add_child(panel)
+	_achievement_root = panel
+
+
+func _on_achievement_unlocked(_id: String, title: String, description: String) -> void:
+	_show_achievement_toast(title, description)
+	# Mark as notified so a save/load cycle doesn't re-toast.
+	var ach: Node = get_node_or_null("/root/Achievements")
+	if ach != null:
+		ach.call("mark_notified", _id)
+
+
+func _show_achievement_toast(title: String, description: String) -> void:
+	if _achievement_root == null:
+		return
+	if _achievement_toast_active:
+		if _achievement_queue.size() < ACHIEVEMENT_TOAST_QUEUE_MAX:
+			_achievement_queue.append({"title": title, "desc": description})
+		return
+	_achievement_toast_active = true
+	_achievement_title_label.text = title
+	_achievement_desc_label.text = description
+	_achievement_root.visible = true
+
+	# Slide in: alpha 0→1 and offset from right to position.
+	if _achievement_tween != null and _achievement_tween.is_valid():
+		_achievement_tween.kill()
+	_achievement_tween = create_tween()
+	_achievement_root.modulate.a = 0.0
+	_achievement_tween.set_parallel(true)
+	_achievement_tween.tween_property(_achievement_root, "modulate:a", 1.0, ACHIEVEMENT_TOAST_SLIDE_SECS)
+	_achievement_tween.set_parallel(false)
+	# Hold, then slide out.
+	_achievement_tween.tween_interval(ACHIEVEMENT_TOAST_HOLD_SECS)
+	_achievement_tween.set_parallel(true)
+	_achievement_tween.tween_property(_achievement_root, "modulate:a", 0.0, ACHIEVEMENT_TOAST_SLIDE_SECS)
+	_achievement_tween.set_parallel(false)
+	_achievement_tween.tween_callback(_on_achievement_toast_done)
+
+
+func _on_achievement_toast_done() -> void:
+	_achievement_root.visible = false
+	_achievement_toast_active = false
+	if not _achievement_queue.is_empty():
+		var next: Dictionary = _achievement_queue.pop_front()
+		_show_achievement_toast(String(next.get("title", "")), String(next.get("desc", "")))

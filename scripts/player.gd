@@ -3,9 +3,18 @@ extends CharacterBody3D
 # SGU third-person player controller (Eli Wallace).
 # Camera-relative WASD movement. Sprint toggle. Interact ray points where the
 # camera looks. No double-jump or fall-respawn (kit platformer bits removed).
+#
+# Traversal modes (P3): Crouch, Crawl, Squeeze, Climb. Each mode adjusts speed,
+# collision capsule height, camera follow height, animation clips, and
+# footstep cadence. Crouch is hold-C; Crawl is toggle-Z; Squeeze and Climb are
+# triggered by Area3D trigger zones placed in level geometry (vents, narrow
+# gaps, ladder volumes) which call set_traversal_mode().
 
 signal interact_target_changed(target: Node)
 signal auto_walk_finished
+signal traversal_mode_changed(mode: int)
+
+enum TraversalMode { NORMAL, CROUCH, CRAWL, SQUEEZE, CLIMB }
 
 @export_subgroup("Components")
 @export var view: Node3D
@@ -16,6 +25,24 @@ signal auto_walk_finished
 @export var accel_smoothing: float = 12.0
 @export var gravity_strength: float = 25.0
 @export var jump_strength: float = 5.5
+
+@export_subgroup("Traversal")
+# Crouch (hold C): slower stealth walk. Crawl (toggle Z): prone vent traversal.
+# Squeeze: triggered by narrow-passage Area3D zones. Climb: ladder volumes.
+@export var crouch_speed: float = 3.0
+@export var crawl_speed: float = 2.0
+@export var squeeze_speed: float = 1.5
+@export var climb_speed: float = 2.5
+# Capsule heights per mode (radius stays 0.3). Normal = 1.5, crouch = 1.0,
+# crawl/squeeze = 0.5, climb = 1.5 (same as normal, vertical motion is by input).
+@export var crouch_capsule_height: float = 1.0
+@export var crawl_capsule_height: float = 0.5
+# Camera follow height adjustment relative to the view's authored follow_height.
+# Negative = camera lowers. Crouch dips slightly, crawl/squeeze drop to ground.
+@export var crouch_cam_offset: float = -0.3
+@export var crawl_cam_offset: float = -0.8
+@export var squeeze_cam_offset: float = -0.7
+@export var climb_cam_offset: float = -0.2
 
 @export_subgroup("Interact")
 @export var interact_reach: float = 3.5      # metres — general "look + E" range
@@ -49,6 +76,19 @@ var _auto_walk_arrive_dist: float = 0.18
 var _cinematic_dash: bool = false
 var _dash_target: Vector3 = Vector3.ZERO
 var _dash_speed: float = 12.0
+
+# ---- Traversal state (P3) ----
+var _traversal_mode: TraversalMode = TraversalMode.NORMAL
+# The capsule shape authored in the scene (radius 0.3, height 1.5). We
+# dynamically resize it per traversal mode. Cached in _ready.
+var _collider: CollisionShape3D = null
+var _capsule: CapsuleShape3D = null
+var _default_capsule_height: float = 1.5
+# The view's authored follow_height — we add a per-mode offset to it.
+var _view_base_follow_height: float = 1.15
+# Squeeze one-shot phase: 0 = not squeezing, 1 = playing entry clip,
+# 2 = looping squeeze, 3 = playing exit clip.
+var _squeeze_phase: int = 0
 
 # Footsteps — random individual samples played on a distance-based cadence: one
 # step per ~FOOTSTEP_STRIDE metres of floor travel, so faster speeds produce
@@ -93,6 +133,11 @@ const MODULAR_CLIP: Dictionary = {
 	"idle": "idle", "walk": "walk", "sprint": "sprint",
 	"jump": "jog", "fall": "jog",
 	"holding-both": "talk",
+	# P3 traversal clips — direct mapping, no remapping needed.
+	"crouch_idle": "crouch_idle", "crouch_walk": "crouch_walk",
+	"crawl_idle": "crawl_idle", "crawl_walk": "crawl_walk",
+	"climb": "climb", "climb_idle": "climb_idle",
+	"squeeze_start": "squeeze_start", "squeeze": "squeeze", "squeeze_exit": "squeeze_exit",
 }
 
 # Renders equipped gear (#72) on the character. Lives under $Character so its
@@ -108,6 +153,7 @@ func _ready() -> void:
 		_apply_colormap(_model)
 	_setup_equipment_mount()
 	_init_footsteps()
+	_init_traversal()
 
 
 # Replace the kit chibi (eli.glb mini at 1.6x) with the Quaternius modular
@@ -189,8 +235,27 @@ func _apply_idle(delta: float) -> void:
 	# stomp it back to "idle".
 	_play_anim(_pose_override if _pose_override != "" else "idle", 0.15)
 
+# Handle crouch (hold C) and crawl (toggle Z) input. Squeeze and Climb are set
+# by Area3D trigger zones via set_traversal_mode(), not by direct input.
+func _handle_traversal_input() -> void:
+	# Crouch: hold C. Releasing C returns to NORMAL (unless crawling).
+	var crouch_pressed: bool = Input.is_action_pressed("crouch")
+	if crouch_pressed and _traversal_mode == TraversalMode.NORMAL:
+		set_traversal_mode(TraversalMode.CROUCH)
+	elif not crouch_pressed and _traversal_mode == TraversalMode.CROUCH:
+		set_traversal_mode(TraversalMode.NORMAL)
+	# Crawl: toggle Z. Can only toggle from NORMAL or CROUCH (not from
+	# squeeze/climb which are zone-triggered).
+	if Input.is_action_just_pressed("crawl_toggle"):
+		if _traversal_mode == TraversalMode.CRAWL:
+			set_traversal_mode(TraversalMode.NORMAL)
+		elif _traversal_mode == TraversalMode.NORMAL or _traversal_mode == TraversalMode.CROUCH:
+			set_traversal_mode(TraversalMode.CRAWL)
+
+
 func _handle_movement(delta: float) -> void:
-	# Camera-relative input.
+	# Traversal input: hold C to crouch, toggle Z for crawl.
+	_handle_traversal_input()
 	var input_vec: Vector3 = Vector3.ZERO
 	input_vec.x = Input.get_axis("move_left", "move_right")
 	input_vec.z = Input.get_axis("move_forward", "move_back")
@@ -199,15 +264,29 @@ func _handle_movement(delta: float) -> void:
 	if view != null:
 		input_vec = input_vec.rotated(Vector3.UP, view.rotation.y)
 
-	var target_speed: float = walk_speed
-	if Input.is_action_pressed("sprint"):
+	# Climbing: vertical movement via forward/back input (up = climb, down = descend).
+	if _traversal_mode == TraversalMode.CLIMB:
+		var vertical_input: float = Input.get_axis("move_back", "move_forward")
+		_move_velocity = Vector3.ZERO
+		_gravity_velocity = -vertical_input * climb_speed
+		velocity = Vector3(0.0, -_gravity_velocity, 0.0)
+		# Lateral movement on ladder is locked.
+		move_and_slide()
+		_drive_locomotion_anim()
+		_update_footsteps(delta)
+		return
+
+	var target_speed: float = _traversal_speed()
+	# Sprint only in normal mode.
+	if Input.is_action_pressed("sprint") and _traversal_mode == TraversalMode.NORMAL:
 		target_speed *= sprint_multiplier
 
 	var target_velocity: Vector3 = input_vec * target_speed
 	_move_velocity = _move_velocity.lerp(target_velocity, accel_smoothing * delta)
 
 	_apply_gravity(delta)
-	if Input.is_action_just_pressed("jump") and is_on_floor():
+	# Jump only in normal mode (can't jump while crouching/crawling/squeezing/climbing).
+	if Input.is_action_just_pressed("jump") and is_on_floor() and _traversal_mode == TraversalMode.NORMAL:
 		_gravity_velocity = -jump_strength
 		Audio.play("res://sounds/jump.ogg")
 
@@ -236,6 +315,45 @@ func _apply_gravity(delta: float) -> void:
 func _drive_locomotion_anim() -> void:
 	_particles_trail.emitting = false
 	var horiz_speed: float = Vector2(velocity.x, velocity.z).length()
+	# Squeeze: one-shot entry → looped squeeze → one-shot exit on leave.
+	# The phase is driven by set_traversal_mode; here we just advance the
+	# entry-to-loop transition when the entry clip finishes.
+	if _traversal_mode == TraversalMode.SQUEEZE:
+		if _squeeze_phase == 1 and _animation != null:
+			# Entry clip finished → switch to the looping squeeze clip.
+			if not _animation.is_playing():
+				_squeeze_phase = 2
+				_play_anim("squeeze", 0.1)
+		elif _squeeze_phase == 2:
+			_play_anim("squeeze", 0.1)
+		elif _squeeze_phase == 3:
+			# Exit clip playing; let it finish (set_traversal_mode handles
+			# the transition when mode changes).
+			if _animation != null and not _animation.is_playing():
+				_squeeze_phase = 0
+		if _animation != null:
+			_animation.speed_scale = 1.0
+		return
+
+	if _traversal_mode == TraversalMode.CLIMB:
+		_play_anim("climb" if horiz_speed > 0.25 or absf(_gravity_velocity) > 0.5 else "climb_idle", 0.1)
+		if _animation != null:
+			_animation.speed_scale = clampf(absf(_gravity_velocity) / climb_speed, 0.3, 1.5)
+		return
+
+	if _traversal_mode == TraversalMode.CRAWL:
+		_play_anim("crawl_walk" if horiz_speed > 0.25 else "crawl_idle", 0.1)
+		if _animation != null:
+			_animation.speed_scale = clampf(horiz_speed / maxf(crawl_speed, 0.1), 0.3, 1.5)
+		return
+
+	if _traversal_mode == TraversalMode.CROUCH:
+		_play_anim("crouch_walk" if horiz_speed > 0.25 else "crouch_idle", 0.1)
+		if _animation != null:
+			_animation.speed_scale = clampf(horiz_speed / maxf(crouch_speed, 0.1), 0.4, 1.5)
+		return
+
+	# NORMAL mode locomotion (existing logic).
 	if is_on_floor():
 		if horiz_speed > 0.25:
 			var is_sprinting: bool = horiz_speed > walk_speed * 1.15
@@ -278,6 +396,123 @@ func set_footstep_surface(surface_id: String) -> void:
 		_sound_footsteps.volume_db = _footstep_base_volume_db + _FOOTSTEP_LIBRARY.gain_db_for(_footstep_surface)
 
 
+# ---- Traversal (P3) ----
+
+# Cache the collider/capsule and the view's base follow_height so we can
+# dynamically resize and re-offset per mode.
+func _init_traversal() -> void:
+	_collider = get_node_or_null("Collider")
+	if _collider != null and _collider.shape is CapsuleShape3D:
+		_capsule = _collider.shape as CapsuleShape3D
+		_default_capsule_height = _capsule.height
+	if view != null and "follow_height" in view:
+		_view_base_follow_height = float(view.get("follow_height"))
+
+
+# Per-mode speed multiplier (applied to walk_speed as the base).
+func _traversal_speed() -> float:
+	match _traversal_mode:
+		TraversalMode.CROUCH: return crouch_speed
+		TraversalMode.CRAWL: return crawl_speed
+		TraversalMode.SQUEEZE: return squeeze_speed
+		TraversalMode.CLIMB: return climb_speed
+		_: return walk_speed
+
+
+# Per-mode footstep stride distance. Crawl/squeeze = short shuffling steps;
+# crouch = slightly shorter; climb = reach-based (longer, slower).
+func _traversal_footstep_stride() -> float:
+	match _traversal_mode:
+		TraversalMode.CROUCH: return FOOTSTEP_STRIDE * 0.65
+		TraversalMode.CRAWL: return FOOTSTEP_STRIDE * 0.4
+		TraversalMode.SQUEEZE: return FOOTSTEP_STRIDE * 0.35
+		TraversalMode.CLIMB: return FOOTSTEP_STRIDE * 1.2
+		_: return FOOTSTEP_STRIDE
+
+
+# Per-mode footstep volume offset (dB). Crawl and squeeze are quiet; crouch is
+# slightly muffled; climb is loud (hands on rungs).
+func _traversal_footstep_gain_db() -> float:
+	match _traversal_mode:
+		TraversalMode.CROUCH: return -3.0
+		TraversalMode.CRAWL: return -8.0
+		TraversalMode.SQUEEZE: return -10.0
+		TraversalMode.CLIMB: return 2.0
+		_: return 0.0
+
+
+# Per-mode camera follow_height offset (added to view.follow_height).
+func _traversal_cam_offset() -> float:
+	match _traversal_mode:
+		TraversalMode.CROUCH: return crouch_cam_offset
+		TraversalMode.CRAWL: return crawl_cam_offset
+		TraversalMode.SQUEEZE: return squeeze_cam_offset
+		TraversalMode.CLIMB: return climb_cam_offset
+		_: return 0.0
+
+
+# Per-mode capsule height. Crouch = shorter, crawl/squeeze = very short.
+func _traversal_capsule_height() -> float:
+	match _traversal_mode:
+		TraversalMode.CROUCH: return crouch_capsule_height
+		TraversalMode.CRAWL: return crawl_capsule_height
+		TraversalMode.SQUEEZE: return crawl_capsule_height  # same low profile
+		_: return _default_capsule_height
+
+
+# Per-mode interact origin height (chest ray). Lower when crouching/crawling.
+func _traversal_interact_height() -> float:
+	match _traversal_mode:
+		TraversalMode.CROUCH: return interact_origin_height * 0.65
+		TraversalMode.CRAWL: return interact_origin_height * 0.3
+		TraversalMode.SQUEEZE: return interact_origin_height * 0.3
+		TraversalMode.CLIMB: return interact_origin_height
+		_: return interact_origin_height
+
+
+# Public API: set the traversal mode. Called by input (crouch/crawl) and by
+# Area3D trigger zones (squeeze, climb). Applies collision + camera changes
+# and emits the traversal_mode_changed signal.
+func set_traversal_mode(mode: TraversalMode) -> void:
+	if mode == _traversal_mode:
+		return
+	_traversal_mode = mode
+	# Resize the collision capsule.
+	if _capsule != null:
+		var new_height: float = _traversal_capsule_height()
+		_capsule.height = new_height
+		# Re-center the collider so the capsule bottom stays at the feet.
+		if _collider != null:
+			_collider.position.y = new_height * 0.5
+	# Adjust the camera follow height.
+	if view != null and "follow_height" in view:
+		view.set("follow_height", _view_base_follow_height + _traversal_cam_offset())
+	# Reset squeeze one-shot phase when entering squeeze; play entry clip.
+	if mode == TraversalMode.SQUEEZE:
+		_squeeze_phase = 1
+		_play_anim("squeeze_start", 0.15)
+	elif _squeeze_phase != 0:
+		# Leaving squeeze — play the exit clip once, then resume normal idle.
+		_play_anim("squeeze_exit", 0.15)
+		_squeeze_phase = 3
+	else:
+		_squeeze_phase = 0
+	# Update footstep volume for the new mode.
+	if _sound_footsteps != null:
+		_sound_footsteps.volume_db = _footstep_base_volume_db + _FOOTSTEP_LIBRARY.gain_db_for(_footstep_surface) + _traversal_footstep_gain_db()
+	traversal_mode_changed.emit(mode)
+
+
+# Get the current traversal mode (for HUD / mission scripts).
+func get_traversal_mode() -> TraversalMode:
+	return _traversal_mode
+
+
+# Convenience: is the player in a low stance (crouch/crawl/squeeze)?
+func is_low_stance() -> bool:
+	return _traversal_mode == TraversalMode.CROUCH or _traversal_mode == TraversalMode.CRAWL or _traversal_mode == TraversalMode.SQUEEZE
+
+
 # Distance-based footstep cadence: accumulate horizontal travel and emit a
 # random footstep sample every FOOTSTEP_STRIDE metres on the floor. Resets
 # when airborne or stopped so the next stride starts fresh.
@@ -286,12 +521,16 @@ func _update_footsteps(delta: float) -> void:
 		_footstep_distance = 0.0
 		return
 	var horiz_speed: float = Vector2(velocity.x, velocity.z).length()
+	# Climbing uses vertical speed for footstep cadence (hands on rungs).
+	if _traversal_mode == TraversalMode.CLIMB:
+		horiz_speed = absf(_gravity_velocity)
 	if horiz_speed < 0.5:
 		_footstep_distance = 0.0
 		return
 	_footstep_distance += horiz_speed * delta
-	if _footstep_distance >= FOOTSTEP_STRIDE:
-		_footstep_distance -= FOOTSTEP_STRIDE
+	var stride: float = _traversal_footstep_stride()
+	if _footstep_distance >= stride:
+		_footstep_distance -= stride
 		_emit_footstep()
 
 
@@ -331,7 +570,7 @@ func _find_interact_target() -> Node:
 	var camera: Camera3D = _interact_camera()
 	if camera == null:
 		return null
-	var origin: Vector3 = global_position + Vector3.UP * interact_origin_height
+	var origin: Vector3 = global_position + Vector3.UP * _traversal_interact_height()
 	# A clicked target wins while it's still valid + within the extended range.
 	if _target_in_range(_clicked_target, origin, interact_reach_targeted):
 		return _clicked_target
@@ -445,7 +684,7 @@ func _try_click_target(screen_pos: Vector2) -> void:
 				picked = n
 				break
 			n = n.get_parent()
-	var origin: Vector3 = global_position + Vector3.UP * interact_origin_height
+	var origin: Vector3 = global_position + Vector3.UP * _traversal_interact_height()
 	if picked != null and _target_in_range(picked, origin, interact_reach_targeted):
 		_clicked_target = picked
 	else:
@@ -455,6 +694,10 @@ func set_input_locked(locked: bool) -> void:
 	_input_locked = locked
 	if locked:
 		_move_velocity = Vector3.ZERO
+		# Reset to normal stance when input locks (cutscenes, scene transitions).
+		# Squeeze/climb are zone-triggered and shouldn't be cleared by lock.
+		if _traversal_mode == TraversalMode.CROUCH or _traversal_mode == TraversalMode.CRAWL:
+			set_traversal_mode(TraversalMode.NORMAL)
 
 # Override the locked-idle pose with a specific clip (""/empty restores idle).
 func set_pose_override(anim: String) -> void:

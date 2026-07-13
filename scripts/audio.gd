@@ -43,7 +43,7 @@ func _ready():
 	# blips fired during pause sit in `queue` until the tree unpauses, then
 	# cascade-fire all at once. Children inherit ALWAYS too, so any sample
 	# already mid-playback continues instead of stalling.
-	PROCESS_MODE = Node.PROCESS_MODE.ALWAYS
+	process_mode = Node.PROCESS_MODE_ALWAYS
 
 	# SFX queue
 	for i in range(num_players):
@@ -167,7 +167,7 @@ func play_sting(stem_id: String) -> void:
 	p.stream = stream
 	p.bus = music_bus
 	p.volume_db = _duck_db
-	p.process_mode = Node.PROCESS_MODE.ALWAYS
+	p.process_mode = Node.PROCESS_MODE_ALWAYS
 	p.finished.connect(p.queue_free)
 	add_child(p)
 	p.play()
@@ -291,7 +291,7 @@ func _ensure_track(sid: String) -> void:
 	var p = AudioStreamPlayer.new()
 	p.stream = stream
 	p.bus = music_bus
-	p.process_mode = Node.PROCESS_MODE.ALWAYS
+	p.process_mode = Node.PROCESS_MODE_ALWAYS
 	p.volume_db = _silence_db()
 	p.name = sid
 	add_child(p)

@@ -27,10 +27,9 @@ config/icon="res://icon.png"
 Audio="*res://scripts/audio.gd"
 TestCapture="*res://scripts/test_capture.gd"
 TrailerCapture="*res://scripts/trailer_capture.gd"
+GameClock="*res://scripts/game_clock.gd"
 SaveManager="*res://scripts/save_manager.gd"
 GameState="*res://scripts/game_state.gd"
-ScrubberSystem="*res://scripts/scrubber_system.gd"
-PlanetSystem="*res://scripts/planet_system.gd"
 QuestLog="*res://scripts/quest_log.gd"
 Inventory="*res://scripts/inventory.gd"
 NPCState="*res://scripts/npc_state.gd"
@@ -39,23 +38,16 @@ FtlLoop="*res://scripts/ftl_loop.gd"
 ConsumptionManager="*res://scripts/consumption_manager.gd"
 KinoRemote="*res://scripts/kino_remote.gd"
 Cinematic="*res://scripts/cinematic.gd"
-UIManager="*res://scripts/ui_manager.gd"
 Settings="*res://scripts/settings.gd"
-I18n="*res://scripts/i18n.gd"
 Gamepad="*res://scripts/gamepad.gd"
 ShipLayout="*res://scripts/ship_layout.gd"
 ProceduralShip="*res://scripts/procedural_ship.gd"
 RepairRobot="*res://scripts/repair_robot.gd"
 KinoMapCapture="*res://scripts/kino_map_capture.gd"
+EpisodeWrap="*res://scripts/episode_wrap.gd"
 
 InjurySystem="*res://scripts/injury_system.gd"
 MedBay="*res://scripts/med_bay.gd"
-Achievements="*res://scripts/achievements.gd"
-ColorblindFilter="*res://scripts/colorblind_filter.gd"
-InputRemap="*res://scripts/input_remap.gd"
-AimAssist="*res://scripts/aim_assist.gd"
-PuzzleHintSystem="*res://scripts/puzzle_hint_system.gd"
-AutoRetrySystem="*res://scripts/auto_retry.gd"
 
 [editor_plugins]
 
@@ -222,5 +214,5 @@ anti_aliasing/quality/screen_space_aa=1
 
 [internationalization]
 
-locale/translations=PackedStringArray("res://translations/ui.csv","res://translations/dialogue.csv","res://translations/quests.csv")
+locale/translations=PackedStringArray("res://translations/ui.en.translation","res://translations/dialogue.en.translation","res://translations/quests.en.translation")
 locale/fallback="en"

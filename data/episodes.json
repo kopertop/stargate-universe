@@ -1,0 +1,66 @@
+[
+	{
+		"id": "e1_air",
+		"title": "Air",
+		"quest_id": "e1_air",
+		"auto_start": true,
+		"completion_predicate": "scrubber_repaired",
+		"next_episode_id": "e2_explore"
+	},
+	{
+		"id": "e2_explore",
+		"title": "Explore the Ship",
+		"quest_id": "e2_explore",
+		"auto_start": false,
+		"completion_predicate": "floor_unlocked_beyond_2",
+		"next_episode_id": "e3_water"
+	},
+	{
+		"id": "e3_water",
+		"title": "Water",
+		"quest_id": "e3_water",
+		"auto_start": false,
+		"completion_predicate": "water_system_online",
+		"next_episode_id": "e4_darkness"
+	},
+	{
+		"id": "e4_darkness",
+		"title": "Darkness",
+		"quest_id": "e4_darkness",
+		"auto_start": false,
+		"completion_predicate": "darkness_resolved",
+		"next_episode_id": "e5_earth"
+	},
+	{
+		"id": "e5_earth",
+		"title": "Earth",
+		"quest_id": "e5_earth",
+		"auto_start": false,
+		"completion_predicate": "earth_contact_made",
+		"next_episode_id": "e6_life"
+	},
+	{
+		"id": "e6_life",
+		"title": "Life",
+		"quest_id": "e6_life",
+		"auto_start": false,
+		"completion_predicate": "all_life_missions_done",
+		"next_episode_id": "e7_justice"
+	},
+	{
+		"id": "e7_justice",
+		"title": "Justice",
+		"quest_id": "e7_justice",
+		"auto_start": false,
+		"completion_predicate": "investigation_completed",
+		"next_episode_id": "e12_divided"
+	},
+	{
+		"id": "e12_divided",
+		"title": "Divided",
+		"quest_id": "e12_divided",
+		"auto_start": false,
+		"completion_predicate": "e12_standoff_resolved",
+		"next_episode_id": ""
+	}
+]

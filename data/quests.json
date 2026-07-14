@@ -135,14 +135,42 @@
 	},
 	{
 		"id": "e2_explore",
-		"title": "Episode 2: Explore the Ship",
+		"title": "Episode 2: Light",
 		"auto_start": false,
 		"tracked": false,
 		"steps": [
 			{
+				"id": "find_engineering",
+				"label": "Find the Engineering Bay",
+				"objective": "With the air crisis resolved, power is still intermittent. Find the Engineering Bay — it should be somewhere near the aft sections of the ship.",
+				"target": { "room": "aft_storage_hall", "anchor": "" },
+				"complete_when": "engineering_found"
+			},
+			{
+				"id": "locate_junction",
+				"label": "Locate the conduit junction",
+				"objective": "Inside Engineering, find the power conduit junction. It's the main distribution point for the ship's power grid.",
+				"target": { "room": "aft_storage_hall", "anchor": "ConduitJunction" },
+				"complete_when": "junction_located"
+			},
+			{
+				"id": "repair_junction",
+				"label": "Repair the junction",
+				"objective": "The conduit junction is damaged. Repair it to restore generator output to the grid.",
+				"target": { "room": "aft_storage_hall", "anchor": "ConduitJunction" },
+				"complete_when": "junction_repaired"
+			},
+			{
+				"id": "route_power",
+				"label": "Route power to critical rooms",
+				"objective": "With the junction repaired, route power to the Gate Room and Control Interface Room. Use the junction panel to distribute power.",
+				"target": { "room": "aft_storage_hall", "anchor": "ConduitJunction" },
+				"complete_when": "power_routed"
+			},
+			{
 				"id": "unlock_upper_deck",
 				"label": "Unlock more of the ship",
-				"objective": "Salvage parts from broken panels and unlock the next deck of Destiny via the floor terminal.",
+				"objective": "With critical systems online, salvage parts from broken panels and unlock the next deck of Destiny via the floor terminal.",
 				"target": { "room": "gate_room", "anchor": "UpperDeckDoor" },
 				"complete_when": "floor_unlocked_beyond_2"
 			},
@@ -154,5 +182,269 @@
 				"terminal": true
 			}
 		]
-	}
-]
+	},
+	{
+		"id": "e2_planet_mission",
+		"title": "Episode 2: Light — Planetary Mission",
+		"auto_start": false,
+		"tracked": false,
+		"steps": [
+			{
+				"id": "deploy_squad",
+				"label": "Deploy with the squad",
+				"objective": "Gate Room — Greer and Dr Park are ready to deploy. Step through the Stargate with your squad.",
+				"target": { "room": "gate_room", "anchor": "Stargate" },
+				"complete_when": "squad_deployed"
+			},
+			{
+				"id": "find_resources",
+				"label": "Find resources",
+				"objective": "Scan the surface for mineral deposits and water sources. Use squad commands to coordinate your team.",
+				"target": { "room": "", "anchor": "" },
+				"complete_when": "resources_collected"
+			},
+			{
+				"id": "investigate_ruins",
+				"label": "Investigate Ancient ruins",
+				"objective": "Ancient ruins were detected near the gate. Investigate them for any useful technology.",
+				"target": { "room": "", "anchor": "" },
+				"complete_when": "ruins_investigated"
+			},
+			{
+				"id": "retrieve_ancient_tech",
+				"label": "Retrieve Ancient technology",
+				"objective": "Recover any Ancient device found in the ruins. Rush will want to study it.",
+				"target": { "room": "", "anchor": "" },
+				"complete_when": "ancient_tech_retrieved"
+			},
+			{
+				"id": "return_through_gate",
+				"label": "Return through the gate",
+				"objective": "Mission objectives complete. Get back to the gate before the window closes.",
+				"target": { "room": "", "anchor": "" },
+				"complete_when": "squad_returned"
+			},
+			{
+				"id": "mission_complete",
+				"label": "Mission complete",
+				"objective": "Planetary mission complete. The squad returned safely with resources and Ancient technology.",
+				"target": { "room": "", "anchor": "" },
+				"terminal": true
+			}
+		]
+	},
+	{
+		"id": "e5_earth",
+		"title": "Episode 5: Earth",
+		"auto_start": false,
+		"tracked": true,
+		"steps": [
+			{
+				"id": "find_comm_stones",
+				"label": "Find the communication stones",
+				"objective": "Rush mentioned Ancient communication stones in the observation deck. Find them.",
+				"target": { "room": "observation_deck", "anchor": "CommStonePedestal" },
+				"complete_when": "comm_stones_found"
+			},
+			{
+				"id": "activate_stones",
+				"label": "Activate the stones",
+				"objective": "Place your hand on the stone pedestal. The Ancients built them to speak across the void.",
+				"target": { "room": "observation_deck", "anchor": "CommStonePedestal" },
+				"complete_when": "stones_activated"
+			},
+			{
+				"id": "report_to_sgc",
+				"label": "Report to Stargate Command",
+				"objective": "You're on Earth in another body. Find SGC personnel and deliver your report.",
+				"target": { "room": "earth_sgc", "anchor": "" },
+				"complete_when": "all_sgc_objectives_done"
+			},
+			{
+				"id": "return_to_destiny",
+				"label": "Return to Destiny",
+				"objective": "Your report is delivered. Use the stone to return to your body on Destiny.",
+				"target": { "room": "earth_sgc", "anchor": "CommStoneReturn" },
+				"complete_when": "returned_from_earth"
+			},
+			{
+				"id": "earth_complete",
+				"label": "Earth contact established",
+				"objective": "Episode 5: Earth — Complete. The link to Earth is established.",
+				"target": { "room": "", "anchor": "" },
+				"terminal": true
+			}
+			]
+			},
+			{
+				"id": "e6_life",
+				"title": "Episode 6: Life",
+				"auto_start": false,
+				"tracked": true,
+				"steps": [
+					{
+						"id": "check_crew_status",
+						"label": "Check in with the crew",
+						"objective": "Things have been tense. Visit the crew — see who needs help.",
+						"target": { "room": "observation_deck", "anchor": "" },
+						"complete_when": "crew_checked_in"
+					},
+					{
+						"id": "tj_mission_step",
+						"label": "Help TJ with medical supplies",
+						"objective": "TJ needs help finding medical supplies in the lower deck storage. She's in the med bay.",
+						"target": { "room": "med_bay", "anchor": "TJ" },
+						"complete_when": "tj_mission_done"
+					},
+					{
+						"id": "camille_mission_step",
+						"label": "Help Camille mediate between factions",
+						"objective": "Camille needs someone to carry messages between Young, Rush, and the civilians. Find her on the observation deck.",
+						"target": { "room": "observation_deck", "anchor": "Camille" },
+						"complete_when": "camille_mission_done"
+					},
+					{
+						"id": "greer_mission_step",
+						"label": "Reach out to Greer",
+						"objective": "Greer's been on edge. Someone needs to get through to him. Find him in the gate room.",
+						"target": { "room": "gate_room", "anchor": "SgtGreer" },
+						"complete_when": "greer_mission_done"
+					},
+					{
+						"id": "life_complete",
+						"label": "Life — Complete",
+						"objective": "Episode 6: Life — Complete. You've deepened your bonds with the crew.",
+						"target": { "room": "", "anchor": "" },
+						"terminal": true
+					}
+				]
+			},
+			{
+				"id": "e12_divided",
+				"title": "Episode 12: Divided",
+				"auto_start": false,
+				"tracked": true,
+				"steps": [
+					{
+						"id": "e12_talk_camille",
+						"label": "Talk to Camille",
+						"objective": "Camille wants to talk. She's in the mess hall — she says it's important.",
+						"target": { "room": "mess_hall", "anchor": "Camille" },
+						"complete_when": "e12_camille_spoken"
+					},
+					{
+						"id": "e12_food_shortage",
+						"label": "The food shortage crisis",
+						"objective": "Rations are running low. The civilians are hungry. Camille demands a vote on distribution. Make a choice.",
+						"target": { "room": "mess_hall", "anchor": "" },
+						"complete_when": "e12_food_shortage_resolved"
+					},
+					{
+						"id": "e12_talk_rush",
+						"label": "Talk to Rush",
+						"objective": "Rush has been acting strange. Find him in the control interface room.",
+						"target": { "room": "control_interface_room", "anchor": "DrRush" },
+						"complete_when": "e12_rush_spoken"
+					},
+					{
+						"id": "e12_rush_secret",
+						"label": "Rush's secret project",
+						"objective": "Eli discovers Rush has been accessing the ship's master code after hours. Confront him — or report him to Young.",
+						"target": { "room": "control_interface_room", "anchor": "" },
+						"complete_when": "e12_rush_secret_resolved"
+					},
+					{
+						"id": "e12_protest",
+						"label": "The civilian protest",
+						"objective": "Camille leads civilians to occupy the mess hall. The military is surrounding them. Mediate — or take a side.",
+						"target": { "room": "mess_hall", "anchor": "" },
+						"complete_when": "e12_protest_resolved"
+					},
+					{
+						"id": "e12_lucian",
+						"label": "The Lucian Alliance threat",
+						"objective": "Varro brings intelligence about Simeon's secret activities. Decide who to trust.",
+						"target": { "room": "aft_storage_hall", "anchor": "Varro" },
+						"complete_when": "e12_lucian_resolved"
+					},
+					{
+						"id": "e12_standoff",
+						"label": "The final standoff",
+						"objective": "The ship is divided. Rush has locked himself in the control room. Young is preparing to breach. Your choice will decide who controls Destiny.",
+						"target": { "room": "control_interface_room", "anchor": "" },
+						"complete_when": "e12_standoff_resolved"
+					},
+					{
+						"id": "e12_complete",
+						"label": "Episode 12: Divided — Complete",
+						"objective": "The mutiny is over. Destiny's fate has been decided.",
+						"target": { "room": "", "anchor": "" },
+						"terminal": true
+					}
+				]
+				},
+				{
+				"id": "e7_justice",
+				"title": "Episode 7: Justice",
+				"auto_start": false,
+				"tracked": true,
+				"steps": [
+					{
+						"id": "discover_body",
+						"label": "Investigate the crime scene",
+						"objective": "Dr Ginn has been found dead in the Engineering Bay. Examine the scene.",
+						"target": { "room": "engineering_bay", "anchor": "CrimeScene" },
+						"complete_when": "first_clue_found"
+					},
+					{
+						"id": "gather_clues",
+						"label": "Gather evidence",
+						"objective": "Search the Engineering Bay for clues. Deploy a Kino to find hidden evidence.",
+						"target": { "room": "engineering_bay", "anchor": "" },
+						"complete_when": "three_clues_found"
+					},
+					{
+						"id": "talk_to_rush",
+						"label": "Talk to Dr Rush",
+						"objective": "Rush mentioned Ginn came to him with concerns. Question him in the Control Interface Room.",
+						"target": { "room": "control_interface_room", "anchor": "DrRush" },
+						"complete_when": "rush_interrogated"
+					},
+					{
+						"id": "interrogate_suspects",
+						"label": "Interrogate the suspects",
+						"objective": "Question the suspects. Use a Kino during interrogation to detect lies.",
+						"target": { "room": "gate_room", "anchor": "" },
+						"complete_when": "suspect_interrogated"
+					},
+					{
+						"id": "check_varro_alibi",
+						"label": "Verify Varro's alibi",
+						"objective": "Varro claims he was in the mess hall. Check with Camille to verify.",
+						"target": { "room": "mess_hall", "anchor": "Camille" },
+						"complete_when": "varro_alibi_checked"
+					},
+					{
+						"id": "confront_simeon",
+						"label": "Confront Simeon",
+						"objective": "The evidence points to Simeon. Confront him with what you know.",
+						"target": { "room": "gate_room", "anchor": "Simeon" },
+						"complete_when": "simeon_confronted"
+					},
+					{
+						"id": "make_accusation",
+						"label": "Make your accusation",
+						"objective": "Present your case to Colonel Young. Choose carefully — a wrong accusation will tear the crew apart.",
+						"target": { "room": "gate_room", "anchor": "ColonelYoung" },
+						"complete_when": "investigation_completed"
+					},
+					{
+						"id": "justice_complete",
+						"label": "Justice served",
+						"objective": "Episode 7: Justice — Complete. The murderer has been brought to justice.",
+						"target": { "room": "", "anchor": "" },
+						"terminal": true
+					}
+				]
+				}
+				]

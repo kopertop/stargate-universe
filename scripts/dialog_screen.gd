@@ -42,6 +42,10 @@ signal closed()
 @onready var _portrait: TextureRect = $Window/Margin/VBox/Header/PortraitFrame/Portrait
 @onready var _sub_speaker: Label = $Subtitle/SubSpeaker
 @onready var _sub_line: Label = $Subtitle/SubLine
+# Lie detection overlay label (shown when InvestigationSystem detects a lie
+# during an interrogation dialog node). Hidden by default; only visible when
+# the Kino is deployed and the current node carries is_lie: true.
+@onready var _lie_indicator_label: Label = get_node_or_null("Subtitle/LieIndicator")
 
 var _target: Node3D = null
 var _tree: Array = []
@@ -149,6 +153,12 @@ func _render_node() -> void:
 	# Fable presentation: the spoken line reads as a bottom-centre subtitle.
 	_sub_speaker.text = speaker
 	_sub_line.text = "\"%s\"" % String(node.get("text", ""))
+	# Investigation lie detection: if the InvestigationSystem autoload is
+	# present and the current dialog node carries is_lie metadata, display
+	# the lie indicator text below the subtitle. This is a data-driven
+	# overlay — the dialog tree from data/investigation.json includes
+	# is_lie and lie_indicator fields on suspect dialogue nodes.
+	_update_lie_indicator(node)
 	# TTS: voice the current line. The subtitle is already displayed; voice
 	# plays on top when available. If TTS is down, the subtitle alone suffices.
 	_speak_current(node, speaker)
@@ -176,6 +186,29 @@ func _render_node() -> void:
 	if _cinema != null and is_instance_valid(_cinema):
 		_cinema.call("frame_node", speaker)
 	_lay_out_choices(choices)
+
+# Update the lie detection indicator for the current dialog node.
+# If the InvestigationSystem autoload exists and the node has is_lie: true,
+# the indicator text is shown below the subtitle. When no Kino is deployed,
+# a "no Kino" notice is shown instead. Truthful nodes hide the indicator.
+func _update_lie_indicator(node: Dictionary) -> void:
+	if _lie_indicator_label == null:
+		return
+	var inv: Node = get_node_or_null("/root/InvestigationSystem")
+	if inv == null:
+		_lie_indicator_label.visible = false
+		return
+	# Only process if this node has lie detection metadata.
+	if not node.has("is_lie"):
+		_lie_indicator_label.visible = false
+		return
+	var result: String = inv.call("process_dialogue_node", String(node.get("speaker", "")), _current_index)
+	if result == "":
+		_lie_indicator_label.visible = false
+	else:
+		_lie_indicator_label.text = result
+		_lie_indicator_label.visible = true
+
 
 # Request TTS synthesis for the current dialogue node. Handles per-character
 # voice resolution, emotion overrides, and Ancient-language mode. If the

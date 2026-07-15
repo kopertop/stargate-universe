@@ -726,7 +726,7 @@ func _in_ship_room() -> bool:
 
 
 # Stage 4a: reveal every room reachable through THIS room's doors on the map /
-# compass, without hopping. Uses ShipLayout.outgoing_edges so locked/elevator
+# compass, without hopping. Uses ProceduralShip.outgoing_edges so locked/elevator
 # edges still light up as known neighbours (you can see the door from here). The
 # room the drone is in is already discovered by room.gd on entry; this fans out
 # one ring. No-op outside a ship room (the planet has no room graph).
@@ -736,11 +736,11 @@ func _reveal_adjacent_rooms() -> void:
 	var here: String = GameState.current_room_id
 	if here == "":
 		return
-	for edge in ShipLayout.outgoing_edges(here):
+	for edge in ProceduralShip.outgoing_edges(here):
 		var to_id: String = String((edge as Dictionary).get("to", ""))
 		if to_id == "" or to_id == "gate_room":
 			continue
-		var row: Dictionary = ShipLayout.room(to_id)
+		var row: Dictionary = ProceduralShip.room(to_id)
 		var display: String = String(row.get("name", to_id)) if not row.is_empty() else to_id
 		GameState.discover_room(to_id, display)
 

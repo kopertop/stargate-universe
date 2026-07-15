@@ -1,0 +1,7 @@
+{
+	"_comment": "One-off: regenerate a CLEAN version of Scott's cold-open evac bark by cloning the panicked timbre extracted from the real recording (scott_panic ref, Demucs-isolated 29-33s) and re-speaking the line with the 'panic' emotion preset. Output is a clean studio render of the muddy original soundbite.",
+	"out_dir": "sounds/dialog/prologue",
+	"lines": [
+		{ "id": "scott-evac-toohot", "voice": "scott_panic", "emo_text": "fast, clipped, hurried, businesslike, matter-of-fact, flat affect, no drama", "emo_alpha": 0.45, "text": "This is Scott. Slow down the evac — we're coming in too hot!" }
+	]
+}

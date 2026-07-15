@@ -273,6 +273,8 @@ func _on_interact(_by: Node) -> void:
 			GameState.find_small_fuse()
 		"large":
 			GameState.find_large_fuse()
+		"bus":
+			GameState.find_bus_fuse()
 		_:
 			GameState.find_rations()
 

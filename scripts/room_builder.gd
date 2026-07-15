@@ -89,6 +89,17 @@ static var _wall_texture_cache: Texture2D = null
 
 
 # ============================================================================
+# SET-DRESSING CATALOG — data-driven authored props for iconic special rooms.
+# Keyed by room type id ("bridge", "observation_deck", etc.).
+# Each entry mirrors the `setdressing` object in room_types.json.
+# Populated once on first call to _load_setdressing_catalog(); stays null
+# until then so unrelated room builds pay zero cost.
+# ============================================================================
+static var _setdressing_cache: Dictionary = {}
+static var _setdressing_loaded: bool = false
+
+
+# ============================================================================
 # FLOOR GRATE TEXTURE — used on the floor of every "generic" procedural room
 # (corridor, control room, kino room, quarters). Special-floor templates opt
 # out via FLOOR_TEMPLATE_SKIP below: hydroponics keeps its earthy palette, and
@@ -117,6 +128,7 @@ const CEILING_BY_TEMPLATE: Dictionary = {
 	"quarters-template": 5.4,
 	"hydroponics-template": 10.0,
 	"elevator-template": 5.6,
+	"storage-template": 5.0,
 }
 
 
@@ -134,6 +146,227 @@ static func build(world: Node3D, room_data: Dictionary) -> void:
 	_build_shell(world, template_id, width_m, depth_m, ceiling_m, palette)
 	_add_template_accents(world, template_id, width_m, depth_m, ceiling_m, palette)
 	_add_fill_light(world, width_m, depth_m, ceiling_m, palette)
+	# Step 4: data-driven authored set-dressing for iconic special rooms.
+	# Early-returns unless the type has authored_setdressing=true + a setdressing dict.
+	_add_authored_setdressing(world, room_data, width_m, depth_m, ceiling_m)
+
+
+# ============================================================================
+# AUTHORED SET-DRESSING — implements GDD §"Per-Type Authored Set-Dressing"
+# design/gdd/ship-exploration.md.
+#
+# 4th build step: placed on top of the shared template shell + accents.
+# No per-room .tscn, no fork of _build_shell — purely additive.
+# Data source: setdressing dict in room_types.json, keyed by type id.
+#
+# DOORWAY-CLEARANCE rule (project convention): RoomBuilder runs before doors
+# are stamped. Props are authored toward room centre/back wall — never at
+# wall midpoints. Smoke test asserts no blocker AABB within 1.5 m of
+# representative door positions (see tests/smoke/setdressing.gd).
+# ============================================================================
+
+# One-time static loader mirroring _load_wall_texture robustness.
+# Reads room_types.json, builds a dict keyed by type id, stores only the
+# setdressing sub-dict per entry. Returns true on success.
+static func _load_setdressing_catalog() -> void:
+	if _setdressing_loaded:
+		return
+	_setdressing_loaded = true
+	const CATALOG_PATH: String = "res://data/room_types.json"
+	var bytes: PackedByteArray = FileAccess.get_file_as_bytes(CATALOG_PATH)
+	if bytes.is_empty():
+		return
+	var parsed: Variant = JSON.parse_string(bytes.get_string_from_utf8())
+	if not (parsed is Array):
+		return
+	for entry in (parsed as Array):
+		if not (entry is Dictionary):
+			continue
+		var d: Dictionary = entry
+		var type_id: String = String(d.get("id", ""))
+		if type_id.is_empty():
+			continue
+		# Only cache entries that have both the flag AND the dict.
+		if d.get("authored_setdressing", false) and d.has("setdressing"):
+			var sd: Variant = d.get("setdressing", null)
+			if sd is Dictionary:
+				_setdressing_cache[type_id] = sd
+
+
+# Main entry — called by build() as 4th step.
+# Reads `type` from room_data (set by procedural_ship.gd::_make_room_row or
+# ShipLayout JSON). The catalog lookup is the authoritative gate: only types
+# that appear in _setdressing_cache (i.e. authored_setdressing=true AND a
+# setdressing dict present in room_types.json) get set-dressing placed.
+# Avoids depending on room_data carrying authored_setdressing (generated rows
+# from _make_room_row don't include that key — catalog is canonical).
+static func _add_authored_setdressing(world: Node3D, room_data: Dictionary, w: float, d: float, h: float) -> void:
+	_load_setdressing_catalog()
+	var type_id: String = String(room_data.get("type", ""))
+	if type_id.is_empty():
+		return
+	var sd: Variant = _setdressing_cache.get(type_id, null)
+	if not (sd is Dictionary):
+		return
+	var sd_dict: Dictionary = sd
+
+	# Hero props — spawned via _spawn_kenney_prop (tint applied, avoids white-mesh).
+	var props_array: Variant = sd_dict.get("hero_props", null)
+	if props_array is Array:
+		var prop_idx: int = 0
+		for entry in (props_array as Array):
+			if not (entry is Dictionary):
+				continue
+			_place_hero_prop(world, entry, prop_idx)
+			prop_idx += 1
+
+	# Emissive window slab for observation_deck (observation window illusion).
+	if sd_dict.get("window_slab", false):
+		_add_observation_window(world, w, d, h)
+
+	# Signage — billboard Label3D on the named wall.
+	var signs_array: Variant = sd_dict.get("signage", null)
+	if signs_array is Array:
+		for sign_entry in (signs_array as Array):
+			if not (sign_entry is Dictionary):
+				continue
+			_place_signage(world, sign_entry, w, d, h)
+
+	# Accent lights — optional per-type fill OmniLights.
+	var lights_array: Variant = sd_dict.get("accent_lights", null)
+	if lights_array is Array:
+		for light_entry in (lights_array as Array):
+			if not (light_entry is Dictionary):
+				continue
+			_place_accent_light(world, light_entry, sd_dict)
+
+
+# Place one hero prop GLB. Mirrors _spawn_kenney_prop convention (tint applied,
+# scale uniform). Optional `blocker` array adds a walk-blocker on layer 1 ONLY.
+# DOORWAY CLEARANCE: props are authored toward room centre/back (pos from JSON)
+# so they never land on wall midpoints where doors stamp.
+static func _place_hero_prop(world: Node3D, entry: Dictionary, idx: int) -> void:
+	var glb_path: String = String(entry.get("glb", ""))
+	if glb_path.is_empty():
+		return
+	var glb: PackedScene = load(glb_path)
+	if glb == null:
+		return
+	var pos_raw: Variant = entry.get("pos", null)
+	var pos: Vector3 = Vector3.ZERO
+	if pos_raw is Array and (pos_raw as Array).size() >= 3:
+		pos = Vector3(float((pos_raw as Array)[0]), float((pos_raw as Array)[1]), float((pos_raw as Array)[2]))
+	var yaw: float = float(entry.get("yaw", 0.0))
+	var scale: float = float(entry.get("scale", 2.0))
+	var tint_raw: Variant = entry.get("tint", null)
+	var tint: Color = Color(0.45, 0.45, 0.50)
+	if tint_raw is Array and (tint_raw as Array).size() >= 3:
+		tint = Color(float((tint_raw as Array)[0]), float((tint_raw as Array)[1]), float((tint_raw as Array)[2]))
+
+	# _spawn_kenney_prop handles GLB instantiation + material override (white-mesh fix).
+	_spawn_kenney_prop(world, glb, pos, yaw, scale, tint)
+
+	# Optional walk-blocker on layer 1 ONLY (never layer 2 — springarm safety).
+	var blocker_raw: Variant = entry.get("blocker", null)
+	if blocker_raw is Array and (blocker_raw as Array).size() >= 3:
+		var bs: Vector3 = Vector3(float((blocker_raw as Array)[0]), float((blocker_raw as Array)[1]), float((blocker_raw as Array)[2]))
+		_add_walk_blocker(world, pos, yaw, bs, "SetDressBlocker%d" % idx)
+
+
+# Billboard Label3D anchored to the named wall surface, at the specified height.
+# Renders the room's signage (room name, etc.) in a Godot Label3D so it renders
+# without needing a font asset — defaults to the project's built-in font.
+static func _place_signage(world: Node3D, entry: Dictionary, w: float, d: float, h: float) -> void:
+	var text: String = String(entry.get("text", ""))
+	if text.is_empty():
+		return
+	var wall: String = String(entry.get("wall", "-z"))
+	var height: float = float(entry.get("height", 2.5))
+
+	var lbl: Label3D = Label3D.new()
+	lbl.name = "Signage"
+	lbl.text = text
+	lbl.font_size = 64
+	lbl.pixel_size = 0.008
+	lbl.modulate = Color(0.85, 0.80, 0.65, 1.0)
+	lbl.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+	lbl.no_depth_test = false
+	lbl.double_sided = true
+
+	# Position on named wall, inset 0.15 m so it's flush against the surface.
+	var half_w: float = w * 0.5
+	var half_d: float = d * 0.5
+	var inset: float = 0.15
+	match wall:
+		"+x":
+			lbl.position = Vector3(half_w - inset, height, 0.0)
+			lbl.rotation_degrees = Vector3(0.0, -90.0, 0.0)
+		"-x":
+			lbl.position = Vector3(-half_w + inset, height, 0.0)
+			lbl.rotation_degrees = Vector3(0.0, 90.0, 0.0)
+		"+z":
+			lbl.position = Vector3(0.0, height, half_d - inset)
+			lbl.rotation_degrees = Vector3(0.0, 180.0, 0.0)
+		_:  # "-z" default
+			lbl.position = Vector3(0.0, height, -half_d + inset)
+			lbl.rotation_degrees = Vector3(0.0, 0.0, 0.0)
+	world.add_child(lbl)
+
+
+# Emissive window slab for the Observation Deck — a wide dark box on the -Z wall
+# with a subtle blue emissive so it reads as "looking out into space" even
+# without a real skybox behind it.
+static func _add_observation_window(world: Node3D, w: float, d: float, h: float) -> void:
+	var window_mat: StandardMaterial3D = _emissive_mat(Color(0.05, 0.08, 0.22), 1.8)
+	window_mat.roughness = 0.05
+	window_mat.metallic = 0.2
+	var half_d: float = d * 0.5
+	var win_w: float = w - 1.2
+	var win_h: float = h - 1.8
+	var mi: MeshInstance3D = MeshInstance3D.new()
+	mi.name = "ObservationWindow"
+	var box: BoxMesh = BoxMesh.new()
+	box.size = Vector3(win_w, win_h, 0.12)
+	mi.mesh = box
+	mi.material_override = window_mat
+	mi.position = Vector3(0.0, h * 0.5 + 0.2, -half_d + 0.06)
+	world.add_child(mi)
+	# Faint blue fill cast from the window surface into the room.
+	var win_light: OmniLight3D = OmniLight3D.new()
+	win_light.name = "WindowFill"
+	win_light.light_color = Color(0.30, 0.55, 1.0)
+	win_light.light_energy = 0.8
+	win_light.omni_range = w * 0.7
+	win_light.omni_attenuation = 1.6
+	win_light.shadow_enabled = false
+	win_light.position = Vector3(0.0, h * 0.5, -half_d + 1.0)
+	world.add_child(win_light)
+
+
+# Per-entry accent OmniLight from the setdressing accent_lights array.
+static func _place_accent_light(world: Node3D, entry: Dictionary, sd_dict: Dictionary) -> void:
+	var pos_raw: Variant = entry.get("pos", null)
+	var pos: Vector3 = Vector3.ZERO
+	if pos_raw is Array and (pos_raw as Array).size() >= 3:
+		pos = Vector3(float((pos_raw as Array)[0]), float((pos_raw as Array)[1]), float((pos_raw as Array)[2]))
+	var energy: float = float(entry.get("energy", 1.4))
+	var range_val: float = float(entry.get("range", 7.0))
+
+	# Accent colour — from the setdressing accent_color or fall back to warm white.
+	var col: Color = Color(1.0, 0.90, 0.78)
+	var ac_raw: Variant = sd_dict.get("accent_color", null)
+	if ac_raw is Array and (ac_raw as Array).size() >= 3:
+		col = Color(float((ac_raw as Array)[0]), float((ac_raw as Array)[1]), float((ac_raw as Array)[2]))
+
+	var lamp: OmniLight3D = OmniLight3D.new()
+	lamp.name = "SetDressLight"
+	lamp.light_color = col
+	lamp.light_energy = energy
+	lamp.omni_range = range_val
+	lamp.omni_attenuation = 1.6
+	lamp.shadow_enabled = false
+	lamp.position = pos
+	world.add_child(lamp)
 
 
 # ----- shell (floor + walls + ceiling, identical structure across templates) --
@@ -221,6 +454,8 @@ static func _add_template_accents(world: Node3D, template_id: String, width: flo
 			_accent_hydroponics(world, width, depth, height, palette)
 		"elevator-template":
 			_accent_elevator(world, width, depth, height, palette)
+		"storage-template":
+			_accent_storage(world, width, depth, height, palette)
 		"gate-room-template":
 			# Reference-only — the artisan gate_room.tscn handles its own geometry.
 			pass
@@ -1099,6 +1334,85 @@ static func _accent_elevator(world: Node3D, width: float, depth: float, height: 
 	world.add_child(cap_light)
 
 
+# Storage room: industrial cargo bay. Rows of BoxMesh crates and barrels
+# along both long walls, a ceiling emissive strip down the centreline, a wall-
+# mounted indicator panel on the -Z wall, and a dim OmniLight from above.
+# Deliberately cheap — no GLB loads, all procedural — so generated storage
+# rooms build fast and remain readable as "stuff lives here."
+static func _accent_storage(world: Node3D, width: float, depth: float, height: float, palette: Dictionary) -> void:
+	var crate_mat: StandardMaterial3D = _make_mat(Color(0.45, 0.38, 0.28), 0.35, 0.65)
+	var barrel_mat: StandardMaterial3D = _make_mat(Color(0.55, 0.48, 0.35), 0.40, 0.60)
+	var strip_mat: StandardMaterial3D = _emissive_mat(palette["accent"], 2.0)
+	var panel_mat: StandardMaterial3D = _make_mat((palette["wall"] as Color).darkened(0.50), 0.50, 0.55)
+	var indicator_mat: StandardMaterial3D = _emissive_mat(palette["accent"], 3.5)
+
+	var half_x: float = width * 0.5
+	var half_z: float = depth * 0.5
+	var axis_z: bool = depth > width
+	var long_len: float = depth if axis_z else width
+	var short_len: float = width if axis_z else depth
+
+	# --- Ceiling strip down the long axis centreline --------------------------
+	var strip_len: float = long_len - 1.0
+	if axis_z:
+		_add_decor(world, strip_mat, Vector3(0.0, height - 0.12, 0.0), Vector3(0.20, 0.06, strip_len))
+	else:
+		_add_decor(world, strip_mat, Vector3(0.0, height - 0.12, 0.0), Vector3(strip_len, 0.06, 0.20))
+
+	# --- Crate rows along both long walls -------------------------------------
+	# Number of crate stacks derived from corridor length so short vestibules
+	# and long halls both get appropriately dense rows.
+	var crate_count: int = max(2, int(floor(long_len / 2.5)))
+	var crate_spacing: float = strip_len / float(crate_count)
+	var crate_w: float = 0.80
+	var crate_h: float = 0.85
+	var crate_d: float = 0.70
+	var barrel_radius: float = 0.28
+	var wall_inset: float = 0.55   # how far off the wall the crate front sits
+
+	for i in crate_count:
+		var along: float = -strip_len * 0.5 + crate_spacing * (float(i) + 0.5)
+		for side in [1.0, -1.0]:
+			var perp: float = side * (short_len * 0.5 - wall_inset)
+			# Alternate crates and barrels for visual variety.
+			if i % 3 == 2:
+				# Barrel pair: two stacked cylinders drawn as thin boxes (cylinders are costlier; boxes match the game's prop convention).
+				var barrel_pos: Vector3
+				if axis_z:
+					barrel_pos = Vector3(perp, crate_h * 0.5, along)
+				else:
+					barrel_pos = Vector3(along, crate_h * 0.5, perp)
+				_add_decor(world, barrel_mat, barrel_pos, Vector3(barrel_radius * 2.0, crate_h, barrel_radius * 2.0))
+			else:
+				# Crate box.
+				var crate_pos: Vector3
+				if axis_z:
+					crate_pos = Vector3(perp, crate_h * 0.5, along)
+				else:
+					crate_pos = Vector3(along, crate_h * 0.5, perp)
+				_add_decor(world, crate_mat, crate_pos, Vector3(crate_w, crate_h, crate_d))
+				# Second crate stacked on top for depth.
+				if i % 2 == 0:
+					var top_pos: Vector3 = crate_pos + Vector3(0.0, crate_h, 0.0)
+					_add_decor(world, crate_mat, top_pos, Vector3(crate_w * 0.85, crate_h * 0.85, crate_d * 0.85))
+
+	# --- Wall indicator panel on -Z face (works for both axis orientations) ---
+	var panel_pos: Vector3 = Vector3(0.0, 1.55, -half_z + 0.04)
+	_add_decor(world, panel_mat, panel_pos, Vector3(0.55, 0.42, 0.06))
+	_add_decor(world, indicator_mat, panel_pos + Vector3(0.0, 0.10, 0.04), Vector3(0.08, 0.08, 0.03))
+
+	# --- Overhead fill OmniLight ----------------------------------------------
+	var over_light: OmniLight3D = OmniLight3D.new()
+	over_light.name = "StorageLight"
+	over_light.light_color = (palette["accent"] as Color).lerp(Color(1.0, 0.88, 0.72), 0.50)
+	over_light.light_energy = 1.4
+	over_light.omni_range = max(width, depth) * 0.75 + 3.0
+	over_light.omni_attenuation = 1.6
+	over_light.shadow_enabled = false
+	over_light.position = Vector3(0.0, height - 0.55, 0.0)
+	world.add_child(over_light)
+
+
 # ----- palette ---------------------------------------------------------------
 
 static func _palette_for(template_id: String) -> Dictionary:
@@ -1147,6 +1461,13 @@ static func _palette_for(template_id: String) -> Dictionary:
 				"wall": Color(0.26, 0.30, 0.36, 1.0),
 				"ceiling": Color(0.10, 0.12, 0.14, 1.0),
 				"accent": Color(0.20, 0.85, 1.0, 1.0),
+			}
+		"storage-template":
+			return {
+				"floor": Color(0.22, 0.20, 0.18, 1.0),
+				"wall": Color(0.30, 0.28, 0.26, 1.0),
+				"ceiling": Color(0.12, 0.11, 0.10, 1.0),
+				"accent": Color(0.90, 0.60, 0.20, 1.0),
 			}
 		_:
 			return {

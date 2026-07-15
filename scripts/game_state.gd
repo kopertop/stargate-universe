@@ -12,6 +12,10 @@ signal objective_changed(text: String)
 # fire for custom NPC objectives that don't move the quest forward.
 signal quest_step_changed(step: String)
 signal room_discovered(room_id: String)
+# Fired when the ON-FOOT player physically enters a room for the first time
+# (NOT when the Kino finds it remotely). Drives the Ancient-glyph "decipher"
+# decode on the discovery toast, door plaques, Kino map, and consoles.
+signal room_deciphered(room_id: String)
 # Fires whenever a discoverable point-of-interest (lime deposit, ruin, ore vein,
 # water source, debris, …) is found — drives a live compass refresh.
 signal pois_discovered_changed()
@@ -33,10 +37,24 @@ signal current_room_changed(room_id: String)
 signal kino_changed(acquired: bool)
 signal episode_completed()
 signal log_added(line: String)
+# Fired by recall_after_window_close() and planet_gate.gd to_ship success (loop
+# path only). FtlLoop listens to this to re-arm the ship phase after each gate
+# run — E1 path ignores it entirely (E1 uses quest-step gates, not FtlLoop).
+signal planet_run_ended()
 # Fired by npc.gd each time a dialogue line is shown. The HUD listens and
 # renders the line inside the sci-fi dialog panel; log_added still captures
 # the same text for the journal.
 signal dialogue_shown(character_name: String, line: String)
+# Narrative transcript channel (#141). Drives the HUD Chat panel ONLY — a clean
+# in-fiction transcript of stage directions + scripted speech, deliberately
+# separate from add_log/log_added (which is the noisy system journal: discovery,
+# resources, saves, …). speaker == "" → a white narration / stage-direction line;
+# speaker set → a "Speaker: line" dialogue line. Emit via narrate()/say().
+signal narrative_added(speaker: String, text: String)
+# Wipe the HUD Chat transcript (the HUD listens and clears its chat stream). Used
+# at the cold-open hand-off so the player regains control with a CLEAN chat showing
+# only the single standing instruction, not the whole cinematic's stage-directions.
+signal chat_cleared()
 # Fired by npc.gd when a choice-tree dialog should open. The HUD listens
 # and shows the full-screen DialogScreen targeting `npc`.
 signal kino_closed()
@@ -61,6 +79,11 @@ signal dialog_closed()
 # key. Lets a data-driven dialog tree trigger a side effect mid-conversation
 # (e.g. the Phase D scrubber scene firing the FTL-drop blur on Brody's line).
 signal dialog_action(action_id: String)
+# Fired by gameplay code to RELEASE a dialog node that was rendered with
+# "hold": true (choices disabled until this fires). Lets a beat block the player
+# from advancing until staged choreography lands — e.g. Greer charging into the
+# standoff before the player can continue. dialog_screen.gd listens one-shot.
+signal dialog_release()
 
 const MAX_HEALTH: float = 100.0
 const MAX_OXYGEN: float = 100.0
@@ -138,6 +161,47 @@ const KINO_ORB_MAX: int = 3
 # How many DEPLOYED Kinos (left out in the world) we keep track of at once.
 # Deploying another past this drops the oldest tracked location (FIFO).
 const KINO_DEPLOYED_MAX: int = 3
+
+# --- FTL loop duration tuning (issue #130) ------------------------------------
+# Baseline ship phase: ~30 min real-time between gate drops.
+const SHIP_PHASE_BASE: float = 1800.0
+# Baseline planet window: ~10 min gate run. PlanetDepartureTimer reads this
+# via planet_window_base_seconds() so all callers share one tunable source.
+const PLANET_WINDOW_BASE: float = 600.0
+# Override fields (default -1 = use base const). Set by the Bridge (#133) once
+# the player finds and configures it. Persisted so the Bridge's tuning survives
+# save/load. The ±20% randomization lives in FtlLoop, applied atop whatever
+# base resolves here, so the Bridge tunes the CENTER of the distribution.
+var ship_phase_override: float = -1.0  # @collection-ok: one tunable scalar, not an enumerated set
+var planet_window_override: float = -1.0  # @collection-ok: one tunable scalar, not an enumerated set
+
+# Crew / section scalars for consumption scaling (issue #134). Backed by
+# simple integers; a future crew-roster system can forward its count here
+# without touching ConsumptionManager. Annotated so the collection-fork
+# lint knows these are SCALARS, not forked per-member bools.
+# @collection-ok: scalar, not an enumerated set
+var crew_count: int = 6
+# @collection-ok: scalar, not an enumerated set
+var active_sections: int = 3
+
+# Return the effective ship-phase base (seconds). #133 writes ship_phase_override
+# when the Bridge is found; until then returns the authored constant.
+func ship_phase_base_seconds() -> float:
+	return ship_phase_override if ship_phase_override >= 0.0 else SHIP_PHASE_BASE
+
+# Return the effective planet-window base (seconds). PlanetDepartureTimer uses
+# this when a loop planet phase is active, falling back to its own biome-scaled
+# DURATION for the E1 run.
+func planet_window_base_seconds() -> float:
+	return planet_window_override if planet_window_override >= 0.0 else PLANET_WINDOW_BASE
+
+# Consumption scaling accessors (issue #134).
+func crew_size() -> int:
+	return crew_count
+
+# TODO: derive from a real powered-sections registry when that system ships.
+func active_section_count() -> int:
+	return active_sections
 
 # QUEST_LABELS and QUEST_TARGETS used to live here as Dictionary lookups.
 # Both moved into data/quests.json and are now served by QuestLog. Code that
@@ -232,6 +296,13 @@ var eli_quarters_visited: bool = false
 # without power so the Kino Remote is still findable first.
 var elevator_repaired: bool = false
 var rooms_discovered: Array[String] = []
+# Rooms the on-foot player has physically ENTERED (a strict subset of
+# rooms_discovered: the Kino can discover a room remotely without the player
+# ever setting foot in it). Until a room is deciphered its name/plaque/console
+# text renders in the Ancient glyph font; walking in decodes it to English.
+# One collection behind decipher_room()/is_deciphered() — NOT per-room bools
+# (that would trip check_collection_forks.sh, the bug-#36/#41 guard).
+var rooms_deciphered: Array[String] = []
 # Stable keys ("min_room_id|max_room_id") of doors the player has walked
 # through. Both directions resolve to the same key via door_key(). Drives the
 # Kino map's bright-vs-dim pip styling and survives save/load.
@@ -571,6 +642,7 @@ func reset() -> void:
 	eli_quarters_visited = false
 	elevator_repaired = false
 	rooms_discovered.clear()
+	rooms_deciphered.clear()
 	doors_traversed.clear()
 	discovered_pois.clear()
 	breaches_sealed.clear()
@@ -651,6 +723,12 @@ func reset() -> void:
 	kino_pilot_target_pos = null
 	kino_pilot_arrival_spawn = ""
 	kino_autopilot = false
+	# FTL loop tuning overrides back to "use base const" on a fresh game.
+	ship_phase_override = -1.0
+	planet_window_override = -1.0
+	# Consumption scaling scalars — default crew of 6, 3 active sections.
+	crew_count = 6
+	active_sections = 3
 	health_changed.emit(health)
 	oxygen_changed.emit(oxygen)
 	kino_changed.emit(false)   # Inventory was just reset → no kino remote held
@@ -705,6 +783,21 @@ func discover_room(room_id: String, display_name: String = "") -> void:
 	room_discovered.emit(room_id)
 	if display_name != "":
 		add_log("Discovered: " + display_name)
+
+
+# Mark a room as DECIPHERED — the on-foot player has physically entered it, so
+# its Ancient-glyph name resolves to readable English. Idempotent. Called only
+# from room.gd's on-foot _ready path (after the Kino-pilot early-return), so a
+# remote Kino flyby discovers but never deciphers.
+func decipher_room(room_id: String) -> void:
+	if rooms_deciphered.has(room_id):
+		return
+	rooms_deciphered.append(room_id)
+	room_deciphered.emit(room_id)
+
+
+func is_deciphered(room_id: String) -> bool:
+	return rooms_deciphered.has(room_id)
 
 # Mark a discoverable point-of-interest as found. Idempotent; emits
 # pois_discovered_changed so an open compass refreshes live. `announce` is set
@@ -989,6 +1082,22 @@ func room_atmosphere(room_id: String) -> Dictionary:
 func add_log(line: String) -> void:
 	log_entries.append(line)
 	log_added.emit(line)
+
+
+# Narrative-transcript helpers (feed the HUD Chat panel; see narrative_added).
+# Kept separate from add_log so the chat stays a clean dialogue/stage-direction
+# transcript and never fills with system-journal noise.
+func narrate(text: String) -> void:
+	narrative_added.emit("", text)
+
+
+func say(speaker: String, text: String) -> void:
+	narrative_added.emit(speaker, text)
+
+
+# Clear the HUD Chat transcript. The HUD wipes its chat stream on this signal.
+func clear_chat() -> void:
+	chat_cleared.emit()
 
 # Resource shims over the Inventory pool. These keep the game-logic side
 # effects (log line, resource_changed signal, quest advance) here while the
@@ -1403,6 +1512,15 @@ func find_large_fuse() -> void:
 	add_log("Found a Large Fuse. Too big for the door panel — pocket it anyway.")
 
 
+# Adds a Bus Fuse to inventory (issue #132). Bus fuses are needed together with
+# the large fuse to restore elevator power via the fuse-based restore mechanic.
+func find_bus_fuse() -> void:
+	var inv: Node = _inv()
+	if inv != null:
+		inv.call("add_item", "bus_fuse", 1, "a storage crate")
+	add_log("Found a Bus Fuse. One of the main-bus fuses Destiny's elevator circuit needs.")
+
+
 # Generic crate loot for the non-fuse crate: a ration pack the player pockets.
 # Stocks the shared resource pool so the dock crate isn't a dead end.
 func find_rations() -> void:
@@ -1565,6 +1683,13 @@ func dial_lime_planet() -> void:
 # flag; when multiple/selectable destinations land, the dial state generalizes
 # behind this same query and callers don't change.
 func is_gate_open() -> bool:
+	# Post-episode (loop) path: FtlLoop arms gate_window_active when a planet
+	# phase starts (via start_gate_window). The loop gate is open whenever a
+	# window is active, regardless of E1 story flags. Strictly additive — the
+	# E1 branch below is byte-identical to the original.
+	if episode_complete and gate_window_active:
+		return true
+	# E1 path (byte-identical): lime dialed + scrubber not yet repaired.
 	return lime_planet_dialed and not scrubber_repaired
 
 # Whether the player on foot may step through to the lime planet right now. The
@@ -1574,6 +1699,11 @@ func is_gate_open() -> bool:
 # → is_gate_open() is already false). The MINE_LIME outbound-success objective
 # (carry enough lime back) is enforced separately in planet_gate.gd's to_ship path.
 func can_travel_to_lime_planet() -> bool:
+	# Post-episode loop: gate_window_active is the open-window condition;
+	# is_gate_open() already returns true when that is set + episode_complete.
+	if episode_complete:
+		return is_gate_open()
+	# E1 path (byte-identical).
 	return is_gate_open() and (quest_step == QUEST_MINE_LIME \
 			or quest_step == QUEST_RETURN_DESTINY \
 			or quest_step == QUEST_REPAIR_SCRUBBER)
@@ -1611,6 +1741,10 @@ func recall_after_window_close() -> void:
 		run_start_resources = {}   # forgiving: keep all gathered lime
 		add_log("Destiny jumped to FTL — the away team scrambled back through the gate just in time.")
 		advance_air_quest()
+	# Notify FtlLoop (and any other listener) that this planet run ended — the
+	# loop re-arms the ship phase from this signal. Emitted regardless of
+	# headless/instant_mode so the smoke-test hook fires synchronously.
+	planet_run_ended.emit()
 	var router: Node = _autoload_node("SceneRouter")
 	var headless: bool = router == null or router.get("instant_mode") == true
 	if headless:
@@ -1932,6 +2066,7 @@ func serialize() -> Dictionary:
 		# the snapshot through a shared reference (caught by the e1_flow
 		# round-trip test before it became a save-corruption bug).
 		"rooms_discovered": rooms_discovered.duplicate(),
+		"rooms_deciphered": rooms_deciphered.duplicate(),
 		"doors_traversed": doors_traversed.duplicate(),
 		"discovered_pois": discovered_pois.duplicate(true),
 		"breaches_sealed": breaches_sealed.duplicate(),
@@ -1981,6 +2116,12 @@ func serialize() -> Dictionary:
 		"compass_show_companions": compass_show_companions,
 		"compass_show_gate": compass_show_gate,
 		"compass_show_pois": compass_show_pois,
+		# FTL loop duration overrides (#130 / #133). -1 means "use base const".
+		"ship_phase_override": ship_phase_override,
+		"planet_window_override": planet_window_override,
+		# Consumption scaling scalars (issue #134).
+		"crew_count": crew_count,
+		"active_sections": active_sections,
 	}
 
 
@@ -2066,6 +2207,9 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	rooms_discovered.clear()
 	for r in data.get("rooms_discovered", []):
 		rooms_discovered.append(String(r))
+	rooms_deciphered.clear()
+	for r in data.get("rooms_deciphered", []):
+		rooms_deciphered.append(String(r))
 	doors_traversed.clear()
 	for d in data.get("doors_traversed", []):
 		doors_traversed.append(String(d))
@@ -2100,6 +2244,12 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	compass_show_companions = data.get("compass_show_companions", true) == true
 	compass_show_gate = data.get("compass_show_gate", true) == true
 	compass_show_pois = data.get("compass_show_pois", true) == true
+	# FTL loop duration overrides (#130 / #133).
+	ship_phase_override = float(data.get("ship_phase_override", -1.0))
+	planet_window_override = float(data.get("planet_window_override", -1.0))
+	# Consumption scaling scalars (issue #134).
+	crew_count = int(data.get("crew_count", 6))
+	active_sections = int(data.get("active_sections", 3))
 	advance_air_quest()
 	# Republish so the HUD, Kino, and quest waypoint pick up loaded values.
 	health_changed.emit(health)

@@ -26,6 +26,10 @@ const FTL_COUNTDOWN_TOTAL_SECONDS: float = 63738.0
 var _text_mi: MeshInstance3D
 var _text_mesh: TextMesh
 var _last_text: String = ""
+# Power state: "offline" (dark screen — fresh derelict), "ancient" (woken, readout
+# shown in the Anquietas glyph font), "online" (deciphered to readable English,
+# live-updating). Boots offline; wake() → ancient; first interact → decode to online.
+var _power: String = "ancient"
 # Cached interact-flavour lines so repeated reads cycle instead of repeating.
 var _gate_lines: Array[String] = [
 	"Eli: \"Gate's in standby. No active wormhole, no address dialed.\"",
@@ -49,7 +53,10 @@ func _ready() -> void:
 	_build_screen_readout()
 
 func _process(_delta: float) -> void:
-	if _text_mesh != null:
+	# Only live-update the readout once the console is ONLINE (deciphered). While
+	# offline (dark) or ancient (glyph snapshot) we leave the screen as-is so we
+	# don't overwrite the glyph text / re-light a dark screen every frame.
+	if _power == "online" and _text_mesh != null:
 		var current: String = _readout_text()
 		if current != _last_text:
 			_text_mesh.text = current
@@ -114,8 +121,59 @@ func _build_screen_readout() -> void:
 	_text_mi.position = Vector3.ZERO
 	_text_mi.rotation_degrees = RoomBuilder.CONSOLE_TEXT_LOCAL_ROTATION_DEG
 	plate_mi.add_child(_text_mi)
+	# Default boot = ancient glyphs (correct for re-entry / save-resume). The
+	# first-visit cinematic forces offline() during the cold open, then wake()s
+	# these back to glyphs when control returns.
+	_apply_power_visual()
+
+
+# Render the screen for the current _power state.
+func _apply_power_visual() -> void:
+	if _text_mesh == null or _text_mi == null:
+		return
+	match _power:
+		"offline":
+			_text_mi.visible = false
+		"ancient":
+			_text_mi.visible = true
+			_last_text = _readout_text()
+			AncientText.set_locked(_text_mesh, _last_text)
+		"online":
+			_text_mi.visible = true
+			AncientText.set_readable_font(_text_mesh)
+			_last_text = _readout_text()
+			_text_mesh.text = _last_text
+
+
+# Dark, dead screen — set by the cinematic during the cold open.
+func offline() -> void:
+	_power = "offline"
+	_apply_power_visual()
+
+
+# Boot from offline to the Ancient-glyph readout (called when control returns).
+# Idempotent; no-op once online.
+func wake() -> void:
+	if _power == "online":
+		return
+	_power = "ancient"
+	_apply_power_visual()
+
+
+# Decipher the readout from Anquietas glyphs to readable English (on access).
+func _decode_to_online() -> void:
+	if _power == "online" or _text_mesh == null:
+		return
+	_power = "online"
+	_text_mi.visible = true
+	var final_text: String = _readout_text()
+	_last_text = final_text
+	AncientText.decode(_text_mesh, final_text, self, 1.0)
 
 func _on_interact(_by: Node) -> void:
+	# Accessing the console powers it on / deciphers the Ancient glyphs to English.
+	if _power != "online":
+		_decode_to_online()
 	if kind == "ftl_countdown":
 		if GameState.quest_step == GameState.QUEST_WAIT_FTL:
 			GameState.trigger_ftl_drop()

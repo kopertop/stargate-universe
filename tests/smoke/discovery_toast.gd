@@ -2,12 +2,13 @@ extends SceneTree
 
 # Smoke test for the center-screen room discovery toast (issue #63).
 #
-# Instances the real HUD scene, drives GameState.room_discovered /
-# current_room_changed, and asserts the toast lifecycle:
-#   • the very first discovery of the run (Gate Room on boot) shows NOTHING
-#   • the first PLAYER-driven discovery shows the toast with the resolved
+# Instances the real HUD scene, drives GameState.room_deciphered /
+# current_room_changed, and asserts the toast lifecycle. The toast now fires on
+# DECIPHER (the on-foot player walked in), NOT on remote Kino discovery:
+#   • the very first decipher of the run (Gate Room on boot) shows NOTHING
+#   • the first PLAYER-driven decipher shows the toast with the resolved
 #     ShipLayout display name in the AncientText room-name line
-#   • re-discovery does not re-show after the toast has been hidden
+#   • re-decipher does not re-show after the toast has been hidden
 #   • a room change to a DIFFERENT room hides an in-flight toast instantly
 #   • a room change INTO the room the toast is for does NOT hide it (entering a
 #     room fires discover_room then set_current_room(SAME id))
@@ -55,7 +56,9 @@ func _run_checks() -> void:
 	_router.set("instant_mode", true)
 
 	# Clean slate so the boot-suppression branch is exercised deterministically.
+	# The HUD's mount guard keys on rooms_deciphered (the toast trigger).
 	_game.set("rooms_discovered", [] as Array[String])
+	_game.set("rooms_deciphered", [] as Array[String])
 
 	var scene: PackedScene = load(HUD_SCENE) as PackedScene
 	_expect(scene != null, "objects/hud.tscn loads")
@@ -71,36 +74,62 @@ func _run_checks() -> void:
 	var name_label: Node = null
 	if toast != null:
 		name_label = toast.get_node_or_null("Stack/RoomName")
-	_expect(name_label != null, "DiscoveryToast has an AncientText RoomName line")
+	_expect(name_label != null, "DiscoveryToast has a RoomName line")
+	_expect(name_label is RichTextLabel, "RoomName is a RichTextLabel (per-char decode)")
 	if toast == null or name_label == null:
 		_finish()
 		return
 
-	# --- 1. Gate Room boot discovery is suppressed. -------------------------
-	_game.discover_room("gate_room", "Gate Room")
+	# --- 1. Gate Room boot decipher is suppressed. --------------------------
+	_game.decipher_room("gate_room")
 	await process_frame
-	_expect(not toast.visible, "boot Gate Room discovery shows NO toast")
+	_expect(not toast.visible, "boot Gate Room decipher shows NO toast")
 
-	# --- 2. First player-driven discovery shows the toast + resolved name. --
-	_game.discover_room("engineering_bay", "Engineering Bay")
+	# --- 2. First player-driven decipher shows the toast + resolved name. ---
+	_game.decipher_room("aft_storage_hall")
 	await process_frame
-	var expected: String = String(_layout.room("engineering_bay").get("name", "engineering_bay"))
-	_expect(expected == "Engineering Bay", "ShipLayout resolves engineering_bay → 'Engineering Bay'")
+	var expected: String = String(_layout.room("aft_storage_hall").get("name", "aft_storage_hall"))
+	_expect(expected == "Aft Storage Hall", "ShipLayout resolves aft_storage_hall → 'Aft Storage Hall'")
 	# Under instant_mode the toast resolves + hides on the same frame, but the
-	# RoomName label must have been assigned the resolved name during play().
-	_expect(String(name_label.get("text")) == expected,
+	# RoomName label must have been assigned the resolved name (parsed = visible
+	# text without bbcode tags).
+	_expect(name_label.call("get_parsed_text") == expected,
 		"RoomName line shows the resolved ShipLayout name")
 	# instant_mode hides immediately (no 3s tween wait headless).
 	_expect(not toast.visible, "under instant_mode the toast resolves + hides same frame")
 
 	# --- 3. Visible-toast lifecycle under the ANIMATED (non-instant) path. --
 	_router.set("instant_mode", false)
-	_game.discover_room("hydroponics", "Hydroponics")
+	_game.decipher_room("hydroponics")
 	await process_frame
-	_expect(toast.visible, "animated path: a new discovery shows the toast")
+	_expect(toast.visible, "animated path: a new decipher shows the toast")
 	var hydro_name: String = String(_layout.room("hydroponics").get("name", "hydroponics"))
-	_expect(String(name_label.get("text")).length() == hydro_name.length(),
+	# Parsed (visible) text length is preserved at every frame: resolved prefix +
+	# upper-cased glyph suffix == same character count as the real name.
+	_expect(name_label.call("get_parsed_text").length() == hydro_name.length(),
 		"RoomName decode preserves the resolved-name length")
+
+	# Mid-decode the UNRESOLVED suffix must be wrapped in the Ancient font tag
+	# (per-character glyph→Latin reveal), NOT random ASCII punctuation. Regression
+	# guard for "the blip shows random chars / decodes in one jump".
+	var raw: String = String(name_label.get("text"))
+	_expect(raw.contains("[font=") and raw.contains("anquietas"),
+		"toast decode wraps unresolved letters in the Ancient font tag")
+	var visible: String = name_label.call("get_parsed_text")
+	var letters_only: bool = true
+	for i in visible.length():
+		var c: String = visible[i].to_upper()
+		if c != " " and (c < "A" or c > "Z"):
+			letters_only = false
+	_expect(letters_only, "toast decode visible text is letters/spaces only, no ASCII punctuation")
+	# One letter in, the reveal has NOT jumped to the full readable name.
+	_expect(raw.contains("[font="), "decode is mid-reveal (still has glyphs), not a single jump to English")
+	# The unresolved tail SHIMMERS: re-rolled random glyphs each frame, so two
+	# consecutive frames mid-decode differ (every char looks like it's decoding).
+	await process_frame
+	var raw2: String = String(name_label.get("text"))
+	_expect(raw2.contains("[font=") and raw2 != raw,
+		"unresolved tail shimmers (glyphs change frame-to-frame), not a static cipher")
 
 	# --- 4. Entering the SAME room (set_current_room) must NOT hide it. -----
 	_game.set_current_room("hydroponics")
@@ -112,11 +141,22 @@ func _run_checks() -> void:
 	await process_frame
 	_expect(not toast.visible, "current_room_changed to a DIFFERENT room hides the toast instantly")
 
-	# --- 6. Re-discovering the SAME (already-shown) room: discover_room is ---
+	# --- 6. Re-deciphering the SAME (already-shown) room: decipher_room is ---
 	# idempotent and won't re-emit, so the toast stays hidden.
-	_game.discover_room("hydroponics", "Hydroponics")
+	_game.decipher_room("hydroponics")
 	await process_frame
-	_expect(not toast.visible, "re-discovering an already-discovered room shows nothing")
+	_expect(not toast.visible, "re-deciphering an already-deciphered room shows nothing")
+
+	# --- 7. KEY-ROOM audio routing (ShipLayout.is_key_room — owned by a -------
+	# separate work stream; the toast picks discovery_stinger_key.ogg for these).
+	_expect(_layout.is_key_room("control_interface_room"),
+		"Control Interface Room is a key room (special discovery sting)")
+	_expect(_layout.is_key_room("eli_quarters"),
+		"Kino Room (eli_quarters) is a key room")
+	_expect(not _layout.is_key_room("east_corridor"),
+		"a normal corridor is NOT a key room")
+	_expect(ResourceLoader.exists("res://sounds/discovery_stinger_key.ogg"),
+		"key-room discovery sting asset exists + imported")
 
 	_finish()
 

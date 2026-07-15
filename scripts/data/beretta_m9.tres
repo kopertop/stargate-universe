@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="WeaponResource" load_steps=2 format=3 uid="uid://b1m9weapon01"]
+
+[ext_resource type="Script" path="res://scripts/weapon_resource.gd" id="1_weapon"]
+
+[resource]
+script = ExtResource("1_weapon")
+id = "beretta_m9"
+display_name = "Beretta M9"
+damage = 25.0
+fire_rate = 3.0
+magazine_size = 15
+reload_time = 1.8
+range = 40.0
+spread = 1.5
+recoil = 2.0
+auto = false
+projectile_speed = 0.0
+sound_fire = ""
+sound_reload = ""

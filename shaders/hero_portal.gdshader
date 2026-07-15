@@ -209,8 +209,8 @@ void fragment() {
 	// strands clip bright (and bloom into the halo) while the channels between them stay dim
 	// blue — the difference that turns a uniform pale disc into churning plasma. The flat
 	// body floor is small; fil drives the structure.
-	float body_lum = 0.30 + energy_field * 0.7 + fil * fil * 0.8;
-	float lum = energy * (body_lum + hot * 1.3);
+	float body_lum = 0.30 + energy_field * 0.8 + fil * fil * 0.9;
+	float lum = energy * (body_lum + hot * 1.4);
 	lum *= (1.0 - hole);
 	// Hard circular cut: zero everything past the disc edge so the square QuadMesh corners
 	// carry NO energy (step replaces the disallowed early-return — `return` is illegal in the

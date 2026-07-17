@@ -2,13 +2,10 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://vq543e85xsto"
+uid="uid://cn0l87apqvtqo"
 path="res://.godot/imported/eli_Color_b5643c18-f1d9-4db9-a602-110f781847a9.jpg-73c678d4b199d7b96666baf14a10d464.ctex"
 metadata={
 "vram_texture": false
-}
-generator_parameters={
-"md5": "645106cca35be753b1042dc3b6012ee3"
 }
 
 [deps]
@@ -26,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

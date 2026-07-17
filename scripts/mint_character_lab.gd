@@ -13,6 +13,7 @@ extends Node3D
 #   Y           — toggle auto-turntable (off in simulate by default)
 #   B / Esc     — back to title
 #   Select / [M]— flip Simulate ↔ Manual clip picker
+#   [ / ] or 1-5— swap equipped weapon (seamless holster→equip→re-draw)
 
 const MintCharacterRef: Script = preload("res://scripts/mint_character.gd")
 const TITLE_SCENE: String = "res://scenes/title.tscn"
@@ -74,12 +75,15 @@ var _turntable: bool = false
 var _simulate: bool = true
 
 var _char_pick: OptionButton
+var _weapon_pick: OptionButton
 var _anim_pick: OptionButton
 var _mode_btn: Button
 var _back_btn: Button
 var _status: Label
 var _clips: PackedStringArray = PackedStringArray()
 var _clip_idx: int = 0
+var _weapon_ids: Array[String] = []
+var _rim: OmniLight3D = null
 
 var _state: String = "idle"
 var _oneshot_busy: bool = false
@@ -167,6 +171,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_R:
 				if _simulate:
 					_try_reload()
+			KEY_BRACKETLEFT:
+				_cycle_weapon(-1)
+			KEY_BRACKETRIGHT:
+				_cycle_weapon(1)
+			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5:
+				var slot: int = (event as InputEventKey).keycode - KEY_1
+				_select_weapon_slot(slot)
 
 	if not _simulate:
 		if event.is_action_pressed("ui_left"):
@@ -177,7 +188,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 		return
 
-	# Simulate: jump / fire / aim / L3 sprint latch.
+	# Simulate: jump / fire / aim / L3 sprint latch / weapon swap.
 	if event.is_action_pressed("jump"):
 		_try_jump()
 		get_viewport().set_input_as_handled()
@@ -187,6 +198,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("sprint"):
 		# Latch sprint until movement stops (default gait is run).
 		_sprint_latched = not _sprint_latched
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("ui_left"):
+		_cycle_weapon(-1)
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("ui_right"):
+		_cycle_weapon(1)
 		get_viewport().set_input_as_handled()
 
 
@@ -272,7 +289,10 @@ func _update_simulate(delta: float) -> void:
 		_char.call("set_move_blend", moving_amt, gait_amt)
 
 	var aim_amt: float = 0.0
-	if _aiming:
+	var weapon_up: bool = _aiming
+	if _char != null and _char.has_method("is_weapon_drawn"):
+		weapon_up = _aiming and bool(_char.call("is_weapon_drawn"))
+	if weapon_up:
 		# Arms-only aim filter — keep lighter blend so hands still read motion.
 		aim_amt = 0.65 if mag >= WALK_THRESH or _airborne else 0.9
 	if _char != null and _char.has_method("set_aim_blend"):
@@ -333,15 +353,17 @@ func _try_jump() -> void:
 
 
 func _try_fire() -> void:
-	# Subnautica contract: USE only works while aiming (LT held).
-	# Repair tool will reuse this gate — aim the spot, then RT to apply.
+	# Subnautica contract: USE only while aiming AND weapon drawn.
 	if not _aiming:
+		return
+	if _char != null and _char.has_method("is_weapon_ready") and not bool(_char.call("is_weapon_ready")):
 		return
 	if _fire_cd > 0.0:
 		return
 	_fire_cd = FIRE_COOLDOWN
 	if _char != null and _char.has_method("request_fire"):
-		_char.call("request_fire")
+		if not bool(_char.call("request_fire")):
+			return
 		if _char.has_method("set_aim_blend"):
 			_char.call("set_aim_blend", 0.85)
 		_spawn_fire_fx()
@@ -380,17 +402,21 @@ func _update_aim_presentation(_delta: float) -> void:
 	var want_shoulder: float = 1.0 if (_simulate and _aiming) else 0.0
 	_shoulder_blend = lerpf(_shoulder_blend, want_shoulder, 0.16)
 
-	# Draw / holster sidearm on aim edge.
-	if _char == null or not _char.has_method("set_held_sidearm"):
+	# Draw from holster on aim edge; holster on release.
+	if _char == null:
 		_aim_was = _aiming
 		return
 	if _aiming == _aim_was:
 		return
 	_aim_was = _aiming
 	if _aiming:
-		_char.call("set_held_sidearm", true, true)
+		if _char.has_method("request_draw"):
+			_char.call("request_draw")
 	else:
-		_char.call("set_held_sidearm", true, false)  # holstered on hip
+		if _char.has_method("request_holster"):
+			_char.call("request_holster")
+		elif _char.has_method("set_aim_blend"):
+			_char.call("set_aim_blend", 0.0)
 
 
 func _reticle_screen_pos() -> Vector2:
@@ -689,11 +715,10 @@ func _set_simulate(on: bool) -> void:
 		_turntable = false
 		get_viewport().gui_release_focus()
 		_set_loco_state("idle")
-		if _char != null and _char.has_method("set_held_sidearm"):
-			_char.call("set_held_sidearm", true, false)
+		_equip_selected_weapon(false)
 	else:
-		if _char != null and _char.has_method("set_held_sidearm"):
-			_char.call("set_held_sidearm", false, false)
+		if _char != null and _char.has_method("request_holster"):
+			_char.call("request_holster")
 		if _char_pick != null and not _char_pick.disabled:
 			_char_pick.grab_focus()
 
@@ -716,25 +741,55 @@ func _build_stage() -> void:
 	var we: WorldEnvironment = WorldEnvironment.new()
 	var env: Environment = Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.09, 0.11, 0.15)
+	env.background_color = Color(0.045, 0.055, 0.075)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.72, 0.76, 0.84)
-	env.ambient_light_energy = 1.15
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env.ambient_light_color = Color(0.55, 0.62, 0.74)
+	env.ambient_light_energy = 0.85
+	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	env.tonemap_exposure = 1.05
+	env.ssao_enabled = true
+	env.ssao_radius = 1.2
+	env.ssao_intensity = 1.8
+	env.glow_enabled = true
+	env.glow_intensity = 0.35
+	env.glow_bloom = 0.12
+	env.adjustment_enabled = true
+	env.adjustment_contrast = 1.06
+	env.adjustment_saturation = 1.04
 	we.environment = env
 	add_child(we)
 
 	var sun: DirectionalLight3D = DirectionalLight3D.new()
-	sun.rotation = Vector3(deg_to_rad(-48.0), deg_to_rad(32.0), 0.0)
-	sun.light_energy = 1.55
+	sun.rotation = Vector3(deg_to_rad(-52.0), deg_to_rad(28.0), 0.0)
+	sun.light_energy = 1.75
+	sun.light_color = Color(1.0, 0.97, 0.92)
 	sun.shadow_enabled = true
+	sun.shadow_blur = 1.2
 	add_child(sun)
 
 	var fill: OmniLight3D = OmniLight3D.new()
-	fill.position = Vector3(-2.2, 2.4, 2.0)
-	fill.light_energy = 0.55
-	fill.omni_range = 8.0
+	fill.position = Vector3(-2.4, 2.6, 2.2)
+	fill.light_energy = 0.7
+	fill.light_color = Color(0.75, 0.85, 1.0)
+	fill.omni_range = 9.0
 	add_child(fill)
+
+	_rim = OmniLight3D.new()
+	_rim.name = "RimLight"
+	_rim.position = Vector3(2.6, 2.0, -1.8)
+	_rim.light_energy = 0.95
+	_rim.light_color = Color(0.55, 0.78, 1.0)
+	_rim.omni_range = 7.0
+	add_child(_rim)
+
+	var kick: SpotLight3D = SpotLight3D.new()
+	kick.position = Vector3(0.0, 3.2, 3.4)
+	kick.rotation_degrees = Vector3(-40.0, 0.0, 0.0)
+	kick.light_energy = 0.55
+	kick.light_color = Color(1.0, 0.95, 0.88)
+	kick.spot_range = 10.0
+	kick.spot_angle = 35.0
+	add_child(kick)
 
 	# Large static floor; world-space shader grid so travel reads as real progress.
 	_floor_root = Node3D.new()
@@ -795,10 +850,21 @@ func _build_ui() -> void:
 	add_child(_ui_layer)
 	var panel: PanelContainer = PanelContainer.new()
 	panel.position = Vector2(16, 16)
-	panel.custom_minimum_size = Vector2(400, 0)
+	panel.custom_minimum_size = Vector2(440, 0)
+	var panel_sb := StyleBoxFlat.new()
+	panel_sb.bg_color = Color(0.06, 0.08, 0.12, 0.82)
+	panel_sb.set_corner_radius_all(8)
+	panel_sb.content_margin_left = 14
+	panel_sb.content_margin_right = 14
+	panel_sb.content_margin_top = 12
+	panel_sb.content_margin_bottom = 12
+	panel_sb.border_color = Color(0.35, 0.55, 0.75, 0.35)
+	panel_sb.set_border_width_all(1)
+	panel.add_theme_stylebox_override("panel", panel_sb)
 	_ui_layer.add_child(panel)
 
 	var vbox: VBoxContainer = VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
 	panel.add_child(vbox)
 
 	var title: Label = Label.new()
@@ -807,7 +873,7 @@ func _build_ui() -> void:
 	vbox.add_child(title)
 
 	var hint: Label = Label.new()
-	hint.text = "L3 sprint latch · LT OTS aim · RT fire/use"
+	hint.text = "LT aim · RT fire · [ ] / 1-5 weapon · L3 sprint"
 	hint.add_theme_font_size_override("font_size", 12)
 	hint.add_theme_color_override("font_color", Color(0.65, 0.78, 0.92, 0.9))
 	vbox.add_child(hint)
@@ -816,6 +882,11 @@ func _build_ui() -> void:
 	_char_pick.focus_mode = Control.FOCUS_ALL
 	_char_pick.item_selected.connect(_on_char_selected)
 	vbox.add_child(_char_pick)
+
+	_weapon_pick = OptionButton.new()
+	_weapon_pick.focus_mode = Control.FOCUS_ALL
+	_weapon_pick.item_selected.connect(_on_weapon_selected)
+	vbox.add_child(_weapon_pick)
 
 	_mode_btn = Button.new()
 	_mode_btn.focus_mode = Control.FOCUS_ALL
@@ -838,8 +909,10 @@ func _build_ui() -> void:
 	_status.add_theme_font_size_override("font_size", 13)
 	vbox.add_child(_status)
 
-	_char_pick.focus_neighbor_bottom = _mode_btn.get_path()
-	_mode_btn.focus_neighbor_top = _char_pick.get_path()
+	_char_pick.focus_neighbor_bottom = _weapon_pick.get_path()
+	_weapon_pick.focus_neighbor_top = _char_pick.get_path()
+	_weapon_pick.focus_neighbor_bottom = _mode_btn.get_path()
+	_mode_btn.focus_neighbor_top = _weapon_pick.get_path()
 	_mode_btn.focus_neighbor_bottom = _anim_pick.get_path()
 	_anim_pick.focus_neighbor_top = _mode_btn.get_path()
 	_anim_pick.focus_neighbor_bottom = _back_btn.get_path()
@@ -847,7 +920,8 @@ func _build_ui() -> void:
 
 	_build_reticle()
 	_populate_char_picker()
-	for c in [_char_pick, _mode_btn, _anim_pick, _back_btn]:
+	_populate_weapon_picker()
+	for c in [_char_pick, _weapon_pick, _mode_btn, _anim_pick, _back_btn]:
 		Audio.attach_ui_hover(c)
 
 
@@ -892,6 +966,24 @@ func _populate_char_picker() -> void:
 		_char_pick.add_item(MintCharacterRef.display_name_for(slug), i)
 		_char_pick.set_item_metadata(i, slug)
 	_char_pick.select(0)
+
+
+func _populate_weapon_picker() -> void:
+	_weapon_pick.clear()
+	_weapon_ids = MintCharacterRef.weapon_ids()
+	if _weapon_ids.is_empty():
+		_weapon_pick.add_item("(no weapons)")
+		_weapon_pick.disabled = true
+		return
+	_weapon_pick.disabled = false
+	for i in _weapon_ids.size():
+		var wid: String = _weapon_ids[i]
+		var cfg: Dictionary = MintCharacterRef.resolve_weapon_config(wid)
+		var src: String = str(cfg.get("asset_source", "?"))
+		var tag: String = "mint" if src == "mint" else ("kit" if src == "fallback" else "missing")
+		_weapon_pick.add_item("%s · %s" % [MintCharacterRef.weapon_display_name(wid), tag], i)
+		_weapon_pick.set_item_metadata(i, wid)
+	_weapon_pick.select(0)
 
 
 func _rebuild_character() -> void:
@@ -942,8 +1034,7 @@ func _rebuild_character() -> void:
 	_apply_mode_ui()
 	if _simulate:
 		_set_loco_state("idle")
-		if _char.has_method("set_held_sidearm"):
-			_char.call("set_held_sidearm", true, false)
+		_equip_selected_weapon(false)
 	elif not _clips.is_empty():
 		_play_clip_at(0)
 	_refresh_status()
@@ -951,6 +1042,48 @@ func _rebuild_character() -> void:
 
 func _on_char_selected(_index: int) -> void:
 	_rebuild_character()
+
+
+func _on_weapon_selected(_index: int) -> void:
+	_equip_selected_weapon(true)
+
+
+func _selected_weapon_id() -> String:
+	if _weapon_pick == null or _weapon_ids.is_empty():
+		return "sidearm"
+	var idx: int = clampi(_weapon_pick.selected, 0, _weapon_ids.size() - 1)
+	var meta: Variant = _weapon_pick.get_item_metadata(idx)
+	if meta != null and str(meta) != "":
+		return str(meta)
+	return _weapon_ids[idx]
+
+
+func _equip_selected_weapon(preserve_aim: bool) -> void:
+	if _char == null or not _char.has_method("equip_weapon"):
+		return
+	var was_aiming: bool = preserve_aim and _aiming
+	var wid: String = _selected_weapon_id()
+	_char.call("equip_weapon", wid)
+	if was_aiming and _char.has_method("request_draw"):
+		_char.call("request_draw")
+	_refresh_status()
+
+
+func _cycle_weapon(delta: int) -> void:
+	if _weapon_ids.is_empty() or _weapon_pick == null:
+		return
+	var idx: int = (_weapon_pick.selected + delta) % _weapon_ids.size()
+	if idx < 0:
+		idx += _weapon_ids.size()
+	_weapon_pick.select(idx)
+	_equip_selected_weapon(true)
+
+
+func _select_weapon_slot(slot: int) -> void:
+	if slot < 0 or slot >= _weapon_ids.size() or _weapon_pick == null:
+		return
+	_weapon_pick.select(slot)
+	_equip_selected_weapon(true)
 
 
 func _on_anim_selected(index: int) -> void:
@@ -1001,17 +1134,26 @@ func _refresh_status() -> void:
 	if _char != null and _char.has_method("is_action_active") and bool(_char.call("is_action_active")):
 		layers.append("action")
 	var layer_txt: String = " · ".join(layers) if not layers.is_empty() else "—"
+	var weapon: String = "—"
+	if _char != null and _char.has_method("weapon_label"):
+		weapon = str(_char.call("weapon_label"))
+	elif _char != null and _char.has_method("weapon_state_name"):
+		weapon = str(_char.call("weapon_state_name"))
+	var grip: String = "—"
+	if _char != null and _char.has_method("grip_status"):
+		grip = str(_char.call("grip_status"))
 	var gait: String = "SPRINT" if _sprint_latched else _state.to_upper()
 	if _simulate:
 		_status.text = (
-			"%s · loco %s · base %s · layers %s\n"
-			+ "L3/Shift sprint latch · LT AIM (OTS) · RT FIRE while aiming · A jump · R-stick look"
-		) % [name_txt, gait, clip, layer_txt]
+			"%s · loco %s · layers %s\n"
+			+ "%s\n%s\n"
+			+ "LT aim · RT fire · [ ] / 1-5 swap · L3 sprint · A jump"
+		) % [name_txt, gait, layer_txt, weapon, grip]
 	else:
 		_status.text = (
-			"%s · MANUAL · clip %s\n"
+			"%s · MANUAL · clip %s\n%s\n%s\n"
 			+ "[M] simulate · D-pad clips · Y turntable · B back"
-		) % [name_txt, clip]
+		) % [name_txt, clip, weapon, grip]
 
 
 func _update_camera() -> void:

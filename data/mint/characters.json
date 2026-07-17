@@ -1,19 +1,35 @@
 {
 	"version": 1,
 	"pipeline": "mint-native",
-	"notes": "Quaternius ModularCharacter is deprecated for new work. Every character is generated via Mint MCP, downloaded into models/mint/<slug>/, and registered here.",
+	"notes": "Quaternius ModularCharacter is deprecated for new work. Every character is generated via Mint MCP, downloaded into models/mint/<slug>/, and registered here. Studio weapons: data/mint/weapons.json. Finger bones: Mint Meshy clips stay 24-body-bone; Idle host is post-processed with Godot-humanoid finger chains + skin weights (tools/mint_add_finger_bones.py).",
 	"characters": {
 		"eli": {
 			"display_name": "Eli Wallace",
-			"mint_model_id": "ks71gn7fxn6ybhnnavcyr0dtwh8aq5k8",
-			"mint_chat_url": "https://mint.gg/chat/ph74pa3j9qv9taxbkeyw7sbybn8apwv3",
-			"animation_batch_id": "w57327jt9gchkzkznc87dpd81n8aq38q",
-			"pistol_batch_id": "w57btjk2dz82x6wj3pg0d6j0198aqn76",
+			"mint_model_id": "ks72g1t871ntdgwf5xarn5wy458apqf6",
+			"mint_chat_url": "https://mint.gg/chat/ph78aewby8xktqqw2kjfr37psx8aqmft",
+			"animation_batch_id": "w57ene3tw6r10ytcsm1wy25dsh8aqkpd",
+			"pistol_batch_id": "w574pdghqg85sx598f5kbvb4w98aqxw6",
+			"rifle_batch_id": "w57bkz1jvy0m5ypzdk2v568xp18aqncv",
+			"prior_model_id": "ks71gn7fxn6ybhnnavcyr0dtwh8aq5k8",
 			"glb": "res://models/mint/eli/eli.glb",
 			"animated_glb": "res://models/mint/eli/eli_animated.glb",
 			"clips_dir": "res://models/mint/eli/clips",
 			"scale": 1.0,
-			"animation_sets": ["basic_locomotion", "pistol_combat"],
+			"animation_sets": ["basic_locomotion", "pistol_combat", "rifle_combat"],
+			"default_weapon": "sidearm",
+			"finger_rig": "postprocess_humanoid",
+			"sidearm": {
+				"glb": "res://models/mint/props/sidearm.glb",
+				"holster_bone": "Hips",
+				"hand_bone": "RightHand",
+				"holster_pos": [0.14, 0.02, 0.04],
+				"holster_rot": [-1.57, 0.0, 0.0],
+				"hand_pos": [0.0, 0.055, 0.018],
+				"hand_rot": [0.05, -1.57, 0.08],
+				"draw_clip": "Cowboy_Quick_Draw_Shooting",
+				"aim_clip": "Gesture_with_Hand_on_Gun",
+				"fire_clip": "Walk_Forward_While_Shooting"
+			},
 			"clips": [
 				"Idle",
 				"Casual_Walk_inplace",
@@ -30,7 +46,17 @@
 				"Walk_Forward_While_Shooting",
 				"Draw_and_Shoot_Left",
 				"Female_Crouch_Pick_Gun_Point_Forward",
-				"Gesture_with_Hand_on_Gun"
+				"Gesture_with_Hand_on_Gun",
+				"Gun_Hold_Left_Turn",
+				"Run_and_Shoot",
+				"Side_Shot",
+				"Standing_Reload",
+				"Forward_Roll_and_Fire",
+				"Rifle_Turn_Left",
+				"Rifle_Aim_Turn_Right",
+				"Crouch_Walk_Left_with_Gun_inplace",
+				"Walk_Backward_While_Shooting_inplace",
+				"Walk_Forward_While_Shooting_inplace"
 			],
 			"status": "ready"
 		}

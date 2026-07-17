@@ -1,0 +1,22 @@
+{
+	"slug": "eli",
+	"display_name": "Eli Wallace",
+	"mint_model_id": "ks71gn7fxn6ybhnnavcyr0dtwh8aq5k8",
+	"mint_chat_url": "https://mint.gg/chat/ph74pa3j9qv9taxbkeyw7sbybn8apwv3",
+	"animation_batch_id": "w57327jt9gchkzkznc87dpd81n8aq38q",
+	"animation_set": "basic_locomotion",
+	"clips": [
+		"Idle",
+		"Casual_Walk_inplace",
+		"run_fast_3_inplace",
+		"Regular_Jump",
+		"Idle_Turn_Left",
+		"Idle_Turn_Right"
+	],
+	"artifacts": {
+		"glb": "eli.glb",
+		"animated_glb": "eli_animated.glb",
+		"preview": "eli_preview.webp",
+		"clips_dir": "clips"
+	}
+}

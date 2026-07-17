@@ -1,0 +1,38 @@
+{
+	"version": 1,
+	"pipeline": "mint-native",
+	"notes": "Quaternius ModularCharacter is deprecated for new work. Every character is generated via Mint MCP, downloaded into models/mint/<slug>/, and registered here.",
+	"characters": {
+		"eli": {
+			"display_name": "Eli Wallace",
+			"mint_model_id": "ks71gn7fxn6ybhnnavcyr0dtwh8aq5k8",
+			"mint_chat_url": "https://mint.gg/chat/ph74pa3j9qv9taxbkeyw7sbybn8apwv3",
+			"animation_batch_id": "w57327jt9gchkzkznc87dpd81n8aq38q",
+			"pistol_batch_id": "w57btjk2dz82x6wj3pg0d6j0198aqn76",
+			"glb": "res://models/mint/eli/eli.glb",
+			"animated_glb": "res://models/mint/eli/eli_animated.glb",
+			"clips_dir": "res://models/mint/eli/clips",
+			"scale": 1.0,
+			"animation_sets": ["basic_locomotion", "pistol_combat"],
+			"clips": [
+				"Idle",
+				"Casual_Walk_inplace",
+				"run_fast_3_inplace",
+				"Regular_Jump",
+				"Idle_Turn_Left",
+				"Idle_Turn_Right",
+				"Forward_Reload_Subtle",
+				"Draw_and_Shoot_from_Back",
+				"Draw_and_Shoot_from_Back_1",
+				"Draw_and_Shoot_from_Back_2",
+				"Cowboy_Quick_Draw_Shooting",
+				"Walk_Backward_While_Shooting",
+				"Walk_Forward_While_Shooting",
+				"Draw_and_Shoot_Left",
+				"Female_Crouch_Pick_Gun_Point_Forward",
+				"Gesture_with_Hand_on_Gun"
+			],
+			"status": "ready"
+		}
+	}
+}

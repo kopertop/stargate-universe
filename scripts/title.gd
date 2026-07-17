@@ -2,8 +2,8 @@ extends Control
 
 # Boot title screen for Stargate Universe — Episode 1: "Air".
 # Hero shot background with a left-aligned title block and flat menu list.
-# Continue is disabled (greyed) when no save exists; Characters is reserved
-# for a future crew-roster screen; Settings opens an overlay; Exit quits.
+# Continue is disabled (greyed) when no save exists; Characters opens the
+# Mint Character Lab (mint-native crew preview); Settings opens an overlay; Exit quits.
 
 @onready var _btn_continue: Button = $LeftColumn/MenuList/ContinueButton
 @onready var _btn_new_game: Button = $LeftColumn/MenuList/NewGameButton
@@ -60,6 +60,7 @@ func _ready() -> void:
 	_btn_continue.pressed.connect(_on_continue_pressed)
 	_btn_new_game.pressed.connect(_on_new_game_pressed)
 	_btn_settings.pressed.connect(_on_settings_pressed)
+	_btn_characters.pressed.connect(_on_characters_pressed)
 	_btn_exit.pressed.connect(_on_exit_pressed)
 	_back_btn.pressed.connect(_on_back_pressed)
 
@@ -113,8 +114,8 @@ func _ready() -> void:
 	_btn_continue.disabled = not GameState.has_save()
 	if _btn_load != null:
 		_btn_load.disabled = _btn_continue.disabled
-	# Characters is reserved for a future crew-roster screen.
-	_btn_characters.disabled = true
+	# Characters → Mint Character Lab (Eli + mint-native roster). Always available.
+	_btn_characters.disabled = false
 
 	if not _btn_continue.disabled:
 		_btn_continue.grab_focus()
@@ -611,6 +612,14 @@ func _on_configure_controller_pressed() -> void:
 func _on_settings_pressed() -> void:
 	_settings_overlay.visible = true
 	_back_btn.grab_focus()
+
+
+func _on_characters_pressed() -> void:
+	# Mint-native crew lab (Eli first). Pause/autosave treat empty path as title —
+	# set a marker so we aren't mistaken for in-world gameplay.
+	GameState.current_scene_path = "res://scenes/mint_character_lab.tscn"
+	get_tree().change_scene_to_file("res://scenes/mint_character_lab.tscn")
+
 
 func _on_back_pressed() -> void:
 	_settings_overlay.visible = false

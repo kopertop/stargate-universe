@@ -59,15 +59,15 @@ with the selected weapon.
 
 ## Finger bones
 
-Mint’s Meshy animation catalog still emits a **24-bone body rig** (hands are
-leaves). Eli’s **Idle host** is post-processed with
-`tools/mint_add_finger_bones.py`, which inserts Godot
-`SkeletonProfileHumanoid` finger chains (30 bones) under `LeftHand`/`RightHand`
-and redistributes Hand skin weights onto them.
+Mint’s Meshy animation catalog emits a **24-bone body rig** (hands are leaves).
+`tools/mint_add_finger_bones.py` can insert Godot humanoid finger chains, but
+a bad bind (over-weighted verts / wrong bone rests) will spaghetti the mesh —
+so **Idle currently ships without that post-process**.
 
-`MintHandGrip` prefers those real finger bones; if a character has none it falls
-back to a lightweight finger-proxy mesh. Aim/fire AnimationTree filters expand
-to include hand descendants so grip curls ride on top of combat clips.
+`MintHandGrip` uses skinned finger bones only when the bind passes a sanity
+check; otherwise it falls back to subtle hand-leaf bias (no capsule proxies —
+those read as junk on Mint mittens). Never drive finger bones that fail the
+bind check. Idle currently ships as the clean 24-bone Meshy host.
 
 ## Do not
 

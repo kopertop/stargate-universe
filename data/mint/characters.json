@@ -17,7 +17,7 @@
 			"scale": 1.0,
 			"animation_sets": ["basic_locomotion", "pistol_combat", "rifle_combat"],
 			"default_weapon": "sidearm",
-			"finger_rig": "postprocess_humanoid",
+			"finger_rig": "hand_bias_pending_bind_fix",
 			"sidearm": {
 				"glb": "res://models/mint/props/sidearm.glb",
 				"holster_bone": "Hips",

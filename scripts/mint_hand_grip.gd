@@ -43,12 +43,19 @@ func attach(skeleton: Skeleton3D, hand_bone: String = "RightHand", grip_profile:
 		return false
 	_hand_rest = _skel.get_bone_pose_rotation(_hand_idx)
 	_collect_finger_bones()
-	if finger_bone_count > 0:
+	# Only use skinned finger bones when the bind looks sane. A bad Blender
+	# post-process (wrong rests / over-weighted verts) turns grips into spaghetti.
+	if finger_bone_count >= 10 and _finger_bind_looks_sane():
 		mode = "bones"
 		_configure_hand_euler()
 		return true
+	# Fall back to proxy even if bad finger bones exist — don't drive them.
+	_finger_idxs.clear()
+	_finger_rests.clear()
+	finger_bone_count = 0
+	# Hand-leaf bias only for now — visible proxy capsules read as junk geometry
+	# on Mint's mitten hands. Skinned fingers return once bind tooling is solid.
 	mode = "proxy"
-	_build_proxy_fingers()
 	_configure_hand_euler()
 	return true
 
@@ -88,7 +95,7 @@ func apply() -> void:
 	_skel.set_bone_pose_rotation(_hand_idx, _skel.get_bone_pose_rotation(_hand_idx) * add)
 	if mode == "bones":
 		_apply_bone_pose(1.0)
-	elif mode == "proxy":
+	elif mode == "proxy" and _proxy_root != null:
 		_apply_proxy_pose(1.0)
 
 
@@ -97,7 +104,7 @@ func status_line() -> String:
 		"bones":
 			return "fingers: %d bones (%s)" % [finger_bone_count, profile]
 		"proxy":
-			return "fingers: proxy (%s) · skel %d bones" % [profile, bone_count]
+			return "fingers: hand-bias (%s) · skel %d bones" % [profile, bone_count]
 		_:
 			return "fingers: —"
 
@@ -172,17 +179,37 @@ func _looks_like_finger(nm: String) -> bool:
 
 
 func _configure_hand_euler() -> void:
+	# Keep subtle — combat clips already pose the hand; this is a polish bias.
 	match profile:
 		"rifle":
-			_hand_euler = Vector3(deg_to_rad(18.0), deg_to_rad(-4.0), deg_to_rad(22.0))
+			_hand_euler = Vector3(deg_to_rad(8.0), deg_to_rad(-2.0), deg_to_rad(10.0))
 		"tool":
-			_hand_euler = Vector3(deg_to_rad(8.0), deg_to_rad(-10.0), deg_to_rad(12.0))
+			_hand_euler = Vector3(deg_to_rad(4.0), deg_to_rad(-4.0), deg_to_rad(6.0))
 		"baton":
-			_hand_euler = Vector3(deg_to_rad(6.0), deg_to_rad(-2.0), deg_to_rad(8.0))
+			_hand_euler = Vector3(deg_to_rad(3.0), deg_to_rad(-1.0), deg_to_rad(4.0))
 		"open":
-			_hand_euler = Vector3(deg_to_rad(-4.0), 0.0, deg_to_rad(-6.0))
+			_hand_euler = Vector3(deg_to_rad(-2.0), 0.0, deg_to_rad(-3.0))
 		_:
-			_hand_euler = Vector3(deg_to_rad(12.0), deg_to_rad(-8.0), deg_to_rad(18.0))
+			_hand_euler = Vector3(deg_to_rad(6.0), deg_to_rad(-4.0), deg_to_rad(8.0))
+
+
+func _finger_bind_looks_sane() -> bool:
+	# Reject post-process binds where proximal rests aren't mostly along +Y
+	# (the Godot/Mint hand convention). Bad binds explode the mesh on curl.
+	var checked: int = 0
+	for idx in _finger_idxs:
+		var nm: String = _skel.get_bone_name(idx)
+		if nm.find("Proximal") < 0 and nm.find("Metacarpal") < 0:
+			continue
+		var origin: Vector3 = _skel.get_bone_rest(idx).origin
+		var along: float = absf(origin.y)
+		var lateral: float = Vector2(origin.x, origin.z).length()
+		if along < 0.5:
+			return false
+		if lateral > along * 1.25:
+			return false
+		checked += 1
+	return checked >= 4
 
 
 func _apply_bone_pose(amount: float) -> void:
@@ -201,16 +228,18 @@ func _apply_bone_pose(amount: float) -> void:
 			curl = float(curls.get("ring", 0.65))
 		elif nm.find("pinky") >= 0 or nm.find("little") >= 0:
 			curl = float(curls.get("pinky", 0.7))
-		# Distal joints curl a bit more.
+		# Distal joints curl a bit more — but keep angles modest.
 		if nm.find("distal") >= 0 or nm.ends_with("3") or nm.find("tip") >= 0:
-			curl *= 1.15
+			curl *= 1.1
 		elif nm.find("intermediate") >= 0 or nm.ends_with("2"):
 			curl *= 1.05
 		var axis := Vector3(1.0, 0.0, 0.0)
 		if nm.find("thumb") >= 0:
 			axis = Vector3(0.35, 0.9, 0.15).normalized()
-		var add: Quaternion = Quaternion(axis, deg_to_rad(curl * amount * 55.0))
-		_skel.set_bone_pose_rotation(idx, _finger_rests[i] * add)
+		var deg: float = clampf(curl * amount * 28.0, 0.0, 35.0)
+		var add: Quaternion = Quaternion(axis, deg_to_rad(deg))
+		# Compose onto the live animated pose, not a stale rest snapshot.
+		_skel.set_bone_pose_rotation(idx, _skel.get_bone_pose_rotation(idx) * add)
 
 
 func _curl_map() -> Dictionary:

@@ -69,6 +69,12 @@ check; otherwise it falls back to subtle hand-leaf bias (no capsule proxies —
 those read as junk on Mint mittens). Never drive finger bones that fail the
 bind check. Idle currently ships as the clean 24-bone Meshy host.
 
+Regression guards (do not remove):
+- `tests/smoke/mint_loco_combat_pose.gd` — **primary**: CPU-skinned posed bounds
+  while walking + aiming + firing (catches spaghetti/distortion under real play)
+- `tests/lint/check_mint_idle_fingers.sh` — Idle joint count vs `finger_rig`
+- `MintHandGrip.audit_finger_host()` — runtime refuse bad finger binds
+
 ## Do not
 
 - Add new Quaternius / Kenney mini-character profiles for crew.

@@ -1,7 +1,7 @@
 {
 	"version": 1,
 	"pipeline": "mint-native",
-	"notes": "Quaternius ModularCharacter is deprecated for new work. Every character is generated via Mint MCP, downloaded into models/mint/<slug>/, and registered here. Studio weapons: data/mint/weapons.json. Finger bones: Mint Meshy clips stay 24-body-bone; Idle host is post-processed with Godot-humanoid finger chains + skin weights (tools/mint_add_finger_bones.py).",
+	"notes": "Quaternius ModularCharacter is deprecated for new work. Every character is generated via Mint MCP, downloaded into models/mint/<slug>/, and registered here. Studio weapons: data/mint/weapons.json. Finger bones: Meshy Idle stays 24-bone while finger_rig is hand_bias_pending_bind_fix. Play-path guard: tests/smoke/mint_loco_combat_pose.gd (walk+aim+fire posed bounds). Only set finger_rig=postprocess_humanoid after audit_finger_host + loco-combat pose both pass.",
 	"characters": {
 		"eli": {
 			"display_name": "Eli Wallace",

@@ -45,7 +45,7 @@ func attach(skeleton: Skeleton3D, hand_bone: String = "RightHand", grip_profile:
 	_collect_finger_bones()
 	# Only use skinned finger bones when the bind looks sane. A bad Blender
 	# post-process (wrong rests / over-weighted verts) turns grips into spaghetti.
-	if finger_bone_count >= 10 and _finger_bind_looks_sane():
+	if finger_bone_count >= 10 and finger_bind_rests_sane(_skel, _finger_idxs):
 		mode = "bones"
 		_configure_hand_euler()
 		return true
@@ -140,10 +140,8 @@ func _collect_finger_bones() -> void:
 	finger_bone_count = 0
 	var hand_name: String = _skel.get_bone_name(_hand_idx)
 	var want_right: bool = hand_name.to_lower().find("left") < 0
-	for i in _skel.get_bone_count():
+	for i in list_finger_bone_indices(_skel):
 		var nm: String = _skel.get_bone_name(i)
-		if not _looks_like_finger(nm):
-			continue
 		var lower: String = nm.to_lower()
 		var is_left: bool = lower.find("left") >= 0 or lower.ends_with("_l") or lower.find(".l") >= 0
 		var is_right: bool = lower.find("right") >= 0 or lower.ends_with("_r") or lower.find(".r") >= 0
@@ -159,6 +157,186 @@ func _collect_finger_bones() -> void:
 	finger_bone_count = _finger_idxs.size()
 
 
+## Finger-named bones on a skeleton (both hands). Used by grip + bind audits.
+static func list_finger_bone_indices(skel: Skeleton3D) -> Array[int]:
+	var out: Array[int] = []
+	if skel == null:
+		return out
+	for i in skel.get_bone_count():
+		if looks_like_finger_bone(skel.get_bone_name(i)):
+			out.append(i)
+	return out
+
+
+static func looks_like_finger_bone(nm: String) -> bool:
+	for hint in FINGER_HINTS:
+		if nm.find(hint) >= 0:
+			return true
+	return false
+
+
+## Proximal/metacarpal rests must point mostly along +Y (Mint/Godot hand convention).
+## Bad Blender post-process rests are the first half of the spaghetti-mesh failure.
+static func finger_bind_rests_sane(skel: Skeleton3D, finger_idxs: Array[int] = []) -> bool:
+	if skel == null:
+		return false
+	var idxs: Array[int] = finger_idxs
+	if idxs.is_empty():
+		idxs = list_finger_bone_indices(skel)
+	if idxs.is_empty():
+		return true
+	var checked: int = 0
+	for idx in idxs:
+		var nm: String = skel.get_bone_name(idx)
+		if nm.find("Proximal") < 0 and nm.find("Metacarpal") < 0:
+			continue
+		var origin: Vector3 = skel.get_bone_rest(idx).origin
+		var len: float = origin.length()
+		if len < 1e-6:
+			return false
+		# Mostly along +Y in parent space (scale-agnostic). Lateral-dominant
+		# rests from bad Blender post-process are the spaghetti trigger.
+		if absf(origin.y) / len < 0.55:
+			return false
+		checked += 1
+	return checked >= 4
+
+
+## Full host audit: rests + skin-weight locality. Empty finger set is OK (Meshy 24-bone).
+## Returns { ok: bool, errors: PackedStringArray, finger_bones: int }.
+static func audit_finger_host(skel: Skeleton3D, mesh_root: Node) -> Dictionary:
+	var errors: PackedStringArray = PackedStringArray()
+	var fingers: Array[int] = list_finger_bone_indices(skel)
+	if fingers.is_empty():
+		return {"ok": true, "errors": errors, "finger_bones": 0}
+	if not finger_bind_rests_sane(skel, fingers):
+		errors.append("finger proximal/metacarpal rests are not +Y-aligned (spaghetti risk)")
+	var skin_errs: PackedStringArray = _audit_finger_skin_weights(skel, mesh_root, fingers)
+	for e in skin_errs:
+		errors.append(e)
+	return {"ok": errors.is_empty(), "errors": errors, "finger_bones": fingers.size()}
+
+
+const _MAX_FINGER_VERTS_PER_HAND: int = 280
+const _MAX_FINGER_VERT_HAND_DIST: float = 0.28
+
+
+static func _audit_finger_skin_weights(
+	skel: Skeleton3D, mesh_root: Node, fingers: Array[int]
+) -> PackedStringArray:
+	var errors: PackedStringArray = PackedStringArray()
+	if mesh_root == null:
+		return errors
+	var finger_names: Dictionary = {}
+	for idx in fingers:
+		finger_names[skel.get_bone_name(idx)] = idx
+	var left_hand: int = skel.find_bone("LeftHand")
+	var right_hand: int = skel.find_bone("RightHand")
+	var left_origin: Vector3 = (
+		skel.get_bone_global_rest(left_hand).origin if left_hand >= 0 else Vector3.ZERO
+	)
+	var right_origin: Vector3 = (
+		skel.get_bone_global_rest(right_hand).origin if right_hand >= 0 else Vector3.ZERO
+	)
+	var left_weighted: int = 0
+	var right_weighted: int = 0
+	var far_verts: int = 0
+	for node in _walk_nodes(mesh_root):
+		if not (node is MeshInstance3D):
+			continue
+		var mi: MeshInstance3D = node as MeshInstance3D
+		if mi.mesh == null or mi.skin == null:
+			continue
+		var skin: Skin = mi.skin
+		var bind_is_finger: Array[bool] = []
+		var bind_is_left: Array[bool] = []
+		bind_is_finger.resize(skin.get_bind_count())
+		bind_is_left.resize(skin.get_bind_count())
+		var any_finger_bind: bool = false
+		for bi in skin.get_bind_count():
+			var bname: String = String(skin.get_bind_name(bi))
+			var is_f: bool = finger_names.has(bname)
+			bind_is_finger[bi] = is_f
+			bind_is_left[bi] = bname.to_lower().find("left") >= 0
+			if is_f:
+				any_finger_bind = true
+		if not any_finger_bind:
+			continue
+		var to_skel: Transform3D = Transform3D.IDENTITY
+		if skel.is_ancestor_of(mi):
+			to_skel = skel.global_transform.affine_inverse() * mi.global_transform
+		else:
+			to_skel = mi.transform
+		for si in mi.mesh.get_surface_count():
+			var arrays: Array = mi.mesh.surface_get_arrays(si)
+			if arrays.is_empty():
+				continue
+			var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array
+			var bones_a: Variant = arrays[Mesh.ARRAY_BONES]
+			var weights_a: Variant = arrays[Mesh.ARRAY_WEIGHTS]
+			if verts.is_empty() or bones_a == null or weights_a == null:
+				continue
+			var bone_ids: PackedInt32Array = bones_a as PackedInt32Array
+			var weights: PackedFloat32Array = weights_a as PackedFloat32Array
+			if bone_ids.size() < verts.size() * 4 or weights.size() < verts.size() * 4:
+				continue
+			for vi in verts.size():
+				var finger_w: float = 0.0
+				var left_w: float = 0.0
+				var right_w: float = 0.0
+				for k in 4:
+					var bi2: int = bone_ids[vi * 4 + k]
+					var w: float = weights[vi * 4 + k]
+					if bi2 < 0 or bi2 >= bind_is_finger.size() or w < 0.05:
+						continue
+					if not bind_is_finger[bi2]:
+						continue
+					finger_w += w
+					if bind_is_left[bi2]:
+						left_w += w
+					else:
+						right_w += w
+				if finger_w < 0.05:
+					continue
+				if left_w >= right_w:
+					left_weighted += 1
+					var p: Vector3 = to_skel * verts[vi]
+					if left_hand >= 0 and p.distance_to(left_origin) > _MAX_FINGER_VERT_HAND_DIST:
+						far_verts += 1
+				else:
+					right_weighted += 1
+					var p2: Vector3 = to_skel * verts[vi]
+					if right_hand >= 0 and p2.distance_to(right_origin) > _MAX_FINGER_VERT_HAND_DIST:
+						far_verts += 1
+	if left_weighted > _MAX_FINGER_VERTS_PER_HAND:
+		errors.append(
+			"left finger skin overbind: %d verts (max %d) — arm/body pulled into fingers"
+			% [left_weighted, _MAX_FINGER_VERTS_PER_HAND]
+		)
+	if right_weighted > _MAX_FINGER_VERTS_PER_HAND:
+		errors.append(
+			"right finger skin overbind: %d verts (max %d) — arm/body pulled into fingers"
+			% [right_weighted, _MAX_FINGER_VERTS_PER_HAND]
+		)
+	# Far verts are the smoking gun of the Idle spaghetti bind (~680/hand).
+	if far_verts > 40:
+		errors.append(
+			"finger-weighted verts far from hands: %d (max 40) — bind not localized"
+			% far_verts
+		)
+	return errors
+
+
+static func _walk_nodes(n: Node) -> Array[Node]:
+	var out: Array[Node] = []
+	if n == null:
+		return out
+	out.append(n)
+	for c in n.get_children():
+		out.append_array(_walk_nodes(c))
+	return out
+
+
 func _is_under_hand(bone_idx: int) -> bool:
 	var cur: int = bone_idx
 	var guard: int = 0
@@ -172,10 +350,7 @@ func _is_under_hand(bone_idx: int) -> bool:
 
 
 func _looks_like_finger(nm: String) -> bool:
-	for hint in FINGER_HINTS:
-		if nm.find(hint) >= 0:
-			return true
-	return false
+	return looks_like_finger_bone(nm)
 
 
 func _configure_hand_euler() -> void:
@@ -191,25 +366,6 @@ func _configure_hand_euler() -> void:
 			_hand_euler = Vector3(deg_to_rad(-2.0), 0.0, deg_to_rad(-3.0))
 		_:
 			_hand_euler = Vector3(deg_to_rad(6.0), deg_to_rad(-4.0), deg_to_rad(8.0))
-
-
-func _finger_bind_looks_sane() -> bool:
-	# Reject post-process binds where proximal rests aren't mostly along +Y
-	# (the Godot/Mint hand convention). Bad binds explode the mesh on curl.
-	var checked: int = 0
-	for idx in _finger_idxs:
-		var nm: String = _skel.get_bone_name(idx)
-		if nm.find("Proximal") < 0 and nm.find("Metacarpal") < 0:
-			continue
-		var origin: Vector3 = _skel.get_bone_rest(idx).origin
-		var along: float = absf(origin.y)
-		var lateral: float = Vector2(origin.x, origin.z).length()
-		if along < 0.5:
-			return false
-		if lateral > along * 1.25:
-			return false
-		checked += 1
-	return checked >= 4
 
 
 func _apply_bone_pose(amount: float) -> void:

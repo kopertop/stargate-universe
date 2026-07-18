@@ -77,8 +77,10 @@ Fast, editor-free `bash`/`awk` checks that guard architectural invariants:
 |---|---|
 | `check_save_registration.sh` | Every `project.godot` autoload either calls `SaveManager.register_system(...)` or carries a `# @no-save:` marker, so no stateful system ships unpersisted. |
 | `check_collection_forks.sh` | No top-level bool field in `scripts/*.gd` uses acquisition vocabulary (`*_found`, `*_acquired`, `has_*`, `got_*`, …). A set of like things (items, discovered rooms, unlocks) must live in ONE registry behind ONE add/enumerate API — not scattered per-instance bools that consumers must special-case (the looted-fuse bug #41; quest fork #36). Object-state participles (`looted`/`opened`) and `has_<world-state-verb>` (`has_seen`) are NOT flagged. Opt out genuinely-distinct state with `# @collection-ok: <reason>`. See the `homogeneous-collection-single-model` skill. |
+| `check_mint_idle_fingers.sh` | Mint Idle hosts stay clean 24-bone Meshy while `finger_rig` is `hand_bias*` / `*pending*` (no finger joints in `Idle.glb`). |
+| `smoke/mint_loco_combat_pose.gd` | **Play-path distortion guard:** CPU-skin Eli’s mesh under Idle → Walk → Walk+Aim → Walk+Fire (sidearm + stun baton). Fails if posed AABB / hip-distance explodes (the Animation Studio spaghetti failure mode). Run via `tests/run.sh mint-character` or `mint-loco-combat`. |
 
-Both run on `--staged` in `.githooks/pre-commit` (install once: `git config core.hooksPath .githooks`).
+`check_mint_idle_fingers.sh` runs on `--staged` in `.githooks/pre-commit`. The loco-combat pose smoke is Godot headless (`mint-character` / `all`).
 
 ## Why not GDUnit4?
 

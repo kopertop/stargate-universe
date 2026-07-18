@@ -117,7 +117,7 @@ Per-clone install (one-time, no dependencies):
 git config core.hooksPath .githooks
 ```
 
-The hook runs two policy lints (both `--staged`):
+The hook runs three policy lints (all `--staged`):
 
 1. `tests/lint/check_save_registration.sh` — the **save-registration policy**:
    every autoload in `project.godot` must either (a) call
@@ -132,6 +132,10 @@ The hook runs two policy lints (both `--staged`):
    API, not scattered per-instance bools that every consumer must special-case
    (the cause of the looted-fuse inventory bug #41 and the quest fork #36). Opt
    out genuinely-distinct state with `# @collection-ok: <reason>`.
+3. `tests/lint/check_mint_idle_fingers.sh` — the **Mint Idle finger-bind policy**:
+   while `finger_rig` is `hand_bias*` / `*pending*`, `Idle.glb` must stay a clean
+   24-bone Meshy host (no finger joints). Play-path distortion is covered by
+   `tests/smoke/mint_loco_combat_pose.gd` (walk + aim + fire posed bounds).
 
 ## Collaboration Protocol
 

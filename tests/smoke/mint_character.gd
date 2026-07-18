@@ -84,6 +84,12 @@ func _run() -> void:
 		grip.find("bones") >= 0 or grip.find("proxy") >= 0 or grip.find("hand-bias") >= 0,
 		"grip mode bones|proxy|hand-bias (%s)" % grip
 	)
+	# Cheap bind audit; pose-distortion under walk+shoot is mint_loco_combat_pose.gd.
+	var GripScript: Script = load("res://scripts/mint_hand_grip.gd") as Script
+	var skel_audit: Skeleton3D = eli.call("find_skeleton") as Skeleton3D
+	if GripScript != null and skel_audit != null:
+		var audit: Dictionary = GripScript.audit_finger_host(skel_audit, eli)
+		_check(bool(audit.get("ok", false)), "finger host audit ok (%s)" % str(audit.get("errors", [])))
 	# Swap to rifle (fallback kit mesh OK) and confirm re-equip.
 	if eli.has_method("equip_weapon"):
 		_check(eli.call("equip_weapon", "rifle") == true, "equip_weapon rifle")

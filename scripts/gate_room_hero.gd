@@ -51,7 +51,7 @@ const CAM_FOV: float = 76.0
 # Lighting
 const PORTAL_LIGHT_ENERGY: float = 2.0
 # Ceiling downlights — 5 strategic points to lift tiered dome rings out of void (TONALITY gap)
-const CEILING_DOWNLIGHT_ENERGY: float = 15.0
+const CEILING_DOWNLIGHT_ENERGY: float = 18.0
 const CEILING_DOWNLIGHT_COLOR: Color = Color(0.72, 0.80, 0.92)
 const CEILING_DOWNLIGHT_SPREAD: float = 1.2
 const PORTAL_LIGHT_COLOR: Color = Color(0.45, 0.68, 1.0)

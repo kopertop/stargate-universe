@@ -2,32 +2,23 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, develop]
   push:
-    branches: [main]
+    branches: [main, develop]
 
 jobs:
-  typecheck-and-test:
+  godot-validation:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
-      - uses: oven-sh/setup-bun@v2
+      - name: Setup Godot
+        uses: chickensoft-games/setup-godot@v1
         with:
-          bun-version: latest
+          version: 4.6.2-stable
 
-      - name: Install dependencies
-        run: npm install
-        env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-
-      - name: TypeScript typecheck
-        run: bun run typecheck
-        env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-
-      - name: Run tests
-        run: bun run test
-        env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      - name: Validate project (headless import + editor parse)
+        run: godot --headless --editor --quit
+        # Exits non-zero on import/scene/script parse errors.
+        # No export_presets.cfg yet → no export step.
+        # No GUT addon → no unit tests yet.

@@ -1,6 +1,6 @@
 {
 	"version": 1,
-	"notes": "Studio weapon library. Prefer mint_glb when present on disk; else glb fallback. Mounts are local to holster/hand bones.",
+	"notes": "Studio weapon library. Prefer mint_glb when present on disk; else glb fallback. Mount offsets (holster_pos/hand_pos/support_pos) are meters \u2014 MintHeldWeapon converts by skeleton scale (~0.01). Rifle uses LeftHand SupportMount with gated soft pull while aimed.",
 	"weapons": {
 		"sidearm": {
 			"display_name": "Sidearm",
@@ -10,16 +10,46 @@
 			"mint_glb": "res://models/mint/props/sidearm.glb",
 			"holster_bone": "Hips",
 			"hand_bone": "RightHand",
-			"holster_pos": [0.14, 0.02, 0.04],
-			"holster_rot": [-1.57, 0.0, 0.0],
-			"hand_pos": [0.0, 0.055, 0.018],
-			"hand_rot": [0.05, -1.57, 0.08],
-			"muzzle_local": [0.18, 0.02, 0.0],
-			"scale": 0.22,
+			"holster_pos": [
+				0.13,
+				0.015,
+				0.035
+			],
+			"holster_rot": [
+				-1.55,
+				0.05,
+				0.08
+			],
+			"hand_pos": [
+				0.0,
+				0.005,
+				0.002
+			],
+			"hand_rot": [
+				0.08,
+				-1.55,
+				0.06
+			],
+			"muzzle_local": [
+				0.16,
+				0.015,
+				0.0
+			],
+			"scale": 0.24,
 			"grip_profile": "pistol",
-			"draw_clips": ["Cowboy_Quick_Draw_Shooting", "Draw_and_Shoot_from_Back"],
-			"aim_clips": ["Gesture_with_Hand_on_Gun", "Female_Crouch_Pick_Gun_Point_Forward"],
-			"fire_clips": ["Walk_Forward_While_Shooting", "Cowboy_Quick_Draw_Shooting", "Draw_and_Shoot_from_Back"]
+			"draw_clips": [
+				"Cowboy_Quick_Draw_Shooting",
+				"Draw_and_Shoot_from_Back"
+			],
+			"aim_clips": [
+				"Gesture_with_Hand_on_Gun",
+				"Female_Crouch_Pick_Gun_Point_Forward"
+			],
+			"fire_clips": [
+				"Walk_Forward_While_Shooting",
+				"Cowboy_Quick_Draw_Shooting",
+				"Draw_and_Shoot_from_Back"
+			]
 		},
 		"rifle": {
 			"display_name": "Pulse Rifle",
@@ -27,18 +57,56 @@
 			"supports_fire": true,
 			"glb": "res://models/mint/props/rifle.glb",
 			"mint_glb": "res://models/mint/props/rifle.glb",
-			"holster_bone": "Spine",
+			"holster_bone": "Hips",
 			"hand_bone": "RightHand",
 			"support_bone": "LeftHand",
-			"holster_pos": [0.0, 0.12, -0.18],
-			"holster_rot": [0.2, 1.57, 1.2],
-			"hand_pos": [0.02, 0.04, 0.0],
-			"hand_rot": [0.0, -1.45, 0.15],
-			"muzzle_local": [0.42, 0.04, 0.0],
-			"scale": 0.85,
+			"holster_pos": [
+				-0.02,
+				0.26,
+				-0.32
+			],
+			"holster_rot": [
+				0.25,
+				1.55,
+				1.25
+			],
+			"hand_pos": [
+				0.0,
+				0.0,
+				0.02
+			],
+			"hand_rot": [
+				0.0,
+				0.0,
+				-1.57
+			],
+			"support_pos": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"support_local": [
+				0.0,
+				0.0,
+				0.22
+			],
+			"muzzle_local": [
+				0.0,
+				0.02,
+				0.35
+			],
+			"scale": 0.5,
 			"grip_profile": "rifle",
-			"draw_clips": ["Run_and_Shoot", "Side_Shot", "Cowboy_Quick_Draw_Shooting"],
-			"aim_clips": ["Gun_Hold_Left_Turn", "Rifle_Turn_Left", "Gesture_with_Hand_on_Gun"],
+			"draw_clips": [
+				"Rifle_Aim_Turn_Right",
+				"Walk_Forward_While_Shooting_inplace",
+				"Run_and_Shoot"
+			],
+			"aim_clips": [
+				"Idle",
+				"Rifle_Aim_Turn_Right",
+				"Gun_Hold_Left_Turn"
+			],
 			"fire_clips": [
 				"Walk_Forward_While_Shooting_inplace",
 				"Run_and_Shoot",
@@ -54,16 +122,45 @@
 			"mint_glb": "res://models/mint/props/repair_tool.glb",
 			"holster_bone": "Hips",
 			"hand_bone": "RightHand",
-			"holster_pos": [-0.14, 0.02, 0.04],
-			"holster_rot": [-1.57, 3.14, 0.0],
-			"hand_pos": [0.0, 0.05, 0.02],
-			"hand_rot": [0.1, -1.4, 0.2],
-			"muzzle_local": [0.16, 0.03, 0.0],
-			"scale": 0.28,
+			"holster_pos": [
+				-0.13,
+				0.02,
+				0.035
+			],
+			"holster_rot": [
+				-1.55,
+				3.14,
+				0.1
+			],
+			"hand_pos": [
+				0.0,
+				0.005,
+				0.002
+			],
+			"hand_rot": [
+				0.12,
+				-1.45,
+				0.18
+			],
+			"muzzle_local": [
+				0.14,
+				0.025,
+				0.0
+			],
+			"scale": 0.3,
 			"grip_profile": "tool",
-			"draw_clips": ["Forward_Reload_Subtle", "Cowboy_Quick_Draw_Shooting"],
-			"aim_clips": ["Gesture_with_Hand_on_Gun", "Forward_Reload_Subtle"],
-			"fire_clips": ["Forward_Reload_Subtle", "Walk_Forward_While_Shooting"]
+			"draw_clips": [
+				"Forward_Reload_Subtle",
+				"Cowboy_Quick_Draw_Shooting"
+			],
+			"aim_clips": [
+				"Gesture_with_Hand_on_Gun",
+				"Forward_Reload_Subtle"
+			],
+			"fire_clips": [
+				"Forward_Reload_Subtle",
+				"Walk_Forward_While_Shooting"
+			]
 		},
 		"stun_baton": {
 			"display_name": "Stun Baton",
@@ -73,16 +170,44 @@
 			"mint_glb": "res://models/mint/props/stun_baton.glb",
 			"holster_bone": "Hips",
 			"hand_bone": "RightHand",
-			"holster_pos": [0.16, 0.0, -0.02],
-			"holster_rot": [0.0, 0.0, 1.2],
-			"hand_pos": [0.02, 0.06, 0.0],
-			"hand_rot": [1.2, -1.57, 0.0],
-			"muzzle_local": [0.0, 0.0, 0.35],
-			"scale": 0.45,
+			"holster_pos": [
+				0.15,
+				0.0,
+				-0.025
+			],
+			"holster_rot": [
+				0.1,
+				0.05,
+				1.15
+			],
+			"hand_pos": [
+				0.002,
+				0.006,
+				0.0
+			],
+			"hand_rot": [
+				1.15,
+				-1.55,
+				0.05
+			],
+			"muzzle_local": [
+				0.0,
+				0.0,
+				0.32
+			],
+			"scale": 0.42,
 			"grip_profile": "baton",
-			"draw_clips": ["Draw_and_Shoot_Left", "Cowboy_Quick_Draw_Shooting"],
-			"aim_clips": ["Gesture_with_Hand_on_Gun"],
-			"fire_clips": ["Draw_and_Shoot_Left", "Cowboy_Quick_Draw_Shooting"]
+			"draw_clips": [
+				"Draw_and_Shoot_Left",
+				"Cowboy_Quick_Draw_Shooting"
+			],
+			"aim_clips": [
+				"Gesture_with_Hand_on_Gun"
+			],
+			"fire_clips": [
+				"Draw_and_Shoot_Left",
+				"Cowboy_Quick_Draw_Shooting"
+			]
 		},
 		"kino": {
 			"display_name": "Kino",
@@ -92,15 +217,39 @@
 			"mint_glb": "res://models/mint/props/kino.glb",
 			"holster_bone": "Hips",
 			"hand_bone": "RightHand",
-			"holster_pos": [0.1, 0.08, 0.06],
-			"holster_rot": [0.0, 0.0, 0.0],
-			"hand_pos": [0.0, 0.08, 0.04],
-			"hand_rot": [0.0, 0.0, 0.0],
-			"muzzle_local": [0.0, 0.0, 0.08],
-			"scale": 0.18,
+			"holster_pos": [
+				0.09,
+				0.07,
+				0.05
+			],
+			"holster_rot": [
+				0.2,
+				0.4,
+				0.1
+			],
+			"hand_pos": [
+				0.0,
+				0.008,
+				0.004
+			],
+			"hand_rot": [
+				0.15,
+				-0.3,
+				0.1
+			],
+			"muzzle_local": [
+				0.0,
+				0.0,
+				0.06
+			],
+			"scale": 0.2,
 			"grip_profile": "open",
-			"draw_clips": ["Female_Crouch_Pick_Gun_Point_Forward"],
-			"aim_clips": ["Gesture_with_Hand_on_Gun"],
+			"draw_clips": [
+				"Female_Crouch_Pick_Gun_Point_Forward"
+			],
+			"aim_clips": [
+				"Gesture_with_Hand_on_Gun"
+			],
 			"fire_clips": []
 		}
 	}

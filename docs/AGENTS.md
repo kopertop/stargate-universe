@@ -9,6 +9,9 @@ these docs are written for engineers, not designers.
   and the codebase architecture reference.
 - `engine-reference/` — Engine API notes (Godot 4.6 specific tricks,
   gotchas, version migration notes).
+- `animation/` — Character animation host pipelines (Mixamo → Blender → Godot,
+  rifle-aim process, ARDY notes). Start at
+  `animation/rifle-aim-host-pipeline.md` before any aim/IK work.
 - `audio-inventory.md` — Catalogue of all SFX + music, by category, with
   source attribution.
 - `deployment-targets.md` — Planned platforms / build configurations.

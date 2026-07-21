@@ -28,6 +28,23 @@ var _weapon: MintHeldWeapon = null
 var _entry_sidearm: Dictionary = {}
 var _weapon_id: String = "sidearm"
 var _weapon_cfg: Dictionary = {}
+# Locked aim stance: full-body frozen rifle/pistol pose replaces Idle fidget.
+# Industry pattern (TPS): when speed≈0 and weapon drawn, base = aim pose,
+# not Idle + arm overlay (which reads as "still idling while aiming").
+var _aim_stance_active: bool = false
+var _aim_stance_clip: String = ""
+var _pre_stance_idle: String = ""
+## Fraction into the aim clip to freeze (0..1). Tuned via mint_rifle_aim_grid.
+@export var aim_stance_frac: float = 0.42
+## Meshy source used to sample upper-body rifle arms onto Idle feet.
+@export var rifle_aim_source_clip: String = "Walk_Forward_While_Shooting_inplace"
+@export var rifle_aim_source_frac: float = 0.12
+## Upper-body bones copied from the rifle source clip onto Idle feet.
+const _RIFLE_OVERLAY_BONES: Array[String] = [
+	# Arms only — including Spine02 from walk-shoot leans the Idle torso back.
+	"LeftShoulder", "LeftArm", "LeftForeArm", "LeftHand",
+	"RightShoulder", "RightArm", "RightForeArm", "RightHand",
+]
 
 
 static func load_profile(character_slug: String) -> MintCharacter:
@@ -61,6 +78,32 @@ static func display_name_for(character_slug: String) -> String:
 	return character_slug
 
 
+## Map in-game display name ("Dr Rush") → mint slug ("rush"), or "" if unregistered.
+static func slug_for_display_name(display: String) -> String:
+	var want: String = display.strip_edges()
+	if want == "":
+		return ""
+	var registry: Dictionary = _load_registry()
+	for key in registry.keys():
+		var entry: Variant = registry[key]
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+		var d: Dictionary = entry as Dictionary
+		if str(d.get("display_name", "")) == want:
+			return str(key)
+		if str(key) == want.to_lower().replace(" ", "_"):
+			return str(key)
+	# Common short-name aliases used in quest copy.
+	var aliases: Dictionary = {
+		"Rush": "rush",
+		"Eli": "eli",
+		"Eli Wallace": "eli",
+	}
+	if aliases.has(want) and registry.has(str(aliases[want])):
+		return str(aliases[want])
+	return ""
+
+
 static func _load_registry() -> Dictionary:
 	if not FileAccess.file_exists(REGISTRY_PATH):
 		return {}
@@ -80,7 +123,8 @@ func _ready() -> void:
 	if entry.is_empty():
 		push_error("MintCharacter: missing mint_entry meta")
 		return
-	if typeof(entry.get("sidearm", {})) == TYPE_DICTIONARY:
+	# get("sidearm", {}) is truthy-as-dict even when missing — don't index [].
+	if entry.has("sidearm") and typeof(entry["sidearm"]) == TYPE_DICTIONARY:
 		_entry_sidearm = entry["sidearm"] as Dictionary
 	_instantiate_from_entry(entry)
 
@@ -286,7 +330,7 @@ func _build_anim_tree() -> void:
 	aim_node.animation = _aim_clip if _aim_clip != "" else idle
 	blend.add_node("aim_clip", aim_node, Vector2(-200, 480))
 	var aim_blend := AnimationNodeBlend2.new()
-	_filter_bones(aim_blend, _ARM_BONES)
+	_filter_bones(aim_blend, _AIM_BONES)
 	blend.add_node("aim", aim_blend, Vector2(600, 40))
 
 	blend.connect_node("jump", 0, "stance")
@@ -314,12 +358,15 @@ const _JUMP_BONES: Array[String] = [
 	"RightShoulder", "RightArm", "RightForeArm", "RightHand",
 	"neck", "Head", "head_end", "headfront",
 ]
+# Fire / action / aim: arms ONLY.
+# Mint combat clips (Cowboy_Quick_Draw, Gesture_with_Hand_on_Gun, etc.) ship
+# full-body keys. Filtering spine/neck into those blends spaghetti'd Eli's torso
+# (studio + weapon-grid captures). Legs stay on loco underneath.
 const _ARM_BONES: Array[String] = [
-	"Spine", "Spine01", "Spine02",
 	"LeftShoulder", "LeftArm", "LeftForeArm", "LeftHand",
 	"RightShoulder", "RightArm", "RightForeArm", "RightHand",
-	"neck", "Head",
 ]
+const _AIM_BONES: Array[String] = _ARM_BONES
 
 
 func _filter_bones(node: AnimationNode, bones: Array[String]) -> void:
@@ -354,7 +401,14 @@ func _append_bone_descendants(skel: Skeleton3D, parent_name: String, out: Array[
 
 # moving 0..1 (idle→loco), gait 0..1 (walk→run). Continuous arm swing.
 func set_move_blend(moving: float, gait: float) -> void:
+	# Leaving locked aim when the player starts walking.
+	if _aim_stance_active and moving > 0.12:
+		exit_aim_stance()
+		if is_weapon_drawn():
+			set_aim_blend(0.85)
 	if _tree == null:
+		return
+	if _aim_stance_active:
 		return
 	_tree.set("parameters/stance/blend_amount", clampf(moving, 0.0, 1.0))
 	_tree.set("parameters/gait/blend_amount", clampf(gait, 0.0, 1.0))
@@ -566,9 +620,135 @@ func _resolve_clip(clip: String) -> bool:
 
 
 func set_aim_blend(amount: float) -> void:
+	if _aim_stance_active:
+		# Full-body frozen stance owns the pose; tree arm-aim would double-drive.
+		return
 	if _tree == null:
 		return
 	_tree.set("parameters/aim/blend_amount", clampf(amount, 0.0, 1.0))
+
+
+## Plant feet and freeze a dedicated aim pose. Use when stationary with weapon
+## drawn. Walking aim should call exit_aim_stance() first.
+##
+## Rifle default: Idle feet (no walk fidget) + upper-body sample from a Meshy
+## shoot clip, then seat the rifle between the animated hands. Mint Meshy bone
+## axes break TwoBoneIK (arms flip behind the back). Mixamo Rifle Idle on a
+## finger-bone host is the longer-term fix — see models/mixamo_openbot/AGENTS.md.
+## Pass an explicit clip for labs / capture grids (full-body freeze).
+func enter_aim_stance(clip: String = "", frac: float = -1.0) -> bool:
+	var rifle_default: bool = (
+		clip == ""
+		and _weapon != null
+		and str(_weapon_cfg.get("kind", "")) == "two_handed"
+	)
+	var use_clip: String = clip
+	if use_clip == "":
+		use_clip = "Idle" if rifle_default else _aim_clip
+	if use_clip == "" or not _resolve_clip(use_clip):
+		return false
+	use_clip = _resolved
+	var t_frac: float = 0.0 if rifle_default else (aim_stance_frac if frac < 0.0 else clampf(frac, 0.0, 1.0))
+	# Idempotent — player calls this every idle frame.
+	if _aim_stance_active and _aim_stance_clip == use_clip and frac < 0.0 and clip == "":
+		if _weapon != null and _weapon.is_drawn():
+			_weapon.apply_grip_pose()
+			if rifle_default:
+				_weapon.seat_rifle_on_hand()
+		return true
+	if _anim == null or not _anim.has_animation(use_clip):
+		return false
+	if _pre_stance_idle == "":
+		_pre_stance_idle = _first_matching(["Idle", "idle"])
+	_aim_stance_clip = use_clip
+	_aim_stance_active = true
+	if _tree != null:
+		_tree.set("parameters/stance/blend_amount", 0.0)
+		_tree.set("parameters/gait/blend_amount", 0.0)
+		_tree.set("parameters/aim/blend_amount", 0.0)
+		_tree.active = false
+	_anim.active = true
+	var anim_res: Animation = _anim.get_animation(use_clip)
+	var seek_t: float = 0.0
+	if anim_res != null and not rifle_default:
+		seek_t = t_frac * anim_res.length
+	_anim.play(use_clip, 0.0)
+	_anim.seek(seek_t, true)
+	_anim.pause()
+	_base_clip = use_clip
+	if rifle_default:
+		_apply_rifle_aim_arm_overlay()
+	if _weapon != null and _weapon.is_drawn():
+		_weapon.apply_grip_pose()
+		if rifle_default or str(_weapon_cfg.get("kind", "")) == "two_handed":
+			_weapon.seat_rifle_on_hand()
+	return true
+
+
+## Idle feet + upper-body sample from a Meshy shoot clip.
+func _apply_rifle_aim_arm_overlay() -> void:
+	var skel: Skeleton3D = find_skeleton()
+	if skel == null or _anim == null:
+		return
+	var source: String = rifle_aim_source_clip
+	if not _resolve_clip(source):
+		source = _first_matching([
+			"Walk_Forward_While_Shooting_inplace",
+			"Rifle_Aim_Turn_Right",
+			"Gun_Hold_Left_Turn",
+		])
+	else:
+		source = _resolved
+	if source == "" or not _anim.has_animation(source):
+		return
+	var anim_res: Animation = _anim.get_animation(source)
+	var seek_t: float = clampf(rifle_aim_source_frac, 0.0, 1.0) * anim_res.length
+	_anim.play(source, 0.0)
+	_anim.seek(seek_t, true)
+	_anim.pause()
+	var sampled: Dictionary = {}
+	for bone_name in _RIFLE_OVERLAY_BONES:
+		var idx: int = skel.find_bone(bone_name)
+		if idx < 0:
+			continue
+		sampled[bone_name] = skel.get_bone_pose_rotation(idx)
+	var idle: String = _pre_stance_idle if _pre_stance_idle != "" else _first_matching(["Idle", "idle"])
+	if idle == "" or not _anim.has_animation(idle):
+		return
+	_anim.play(idle, 0.0)
+	_anim.seek(0.0, true)
+	_anim.pause()
+	_aim_stance_clip = idle
+	_base_clip = idle
+	for bone_name in sampled.keys():
+		var idx2: int = skel.find_bone(str(bone_name))
+		if idx2 < 0:
+			continue
+		skel.set_bone_pose_rotation(idx2, sampled[bone_name] as Quaternion)
+
+
+func exit_aim_stance() -> void:
+	if not _aim_stance_active:
+		return
+	_aim_stance_active = false
+	_aim_stance_clip = ""
+	if _weapon != null and _weapon.has_method("clear_ik_two_hand"):
+		_weapon.clear_ik_two_hand()
+	if _anim != null:
+		_anim.active = false
+	if _tree != null:
+		_tree.active = true
+	var idle: String = _pre_stance_idle if _pre_stance_idle != "" else _first_matching(["Idle", "idle"])
+	_pre_stance_idle = ""
+	if idle != "":
+		_set_idle_animation(idle)
+		_base_clip = idle
+	set_move_blend(0.0, 0.0)
+	set_aim_blend(0.0)
+
+
+func is_aim_stance_active() -> bool:
+	return _aim_stance_active
 
 
 func request_jump() -> bool:
@@ -612,6 +792,7 @@ func request_draw() -> bool:
 
 
 func request_holster() -> bool:
+	exit_aim_stance()
 	if _weapon != null:
 		_weapon.request_holster(0.35)
 	set_aim_blend(0.0)
@@ -751,7 +932,13 @@ func equip_weapon(weapon_id: String = "sidearm", overrides: Dictionary = {}) -> 
 			cfg["asset_source"] = "mint"
 	if _weapon != null:
 		_weapon.unequip()
-		_weapon.queue_free()
+		# Free immediately — queue_free keeps the old "HeldWeapon" name in-tree
+		# until end of frame, so the replacement gets renamed (HeldWeapon2) and
+		# capture/harness get_node("HeldWeapon") hits the stale unequipped node
+		# (rifle never drew; aimed shots showed the hip holster prop).
+		if _weapon.get_parent() == self:
+			remove_child(_weapon)
+		_weapon.free()
 		_weapon = null
 	var skel: Skeleton3D = find_skeleton()
 	if skel == null:
@@ -762,7 +949,9 @@ func equip_weapon(weapon_id: String = "sidearm", overrides: Dictionary = {}) -> 
 	add_child(_weapon)
 	var ok: bool = _weapon.equip(skel, cfg)
 	if not ok:
-		_weapon.queue_free()
+		if _weapon.get_parent() == self:
+			remove_child(_weapon)
+		_weapon.free()
 		_weapon = null
 		return false
 	_weapon_id = weapon_id
@@ -870,7 +1059,9 @@ func set_held_sidearm(carried: bool, aimed: bool = true, glb_path: String = "") 
 	if not carried:
 		if _weapon != null:
 			_weapon.unequip()
-			_weapon.queue_free()
+			if _weapon.get_parent() == self:
+				remove_child(_weapon)
+			_weapon.free()
 			_weapon = null
 		return
 	var cfg: Dictionary = {}

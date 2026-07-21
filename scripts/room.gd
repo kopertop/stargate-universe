@@ -1014,15 +1014,18 @@ func _spawn_dr_rush() -> void:
 	cs.position = Vector3(0.0, 0.88, 0.0)
 	rush.add_child(cs)
 
-	# Visual body — primary Quaternius ModularCharacter (same branch as
-	# _spawn_npc; Rush was the last hand-rolled mini in the control room).
+	# Visual body — Mint Rush when registered; else Quaternius ModularCharacter.
 	var model_holder: Node3D = Node3D.new()
 	model_holder.name = "Model"
 	# Models export +Z forward; rotate 180° so the body faces the parent
 	# StaticBody3D's -Z forward.
 	model_holder.rotation.y = PI
 	rush.add_child(model_holder)
-	if CharacterFactoryRef.profile_for("Dr Rush").has("mod"):
+	var rush_mint: Node3D = CharacterFactoryRef.build_mint("Dr Rush")
+	if rush_mint != null:
+		# MintCharacter._ready autoplays Idle after clip merge.
+		model_holder.add_child(rush_mint)
+	elif CharacterFactoryRef.profile_for("Dr Rush").has("mod"):
 		var rush_mc: Node3D = CharacterFactoryRef.build_modular("Dr Rush")
 		model_holder.add_child(rush_mc)
 		CharacterFactoryRef.dress_modular(rush_mc, "Dr Rush", CharacterFactoryRef.CTX_SHIP)

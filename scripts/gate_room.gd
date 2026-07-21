@@ -4056,6 +4056,12 @@ func _build_structural_columns() -> void:
 func _attach_crew_body(model_holder: Node3D, character: String, fallback_glb: String,
 		context: String = "") -> Node:
 	var ctx: String = context if context != "" else CharacterFactoryRef.CTX_SHIP
+	# Mint-native when registered (Rush quest-giver first; more crew later).
+	var mint_body: Node3D = CharacterFactoryRef.build_mint(character)
+	if mint_body != null:
+		# MintCharacter._ready autoplays Idle after clip merge.
+		model_holder.add_child(mint_body)
+		return mint_body
 	if CharacterFactoryRef.profile_for(character).has("mod"):
 		var mc: Node3D = CharacterFactoryRef.build_modular(character)
 		if mc != null:

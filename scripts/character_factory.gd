@@ -349,6 +349,26 @@ static func _modular() -> Script:
 	return _modular_script
 
 
+# Mint-native body when the display name is registered in data/mint/characters.json.
+# Returns null if no Mint profile exists (caller falls back to build_modular).
+static func build_mint(character_name: String) -> Node3D:
+	var MintRef: Script = load("res://scripts/mint_character.gd") as Script
+	if MintRef == null:
+		return null
+	var slug: String = str(MintRef.call("slug_for_display_name", character_name))
+	if slug == "":
+		return null
+	return MintRef.call("load_profile", slug) as Node3D
+
+
+# Prefer Mint when registered; else ModularCharacter.
+static func build_avatar(character_name: String) -> Node3D:
+	var mint: Node3D = build_mint(character_name)
+	if mint != null:
+		return mint
+	return build_modular(character_name)
+
+
 # Build the PRIMARY in-game body for a character: a ModularCharacter with the
 # profile's gender/hair. Call dress_modular AFTER adding it to the tree (slot
 # equipment needs the skeleton, which exists post-_ready).

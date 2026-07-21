@@ -78,6 +78,7 @@ func _run() -> void:
 	var walk_aim: Dictionary = _posed_stats(skel, eli)
 	_assert_human(walk_aim, "Walk+Aim sidearm")
 	_assert_near_idle(idle_size, walk_aim["size"] as Vector3, "Walk+Aim sidearm")
+	_assert_spine_sane(skel, idle, walk_aim, "Walk+Aim sidearm")
 
 	_check(eli.call("request_fire") == true, "fire sidearm while walking")
 	# Sample mid-oneshot frames — distortion often spikes mid-fire, not at rest.
@@ -148,6 +149,20 @@ func _assert_human(stats: Dictionary, label: String) -> void:
 	_check(outliers <= MAX_OUTLIERS, "%s outlier verts beyond %.2fm from hip <= %d (got %d)" % [label, MAX_OUTLIER_HIP_DIST, MAX_OUTLIERS, outliers])
 
 
+func _assert_spine_sane(_skel: Skeleton3D, idle: Dictionary, posed: Dictionary, label: String) -> void:
+	# Catch aim-filter leaks: Gesture clips bend Spine/Head into spaghetti.
+	var idle_head: float = float(idle.get("head_from_hip", 0.0))
+	var posed_head: float = float(posed.get("head_from_hip", 0.0))
+	_check(
+		posed_head <= idle_head * 1.35 + 0.12,
+		"%s head-from-hip stable (idle %.3f → %.3f)" % [label, idle_head, posed_head]
+	)
+	var idle_spine: Vector3 = idle.get("spine_w", Vector3.ZERO) as Vector3
+	var posed_spine: Vector3 = posed.get("spine_w", Vector3.ZERO) as Vector3
+	var spine_shift: float = idle_spine.distance_to(posed_spine)
+	_check(spine_shift <= 0.35, "%s spine tip shift from idle <= 0.35m (got %.3f)" % [label, spine_shift])
+
+
 func _assert_near_idle(idle_size: Vector3, size: Vector3, label: String) -> void:
 	for axis in 3:
 		var base: float = idle_size[axis]
@@ -160,11 +175,28 @@ func _assert_near_idle(idle_size: Vector3, size: Vector3, label: String) -> void
 		)
 
 
+func _head_from_hip(skel: Skeleton3D) -> float:
+	var hips: int = skel.find_bone("Hips")
+	var head: int = skel.find_bone("Head")
+	if hips < 0 or head < 0:
+		return 0.0
+	var hip_w: Vector3 = skel.to_global(skel.get_bone_global_pose(hips).origin)
+	var head_w: Vector3 = skel.to_global(skel.get_bone_global_pose(head).origin)
+	return hip_w.distance_to(head_w)
+
+
 ## CPU-skin every mesh vert under the live skeleton pose (GPU AABB is bind-pose).
 func _posed_stats(skel: Skeleton3D, mesh_root: Node) -> Dictionary:
 	var hips: int = skel.find_bone("Hips")
 	var hip_w: Vector3 = (
 		skel.to_global(skel.get_bone_global_pose(hips).origin) if hips >= 0 else skel.global_position
+	)
+	var head_from_hip: float = _head_from_hip(skel)
+	var spine_i: int = skel.find_bone("Spine02")
+	if spine_i < 0:
+		spine_i = skel.find_bone("Spine")
+	var spine_w: Vector3 = (
+		skel.to_global(skel.get_bone_global_pose(spine_i).origin) if spine_i >= 0 else hip_w
 	)
 	var aabb := AABB()
 	var first: bool = true
@@ -240,6 +272,8 @@ func _posed_stats(skel: Skeleton3D, mesh_root: Node) -> Dictionary:
 		"max_hip": max_hip,
 		"outliers": outliers,
 		"finger_bones": finger_bones,
+		"head_from_hip": head_from_hip,
+		"spine_w": spine_w,
 	}
 
 

@@ -22,6 +22,23 @@ func _run() -> void:
 
 	var slugs: Array = MintRef.profile_slugs()
 	_check(slugs.has("eli"), "registry lists eli")
+	_check(slugs.has("rush"), "registry lists rush")
+	_check(str(MintRef.call("slug_for_display_name", "Dr Rush")) == "rush",
+		"slug_for_display_name(Dr Rush) → rush")
+
+	var rush: Node = MintRef.load_profile("rush")
+	_check(rush != null, "load_profile('rush')")
+	if rush != null:
+		root.add_child(rush)
+		await process_frame
+		await process_frame
+		await process_frame
+		var rush_clips: PackedStringArray = rush.call("clip_names")
+		_check(rush_clips.size() >= 4, "rush merged >= 4 clips (got %d)" % rush_clips.size())
+		_check(Array(rush_clips).has("Idle"), "rush has Idle clip")
+		_check(rush.call("play", "Idle") == true, "rush play Idle")
+		rush.queue_free()
+		await process_frame
 
 	var eli: Node = MintRef.load_profile("eli")
 	_check(eli != null, "load_profile('eli')")
@@ -90,10 +107,27 @@ func _run() -> void:
 	if GripScript != null and skel_audit != null:
 		var audit: Dictionary = GripScript.audit_finger_host(skel_audit, eli)
 		_check(bool(audit.get("ok", false)), "finger host audit ok (%s)" % str(audit.get("errors", [])))
-	# Swap to rifle (fallback kit mesh OK) and confirm re-equip.
+	# Swap to rifle and confirm two-hand SupportMount is wired.
 	if eli.has_method("equip_weapon"):
 		_check(eli.call("equip_weapon", "rifle") == true, "equip_weapon rifle")
 		_check(str(eli.call("current_weapon_id")) == "rifle", "current_weapon_id rifle")
+		var held: Node = eli.get_node_or_null("HeldWeapon")
+		var skel_rifle: Skeleton3D = eli.call("find_skeleton") as Skeleton3D
+		var support_node: Node = skel_rifle.get_node_or_null("SupportMount") if skel_rifle != null else null
+		_check(
+			held != null and support_node is BoneAttachment3D
+			and (support_node as BoneAttachment3D).bone_name == "LeftHand",
+			"rifle creates LeftHand SupportMount"
+		)
+		_check(eli.call("request_draw") == true, "draw rifle")
+		await create_timer(0.55).timeout
+		if str(eli.call("weapon_state_name")) != "AIMED" and held != null and held.has_method("notify_draw_finished"):
+			held.call("notify_draw_finished")
+		eli.call("set_aim_blend", 1.0)
+		for _i in 4:
+			await process_frame
+		var grip_rifle: String = str(eli.call("grip_status"))
+		_check(grip_rifle.find("2H") >= 0, "rifle aimed grip reports 2H (%s)" % grip_rifle)
 		_check(eli.call("equip_weapon", "sidearm") == true, "swap back to sidearm")
 	eli.call("request_holster")
 	await create_timer(0.35).timeout

@@ -10,6 +10,10 @@ signal auto_walk_finished
 @export_subgroup("Components")
 @export var view: Node3D
 
+@export_subgroup("Avatar")
+# Mint-native Eli (Animation Studio pipeline). When false, Quaternius modular.
+@export var use_mint_avatar: bool = true
+
 @export_subgroup("Movement")
 @export var walk_speed: float = 8.0          # m/s
 @export var sprint_multiplier: float = 1.7
@@ -85,6 +89,7 @@ var _footstep_base_volume_db: float = 0.0
 const _COLORMAP_MAT: Material = preload("res://models/colormap.tres")
 const _EQUIPMENT_MOUNT_SCRIPT: Script = preload("res://scripts/equipment_mount.gd")
 const _CHARACTER_FACTORY: Script = preload("res://scripts/character_factory.gd")
+const _MINT_CHARACTER: Script = preload("res://scripts/mint_character.gd")
 
 # Kit animation names -> modular crew_body.res clips. The library has no
 # airborne clip, so jump/fall borrow the jog cycle; "holding-both" (Kino
@@ -101,13 +106,41 @@ var _equipment_mount: Node3D = null
 # The player's ModularCharacter body (primary pipeline). Null only if the Eli
 # profile ever loses its "mod" key — then the legacy kit chibi stays.
 var _mc: Node3D = null
+# Mint-native body (when use_mint_avatar). Combat weapons via MintHeldWeapon.
+var _mint: Node3D = null
+var _mint_jump_requested: bool = false
 
 func _ready() -> void:
-	_setup_modular_avatar()
-	if _mc == null:
-		_apply_colormap(_model)
+	if use_mint_avatar:
+		_setup_mint_avatar()
+	else:
+		_setup_modular_avatar()
+		if _mc == null:
+			_apply_colormap(_model)
 	_setup_equipment_mount()
 	_init_footsteps()
+
+
+# Mint Eli from data/mint/characters.json — loco via set_move_blend, combat via
+# MintHeldWeapon. Inventory gear still uses EquipmentMount on the same skeleton.
+func _setup_mint_avatar() -> void:
+	if _model == null:
+		return
+	for c in _model.get_children():
+		_model.remove_child(c)
+		c.queue_free()
+	_model.transform = Transform3D.IDENTITY
+	_mint = _MINT_CHARACTER.load_profile("eli") as Node3D
+	if _mint == null:
+		push_warning("Player: Mint Eli failed to load — falling back to modular")
+		_setup_modular_avatar()
+		return
+	_mint.rotation.y = PI
+	_model.add_child(_mint)
+	_mc = null
+	_animation = null
+	if _mint.has_method("equip_weapon"):
+		_mint.call("equip_weapon", "sidearm")
 
 
 # Replace the kit chibi (eli.glb mini at 1.6x) with the Quaternius modular
@@ -131,7 +164,10 @@ func _setup_modular_avatar() -> void:
 
 # Re-dress the avatar for a context ("ship"/"mission"). Planet scenes push
 # "mission" after placing the player, so Eli wears fatigues off-ship.
+# Mint wardrobe is not wired yet — no-op when on Mint avatar.
 func set_dress_context(context: String) -> void:
+	if _mint != null:
+		return
 	if _mc != null:
 		_CHARACTER_FACTORY.dress_modular(_mc, "Eli", context)
 
@@ -187,7 +223,10 @@ func _apply_idle(delta: float) -> void:
 	# A pose override (e.g. "holding-both" while piloting the Kino) takes the
 	# place of plain idle. Driven every frame so the locomotion logic can't
 	# stomp it back to "idle".
-	_play_anim(_pose_override if _pose_override != "" else "idle", 0.15)
+	if _mint != null:
+		_drive_mint_locomotion(0.0)
+	else:
+		_play_anim(_pose_override if _pose_override != "" else "idle", 0.15)
 
 func _handle_movement(delta: float) -> void:
 	# Camera-relative input.
@@ -209,6 +248,7 @@ func _handle_movement(delta: float) -> void:
 	_apply_gravity(delta)
 	if Input.is_action_just_pressed("jump") and is_on_floor():
 		_gravity_velocity = -jump_strength
+		_mint_jump_requested = true
 		Audio.play("res://sounds/jump.ogg")
 
 	velocity = Vector3(_move_velocity.x, -_gravity_velocity, _move_velocity.z)
@@ -236,6 +276,9 @@ func _apply_gravity(delta: float) -> void:
 func _drive_locomotion_anim() -> void:
 	_particles_trail.emitting = false
 	var horiz_speed: float = Vector2(velocity.x, velocity.z).length()
+	if _mint != null:
+		_drive_mint_locomotion(horiz_speed)
+		return
 	if is_on_floor():
 		if horiz_speed > 0.25:
 			var is_sprinting: bool = horiz_speed > walk_speed * 1.15
@@ -257,6 +300,47 @@ func _drive_locomotion_anim() -> void:
 		_play_anim(airborne_anim, 0.1)
 		if _animation != null:
 			_animation.speed_scale = 1.0
+
+
+func _drive_mint_locomotion(horiz_speed: float) -> void:
+	if _pose_override != "":
+		# Kino remote: hold a light aim pose instead of Modular "talk".
+		_mint.call("set_move_blend", 0.0, 0.0)
+		if _mint.has_method("exit_aim_stance"):
+			_mint.call("exit_aim_stance")
+		_mint.call("set_aim_blend", 0.35)
+		return
+	var drawn: bool = _mint.has_method("is_weapon_drawn") and bool(_mint.call("is_weapon_drawn"))
+	if is_on_floor():
+		if horiz_speed > 0.25:
+			var is_sprinting: bool = horiz_speed > walk_speed * 1.15
+			var moving: float = clampf(horiz_speed / walk_speed, 0.0, 1.0)
+			var gait: float = 1.0 if is_sprinting else clampf((horiz_speed / walk_speed) * 0.55, 0.0, 0.55)
+			# Moving aim: loco + arm aim overlay (not frozen stance).
+			if _mint.has_method("exit_aim_stance"):
+				_mint.call("exit_aim_stance")
+			_mint.call("set_move_blend", moving, gait)
+			_mint.call("set_aim_blend", 0.85 if drawn else 0.0)
+			if is_sprinting:
+				_particles_trail.emitting = true
+		else:
+			_mint.call("set_move_blend", 0.0, 0.0)
+			# Stationary + drawn → lock a dedicated aim pose (no Idle fidget).
+			if drawn and _mint.has_method("enter_aim_stance"):
+				_mint.call("enter_aim_stance")
+			elif not drawn:
+				if _mint.has_method("exit_aim_stance"):
+					_mint.call("exit_aim_stance")
+				_mint.call("set_aim_blend", 0.0)
+	else:
+		if _mint.has_method("exit_aim_stance"):
+			_mint.call("exit_aim_stance")
+		_mint.call("set_move_blend", 0.0, 0.0)
+		_mint.call("set_aim_blend", 0.85 if drawn else 0.0)
+	if _mint_jump_requested:
+		_mint_jump_requested = false
+		if _mint.has_method("request_jump"):
+			_mint.call("request_jump")
 
 
 # Capture the authored footstep volume and default to the ship surface (metal).
@@ -304,6 +388,8 @@ func _emit_footstep() -> void:
 	_sound_footsteps.play()
 
 func _play_anim(name: String, blend: float) -> void:
+	if _mint != null:
+		return
 	if _animation == null:
 		return
 	if _mc != null:

@@ -15,7 +15,7 @@ import bpy
 from mathutils import Matrix, Vector
 
 
-ROOT = Path("/Users/cmoyer/Projects/personal/stargate-universe")
+ROOT = Path(__file__).resolve().parents[1]
 IN = ROOT / "models/mixamo_openbot/incoming"
 OUT_DIR = ROOT / "models/mixamo_openbot"
 SHOT_DIR = ROOT / "screenshots/result/mint_rifle_aim"
@@ -173,7 +173,21 @@ def _import_clip_action(path: Path, name: str) -> bpy.types.Action | None:
 			bpy.data.actions.remove(a)
 	act.name = name
 	_strip_scale_fcurves(act)
-	if name in ("Walk_With_Rifle", "Rifle_Start_Run", "Walking", "Running", "Shoot_Rifle", "Strafe", "Strafe_Alt", "Fire_Rifle_Crouched", "Firing_Rifle"):
+	if name in (
+		"Walk_With_Rifle",
+		"Rifle_Start_Run",
+		"Walking",
+		"Running",
+		"Shoot_Rifle",
+		"Strafe",
+		"Strafe_Alt",
+		"Fire_Rifle_Crouched",
+		"Firing_Rifle",
+		"Rifle_Crouched_Idle_Aim",
+		"Rifle_Kneeling_Aim",
+		"Rifle_Stand_To_Kneel",
+		"Rifle_Idle",
+	):
 		print("stripped hip loc", name, _strip_hip_location(act))
 	print("CLIP", name, "frames", tuple(act.frame_range))
 	return act
@@ -349,6 +363,36 @@ def _mount_bone_parent(arm: bpy.types.Object, rifle: bpy.types.Object) -> None:
 	)
 
 
+def _author_rifle_holster(arm: bpy.types.Object, rifle_hand: bpy.types.Object) -> bpy.types.Object:
+	"""Duplicate the hand rifle onto Spine2 for holstered visibility swap.
+
+	Local transform baked from the signed-off Swat_rifle_combat.blend (2026-07-21).
+	Mixamo bone-parent scale is quirky (-100); keep it so Godot matches the look.
+	"""
+	holster = rifle_hand.copy()
+	holster.data = rifle_hand.data.copy()
+	bpy.context.collection.objects.link(holster)
+	holster.name = "rifle_holster"
+	holster.constraints.clear()
+	holster.parent = None
+	bpy.context.view_layer.update()
+
+	holster.parent = arm
+	holster.parent_type = "BONE"
+	holster.parent_bone = "mixamorig:Spine2"
+	bpy.context.view_layer.update()
+	# Signed-off back sling (user-authored in Blender, then captured).
+	holster.location = Vector((-1.679, -4.9685, -20.9981))
+	holster.rotation_euler = (-0.3379, 2.1146, -0.7889)
+	holster.scale = Vector((-100.0, -100.0, -100.0))
+	bpy.context.view_layer.update()
+	print(
+		"holster parent", holster.parent_bone,
+		"loc", tuple(round(c, 3) for c in holster.location),
+	)
+	return holster
+
+
 def _add_muzzle(rifle: bpy.types.Object) -> bpy.types.Object:
 	existing = bpy.data.objects.get("Muzzle")
 	if existing:
@@ -423,6 +467,7 @@ def run() -> None:
 	rifle = _build_mixamo_proxy_rifle()
 	_seat_rifle(host, rifle)
 	_mount_bone_parent(host, rifle)
+	holster = _author_rifle_holster(host, rifle)
 	muzzle = _add_muzzle(rifle)
 
 	if host.animation_data is None:
@@ -467,6 +512,7 @@ def run() -> None:
 	for m in meshes:
 		m.select_set(True)
 	rifle.select_set(True)
+	holster.select_set(True)
 	muzzle.select_set(True)
 	bpy.context.view_layer.objects.active = host
 	bpy.ops.export_scene.gltf(

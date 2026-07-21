@@ -101,10 +101,6 @@ var _landed: bool = false
 var _ground_y: float = 0.0
 var _spawn_ready: bool = false
 var _host_floor_y: float = 0.0
-# Locked after idle plant — do NOT re-measure per combat clip (stride poses
-# read as "feet high" and shove the mesh under the floor).
-var _host_y_locked: float = 0.0
-var _feet_locked: bool = false
 
 const IDLE_CLIPS: Array[String] = ["Unarmed_Idle", "Breathing_Idle"]
 # Holstered loco: Running looks right — walk is the same clip at lower speed.
@@ -798,6 +794,32 @@ func _apply_idle_foot_bias() -> void:
 		and _stance == Stance.HOLSTER
 	)
 	_host.position.y = _host_floor_y + (IDLE_EXTRA_LIFT if idle_stand else 0.0)
+
+
+## Capture / debug hook — drives the gameplay state machine without UI input.
+func apply_capture_pose(pose: String) -> void:
+	_sprinting = false
+	match pose:
+		"holster":
+			_aiming = false
+			_want_fire = false
+			_move_input = Vector2.ZERO
+		"aim_run":
+			_aiming = true
+			_want_fire = true
+			_move_input = Vector2(0.0, -1.0)
+			_sprinting = true
+		"aim_crouch":
+			_aiming = true
+			_want_fire = true
+			_move_input = Vector2.ZERO
+		_:
+			_aiming = false
+			_want_fire = false
+			_move_input = Vector2.ZERO
+	_sync_gameplay_stance()
+	_apply_idle_foot_bias()
+	_refresh_label()
 
 
 func _align_visual_feet() -> void:

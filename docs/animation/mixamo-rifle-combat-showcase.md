@@ -130,7 +130,8 @@ Builder must:
 1. Import host + clips; strip `.scale` fcurves; `inherit_scale = NONE` on bones.
 2. Strip hip **location** on loco/shoot/strafe/crouch-fire clips.
 3. Ground once across clips (or accept Godot sole align).
-4. Build / seat proxy rifle on RightHand; duplicate or author `rifle_holster` on Spine2.
+4. Build / seat proxy rifle on RightHand; **duplicate** as `rifle_holster` on
+   `mixamorig:Spine2` (builder bakes the signed-off local transform).
 5. Push each action to an NLA track named like the action; export GLB with
    `export_animation_mode=NLA_TRACKS` (or equivalent NLA strip export).
 

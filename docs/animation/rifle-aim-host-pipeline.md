@@ -4,7 +4,12 @@
 stylized / broken hosts. Start from a **working Mixamo humanoid + mocap clip**,
 then retarget / mount weapons / decide what Mint Eli can reuse.
 
-**Last updated:** 2026-07-19 (first successful Mixamo Swat + Rifle Idle proof).
+**Last updated:** 2026-07-21 (combat showcase gameplay loop signed off).
+
+> **Combat showcase replication:** once idle aim is correct, build the playable
+> pack with [`mixamo-rifle-combat-showcase.md`](./mixamo-rifle-combat-showcase.md)
+> (`Swat_rifle_combat.glb` + `rifle_combat_showcase.gd`). That doc owns holster
+> loco, Shoot_Rifle, hip-loc stripping, and foot plant rules.
 
 ---
 

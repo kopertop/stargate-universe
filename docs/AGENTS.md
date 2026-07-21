@@ -10,8 +10,9 @@ these docs are written for engineers, not designers.
 - `engine-reference/` — Engine API notes (Godot 4.6 specific tricks,
   gotchas, version migration notes).
 - `animation/` — Character animation host pipelines (Mixamo → Blender → Godot,
-  rifle-aim process, ARDY notes). Start at
-  `animation/rifle-aim-host-pipeline.md` before any aim/IK work.
+  rifle-aim process, combat showcase replication, ARDY notes). Start at
+  `animation/rifle-aim-host-pipeline.md` before any aim/IK work; for the
+  playable combat loop see `animation/mixamo-rifle-combat-showcase.md`.
 - `audio-inventory.md` — Catalogue of all SFX + music, by category, with
   source attribution.
 - `deployment-targets.md` — Planned platforms / build configurations.

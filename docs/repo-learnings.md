@@ -217,3 +217,18 @@ issues remain open pending closure.
   `design/accessibility-requirements.md`, `sprint-002-retro.md`, `production/qa/bugs/`,
   `tests/regression-suite.md`.
 - CI workflow doesn't test the game at all (see §11).
+
+## 18. Mixamo rifle combat showcase (2026-07-21) [animation, godot, mixamo]
+
+Playable loop signed off: `scenes/rifle_combat_showcase.tscn` + local
+`Swat_rifle_combat.glb` (ToS-gitignored; rebuild via
+`tools/blender_mixamo_rifle_combat.py`). Holstered idle must be Unarmed_Idle
+(not Rifle_Idle — hiding the mesh leaves a ghost grip). Holstered loco uses
+the Running clip at speed_scale 0.55/1.0 — Shooter-Pack Walking looks armed;
+strafe clips are aim-only. Aim+move uses Shoot_Rifle; strip Mixamo hip
+location or the character sinks under the floor. Align feet once at spawn;
+IDLE_EXTRA_LIFT only while standing holstered. Gameplay aim rays are
+camera-forward, never barrel-forward. Dual meshes rifle + rifle_holster with
+exact-name visibility swap. Full replication:
+`docs/animation/mixamo-rifle-combat-showcase.md` and skill
+`godot-mixamo-rifle-combat-showcase`.

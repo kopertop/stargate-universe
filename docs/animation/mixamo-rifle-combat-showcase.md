@@ -27,6 +27,8 @@ Controls: WASD · Shift sprint · Space jump · mouse look · RMB aim · LMB fir
 
 Scene: `scenes/rifle_combat_showcase.tscn`  
 Script: `scripts/rifle_combat_showcase.gd`  
+Gameplay avatar: `scripts/mixamo_combat_avatar.gd` (mounted by `player.gd` when
+`use_mixamo_avatar` and the local pack exists)  
 Builder: `tools/blender_mixamo_rifle_combat.py`  
 Output (local): `models/mixamo_openbot/Swat_rifle_combat.glb`
 

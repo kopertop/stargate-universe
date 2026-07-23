@@ -14,9 +14,15 @@ Mixamo clips, mount the gun, then drive Godot with camera-forward aim.
 
 ## Why it's here
 
+**2026-07-23 decision:** Mixamo is the **gameplay character path**. Player
+defaults to `use_mixamo_avatar` → `MixamoCombatAvatar` (`Swat_rifle_combat.glb`)
+with RMB aim / LMB fire. Mint Meshy Eli remains a lab/fallback host when the
+local Mixamo pack is missing. Future crew = Mixamo base variants (robots /
+reskins), not new Mint-only bodies.
+
 Mint Meshy Eli is a **24-bone** host (hands are leaves). Industry rifle mounts
 attach to `RightHand` / finger bones. OpenBot / Mixamo Swat prove the mount +
-clip path before Eli catches up.
+clip path; Swat is now what the player walks around Destiny as.
 
 ## Drop Mixamo downloads here
 

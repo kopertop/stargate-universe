@@ -20,7 +20,8 @@ func _run() -> void:
 		_finish()
 		return
 	var player: Node = packed.instantiate()
-	# Force Mint path even if the scene export was toggled off locally.
+	# Force Mint path even if Mixamo is the default play avatar.
+	player.set("use_mixamo_avatar", false)
 	player.set("use_mint_avatar", true)
 	root.add_child(player)
 	await process_frame

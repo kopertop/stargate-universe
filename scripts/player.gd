@@ -11,7 +11,10 @@ signal auto_walk_finished
 @export var view: Node3D
 
 @export_subgroup("Avatar")
-# Mint-native Eli (Animation Studio pipeline). When false, Quaternius modular.
+# Mixamo Swat combat host (signed-off aim/fire). Falls back to Mint, then modular,
+# when the local ToS-gitignored pack is missing.
+@export var use_mixamo_avatar: bool = true
+# Mint-native Eli (Animation Studio). Used when Mixamo pack is absent / disabled.
 @export var use_mint_avatar: bool = true
 
 @export_subgroup("Movement")
@@ -90,6 +93,7 @@ const _COLORMAP_MAT: Material = preload("res://models/colormap.tres")
 const _EQUIPMENT_MOUNT_SCRIPT: Script = preload("res://scripts/equipment_mount.gd")
 const _CHARACTER_FACTORY: Script = preload("res://scripts/character_factory.gd")
 const _MINT_CHARACTER: Script = preload("res://scripts/mint_character.gd")
+const _MIXAMO_COMBAT: Script = preload("res://scripts/mixamo_combat_avatar.gd")
 
 # Kit animation names -> modular crew_body.res clips. The library has no
 # airborne clip, so jump/fall borrow the jog cycle; "holding-both" (Kino
@@ -109,9 +113,16 @@ var _mc: Node3D = null
 # Mint-native body (when use_mint_avatar). Combat weapons via MintHeldWeapon.
 var _mint: Node3D = null
 var _mint_jump_requested: bool = false
+# Mixamo Swat combat avatar (preferred play path).
+var _mixamo: Node3D = null
+var _mixamo_aiming: bool = false
+var _mixamo_want_fire: bool = false
+var _aim_cross: Control = null
 
 func _ready() -> void:
-	if use_mint_avatar:
+	if use_mixamo_avatar and _mixamo_pack_available():
+		_setup_mixamo_avatar()
+	elif use_mint_avatar:
 		_setup_mint_avatar()
 	else:
 		_setup_modular_avatar()
@@ -119,6 +130,58 @@ func _ready() -> void:
 			_apply_colormap(_model)
 	_setup_equipment_mount()
 	_init_footsteps()
+	_configure_combat_camera()
+
+
+func _mixamo_pack_available() -> bool:
+	return (
+		ResourceLoader.exists("res://models/mixamo_openbot/Swat_rifle_combat.glb")
+		or ResourceLoader.exists("res://models/mixamo_openbot/Swat_rifle_idle.glb")
+	)
+
+
+# Mixamo Swat combat pack — RMB aim / LMB fire while aiming.
+func _setup_mixamo_avatar() -> void:
+	if _model == null:
+		return
+	for c in _model.get_children():
+		_model.remove_child(c)
+		c.queue_free()
+	_model.transform = Transform3D.IDENTITY
+	_mixamo = _MIXAMO_COMBAT.create() as Node3D
+	_model.add_child(_mixamo)
+	if not bool(_mixamo.call("mount")):
+		_mixamo.queue_free()
+		_mixamo = null
+		push_warning("Player: Mixamo combat pack failed — falling back")
+		if use_mint_avatar:
+			_setup_mint_avatar()
+		else:
+			_setup_modular_avatar()
+		return
+	_mc = null
+	_mint = null
+	_animation = null
+	call_deferred("_finish_mixamo_spawn")
+
+
+func _finish_mixamo_spawn() -> void:
+	if _mixamo == null:
+		return
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if _mixamo != null and _mixamo.has_method("align_feet_once"):
+		_mixamo.call("align_feet_once")
+	_ensure_aim_crosshair()
+
+
+func _configure_combat_camera() -> void:
+	if view == null or _mixamo == null:
+		return
+	if view.has_method("set_combat_look"):
+		view.call("set_combat_look", true)
+	elif "combat_look" in view:
+		view.set("combat_look", true)
 
 
 # Mint Eli from data/mint/characters.json — loco via set_move_blend, combat via
@@ -164,9 +227,9 @@ func _setup_modular_avatar() -> void:
 
 # Re-dress the avatar for a context ("ship"/"mission"). Planet scenes push
 # "mission" after placing the player, so Eli wears fatigues off-ship.
-# Mint wardrobe is not wired yet — no-op when on Mint avatar.
+# Mint wardrobe is not wired yet — no-op when on Mint/Mixamo avatar.
 func set_dress_context(context: String) -> void:
-	if _mint != null:
+	if _mint != null or _mixamo != null:
 		return
 	if _mc != null:
 		_CHARACTER_FACTORY.dress_modular(_mc, "Eli", context)
@@ -225,6 +288,8 @@ func _apply_idle(delta: float) -> void:
 	# stomp it back to "idle".
 	if _mint != null:
 		_drive_mint_locomotion(0.0)
+	elif _mixamo != null:
+		_drive_mixamo_locomotion(0.0, false)
 	else:
 		_play_anim(_pose_override if _pose_override != "" else "idle", 0.15)
 
@@ -238,9 +303,17 @@ func _handle_movement(delta: float) -> void:
 	if view != null:
 		input_vec = input_vec.rotated(Vector3.UP, view.rotation.y)
 
+	_poll_mixamo_combat_input()
+
 	var target_speed: float = walk_speed
-	if Input.is_action_pressed("sprint"):
-		target_speed *= sprint_multiplier
+	if _mixamo != null:
+		# Showcase-scale loco; walk_speed export stays for Mint/modular.
+		target_speed = 3.2
+	if Input.is_action_pressed("sprint") and not _mixamo_aiming:
+		target_speed *= (1.8 if _mixamo != null else sprint_multiplier)
+	elif _mixamo_aiming:
+		# Showcase: slightly slower while aiming on the move.
+		target_speed = 3.2 * (1.15 if Input.is_action_pressed("sprint") else 0.9)
 
 	var target_velocity: Vector3 = input_vec * target_speed
 	_move_velocity = _move_velocity.lerp(target_velocity, accel_smoothing * delta)
@@ -254,11 +327,13 @@ func _handle_movement(delta: float) -> void:
 	velocity = Vector3(_move_velocity.x, -_gravity_velocity, _move_velocity.z)
 	move_and_slide()
 
-	# Face direction of motion (or camera yaw when standing still).
+	# Face direction of motion (or camera yaw when standing still / aiming).
 	# Negated atan2 args put body yaw in Godot's -Z-forward convention so the
 	# body yaw at idle (= view yaw) matches the body yaw during forward motion.
 	var horiz_speed: float = Vector2(velocity.x, velocity.z).length()
-	if horiz_speed > 0.2:
+	if _mixamo_aiming and view != null:
+		_facing_yaw = view.rotation.y
+	elif horiz_speed > 0.2:
 		_facing_yaw = atan2(-velocity.x, -velocity.z)
 	elif view != null:
 		_facing_yaw = view.rotation.y
@@ -266,6 +341,10 @@ func _handle_movement(delta: float) -> void:
 
 	_drive_locomotion_anim()
 	_update_footsteps(delta)
+	if _mixamo != null and _mixamo_aiming and _mixamo_want_fire:
+		_mixamo.call("try_fire", _interact_camera())
+	_update_aim_crosshair()
+	_update_combat_camera_aim()
 
 func _apply_gravity(delta: float) -> void:
 	if is_on_floor():
@@ -276,6 +355,9 @@ func _apply_gravity(delta: float) -> void:
 func _drive_locomotion_anim() -> void:
 	_particles_trail.emitting = false
 	var horiz_speed: float = Vector2(velocity.x, velocity.z).length()
+	if _mixamo != null:
+		_drive_mixamo_locomotion(horiz_speed, Input.is_action_pressed("sprint"))
+		return
 	if _mint != null:
 		_drive_mint_locomotion(horiz_speed)
 		return
@@ -300,6 +382,82 @@ func _drive_locomotion_anim() -> void:
 		_play_anim(airborne_anim, 0.1)
 		if _animation != null:
 			_animation.speed_scale = 1.0
+
+
+func _poll_mixamo_combat_input() -> void:
+	if _mixamo == null or _input_locked:
+		_mixamo_aiming = false
+		_mixamo_want_fire = false
+		return
+	_mixamo_aiming = Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
+	_mixamo_want_fire = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and _mixamo_aiming
+
+
+func _drive_mixamo_locomotion(horiz_speed: float, sprinting: bool) -> void:
+	if _mixamo == null:
+		return
+	var move_input := Vector2.ZERO
+	move_input.x = Input.get_axis("move_left", "move_right")
+	move_input.y = Input.get_axis("move_forward", "move_back")
+	if move_input.length() > 1.0:
+		move_input = move_input.normalized()
+	# Map Godot move_forward (negative Z wish) to showcase-style Vector2 where
+	# -Y is forward for clip selection / strafe side.
+	var cam_yaw: float = view.rotation.y if view != null else rotation.y
+	var delta: float = get_physics_process_delta_time()
+	_mixamo.call(
+		"tick",
+		delta,
+		_mixamo_aiming and _pose_override == "",
+		_mixamo_want_fire and _pose_override == "",
+		move_input,
+		sprinting and not _mixamo_aiming,
+		cam_yaw
+	)
+	if horiz_speed > walk_speed * 1.15 and not _mixamo_aiming:
+		_particles_trail.emitting = true
+
+
+func _ensure_aim_crosshair() -> void:
+	if _aim_cross != null:
+		return
+	var layer := CanvasLayer.new()
+	layer.name = "MixamoAimUI"
+	layer.layer = 20
+	add_child(layer)
+	_aim_cross = Control.new()
+	_aim_cross.name = "AimCross"
+	_aim_cross.visible = false
+	_aim_cross.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_aim_cross.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(_aim_cross)
+	var h := ColorRect.new()
+	h.color = Color(1.0, 0.85, 0.35, 0.9)
+	h.size = Vector2(18, 2)
+	h.position = Vector2(-9, -1)
+	h.set_anchors_preset(Control.PRESET_CENTER)
+	_aim_cross.add_child(h)
+	var v := ColorRect.new()
+	v.color = Color(1.0, 0.85, 0.35, 0.9)
+	v.size = Vector2(2, 18)
+	v.position = Vector2(-1, -9)
+	v.set_anchors_preset(Control.PRESET_CENTER)
+	_aim_cross.add_child(v)
+
+
+func _update_aim_crosshair() -> void:
+	if _aim_cross == null:
+		return
+	_aim_cross.visible = _mixamo != null and _mixamo_aiming and not _input_locked
+
+
+func _update_combat_camera_aim() -> void:
+	if view == null or _mixamo == null:
+		return
+	if view.has_method("set_combat_aiming"):
+		view.call("set_combat_aiming", _mixamo_aiming and not _input_locked)
+	elif "combat_aiming" in view:
+		view.set("combat_aiming", _mixamo_aiming and not _input_locked)
 
 
 func _drive_mint_locomotion(horiz_speed: float) -> void:
@@ -388,7 +546,7 @@ func _emit_footstep() -> void:
 	_sound_footsteps.play()
 
 func _play_anim(name: String, blend: float) -> void:
-	if _mint != null:
+	if _mint != null or _mixamo != null:
 		return
 	if _animation == null:
 		return
@@ -498,6 +656,9 @@ func _quest_anchor_name() -> String:
 # via the HUD prompt). Clicking empty space clears the selection.
 func _unhandled_input(event: InputEvent) -> void:
 	if _input_locked or _auto_walking:
+		return
+	# Aim+fire owns LMB while Mixamo combat is aiming.
+	if _mixamo != null and _mixamo_aiming:
 		return
 	if event is InputEventMouseButton:
 		var mb: InputEventMouseButton = event

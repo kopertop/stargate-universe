@@ -29,9 +29,19 @@ extends Node3D
 # the character stays framed instead of receding to the bottom of screen.
 @export var pitch_zoom_in_threshold: float = -10.0
 
+@export_group("Combat")
+# Mixamo combat: mouse always looks while captured; RMB is aim (owned by player).
+@export var combat_look: bool = false
+@export var combat_aiming: bool = false
+@export var combat_aim_zoom: float = 5.5
+@export var combat_aim_shoulder: float = 0.45
+@export var combat_hip_fov: float = 52.0
+@export var combat_aim_fov: float = 36.0
+
 var camera_rotation: Vector3
 var zoom: float = 10.0
 var mouselook_active: bool = false
+var _shoulder_blend: float = 0.0
 
 @onready var camera: Camera3D = $SpringArm/Camera
 @onready var spring: SpringArm3D = $SpringArm
@@ -53,12 +63,24 @@ func _ready() -> void:
 	GameState.kino_closed.connect(_on_dialog_closed)
 
 
+func set_combat_look(enabled: bool) -> void:
+	combat_look = enabled
+	if enabled and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func set_combat_aiming(aiming: bool) -> void:
+	combat_aiming = aiming
+
+
 func _on_dialog_started(_npc: Node3D, _tree: Array) -> void:
 	_release_mouselook()
 
 
 func _on_dialog_closed() -> void:
 	_release_mouselook()
+	if combat_look:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func _release_mouselook() -> void:
@@ -81,17 +103,28 @@ func snap_to_target() -> void:
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_RIGHT:
-			mouselook_active = event.pressed
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if event.pressed else Input.MOUSE_MODE_VISIBLE
+			if combat_look:
+				# RMB is aim — owned by player. Still ensure capture for look.
+				if event.pressed and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+					Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+			else:
+				mouselook_active = event.pressed
+				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if event.pressed else Input.MOUSE_MODE_VISIBLE
+		elif event.button_index == MOUSE_BUTTON_LEFT and combat_look and event.pressed:
+			if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		elif event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
 			zoom = clampf(zoom - wheel_zoom_step, zoom_maximum, zoom_minimum)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
 			zoom = clampf(zoom + wheel_zoom_step, zoom_maximum, zoom_minimum)
-	elif event is InputEventMouseMotion and mouselook_active:
-		# screen_relative is resolution-independent; relative is viewport pixels.
-		camera_rotation.y -= event.screen_relative.x * mouse_sensitivity
-		camera_rotation.x -= event.screen_relative.y * mouse_sensitivity
-		camera_rotation.x = clampf(camera_rotation.x, pitch_min, pitch_max)
+	elif event is InputEventMouseMotion:
+		var looking: bool = combat_look and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+		looking = looking or (not combat_look and mouselook_active)
+		if looking:
+			# screen_relative is resolution-independent; relative is viewport pixels.
+			camera_rotation.y -= event.screen_relative.x * mouse_sensitivity
+			camera_rotation.x -= event.screen_relative.y * mouse_sensitivity
+			camera_rotation.x = clampf(camera_rotation.x, pitch_min, pitch_max)
 
 func _physics_process(delta: float) -> void:
 	if target != null:
@@ -101,11 +134,23 @@ func _physics_process(delta: float) -> void:
 	# When pitch swings above the horizon threshold (rig dipping under the
 	# player to look up), pull the spring in toward `zoom_maximum` so the
 	# character doesn't recede off-screen.
-	var target_spring: float = zoom
-	if camera_rotation.x > pitch_zoom_in_threshold:
+	var want_zoom: float = combat_aim_zoom if (combat_look and combat_aiming) else zoom
+	var target_spring: float = want_zoom
+	if camera_rotation.x > pitch_zoom_in_threshold and not (combat_look and combat_aiming):
 		var t: float = inverse_lerp(pitch_zoom_in_threshold, pitch_max, camera_rotation.x)
-		target_spring = lerpf(zoom, zoom_maximum, clampf(t, 0.0, 1.0))
+		target_spring = lerpf(want_zoom, zoom_maximum, clampf(t, 0.0, 1.0))
 	spring.spring_length = lerpf(spring.spring_length, target_spring, 8.0 * delta)
+
+	# Soft OTS shoulder offset while aiming.
+	var want_shoulder: float = 1.0 if (combat_look and combat_aiming) else 0.0
+	_shoulder_blend = lerpf(_shoulder_blend, want_shoulder, minf(1.0, delta * 8.0))
+	if spring != null:
+		spring.position.x = combat_aim_shoulder * _shoulder_blend
+
+	if camera != null and combat_look:
+		var want_fov: float = combat_aim_fov if combat_aiming else combat_hip_fov
+		camera.fov = lerpf(camera.fov, want_fov, minf(1.0, delta * 10.0))
+
 	handle_input(delta)
 
 func handle_input(delta: float) -> void:

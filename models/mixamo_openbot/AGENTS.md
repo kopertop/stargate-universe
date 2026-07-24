@@ -28,12 +28,19 @@ clip path; Swat is now what the player walks around Destiny as.
 
 ```
 incoming/          # gitignored — Mixamo ToS, do not redistribute
+  Y Bot.fbx / X Bot.fbx   # male/female robot mannequin bases (2026-07-24)
+  Exo Gray.fbx / Exo Red.fbx  # sci-fi armored robot skins (optional variants)
   Swat.fbx
   Unarmed Idle 01.fbx / Breathing Idle.fbx
   Running.fbx / Walking.fbx / Strafe*.fbx
   Shoot Rifle.fbx / Firing Rifle.fbx / Fire Rifle While Crouched.fbx
   …
 ```
+
+**Note:** Mixamo no longer indexes a character named "Robot". The stock
+male/female robot bases are **Y Bot** (male proportions) and **X Bot**
+(female proportions). Exo Gray/Red are armored sci-fi skins on the same
+Mixamo skeleton.
 
 ### Idle proof (2026-07-19)
 

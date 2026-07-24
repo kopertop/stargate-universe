@@ -117,6 +117,10 @@ var _mint_jump_requested: bool = false
 var _mixamo: Node3D = null
 var _mixamo_aiming: bool = false
 var _mixamo_want_fire: bool = false
+# Movie Maker / capture harness: drive aim+fire without real mouse buttons.
+var _demo_combat_override: bool = false
+var _demo_aim: bool = false
+var _demo_fire: bool = false
 var _aim_cross: Control = null
 
 func _ready() -> void:
@@ -187,11 +191,16 @@ func _setup_mixamo_avatar() -> void:
 
 
 func _finish_mixamo_spawn() -> void:
-	if _mixamo == null:
+	# Scene-boot smoke frees rooms before deferred awaits resume — bail cleanly.
+	if not is_inside_tree() or _mixamo == null:
 		return
 	await get_tree().process_frame
+	if not is_inside_tree() or _mixamo == null:
+		return
 	await get_tree().process_frame
-	if _mixamo != null and _mixamo.has_method("align_feet_once"):
+	if not is_inside_tree() or _mixamo == null:
+		return
+	if _mixamo.has_method("align_feet_once"):
 		_mixamo.call("align_feet_once")
 	_ensure_aim_crosshair()
 
@@ -426,8 +435,25 @@ func _poll_mixamo_combat_input() -> void:
 		_mixamo_aiming = false
 		_mixamo_want_fire = false
 		return
+	if _demo_combat_override:
+		_mixamo_aiming = _demo_aim
+		_mixamo_want_fire = _demo_fire and _demo_aim
+		return
 	_mixamo_aiming = Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
 	_mixamo_want_fire = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and _mixamo_aiming
+
+
+## Capture / Movie Maker: force RMB-aim / LMB-fire without OS mouse state.
+func set_demo_combat(aiming: bool, firing: bool = false) -> void:
+	_demo_combat_override = true
+	_demo_aim = aiming
+	_demo_fire = firing and aiming
+
+
+func clear_demo_combat() -> void:
+	_demo_combat_override = false
+	_demo_aim = false
+	_demo_fire = false
 
 
 func _drive_mixamo_locomotion(horiz_speed: float, sprinting: bool) -> void:

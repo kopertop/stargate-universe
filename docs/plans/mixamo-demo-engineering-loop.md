@@ -35,30 +35,46 @@ flowchart TD
 - [x] Smoke: `mixamo_player_bridge` covers isolated player + `gate_room` boot (skips if pack missing)
 
 ### Node B — Y Bot host (optional parallel)
+- [ ] Deferred — leave Y Bot host retarget for later
 - Blender pack: retarget combat clips onto Y Bot (same Mixamo skeleton)
 - Keep Swat as fallback; prefer Y Bot as “Eli temp” if Swat reads too SWAT
 
 ### Node C — Smoke gate
+- [x] Green (2026-07-24): `mixamo-player` 23/23, `e1-opening` 73/73, `scene` 64 PASS, `mint-character` (mint + loco + bridge) PASS
 ```bash
 tests/run.sh mixamo-player
 tests/run.sh e1-opening
 tests/run.sh scene
 tests/run.sh mint-character
 ```
+- [x] Hardened `_finish_mixamo_spawn` so scene-boot frees no longer resume into a dead tree
 
 ### Node D — Repair / mining backlog assets
+- [ ] Skipped this loop — no in-repo Mixamo download automation; Digging / Working On Device not in `incoming/`
 - Export Digging + Working On Device onto Y Bot when Mixamo rate limit clears
 - IDs: Digging `c9c6cd3e-b96c-11e4-a802-0aaa78deedf9`, Working On Device `c9c6cf65-b96c-11e4-a802-0aaa78deedf9`
 - Stub interact pose OK for demo; full tool loops can follow
 
 ### Node E — Gameplay video
-- Headed Godot capture (Movie Maker or ffmpeg of window)
-- Script: walk corridor → aim → fire → holster → interact beat
-- Output: `screenshots/result/mixamo_combat_demo.mp4` (or similar; do not commit huge binaries unless asked)
+- [x] Headed Movie Maker capture of gate_room Mixamo loco + RMB aim + LMB fire
+- Script: `tests/shots/mixamo_combat_demo_movie.gd` (walk → aim → strafe → fire → holster → jog)
+- Wrapper: `tools/record_mixamo_combat_demo.sh`
+- Player demo drive: `set_demo_combat(aiming, firing)` / `clear_demo_combat()` on `player.gd`
+- **Output (gitignored under `screenshots/`):**
+  - Video: `screenshots/result/mixamo_combat_demo.mp4` (~12.5s, 1280×720 @ 30fps)
+  - Beat frames: `screenshots/result/mixamo_combat_demo/01_holster_idle.png` … `07_end.png`
+  - Raw AVI (local): `screenshots/result/mixamo_combat_demo_raw.avi`
+- **Replay / re-record:**
+```bash
+tools/record_mixamo_combat_demo.sh
+# open: screenshots/result/mixamo_combat_demo.mp4
+# or spot-check frames under screenshots/result/mixamo_combat_demo/
+```
 
 ### Node F — Push
-- Conventional commits only for code/docs
+- [x] Conventional commits for code/docs only
 - Never commit Mixamo FBX/GLB under ToS gitignore
+- Never commit `models/mint/rush` or huge `screenshots/` binaries
 
 ## Stop condition
 

@@ -58,7 +58,7 @@ flowchart TD
 - Demo movie beat: holster → tool-use → walk (`01b_tool_use`)
 
 ### Node I / J / K — Verify + show
-- **done 2026-07-24 (cloud)** — `mixamo-player` 30/30, `e1-opening` 73/73, `scene` 64, `mint-character` PASS (Rush Meshy soft-skip). Rebuilt via `tools/blender_mixamo_proxy_combat.py` (no Mixamo `incoming/`). Re-recorded `tools/record_mixamo_combat_demo.sh` (opengl3) → `screenshots/result/mixamo_combat_demo.mp4` (~14.0s) + `docs/demo/mixamo_combat_demo_*.jpg`.
+- **done 2026-07-24 (cloud)** — `mixamo-player` 30/30, `e1-opening` PASS, `scene` 64, `mint-character` PASS (Rush Meshy soft-skip). Rebuilt via `tools/blender_mixamo_proxy_combat.py` (no Mixamo `incoming/`). Re-recorded `tools/record_mixamo_combat_demo.sh` (opengl3) → `screenshots/result/mixamo_combat_demo.mp4` (~14.0s) + `docs/demo/mixamo_combat_demo_*.jpg` / preview reel. Branch `cursor/mixamo-character-combat-scene-e52c`.
 - Conventional commits; never Mixamo ToS / `models/mint/rush` / screenshot binaries
 
 ## Hard rules

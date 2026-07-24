@@ -37,6 +37,7 @@ func _run() -> void:
 
 	await _check_isolated_player()
 	await _check_gate_room_ship()
+	await _check_combat_arena()
 	_finish()
 
 
@@ -154,6 +155,20 @@ func _check_gate_room_ship() -> void:
 		if view != null and view.has_method("set_combat_aiming"):
 			view.call("set_combat_aiming", true)
 			_check(bool(view.get("combat_aiming")), "gate_room view combat_aiming set")
+			# Force shoulder blend + look_at convergence (physics-driven).
+			view.set("_shoulder_blend", 1.0)
+			if view.has_method("_apply_combat_aim_look"):
+				view.call("_apply_combat_aim_look", 0.016)
+			var cam: Camera3D = view.get_node_or_null("SpringArm/Camera") as Camera3D
+			_check(cam != null, "gate_room SpringArm camera present")
+			if cam != null:
+				var ahead: Vector3 = (
+					view.global_position
+					+ (-view.global_transform.basis.z) * float(view.get("combat_aim_look_ahead"))
+				)
+				var to_look: Vector3 = (ahead - cam.global_position).normalized()
+				var cam_fwd: Vector3 = -cam.global_transform.basis.z
+				_check(cam_fwd.dot(to_look) > 0.92, "ADS camera looks toward aim look-ahead (screen center)")
 		if gs != null and gs.has_signal("dialog_started"):
 			gs.emit_signal("dialog_started", null, [])
 			await process_frame
@@ -172,6 +187,43 @@ func _check_gate_room_ship() -> void:
 		_check(not bool(player.call("is_tool_use_active")), "player end_tool_use clears")
 
 	gate.queue_free()
+	await process_frame
+
+
+func _check_combat_arena() -> void:
+	print("--- mixamo combat arena + target lock ---")
+	var packed: PackedScene = load("res://scenes/mixamo_combat_arena.tscn") as PackedScene
+	_check(packed != null, "load mixamo_combat_arena.tscn")
+	if packed == null:
+		return
+	var arena: Node = packed.instantiate()
+	root.add_child(arena)
+	for _i in 12:
+		await process_frame
+
+	var player: Node = arena.get_node_or_null("Player")
+	var drone: Node = arena.get_node_or_null("HostileDrone")
+	_check(player != null, "arena has Player")
+	_check(drone != null, "arena has HostileDrone")
+	if drone != null:
+		_check(drone.is_in_group("combat_target"), "drone in combat_target group")
+		_check(bool(drone.call("is_alive")), "drone starts alive")
+		_check(int(drone.get("hp")) == int(drone.get("max_hp")), "drone full hp")
+		drone.call("take_damage", 1)
+		_check(int(drone.get("hp")) == int(drone.get("max_hp")) - 1, "drone take_damage reduces hp")
+
+	if player != null and drone != null and player.has_method("set_demo_lock_target"):
+		player.call("set_demo_lock_target", drone)
+		_check(bool(player.call("has_target_lock")), "player target lock engages")
+		var aim: Vector3 = player.call("get_lock_aim_point") as Vector3
+		_check(aim.distance_to(drone.global_position) < 2.0, "lock aim point near drone")
+		player.call("clear_target_lock")
+		_check(not bool(player.call("has_target_lock")), "clear_target_lock clears")
+
+	var mixamo: Node = _find_mixamo(player) if player != null else null
+	_check(mixamo != null and bool(mixamo.call("is_combat_ready")), "arena Mixamo combat ready")
+
+	arena.queue_free()
 	await process_frame
 
 

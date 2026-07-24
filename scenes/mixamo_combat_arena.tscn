@@ -1,0 +1,80 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="PackedScene" uid="uid://dl2ed4gkybggf" path="res://objects/player.tscn" id="1_player"]
+[ext_resource type="Script" uid="uid://bcg2kkbsnttec" path="res://scripts/view.gd" id="2_view"]
+[ext_resource type="PackedScene" path="res://objects/combat_target_drone.tscn" id="3_drone"]
+[ext_resource type="Script" path="res://scripts/mixamo_combat_arena.gd" id="4_arena"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_floor"]
+size = Vector3(24, 0.4, 24)
+
+[sub_resource type="StandardMaterial3D" id="Mat_floor"]
+albedo_color = Color(0.18, 0.2, 0.24, 1)
+metallic = 0.35
+roughness = 0.55
+
+[sub_resource type="BoxShape3D" id="BoxShape_floor"]
+size = Vector3(24, 0.4, 24)
+
+[sub_resource type="Environment" id="Env_arena"]
+background_mode = 1
+background_color = Color(0.02, 0.03, 0.05, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.35, 0.42, 0.5, 1)
+ambient_light_energy = 0.55
+tonemap_mode = 2
+
+[node name="MixamoCombatArena" type="Node3D"]
+script = ExtResource("4_arena")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Env_arena")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866, -0.35, 0.35, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 0, 8, 0)
+light_energy = 1.15
+shadow_enabled = true
+
+[node name="Fill" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.5, 2)
+light_color = Color(0.55, 0.75, 1, 1)
+light_energy = 1.4
+omni_range = 18.0
+
+[node name="Floor" type="StaticBody3D" parent="."]
+collision_layer = 1
+collision_mask = 0
+
+[node name="Mesh" type="MeshInstance3D" parent="Floor"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.2, 0)
+mesh = SubResource("BoxMesh_floor")
+surface_material_override/0 = SubResource("Mat_floor")
+
+[node name="Collision" type="CollisionShape3D" parent="Floor"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.2, 0)
+shape = SubResource("BoxShape_floor")
+
+[node name="Player" parent="." node_paths=PackedStringArray("view") groups=["player"] instance=ExtResource("1_player")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, 6.5)
+view = NodePath("../View")
+
+[node name="View" type="Node3D" parent="." node_paths=PackedStringArray("target")]
+transform = Transform3D(1, 0, 0, 0, 0.965926, 0.258819, 0, -0.258819, 0.965926, 0, 1.4, 6.5)
+script = ExtResource("2_view")
+target = NodePath("../Player")
+follow_height = 1.35
+combat_look = true
+
+[node name="SpringArm" type="SpringArm3D" parent="View"]
+collision_mask = 2
+spring_length = 3.2
+margin = 0.2
+
+[node name="Camera" type="Camera3D" parent="View/SpringArm"]
+current = true
+fov = 52.0
+
+[node name="HostileDrone" parent="." instance=ExtResource("3_drone")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.7, -5.5)
+max_hp = 30
+drift_radius = 0.2

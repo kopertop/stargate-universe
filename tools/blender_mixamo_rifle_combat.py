@@ -7,11 +7,17 @@ span, so both palms land on real mesh landmarks by construction.
 Local-only host outputs (Mixamo ToS, gitignored):
   models/mixamo_openbot/Swat_rifle_combat.glb   (--host swat, default)
   models/mixamo_openbot/YBot_rifle_combat.glb   (--host ybot)
+  models/mixamo_openbot/XBot_rifle_combat.glb   (--host xbot)
+  models/mixamo_openbot/Eli_rifle_combat.glb    (--host eli; Mixamo Bryce/Ch42 → incoming/Eli.fbx)
+  models/mixamo_openbot/Greer_rifle_combat.glb  (--host greer; Mixamo Alex → incoming/Greer.fbx)
 Also writes: models/mixamo_openbot/mixamo_virtual_rifle.glb (CC0 procedural)
 
 Usage:
   blender -b -P tools/blender_mixamo_rifle_combat.py
   blender -b -P tools/blender_mixamo_rifle_combat.py -- --host ybot
+  blender -b -P tools/blender_mixamo_rifle_combat.py -- --host xbot
+  blender -b -P tools/blender_mixamo_rifle_combat.py -- --host eli
+  blender -b -P tools/blender_mixamo_rifle_combat.py -- --host greer
   MIXAMO_COMBAT_HOST=ybot blender -b -P tools/blender_mixamo_rifle_combat.py
 """
 from __future__ import annotations
@@ -57,6 +63,30 @@ HOST_PRESETS: dict[str, HostPreset] = {
 		glb_out=OUT_DIR / "YBot_rifle_combat.glb",
 		blend_out=OUT_DIR / "YBot_rifle_combat.blend",
 		shot_dir=ROOT / "screenshots/result/mint_rifle_aim/ybot",
+	),
+	"xbot": HostPreset(
+		key="xbot",
+		fbx=IN / "X Bot.fbx",
+		scene_name="XBot",
+		glb_out=OUT_DIR / "XBot_rifle_combat.glb",
+		blend_out=OUT_DIR / "XBot_rifle_combat.blend",
+		shot_dir=ROOT / "screenshots/result/mint_rifle_aim/xbot",
+	),
+	"eli": HostPreset(
+		key="eli",
+		fbx=IN / "Eli.fbx",  # Mixamo download name: Bryce / Ch42_nonPBR
+		scene_name="Eli",
+		glb_out=OUT_DIR / "Eli_rifle_combat.glb",
+		blend_out=OUT_DIR / "Eli_rifle_combat.blend",
+		shot_dir=ROOT / "screenshots/result/mint_rifle_aim/eli",
+	),
+	"greer": HostPreset(
+		key="greer",
+		fbx=IN / "Greer.fbx",  # Mixamo download name: Alex
+		scene_name="Greer",
+		glb_out=OUT_DIR / "Greer_rifle_combat.glb",
+		blend_out=OUT_DIR / "Greer_rifle_combat.blend",
+		shot_dir=ROOT / "screenshots/result/mint_rifle_aim/greer",
 	),
 }
 

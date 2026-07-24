@@ -67,7 +67,8 @@ func _run() -> void:
 		return
 
 	DisplayServer.window_set_size(Vector2i(1280, 720))
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	set_meta("demo_capture", true)
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	print("[demo] Mixamo ready — scripting walk / aim / fire")
 
 	# Beat 1: holster idle

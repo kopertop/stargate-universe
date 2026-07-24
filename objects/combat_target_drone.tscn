@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/combat_target_drone.gd" id="1_drone"]
+
+[node name="CombatTargetDrone" type="CharacterBody3D"]
+collision_layer = 1
+collision_mask = 0
+script = ExtResource("1_drone")

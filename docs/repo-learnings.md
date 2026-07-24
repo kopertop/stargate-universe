@@ -232,3 +232,23 @@ camera-forward, never barrel-forward. Dual meshes rifle + rifle_holster with
 exact-name visibility swap. Full replication:
 `docs/animation/mixamo-rifle-combat-showcase.md` and skill
 `godot-mixamo-rifle-combat-showcase`.
+
+## 19. Mixamo ship combat demo + scrap loot (2026-07-24) [combat, camera, audio, demo]
+
+Ship showpiece path: `tools/record_mixamo_drone_combat_demo.sh` records lit
+`gate_room` + Swat (`demo_prefer_swat`), lands MP4s in `~/Desktop/SGU Demos/`
+as `SGU_Drone_Combat_Demo_LATEST.mp4`. Chris expects a new video as standard
+done criteria for combat/camera polish. Movie Maker AVI already has PCM —
+ffmpeg must remux with `-c:a aac` or the MP4 is silent. Demo timing: settle
+ADS/crouch before Target Lock; drone HP ≈30 so fire lasts ≥3s at FIRE_RATE 0.11.
+
+Crouch hover: hip-loc strip freezes crouch at standing hip Y — apply
+`CROUCH_HOST_SINK` on AIM_CROUCH host Y; View blends crouch follow_height and
+snappy ADS (do not wait on lock). Locked shots: camera look_at lock point so
+crosshair == bolt aim; unlocked = muzzle to viewport-center ray.
+
+Drone scrap: on kill disable collision, hide assembled drone, spawn 1–3 fresh
+loot pieces (`drone_scrap_part.gd`) that must drop below launch height onto
+upward-facing StaticBody floors (skip CharacterBody / walls). Settled scraps
+are interactables granting Inventory `parts`. Do not reparent drone panel meshes
+as scrap — that left floating red debris clusters.

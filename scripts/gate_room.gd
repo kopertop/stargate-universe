@@ -267,6 +267,15 @@ func _ready() -> void:
 	GameState.decipher_room("gate_room")
 	GameState.set_current_room("gate_room")
 
+	# Movie Maker / headless probes must never burn 4+ minutes on the cold open.
+	var demo_skip: bool = (
+		GameState.skip_arrival_cinematic
+		or (get_tree() != null and get_tree().has_meta("demo_capture"))
+	)
+	var sr_early: Node = get_node_or_null("/root/SceneRouter")
+	if sr_early != null and bool(sr_early.get("instant_mode")):
+		demo_skip = true
+
 	# Piloted-Kino arrival: a Kino flew back through the planet's to_ship gate
 	# (open Stargates are two-way). Hand the scene to a fresh recon drone instead
 	# of the player rig and bail before the player-facing dialog/spawn branches.
@@ -307,13 +316,16 @@ func _ready() -> void:
 		if _stargate != null and "active" in _stargate:
 			_stargate.active = false
 		_start_ambient()
-	elif first_visit:
-		_run_arrival()
-	else:
-		# Re-entry from corridor — no cinematic, gate dormant.
+	elif demo_skip or not first_visit:
+		# Re-entry, Movie Maker, or instant_mode — no cold open.
 		if _stargate != null and "active" in _stargate:
 			_stargate.active = false
 		_start_ambient()
+		if demo_skip:
+			GameState.skip_arrival_cinematic = false
+			GameState.met_scott = true
+	else:
+		_run_arrival()
 
 func _process(delta: float) -> void:
 	# Hold-to-skip: during the cold open, holding Jump (Space / gamepad A) for
@@ -4056,6 +4068,13 @@ func _build_structural_columns() -> void:
 func _attach_crew_body(model_holder: Node3D, character: String, fallback_glb: String,
 		context: String = "") -> Node:
 	var ctx: String = context if context != "" else CharacterFactoryRef.CTX_SHIP
+	# Mixamo host when a combat pack exists (Eli/Swat/YBot/XBot per catalog).
+	var mixamo_body: Node3D = CharacterFactoryRef.build_mixamo(character)
+	if mixamo_body != null:
+		model_holder.add_child(mixamo_body)
+		if mixamo_body.has_method("align_feet_once"):
+			mixamo_body.call_deferred("align_feet_once")
+		return mixamo_body
 	# Mint-native when registered (Rush quest-giver first; more crew later).
 	var mint_body: Node3D = CharacterFactoryRef.build_mint(character)
 	if mint_body != null:

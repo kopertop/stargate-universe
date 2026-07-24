@@ -124,6 +124,12 @@ var _demo_fire: bool = false
 var _aim_cross: Control = null
 var _tool_use_label: Label = null
 var _tool_use_token: int = 0
+# Target Lock — soft-lock on nearest combat_target in view (T / MMB).
+var _lock_target: Node3D = null
+var _lock_label: Label = null
+var _lock_ring: Control = null
+# Last aim/lock combat-music state — only crossfade MusicDirector on edges.
+var _combat_music_hot: bool = false
 
 func _ready() -> void:
 	if use_mixamo_avatar and _mixamo_pack_available():
@@ -155,15 +161,174 @@ func _wire_combat_ui_hooks() -> void:
 func _on_combat_ui_suspend(_a: Variant = null, _b: Variant = null) -> void:
 	_mixamo_aiming = false
 	_mixamo_want_fire = false
+	clear_target_lock()
 	_update_aim_crosshair()
 	_update_combat_camera_aim()
 
 
+func _unhandled_input(event: InputEvent) -> void:
+	if _input_locked or _auto_walking:
+		return
+	if _mixamo != null and event.is_action_pressed("target_lock"):
+		toggle_target_lock()
+		get_viewport().set_input_as_handled()
+		return
+	# Aim+fire owns LMB while Mixamo combat is aiming.
+	if _mixamo != null and _mixamo_aiming:
+		return
+	if event is InputEventMouseButton:
+		var mb: InputEventMouseButton = event
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+			_try_click_target(mb.position)
+
+
+## Toggle soft Target Lock on the best combat_target in the camera cone.
+func toggle_target_lock() -> void:
+	if _lock_target != null and is_instance_valid(_lock_target):
+		clear_target_lock()
+		return
+	var best: Node3D = _find_best_lock_target()
+	if best == null:
+		return
+	_set_lock_target(best)
+
+
+func clear_target_lock(play_sfx: bool = true) -> void:
+	if _lock_target != null and is_instance_valid(_lock_target):
+		if _lock_target.has_method("set_lock_highlighted"):
+			_lock_target.call("set_lock_highlighted", false)
+	var had_lock: bool = _lock_target != null
+	_lock_target = null
+	_update_lock_ui()
+	if had_lock and play_sfx:
+		Audio.play("res://sounds/menu_close.ogg")
+	if had_lock:
+		_refresh_combat_music()
+
+
+func has_target_lock() -> bool:
+	return _lock_target != null and is_instance_valid(_lock_target) and _lock_target_alive(_lock_target)
+
+
+func get_lock_target() -> Node3D:
+	return _lock_target if has_target_lock() else null
+
+
+func get_lock_aim_point() -> Vector3:
+	if not has_target_lock():
+		return Vector3.ZERO
+	if _lock_target.has_method("get_lock_point"):
+		return _lock_target.call("get_lock_point") as Vector3
+	return _lock_target.global_position
+
+
+## Movie / tests: force lock onto a specific combat_target.
+func set_demo_lock_target(target: Node3D) -> void:
+	if target == null:
+		clear_target_lock()
+		return
+	_set_lock_target(target)
+
+
+func _set_lock_target(target: Node3D) -> void:
+	# Silent clear so re-lock / acquire does not blip unlock then lock.
+	clear_target_lock(false)
+	_lock_target = target
+	if _lock_target.has_method("set_lock_highlighted"):
+		_lock_target.call("set_lock_highlighted", true)
+	if _lock_target.has_signal("destroyed") and not _lock_target.destroyed.is_connected(_on_lock_target_destroyed):
+		_lock_target.destroyed.connect(_on_lock_target_destroyed)
+	_update_lock_ui()
+	Audio.play("res://sounds/menu_click.ogg")
+	_refresh_combat_music()
+
+
+func _on_lock_target_destroyed() -> void:
+	_lock_target = null
+	_update_lock_ui()
+	# Destroy SFX lives on the drone itself (break.ogg).
+	_refresh_combat_music()
+
+
+func _refresh_combat_music() -> void:
+	# Subtle adaptive bed: combat stems while aiming/locked, otherwise leave
+	# MusicDirector on the room mood (ship_calm in gate_room).
+	var want_hot: bool = _mixamo_aiming or has_target_lock()
+	if want_hot == _combat_music_hot:
+		return
+	_combat_music_hot = want_hot
+	var md: Node = get_node_or_null("/root/MusicDirector")
+	if md == null or not md.has_method("set_mood"):
+		return
+	if want_hot:
+		md.call("set_mood", "combat", 1.2)
+	elif md.has_method("refresh"):
+		md.call("refresh", 2.0)
+
+
+func _lock_target_alive(t: Node3D) -> bool:
+	if t == null or not is_instance_valid(t):
+		return false
+	if t.has_method("is_alive"):
+		return bool(t.call("is_alive"))
+	return true
+
+
+func _find_best_lock_target() -> Node3D:
+	var cam: Camera3D = _interact_camera()
+	if cam == null:
+		return null
+	var best: Node3D = null
+	var best_score: float = -1.0
+	var from: Vector3 = cam.global_position
+	var forward: Vector3 = -cam.global_transform.basis.z
+	for n in get_tree().get_nodes_in_group("combat_target"):
+		var t: Node3D = n as Node3D
+		if t == null or not _lock_target_alive(t):
+			continue
+		var aim: Vector3 = t.global_position
+		if t.has_method("get_lock_point"):
+			aim = t.call("get_lock_point") as Vector3
+		var to: Vector3 = aim - from
+		var dist: float = to.length()
+		if dist < 1.0 or dist > 28.0:
+			continue
+		var dir: Vector3 = to / dist
+		var align: float = forward.dot(dir)
+		if align < 0.35:
+			continue
+		# Prefer near screen-center and closer targets.
+		var score: float = align * 2.0 + (1.0 - clampf(dist / 28.0, 0.0, 1.0))
+		if score > best_score:
+			best_score = score
+			best = t
+	return best
+
+
+func _update_lock_ui() -> void:
+	_ensure_aim_crosshair()
+	if _lock_label != null:
+		_lock_label.visible = has_target_lock() and not _input_locked
+	if _lock_ring != null:
+		_lock_ring.visible = false
+	if not has_target_lock():
+		return
+	var cam: Camera3D = _interact_camera()
+	if cam == null or _lock_ring == null:
+		return
+	var aim: Vector3 = get_lock_aim_point()
+	if cam.is_position_behind(aim):
+		return
+	var screen: Vector2 = cam.unproject_position(aim)
+	_lock_ring.visible = true
+	_lock_ring.position = screen - _lock_ring.size * 0.5
+
+
 func _mixamo_pack_available() -> bool:
-	return _MIXAMO_COMBAT.combat_pack_available()
+	return _MIXAMO_COMBAT.combat_pack_available("Eli")
 
 
-# Mixamo Swat combat pack — RMB aim / LMB fire while aiming.
+# Mixamo host for Eli (Eli_rifle_combat.glb; falls back per MixamoHostCatalog).
 func _setup_mixamo_avatar() -> void:
 	if _model == null:
 		return
@@ -171,7 +336,7 @@ func _setup_mixamo_avatar() -> void:
 		_model.remove_child(c)
 		c.queue_free()
 	_model.transform = Transform3D.IDENTITY
-	_mixamo = _MIXAMO_COMBAT.create() as Node3D
+	_mixamo = _MIXAMO_COMBAT.create("Eli") as Node3D
 	_model.add_child(_mixamo)
 	if not bool(_mixamo.call("mount")):
 		_mixamo.queue_free()
@@ -208,8 +373,11 @@ func _configure_combat_camera() -> void:
 	if view == null or _mixamo == null:
 		return
 	# Showcase-scale follow height (Mixamo Swat ~1.8 m vs modular ~1.6 m).
+	# ADS / crouch heights live on View (combat_*_follow_height) and blend live.
 	if "follow_height" in view:
 		view.set("follow_height", 1.28)
+	if "combat_hip_follow_height" in view:
+		view.set("combat_hip_follow_height", 1.28)
 	if view.has_method("set_combat_look"):
 		view.call("set_combat_look", true)
 	elif "combat_look" in view:
@@ -388,8 +556,25 @@ func _handle_movement(delta: float) -> void:
 	_update_footsteps(delta)
 	if _mixamo != null and _mixamo_aiming and _mixamo_want_fire:
 		_mixamo.call("try_fire", _interact_camera())
+	_refresh_target_lock(delta)
 	_update_aim_crosshair()
 	_update_combat_camera_aim()
+	_update_lock_ui()
+
+
+func _refresh_target_lock(_delta: float) -> void:
+	if _lock_target == null:
+		return
+	if not is_instance_valid(_lock_target) or not _lock_target_alive(_lock_target):
+		clear_target_lock()
+		return
+	# Keep body facing the lock while aiming.
+	if _mixamo_aiming and view != null:
+		var aim: Vector3 = get_lock_aim_point()
+		var flat: Vector3 = aim - global_position
+		flat.y = 0.0
+		if flat.length_squared() > 0.01:
+			_facing_yaw = atan2(-flat.x, -flat.z)
 
 func _apply_gravity(delta: float) -> void:
 	if is_on_floor():
@@ -430,20 +615,29 @@ func _drive_locomotion_anim() -> void:
 
 
 func _poll_mixamo_combat_input() -> void:
+	var was_aiming: bool = _mixamo_aiming
 	if _mixamo == null or _input_locked:
 		_mixamo_aiming = false
 		_mixamo_want_fire = false
+		if was_aiming:
+			_refresh_combat_music()
 		return
 	if _mixamo_tool_use_active():
 		_mixamo_aiming = false
 		_mixamo_want_fire = false
+		if was_aiming:
+			_refresh_combat_music()
 		return
 	if _demo_combat_override:
 		_mixamo_aiming = _demo_aim
 		_mixamo_want_fire = _demo_fire and _demo_aim
+		if _mixamo_aiming != was_aiming:
+			_refresh_combat_music()
 		return
 	_mixamo_aiming = Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
 	_mixamo_want_fire = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and _mixamo_aiming
+	if _mixamo_aiming != was_aiming:
+		_refresh_combat_music()
 
 
 ## Capture / Movie Maker: force RMB-aim / LMB-fire without OS mouse state.
@@ -451,12 +645,18 @@ func set_demo_combat(aiming: bool, firing: bool = false) -> void:
 	_demo_combat_override = true
 	_demo_aim = aiming
 	_demo_fire = firing and aiming
+	_mixamo_aiming = aiming
+	_mixamo_want_fire = firing and aiming
+	_refresh_combat_music()
 
 
 func clear_demo_combat() -> void:
 	_demo_combat_override = false
 	_demo_aim = false
 	_demo_fire = false
+	_mixamo_aiming = false
+	_mixamo_want_fire = false
+	_refresh_combat_music()
 
 
 func _mixamo_tool_use_active() -> bool:
@@ -558,6 +758,46 @@ func _ensure_aim_crosshair() -> void:
 	v.set_anchors_preset(Control.PRESET_CENTER)
 	_aim_cross.add_child(v)
 	_ensure_tool_use_hud()
+	_ensure_lock_ui()
+
+
+func _ensure_lock_ui() -> void:
+	if _aim_cross == null:
+		return
+	var layer: CanvasLayer = _aim_cross.get_parent() as CanvasLayer
+	if layer == null:
+		return
+	if _lock_label == null:
+		_lock_label = Label.new()
+		_lock_label.name = "TargetLockLabel"
+		_lock_label.text = "TARGET LOCK"
+		_lock_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_lock_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+		_lock_label.offset_top = 48.0
+		_lock_label.add_theme_font_size_override("font_size", 16)
+		_lock_label.modulate = Color(1.0, 0.85, 0.35, 0.95)
+		_lock_label.visible = false
+		_lock_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		layer.add_child(_lock_label)
+	if _lock_ring == null:
+		_lock_ring = Control.new()
+		_lock_ring.name = "TargetLockRing"
+		_lock_ring.size = Vector2(36, 36)
+		_lock_ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_lock_ring.visible = false
+		layer.add_child(_lock_ring)
+		var h := ColorRect.new()
+		h.color = Color(1.0, 0.85, 0.25, 0.95)
+		h.size = Vector2(36, 2)
+		h.position = Vector2(0, 17)
+		h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_lock_ring.add_child(h)
+		var vv := ColorRect.new()
+		vv.color = Color(1.0, 0.85, 0.25, 0.95)
+		vv.size = Vector2(2, 36)
+		vv.position = Vector2(17, 0)
+		vv.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_lock_ring.add_child(vv)
 
 
 func _ensure_tool_use_hud() -> void:
@@ -600,10 +840,19 @@ func _update_aim_crosshair() -> void:
 func _update_combat_camera_aim() -> void:
 	if view == null or _mixamo == null:
 		return
+	var aiming: bool = _mixamo_aiming and not _input_locked
+	var crouching: bool = (
+		aiming
+		and _mixamo.has_method("is_crouch_aiming")
+		and bool(_mixamo.call("is_crouch_aiming"))
+	)
 	if view.has_method("set_combat_aiming"):
-		view.call("set_combat_aiming", _mixamo_aiming and not _input_locked)
-	elif "combat_aiming" in view:
-		view.set("combat_aiming", _mixamo_aiming and not _input_locked)
+		view.call("set_combat_aiming", aiming, crouching)
+	else:
+		if "combat_aiming" in view:
+			view.set("combat_aiming", aiming)
+		if "combat_crouching" in view:
+			view.set("combat_crouching", crouching)
 
 
 func _drive_mint_locomotion(horiz_speed: float) -> void:
@@ -800,18 +1049,6 @@ func _quest_anchor_name() -> String:
 
 # Click an interactable to select it (extends reach + makes the target obvious
 # via the HUD prompt). Clicking empty space clears the selection.
-func _unhandled_input(event: InputEvent) -> void:
-	if _input_locked or _auto_walking:
-		return
-	# Aim+fire owns LMB while Mixamo combat is aiming.
-	if _mixamo != null and _mixamo_aiming:
-		return
-	if event is InputEventMouseButton:
-		var mb: InputEventMouseButton = event
-		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
-			_try_click_target(mb.position)
-
-
 func _try_click_target(screen_pos: Vector2) -> void:
 	var camera: Camera3D = _interact_camera()
 	if camera == null:

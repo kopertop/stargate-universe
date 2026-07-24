@@ -123,9 +123,14 @@ Required / used names (Mixamo download titles → builder keys):
 ### B. Blender build
 
 ```bash
-# Headless, or open Swat_rifle_combat.blend and extend via MCP:
+# Headless Swat (default) or Y Bot host:
 blender -b -P tools/blender_mixamo_rifle_combat.py
+blender -b -P tools/blender_mixamo_rifle_combat.py -- --host ybot
+# or: MIXAMO_COMBAT_HOST=ybot blender -b -P tools/blender_mixamo_rifle_combat.py
 ```
+
+Outputs (local, gitignored): `Swat_rifle_combat.glb` or `YBot_rifle_combat.glb`.
+Gameplay prefers Y Bot when `YBot_rifle_combat.glb` exists (`mixamo_combat_avatar.gd`).
 
 Builder must:
 
@@ -207,6 +212,5 @@ wish dir while holstered.
 
 ## Changelog
 
-- **2026-07-21** — Gameplay controls, unarmed holster idle, slowed Running loco,
-  Shoot_Rifle + aim-only strafe, hip-loc strip, idle foot bias, camera aim,
-  dual rifle visibility. User sign-off: “THIS LOOKS PERFECT.”
+- **2026-07-24** — Y Bot host variant: `--host ybot` builder output
+  `YBot_rifle_combat.glb`; gameplay prefers Y Bot pack, Swat fallback.

@@ -1,14 +1,24 @@
-"""Build Mixamo Swat combat pack with a procedural Mixamo-span M4 proxy.
+"""Build Mixamo combat pack with a procedural Mixamo-span M4 proxy.
 
 Mixamo does not ship a rifle mesh. Rifle Idle palm span ≈ 32.2cm.
 This builds a simple M4-shaped proxy whose grip→support is locked to that
 span, so both palms land on real mesh landmarks by construction.
 
-Local-only host output (Mixamo ToS): models/mixamo_openbot/Swat_rifle_combat.glb
+Local-only host outputs (Mixamo ToS, gitignored):
+  models/mixamo_openbot/Swat_rifle_combat.glb   (--host swat, default)
+  models/mixamo_openbot/YBot_rifle_combat.glb   (--host ybot)
 Also writes: models/mixamo_openbot/mixamo_virtual_rifle.glb (CC0 procedural)
+
+Usage:
+  blender -b -P tools/blender_mixamo_rifle_combat.py
+  blender -b -P tools/blender_mixamo_rifle_combat.py -- --host ybot
+  MIXAMO_COMBAT_HOST=ybot blender -b -P tools/blender_mixamo_rifle_combat.py
 """
 from __future__ import annotations
 
+import os
+import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import bpy
@@ -18,12 +28,58 @@ from mathutils import Matrix, Vector
 ROOT = Path(__file__).resolve().parents[1]
 IN = ROOT / "models/mixamo_openbot/incoming"
 OUT_DIR = ROOT / "models/mixamo_openbot"
-SHOT_DIR = ROOT / "screenshots/result/mint_rifle_aim"
-
-HOST_FBX = IN / "Swat.fbx"
 PROXY_GLB = OUT_DIR / "mixamo_virtual_rifle.glb"
-GLB_OUT = OUT_DIR / "Swat_rifle_combat.glb"
-BLEND_OUT = OUT_DIR / "Swat_rifle_combat.blend"
+
+
+@dataclass(frozen=True)
+class HostPreset:
+	key: str
+	fbx: Path
+	scene_name: str
+	glb_out: Path
+	blend_out: Path
+	shot_dir: Path
+
+
+HOST_PRESETS: dict[str, HostPreset] = {
+	"swat": HostPreset(
+		key="swat",
+		fbx=IN / "Swat.fbx",
+		scene_name="Swat",
+		glb_out=OUT_DIR / "Swat_rifle_combat.glb",
+		blend_out=OUT_DIR / "Swat_rifle_combat.blend",
+		shot_dir=ROOT / "screenshots/result/mint_rifle_aim",
+	),
+	"ybot": HostPreset(
+		key="ybot",
+		fbx=IN / "Y Bot.fbx",
+		scene_name="YBot",
+		glb_out=OUT_DIR / "YBot_rifle_combat.glb",
+		blend_out=OUT_DIR / "YBot_rifle_combat.blend",
+		shot_dir=ROOT / "screenshots/result/mint_rifle_aim/ybot",
+	),
+}
+
+
+def _resolve_host() -> HostPreset:
+	key = os.environ.get("MIXAMO_COMBAT_HOST", "swat").strip().lower()
+	for i, arg in enumerate(sys.argv):
+		if arg == "--host" and i + 1 < len(sys.argv):
+			key = sys.argv[i + 1].strip().lower()
+			break
+		if arg.startswith("--host="):
+			key = arg.split("=", 1)[1].strip().lower()
+			break
+	if key not in HOST_PRESETS:
+		raise SystemExit(f"unknown MIXAMO_COMBAT_HOST {key!r}; choose: {', '.join(HOST_PRESETS)}")
+	return HOST_PRESETS[key]
+
+
+HOST = _resolve_host()
+HOST_FBX = HOST.fbx
+GLB_OUT = HOST.glb_out
+BLEND_OUT = HOST.blend_out
+SHOT_DIR = HOST.shot_dir
 
 # Measured on Swat + Rifle Idle mid-frame (see blender_measure_mixamo_hand_span.py).
 MIXAMO_HAND_SPAN = 0.322
@@ -435,13 +491,16 @@ def _render(arm: bpy.types.Object, tag: str, offset: Vector) -> None:
 
 
 def run() -> None:
+	if not HOST_FBX.exists():
+		raise FileNotFoundError(f"missing host FBX: {HOST_FBX} (drop Mixamo export into incoming/)")
+	print("HOST", HOST.key, HOST_FBX.name, "->", GLB_OUT.name)
 	_purge()
 	SHOT_DIR.mkdir(parents=True, exist_ok=True)
 	OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 	bpy.ops.import_scene.fbx(filepath=str(HOST_FBX), automatic_bone_orientation=True)
 	host = next(o for o in bpy.data.objects if o.type == "ARMATURE")
-	host.name = "Swat"
+	host.name = HOST.scene_name
 	meshes = [o for o in bpy.data.objects if o.type == "MESH"]
 	if host.animation_data:
 		host.animation_data_clear()

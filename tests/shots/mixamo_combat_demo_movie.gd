@@ -74,6 +74,15 @@ func _run() -> void:
 	await _settle(_frames(0.6))
 	await _shot("01_holster_idle")
 
+	# Beat 1b: holster + tool-use stub (Idle + HUD when Digging/Working absent)
+	if player.has_method("begin_tool_use"):
+		player.call("begin_tool_use", "repair", 1.2)
+	await _settle(_frames(1.2))
+	await _shot("01b_tool_use")
+	if player.has_method("end_tool_use"):
+		player.call("end_tool_use")
+	await _settle(_frames(0.35))
+
 	# Beat 2: walk corridor (forward)
 	Input.action_press("move_forward")
 	await _settle(_frames(2.2))

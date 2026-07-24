@@ -26,10 +26,11 @@ func _run() -> void:
 		_finish()
 		return
 	if not (
-		ResourceLoader.exists("res://models/mixamo_openbot/Swat_rifle_combat.glb")
+		ResourceLoader.exists("res://models/mixamo_openbot/YBot_rifle_combat.glb")
+		or ResourceLoader.exists("res://models/mixamo_openbot/Swat_rifle_combat.glb")
 		or ResourceLoader.exists("res://models/mixamo_openbot/Swat_rifle_idle.glb")
 	):
-		print("  SKIP  Swat combat pack not present (rebuild locally)")
+		print("  SKIP  Mixamo combat pack not present (rebuild locally)")
 		_passes += 1
 		_finish()
 		return
@@ -79,6 +80,20 @@ func _check_isolated_player() -> void:
 	mixamo.call("tick", 0.016, true, true, Vector2(0.0, -1.0), false, 0.0)
 	await process_frame
 	_check(true, "tick aim+move")
+
+	mixamo.call("begin_tool_use", "repair")
+	await process_frame
+	_check(bool(mixamo.call("is_tool_use_active")), "begin_tool_use active")
+	_check(not bool(mixamo.call("is_aiming_stance")), "tool use blocks aim stance")
+	mixamo.call("tick", 0.016, true, true, Vector2.ZERO, false, 0.0)
+	await process_frame
+	_check(bool(mixamo.call("is_tool_use_active")), "tick preserves tool use")
+	mixamo.call("end_tool_use")
+	await process_frame
+	_check(not bool(mixamo.call("is_tool_use_active")), "end_tool_use clears tool use")
+	mixamo.call("tick", 0.016, true, false, Vector2.ZERO, false, 0.0)
+	await process_frame
+	_check(bool(mixamo.call("is_aiming_stance")), "combat restored after tool use")
 
 	var col: CollisionShape3D = player.get_node_or_null("Collider") as CollisionShape3D
 	if col != null and col.shape is CapsuleShape3D:
@@ -147,6 +162,14 @@ func _check_gate_room_ship() -> void:
 				gs.emit_signal("dialog_closed")
 			await process_frame
 			_check(bool(view.get("combat_look")), "dialog_closed keeps combat_look")
+
+	if player != null and player.has_method("begin_tool_use"):
+		player.call("begin_tool_use", "repair", 0.05)
+		await process_frame
+		_check(bool(player.call("is_tool_use_active")), "player begin_tool_use delegates")
+		player.call("end_tool_use")
+		await process_frame
+		_check(not bool(player.call("is_tool_use_active")), "player end_tool_use clears")
 
 	gate.queue_free()
 	await process_frame

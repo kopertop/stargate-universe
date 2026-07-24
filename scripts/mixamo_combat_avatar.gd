@@ -1,12 +1,13 @@
 extends Node3D
 
-# Mixamo Swat combat host for gameplay. Mirrors the signed-off showcase rules:
-# unarmed holster idle/loco, dual rifle visibility, camera-forward shots,
-# hip-location strip, one-shot foot align + idle-only sole lift.
-# See docs/animation/mixamo-rifle-combat-showcase.md.
+# Mixamo combat host for gameplay. Prefers Y Bot pack when present, else Swat.
+# Mirrors the signed-off showcase rules: unarmed holster idle/loco, dual rifle
+# visibility, camera-forward shots, hip-location strip, one-shot foot align +
+# idle-only sole lift. See docs/animation/mixamo-rifle-combat-showcase.md.
 
-const COMBAT_GLB: String = "res://models/mixamo_openbot/Swat_rifle_combat.glb"
-const IDLE_GLB: String = "res://models/mixamo_openbot/Swat_rifle_idle.glb"
+const YBOT_COMBAT_GLB: String = "res://models/mixamo_openbot/YBot_rifle_combat.glb"
+const SWAT_COMBAT_GLB: String = "res://models/mixamo_openbot/Swat_rifle_combat.glb"
+const SWAT_IDLE_GLB: String = "res://models/mixamo_openbot/Swat_rifle_idle.glb"
 
 const FIRE_RATE: float = 0.11
 const BOLT_SPEED: float = 55.0
@@ -26,6 +27,10 @@ const CROUCH_AIM_CLIPS: Array[String] = [
 ]
 const CROUCH_FIRE_CLIPS: Array[String] = [
 	"Fire_Rifle_Crouched", "Firing_Rifle", "Shoot_Rifle",
+]
+const TOOL_DIGGING_CLIPS: Array[String] = ["Digging", "Digging_01"]
+const TOOL_REPAIR_CLIPS: Array[String] = [
+	"Working_On_Device", "Working", "Working_On_Device_01",
 ]
 
 const LASERS: Array[String] = [
@@ -56,10 +61,22 @@ var _host_floor_y: float = 0.0
 var _feet_aligned: bool = false
 var _ready_ok: bool = false
 var _aiming: bool = false
+var _tool_use_active: bool = false
+var _tool_use_kind: String = ""
+var _tool_use_clip: String = ""
+var _tool_use_fallback: bool = false
+
+
+static func resolve_combat_glb() -> String:
+	if ResourceLoader.exists(YBOT_COMBAT_GLB):
+		return YBOT_COMBAT_GLB
+	if ResourceLoader.exists(SWAT_COMBAT_GLB):
+		return SWAT_COMBAT_GLB
+	return ""
 
 
 static func combat_pack_available() -> bool:
-	return ResourceLoader.exists(COMBAT_GLB) or ResourceLoader.exists(IDLE_GLB)
+	return resolve_combat_glb() != "" or ResourceLoader.exists(SWAT_IDLE_GLB)
 
 
 static func create() -> Node3D:
@@ -73,7 +90,40 @@ func is_combat_ready() -> bool:
 
 
 func is_aiming_stance() -> bool:
-	return _aiming
+	return _aiming and not _tool_use_active
+
+
+func is_tool_use_active() -> bool:
+	return _tool_use_active
+
+
+func is_tool_use_fallback() -> bool:
+	return _tool_use_active and _tool_use_fallback
+
+
+func begin_tool_use(kind: String) -> void:
+	if not _ready_ok:
+		return
+	_tool_use_active = true
+	_tool_use_kind = kind
+	_aiming = false
+	_set_rifle_holstered(true)
+	var prefs: Array[String] = TOOL_DIGGING_CLIPS if kind == "digging" else TOOL_REPAIR_CLIPS
+	_tool_use_clip = _pick_clip(prefs)
+	_tool_use_fallback = _tool_use_clip == ""
+	if _tool_use_fallback:
+		_tool_use_clip = _pick_clip(IDLE_CLIPS)
+	if _tool_use_clip != "":
+		_play_clip(_tool_use_clip, true)
+
+
+func end_tool_use() -> void:
+	if not _tool_use_active:
+		return
+	_tool_use_active = false
+	_tool_use_kind = ""
+	_tool_use_clip = ""
+	_tool_use_fallback = false
 
 
 func find_skeleton() -> Skeleton3D:
@@ -81,9 +131,14 @@ func find_skeleton() -> Skeleton3D:
 
 
 func mount() -> bool:
-	var path: String = COMBAT_GLB if ResourceLoader.exists(COMBAT_GLB) else IDLE_GLB
+	var path: String = resolve_combat_glb()
+	if path == "":
+		path = SWAT_IDLE_GLB
 	if not ResourceLoader.exists(path):
-		push_warning("MixamoCombatAvatar: missing %s — rebuild via tools/blender_mixamo_rifle_combat.py" % path)
+		push_warning(
+			"MixamoCombatAvatar: missing combat pack — rebuild via "
+			+ "tools/blender_mixamo_rifle_combat.py (--host ybot or swat)"
+		)
 		return false
 	var packed: PackedScene = load(path) as PackedScene
 	if packed == null:
@@ -123,6 +178,18 @@ func align_feet_once() -> void:
 
 func tick(delta: float, aiming: bool, want_fire: bool, move_input: Vector2, sprinting: bool, cam_yaw: float) -> void:
 	if not _ready_ok:
+		return
+	if _tool_use_active:
+		_aiming = false
+		_fire_cd = maxf(0.0, _fire_cd - delta)
+		_recoil_kick = move_toward(_recoil_kick, 0.0, delta * 8.0)
+		_set_rifle_holstered(true)
+		if _tool_use_clip != "" and (
+			_anim.current_animation != _tool_use_clip
+			or not _anim.is_playing()
+		):
+			_play_clip(_tool_use_clip, true)
+		_apply_idle_foot_bias(false, move_input)
 		return
 	_aiming = aiming
 	_fire_cd = maxf(0.0, _fire_cd - delta)

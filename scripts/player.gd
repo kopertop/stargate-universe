@@ -122,6 +122,8 @@ var _demo_combat_override: bool = false
 var _demo_aim: bool = false
 var _demo_fire: bool = false
 var _aim_cross: Control = null
+var _tool_use_label: Label = null
+var _tool_use_token: int = 0
 
 func _ready() -> void:
 	if use_mixamo_avatar and _mixamo_pack_available():
@@ -158,10 +160,7 @@ func _on_combat_ui_suspend(_a: Variant = null, _b: Variant = null) -> void:
 
 
 func _mixamo_pack_available() -> bool:
-	return (
-		ResourceLoader.exists("res://models/mixamo_openbot/Swat_rifle_combat.glb")
-		or ResourceLoader.exists("res://models/mixamo_openbot/Swat_rifle_idle.glb")
-	)
+	return _MIXAMO_COMBAT.combat_pack_available()
 
 
 # Mixamo Swat combat pack — RMB aim / LMB fire while aiming.
@@ -435,6 +434,10 @@ func _poll_mixamo_combat_input() -> void:
 		_mixamo_aiming = false
 		_mixamo_want_fire = false
 		return
+	if _mixamo_tool_use_active():
+		_mixamo_aiming = false
+		_mixamo_want_fire = false
+		return
 	if _demo_combat_override:
 		_mixamo_aiming = _demo_aim
 		_mixamo_want_fire = _demo_fire and _demo_aim
@@ -456,6 +459,52 @@ func clear_demo_combat() -> void:
 	_demo_fire = false
 
 
+func _mixamo_tool_use_active() -> bool:
+	return (
+		_mixamo != null
+		and _mixamo.has_method("is_tool_use_active")
+		and bool(_mixamo.call("is_tool_use_active"))
+	)
+
+
+## Holster + play Digging/Working clip when present; otherwise idle + HUD stub.
+## Optional duration auto-calls end_tool_use() (used by salvage/repair interact).
+func begin_tool_use(kind: String = "repair", duration: float = 0.0) -> void:
+	if _mixamo == null:
+		return
+	_tool_use_token += 1
+	var token: int = _tool_use_token
+	_mixamo_aiming = false
+	_mixamo_want_fire = false
+	if _mixamo.has_method("begin_tool_use"):
+		_mixamo.call("begin_tool_use", kind)
+	_update_tool_use_hud()
+	_update_aim_crosshair()
+	_update_combat_camera_aim()
+	if duration > 0.0 and get_tree() != null:
+		get_tree().create_timer(duration).timeout.connect(
+			func() -> void:
+				if token == _tool_use_token:
+					end_tool_use(),
+			CONNECT_ONE_SHOT
+		)
+
+
+func end_tool_use() -> void:
+	if _mixamo == null:
+		return
+	_tool_use_token += 1
+	if _mixamo.has_method("end_tool_use"):
+		_mixamo.call("end_tool_use")
+	_update_tool_use_hud()
+	_update_aim_crosshair()
+	_update_combat_camera_aim()
+
+
+func is_tool_use_active() -> bool:
+	return _mixamo_tool_use_active()
+
+
 func _drive_mixamo_locomotion(horiz_speed: float, sprinting: bool) -> void:
 	if _mixamo == null:
 		return
@@ -468,17 +517,19 @@ func _drive_mixamo_locomotion(horiz_speed: float, sprinting: bool) -> void:
 	# -Y is forward for clip selection / strafe side.
 	var cam_yaw: float = view.rotation.y if view != null else rotation.y
 	var delta: float = get_physics_process_delta_time()
+	var tool_active: bool = _mixamo_tool_use_active()
 	_mixamo.call(
 		"tick",
 		delta,
-		_mixamo_aiming and _pose_override == "",
-		_mixamo_want_fire and _pose_override == "",
+		_mixamo_aiming and _pose_override == "" and not tool_active,
+		_mixamo_want_fire and _pose_override == "" and not tool_active,
 		move_input,
-		sprinting and not _mixamo_aiming,
+		sprinting and not _mixamo_aiming and not tool_active,
 		cam_yaw
 	)
-	if horiz_speed > walk_speed * 1.15 and not _mixamo_aiming:
+	if horiz_speed > walk_speed * 1.15 and not _mixamo_aiming and not tool_active:
 		_particles_trail.emitting = true
+	_update_tool_use_hud()
 
 
 func _ensure_aim_crosshair() -> void:
@@ -506,6 +557,38 @@ func _ensure_aim_crosshair() -> void:
 	v.position = Vector2(-1, -9)
 	v.set_anchors_preset(Control.PRESET_CENTER)
 	_aim_cross.add_child(v)
+	_ensure_tool_use_hud()
+
+
+func _ensure_tool_use_hud() -> void:
+	if _tool_use_label != null:
+		return
+	var layer: CanvasLayer = _aim_cross.get_parent() as CanvasLayer if _aim_cross != null else null
+	if layer == null:
+		return
+	_tool_use_label = Label.new()
+	_tool_use_label.name = "ToolUsePrompt"
+	_tool_use_label.text = "Working…"
+	_tool_use_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_tool_use_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_tool_use_label.offset_top = 72.0
+	_tool_use_label.add_theme_font_size_override("font_size", 18)
+	_tool_use_label.modulate = Color(0.75, 0.92, 1.0, 0.95)
+	_tool_use_label.visible = false
+	_tool_use_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(_tool_use_label)
+
+
+func _update_tool_use_hud() -> void:
+	if _tool_use_label == null:
+		_ensure_tool_use_hud()
+	if _tool_use_label == null or _mixamo == null:
+		return
+	var show_stub: bool = (
+		_mixamo.has_method("is_tool_use_fallback")
+		and bool(_mixamo.call("is_tool_use_fallback"))
+	)
+	_tool_use_label.visible = show_stub and not _input_locked
 
 
 func _update_aim_crosshair() -> void:

@@ -91,5 +91,6 @@ models/mixamo_openbot/incoming/*
 
 # Mixamo character exports (Adobe ToS — build locally via tools/blender_mixamo_rifle_idle.py)
 models/mixamo_openbot/Swat_*
+models/mixamo_openbot/YBot_*
 models/mixamo_openbot/*.blend
 models/mixamo_openbot/*.blend1

@@ -51,26 +51,34 @@ func _initialize() -> void:
 	# --- 1. default layout binds the standard quad --------------------------
 	gp.call("reset_layout", TEST_GUID)
 	_expect(_joy_button_of("jump") == JOY_BUTTON_A, "default: jump → bottom face (A=0)")
+	_expect(_joy_button_of("ui_accept") == JOY_BUTTON_A, "default: ui_accept → bottom face (A=0)")
 	_expect(_joy_button_of("kino_remote") == JOY_BUTTON_B, "default: kino_remote → right face (B=1)")
+	_expect(_joy_button_of("ui_cancel") == JOY_BUTTON_B, "default: ui_cancel → right face (B=1)")
 	_expect(_joy_button_of("interact") == JOY_BUTTON_X, "default: interact → left face (X=2)")
 	_expect(_joy_button_of("kino_autopilot") == JOY_BUTTON_Y, "default: kino_autopilot → top face (Y=3)")
 
 	# --- 2. keyboard fallback preserved (WASD/mouse stays secondary) --------
 	_expect(_has_key_event("jump"), "default: jump keeps a keyboard event (Space)")
 	_expect(_has_key_event("interact"), "default: interact keeps a keyboard event (E)")
+	_expect(_has_key_event("ui_accept"), "default: ui_accept keeps a keyboard event (Enter)")
 
 	# --- 3. swapped layout rewires the quad ---------------------------------
 	gp.call("set_layout", TEST_GUID, _swapped_map)
 	_expect(_joy_button_of("jump") == JOY_BUTTON_B,
 		"swapped: jump → bottom face is now physically B(1)")
+	_expect(_joy_button_of("ui_accept") == JOY_BUTTON_B,
+		"swapped: ui_accept tracks jump — bottom face physically B(1)")
 	_expect(_joy_button_of("kino_remote") == JOY_BUTTON_A,
 		"swapped: kino_remote → right face is now physically A(0)")
+	_expect(_joy_button_of("ui_cancel") == JOY_BUTTON_A,
+		"swapped: ui_cancel tracks kino_remote — right face physically A(0)")
 	_expect(_joy_button_of("interact") == JOY_BUTTON_Y,
 		"swapped: interact → left face is now physically Y(3)")
 	_expect(_joy_button_of("kino_autopilot") == JOY_BUTTON_X,
 		"swapped: kino_autopilot → top face is now physically X(2)")
 	# Fallback survives the remap.
 	_expect(_has_key_event("jump"), "swapped: jump STILL keeps its keyboard event")
+	_expect(_has_key_event("ui_accept"), "swapped: ui_accept STILL keeps its keyboard event")
 
 	# --- 4. persistence round-trip (keyed by GUID) --------------------------
 	_expect(bool(gp.call("has_saved_layout", TEST_GUID)),

@@ -50,11 +50,18 @@ const DEFAULT_FACE_BUTTON: Dictionary = {
 # Which InputMap actions are bound to which LOGICAL face position. Rewiring these
 # is how a remap takes effect — we replace the action's joypad button event with
 # the physical index the player assigned to that logical slot.
+#
+# ui_accept / ui_cancel MUST track the same physical buttons as jump / kino_remote
+# (bottom / right face). Otherwise a remapped pad (Nintendo-style A/B swap) can
+# jump with the bottom face while menus still listen for SDL button 0 — so
+# "press A to confirm" feels broken after Configure Controller.
 const FACE_ACTION: Dictionary = {
 	"jump": Face.BOTTOM,         # bottom face = jump (A)
+	"ui_accept": Face.BOTTOM,    # menus / Enter — same physical as jump
 	"interact": Face.LEFT,       # left face = interact (X)
 	"kino_autopilot": Face.TOP,  # top face = autopilot toggle (Y)
 	"kino_remote": Face.RIGHT,   # right face = open Kino remote (B)
+	"ui_cancel": Face.RIGHT,     # menus / Esc — same physical as kino_remote
 }
 
 signal controller_connected(device: int, name: String)

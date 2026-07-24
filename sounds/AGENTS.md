@@ -28,8 +28,13 @@ carry-overs; project-specific audio gets added under the same convention.
     Generated (CC0).
   > Generated samples are placeholders pending an ElevenLabs/foley pass — the
   > system is data-driven, so a higher-fidelity drop-in is a pure asset swap.
-- `klaxon.ogg` — Heavy bell strike (Kenney Impact Sounds /
-  impactBell_heavy_001). Played 3× by `bed.gd` on the post-sleep wake-up.
+- `laser_small_000.ogg` … `_002.ogg` — Sidearm fire (Kenney Sci-Fi Sounds /
+  laserSmall). Used by Mint Animation Studio aim→fire; `Audio.play` adds pitch
+  jitter. Swap freely for a future repair-tool "use" cue.
+- `impact_metal_000.ogg` / `_001.ogg` — Bullet impact on deck (Kenney Sci-Fi
+  Sounds / impactMetal). Played at the aim-cursor hit point after the bolt
+  lands.
+
 - `flicker.ogg` — Electrical glitch (Kenney Interface Sounds / glitch_002).
   Played at random 6–14s intervals by `ambient_audio.gd` while the air
   crisis is active; also fires once mid-klaxon during wake-up.

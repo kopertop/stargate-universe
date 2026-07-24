@@ -21,7 +21,7 @@ func _ready() -> void:
 	_build_visual()
 
 
-func _on_interact(_by: Node) -> void:
+func _on_interact(by: Node) -> void:
 	if _dispatched:
 		return
 	if target_room_id == "":
@@ -49,12 +49,32 @@ func _on_interact(_by: Node) -> void:
 		GameState.add_log("Not enough spare parts. Need %d to deploy the repair robot." % cost)
 		return
 
+	if by.has_method("begin_tool_use"):
+		by.call("begin_tool_use", "repair", 1.2)
+		_dispatch_after(by, 1.2)
+		return
+	_dispatch_repair()
+
+
+func _dispatch_after(by: Node, delay: float) -> void:
+	await get_tree().create_timer(delay).timeout
+	_dispatch_repair()
+	if is_instance_valid(by) and by.has_method("end_tool_use"):
+		by.call("end_tool_use")
+
+
+func _dispatch_repair() -> void:
+	if _dispatched:
+		return
+	var rr: Node = get_node_or_null("/root/RepairRobot")
+	if rr == null:
+		GameState.add_log("ERROR: RepairRobot autoload not found.")
+		return
 	_dispatched = true
 	enabled = false
 	prompt = "Robot dispatched…"
 	_refresh_prompt()
 	GameState.add_log("Deploying repair robot to %s. This will take time." % target_room_id)
-
 	rr.call("dispatch", target_room_id)
 
 

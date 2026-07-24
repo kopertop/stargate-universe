@@ -36,7 +36,9 @@ extension. Most have an adjacent `.uid` sidecar (Godot 4.6 resource UID).
 - `room.gd` — Generic data-driven room scene. Stamps doors, dispatches to
   template builders, spawns the quest waypoint.
 - `room_builder.gd` — Procedural floor/walls/ceiling + per-template accents.
-- `view.gd` — Third-person camera rig (mouselook, follow modes).
+- `view.gd` — Third-person camera rig (mouselook, combat always-look + OTS aim).
+- `player.gd` — Movement + interact; Mixamo combat avatar by default (Mint/modular fallback).
+- `mixamo_combat_avatar.gd` — Mixamo Swat host: stance clips, dual rifle, camera-forward fire.
 - `hud.gd` — Player HUD: objective, health/oxygen, log, dialog panel,
   quest-waypoint screen-edge arrow.
 - `playthrough_runner.gd` — Drives the end-to-end playthrough test.

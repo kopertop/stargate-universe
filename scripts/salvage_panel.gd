@@ -25,7 +25,24 @@ func _ready() -> void:
 	_build_visual()
 
 
-func _on_interact(_by: Node) -> void:
+func _on_interact(by: Node) -> void:
+	if _dismantled:
+		return
+	if by.has_method("begin_tool_use"):
+		by.call("begin_tool_use", "digging", 1.4)
+		_finish_salvage_after(by, 1.4)
+		return
+	_finish_salvage()
+
+
+func _finish_salvage_after(by: Node, delay: float) -> void:
+	await get_tree().create_timer(delay).timeout
+	_finish_salvage()
+	if is_instance_valid(by) and by.has_method("end_tool_use"):
+		by.call("end_tool_use")
+
+
+func _finish_salvage() -> void:
 	if _dismantled:
 		return
 	_dismantled = true

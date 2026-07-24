@@ -240,20 +240,36 @@ func _test_standoff_actors_spawn(gs: Node) -> void:
 		_expect(_has_snapped_gear(scott, "Sidearm"), "Scott also always carries a Sidearm")
 		_expect(not _has_snapped_gear(scott, "Helmet"), "Scott is bareheaded (no helmets aboard ship)")
 
-	# Everyone renders on the Quaternius pipeline now: Rush was the last
-	# hand-rolled mini in the control room, and the player avatar swapped from
-	# the kit chibi to modular Eli (red tee = torso garment + cleared Arms slot).
+	# Rush + player may be ModularCharacter, Mint, or Mixamo combat (forward path).
 	var rush_npc: Node = inst.get_node_or_null("DrRush")
-	_expect(rush_npc != null and _modular_body(rush_npc) != null,
-		"Dr Rush renders as a ModularCharacter (no more chibi mini)")
+	var rush_mc: Node = _modular_body(rush_npc) if rush_npc != null else null
+	var rush_mint: Node = _mint_npc_body(rush_npc) if rush_npc != null else null
+	_expect(rush_npc != null and (rush_mc != null or rush_mint != null),
+		"Dr Rush renders as ModularCharacter or Mint Rush")
+	if rush_mint != null:
+		_expect(rush_mint.has_method("set_move_blend"),
+			"Mint Rush exposes set_move_blend loco API")
 	var player_body: Node = inst.get_node_or_null("Player")
 	var pmc: Node = _modular_body(player_body) if player_body != null else null
-	_expect(pmc != null, "player avatar renders as a ModularCharacter")
+	var mint_eli: Node = _mint_body(player_body) if player_body != null else null
+	var mixamo_eli: Node = _mixamo_body(player_body) if player_body != null else null
+	_expect(pmc != null or mint_eli != null or mixamo_eli != null,
+		"player avatar is ModularCharacter, Mint Eli, or Mixamo combat")
 	if pmc != null:
 		_expect(String(pmc.call("equipped", "Body")) != "",
 			"player wears a torso garment (the red tee)")
 		_expect(String(pmc.call("equipped", "Arms")) == "",
 			"player Arms slot cleared (bare arms = t-shirt silhouette)")
+	if mint_eli != null:
+		_expect(mint_eli.has_method("set_move_blend"),
+			"Mint player exposes set_move_blend loco API")
+		_expect(mint_eli.has_method("equip_weapon"),
+			"Mint player exposes equip_weapon")
+	if mixamo_eli != null:
+		_expect(mixamo_eli.has_method("tick") and mixamo_eli.has_method("try_fire"),
+			"Mixamo player exposes combat tick/try_fire")
+		_expect(bool(mixamo_eli.call("is_combat_ready")),
+			"Mixamo combat avatar is ready")
 
 	# Cue dispatch should not crash and should leave actors valid (instant_mode
 	# snaps the staging). standoff_clear despawns both.
@@ -278,6 +294,42 @@ func _modular_body(actor: Node) -> Node:
 	while not stack.is_empty():
 		var n: Node = stack.pop_back()
 		if n.has_method("set_slot"):
+			return n
+		for c in n.get_children():
+			stack.append(c)
+	return null
+
+
+# MintCharacter under the player (duck-typed via set_move_blend + slug meta).
+func _mint_body(actor: Node) -> Node:
+	var stack: Array = [actor]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n.has_method("set_move_blend") and n.has_method("equip_weapon") and n.has_method("find_skeleton"):
+			return n
+		for c in n.get_children():
+			stack.append(c)
+	return null
+
+
+# MixamoCombatAvatar under the player (gameplay combat host).
+func _mixamo_body(actor: Node) -> Node:
+	var stack: Array = [actor]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n.has_method("is_combat_ready") and n.has_method("tick") and n.has_method("try_fire"):
+			return n
+		for c in n.get_children():
+			stack.append(c)
+	return null
+
+
+# Mint NPC body (quest-giver Rush may not expose equip_weapon).
+func _mint_npc_body(actor: Node) -> Node:
+	var stack: Array = [actor]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n.has_method("set_move_blend") and n.has_method("find_skeleton") and n.has_method("play"):
 			return n
 		for c in n.get_children():
 			stack.append(c)

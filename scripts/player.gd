@@ -10,6 +10,13 @@ signal auto_walk_finished
 @export_subgroup("Components")
 @export var view: Node3D
 
+@export_subgroup("Avatar")
+# Mixamo Swat combat host (signed-off aim/fire). Falls back to Mint, then modular,
+# when the local ToS-gitignored pack is missing.
+@export var use_mixamo_avatar: bool = true
+# Mint-native Eli (Animation Studio). Used when Mixamo pack is absent / disabled.
+@export var use_mint_avatar: bool = true
+
 @export_subgroup("Movement")
 @export var walk_speed: float = 8.0          # m/s
 @export var sprint_multiplier: float = 1.7
@@ -85,6 +92,8 @@ var _footstep_base_volume_db: float = 0.0
 const _COLORMAP_MAT: Material = preload("res://models/colormap.tres")
 const _EQUIPMENT_MOUNT_SCRIPT: Script = preload("res://scripts/equipment_mount.gd")
 const _CHARACTER_FACTORY: Script = preload("res://scripts/character_factory.gd")
+const _MINT_CHARACTER: Script = preload("res://scripts/mint_character.gd")
+const _MIXAMO_COMBAT: Script = preload("res://scripts/mixamo_combat_avatar.gd")
 
 # Kit animation names -> modular crew_body.res clips. The library has no
 # airborne clip, so jump/fall borrow the jog cycle; "holding-both" (Kino
@@ -101,13 +110,313 @@ var _equipment_mount: Node3D = null
 # The player's ModularCharacter body (primary pipeline). Null only if the Eli
 # profile ever loses its "mod" key — then the legacy kit chibi stays.
 var _mc: Node3D = null
+# Mint-native body (when use_mint_avatar). Combat weapons via MintHeldWeapon.
+var _mint: Node3D = null
+var _mint_jump_requested: bool = false
+# Mixamo Swat combat avatar (preferred play path).
+var _mixamo: Node3D = null
+var _mixamo_aiming: bool = false
+var _mixamo_want_fire: bool = false
+# Movie Maker / capture harness: drive aim+fire without real mouse buttons.
+var _demo_combat_override: bool = false
+var _demo_aim: bool = false
+var _demo_fire: bool = false
+var _aim_cross: Control = null
+var _tool_use_label: Label = null
+var _tool_use_token: int = 0
+# Target Lock — soft-lock on nearest combat_target in view (T / MMB).
+var _lock_target: Node3D = null
+var _lock_label: Label = null
+var _lock_ring: Control = null
+# Last aim/lock combat-music state — only crossfade MusicDirector on edges.
+var _combat_music_hot: bool = false
 
 func _ready() -> void:
-	_setup_modular_avatar()
-	if _mc == null:
-		_apply_colormap(_model)
+	if use_mixamo_avatar and _mixamo_pack_available():
+		_setup_mixamo_avatar()
+	elif use_mint_avatar:
+		_setup_mint_avatar()
+	else:
+		_setup_modular_avatar()
+		if _mc == null:
+			_apply_colormap(_model)
 	_setup_equipment_mount()
 	_init_footsteps()
+	_configure_combat_camera()
+	_wire_combat_ui_hooks()
+
+
+func _wire_combat_ui_hooks() -> void:
+	# Drop aim when dialog/Kino opens so a held RMB cannot fire under the UI
+	# once the tree unpauses. View already releases / re-captures the mouse.
+	if GameState == null:
+		return
+	if GameState.has_signal("dialog_started") and not GameState.dialog_started.is_connected(_on_combat_ui_suspend):
+		GameState.dialog_started.connect(_on_combat_ui_suspend)
+	# KinoRemote / PauseMenu do not emit an "opened" signal; they pause the tree
+	# and set mouse visible. dialog_started covers NPC talk; Esc pause restores
+	# via saved mouse mode. Clear aim on any dialog_started is enough for talk.
+
+
+func _on_combat_ui_suspend(_a: Variant = null, _b: Variant = null) -> void:
+	_mixamo_aiming = false
+	_mixamo_want_fire = false
+	clear_target_lock()
+	_update_aim_crosshair()
+	_update_combat_camera_aim()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if _input_locked or _auto_walking:
+		return
+	if _mixamo != null and event.is_action_pressed("target_lock"):
+		toggle_target_lock()
+		get_viewport().set_input_as_handled()
+		return
+	# Aim+fire owns LMB while Mixamo combat is aiming.
+	if _mixamo != null and _mixamo_aiming:
+		return
+	if event is InputEventMouseButton:
+		var mb: InputEventMouseButton = event
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+			_try_click_target(mb.position)
+
+
+## Toggle soft Target Lock on the best combat_target in the camera cone.
+func toggle_target_lock() -> void:
+	if _lock_target != null and is_instance_valid(_lock_target):
+		clear_target_lock()
+		return
+	var best: Node3D = _find_best_lock_target()
+	if best == null:
+		return
+	_set_lock_target(best)
+
+
+func clear_target_lock(play_sfx: bool = true) -> void:
+	if _lock_target != null and is_instance_valid(_lock_target):
+		if _lock_target.has_method("set_lock_highlighted"):
+			_lock_target.call("set_lock_highlighted", false)
+	var had_lock: bool = _lock_target != null
+	_lock_target = null
+	_update_lock_ui()
+	if had_lock and play_sfx:
+		Audio.play("res://sounds/menu_close.ogg")
+	if had_lock:
+		_refresh_combat_music()
+
+
+func has_target_lock() -> bool:
+	return _lock_target != null and is_instance_valid(_lock_target) and _lock_target_alive(_lock_target)
+
+
+func get_lock_target() -> Node3D:
+	return _lock_target if has_target_lock() else null
+
+
+func get_lock_aim_point() -> Vector3:
+	if not has_target_lock():
+		return Vector3.ZERO
+	if _lock_target.has_method("get_lock_point"):
+		return _lock_target.call("get_lock_point") as Vector3
+	return _lock_target.global_position
+
+
+## Movie / tests: force lock onto a specific combat_target.
+func set_demo_lock_target(target: Node3D) -> void:
+	if target == null:
+		clear_target_lock()
+		return
+	_set_lock_target(target)
+
+
+func _set_lock_target(target: Node3D) -> void:
+	# Silent clear so re-lock / acquire does not blip unlock then lock.
+	clear_target_lock(false)
+	_lock_target = target
+	if _lock_target.has_method("set_lock_highlighted"):
+		_lock_target.call("set_lock_highlighted", true)
+	if _lock_target.has_signal("destroyed") and not _lock_target.destroyed.is_connected(_on_lock_target_destroyed):
+		_lock_target.destroyed.connect(_on_lock_target_destroyed)
+	_update_lock_ui()
+	Audio.play("res://sounds/menu_click.ogg")
+	_refresh_combat_music()
+
+
+func _on_lock_target_destroyed() -> void:
+	_lock_target = null
+	_update_lock_ui()
+	# Destroy SFX lives on the drone itself (break.ogg).
+	_refresh_combat_music()
+
+
+func _refresh_combat_music() -> void:
+	# Subtle adaptive bed: combat stems while aiming/locked, otherwise leave
+	# MusicDirector on the room mood (ship_calm in gate_room).
+	var want_hot: bool = _mixamo_aiming or has_target_lock()
+	if want_hot == _combat_music_hot:
+		return
+	_combat_music_hot = want_hot
+	var md: Node = get_node_or_null("/root/MusicDirector")
+	if md == null or not md.has_method("set_mood"):
+		return
+	if want_hot:
+		md.call("set_mood", "combat", 1.2)
+	elif md.has_method("refresh"):
+		md.call("refresh", 2.0)
+
+
+func _lock_target_alive(t: Node3D) -> bool:
+	if t == null or not is_instance_valid(t):
+		return false
+	if t.has_method("is_alive"):
+		return bool(t.call("is_alive"))
+	return true
+
+
+func _find_best_lock_target() -> Node3D:
+	var cam: Camera3D = _interact_camera()
+	if cam == null:
+		return null
+	var best: Node3D = null
+	var best_score: float = -1.0
+	var from: Vector3 = cam.global_position
+	var forward: Vector3 = -cam.global_transform.basis.z
+	for n in get_tree().get_nodes_in_group("combat_target"):
+		var t: Node3D = n as Node3D
+		if t == null or not _lock_target_alive(t):
+			continue
+		var aim: Vector3 = t.global_position
+		if t.has_method("get_lock_point"):
+			aim = t.call("get_lock_point") as Vector3
+		var to: Vector3 = aim - from
+		var dist: float = to.length()
+		if dist < 1.0 or dist > 28.0:
+			continue
+		var dir: Vector3 = to / dist
+		var align: float = forward.dot(dir)
+		if align < 0.35:
+			continue
+		# Prefer near screen-center and closer targets.
+		var score: float = align * 2.0 + (1.0 - clampf(dist / 28.0, 0.0, 1.0))
+		if score > best_score:
+			best_score = score
+			best = t
+	return best
+
+
+func _update_lock_ui() -> void:
+	_ensure_aim_crosshair()
+	if _lock_label != null:
+		_lock_label.visible = has_target_lock() and not _input_locked
+	if _lock_ring != null:
+		_lock_ring.visible = false
+	if not has_target_lock():
+		return
+	var cam: Camera3D = _interact_camera()
+	if cam == null or _lock_ring == null:
+		return
+	var aim: Vector3 = get_lock_aim_point()
+	if cam.is_position_behind(aim):
+		return
+	var screen: Vector2 = cam.unproject_position(aim)
+	_lock_ring.visible = true
+	_lock_ring.position = screen - _lock_ring.size * 0.5
+
+
+func _mixamo_pack_available() -> bool:
+	return _MIXAMO_COMBAT.combat_pack_available("Eli")
+
+
+# Mixamo host for Eli (Eli_rifle_combat.glb; falls back per MixamoHostCatalog).
+func _setup_mixamo_avatar() -> void:
+	if _model == null:
+		return
+	for c in _model.get_children():
+		_model.remove_child(c)
+		c.queue_free()
+	_model.transform = Transform3D.IDENTITY
+	_mixamo = _MIXAMO_COMBAT.create("Eli") as Node3D
+	_model.add_child(_mixamo)
+	if not bool(_mixamo.call("mount")):
+		_mixamo.queue_free()
+		_mixamo = null
+		push_warning("Player: Mixamo combat pack failed — falling back")
+		if use_mint_avatar:
+			_setup_mint_avatar()
+		else:
+			_setup_modular_avatar()
+		return
+	_mc = null
+	_mint = null
+	_animation = null
+	_tune_mixamo_capsule()
+	call_deferred("_finish_mixamo_spawn")
+
+
+func _finish_mixamo_spawn() -> void:
+	# Scene-boot smoke frees rooms before deferred awaits resume — bail cleanly.
+	if not is_inside_tree() or _mixamo == null:
+		return
+	await get_tree().process_frame
+	if not is_inside_tree() or _mixamo == null:
+		return
+	await get_tree().process_frame
+	if not is_inside_tree() or _mixamo == null:
+		return
+	if _mixamo.has_method("align_feet_once"):
+		_mixamo.call("align_feet_once")
+	_ensure_aim_crosshair()
+
+
+func _configure_combat_camera() -> void:
+	if view == null or _mixamo == null:
+		return
+	# Showcase-scale follow height (Mixamo Swat ~1.8 m vs modular ~1.6 m).
+	# ADS / crouch heights live on View (combat_*_follow_height) and blend live.
+	if "follow_height" in view:
+		view.set("follow_height", 1.28)
+	if "combat_hip_follow_height" in view:
+		view.set("combat_hip_follow_height", 1.28)
+	if view.has_method("set_combat_look"):
+		view.call("set_combat_look", true)
+	elif "combat_look" in view:
+		view.set("combat_look", true)
+
+
+# Match showcase capsule radius; keep floor plant near y=0 (height/2 center).
+func _tune_mixamo_capsule() -> void:
+	var col: CollisionShape3D = get_node_or_null("Collider") as CollisionShape3D
+	if col == null or not (col.shape is CapsuleShape3D):
+		return
+	var src: CapsuleShape3D = col.shape as CapsuleShape3D
+	var cap := CapsuleShape3D.new()
+	cap.radius = 0.28
+	cap.height = src.height if src.height > 0.0 else 1.5
+	col.shape = cap
+	col.position.y = cap.height * 0.5
+
+
+# Mint Eli from data/mint/characters.json — loco via set_move_blend, combat via
+# MintHeldWeapon. Inventory gear still uses EquipmentMount on the same skeleton.
+func _setup_mint_avatar() -> void:
+	if _model == null:
+		return
+	for c in _model.get_children():
+		_model.remove_child(c)
+		c.queue_free()
+	_model.transform = Transform3D.IDENTITY
+	_mint = _MINT_CHARACTER.load_profile("eli") as Node3D
+	if _mint == null:
+		push_warning("Player: Mint Eli failed to load — falling back to modular")
+		_setup_modular_avatar()
+		return
+	_mint.rotation.y = PI
+	_model.add_child(_mint)
+	_mc = null
+	_animation = null
+	if _mint.has_method("equip_weapon"):
+		_mint.call("equip_weapon", "sidearm")
 
 
 # Replace the kit chibi (eli.glb mini at 1.6x) with the Quaternius modular
@@ -131,7 +440,10 @@ func _setup_modular_avatar() -> void:
 
 # Re-dress the avatar for a context ("ship"/"mission"). Planet scenes push
 # "mission" after placing the player, so Eli wears fatigues off-ship.
+# Mint wardrobe is not wired yet — no-op when on Mint/Mixamo avatar.
 func set_dress_context(context: String) -> void:
+	if _mint != null or _mixamo != null:
+		return
 	if _mc != null:
 		_CHARACTER_FACTORY.dress_modular(_mc, "Eli", context)
 
@@ -187,7 +499,12 @@ func _apply_idle(delta: float) -> void:
 	# A pose override (e.g. "holding-both" while piloting the Kino) takes the
 	# place of plain idle. Driven every frame so the locomotion logic can't
 	# stomp it back to "idle".
-	_play_anim(_pose_override if _pose_override != "" else "idle", 0.15)
+	if _mint != null:
+		_drive_mint_locomotion(0.0)
+	elif _mixamo != null:
+		_drive_mixamo_locomotion(0.0, false)
+	else:
+		_play_anim(_pose_override if _pose_override != "" else "idle", 0.15)
 
 func _handle_movement(delta: float) -> void:
 	# Camera-relative input.
@@ -199,9 +516,17 @@ func _handle_movement(delta: float) -> void:
 	if view != null:
 		input_vec = input_vec.rotated(Vector3.UP, view.rotation.y)
 
+	_poll_mixamo_combat_input()
+
 	var target_speed: float = walk_speed
-	if Input.is_action_pressed("sprint"):
-		target_speed *= sprint_multiplier
+	if _mixamo != null:
+		# Showcase-scale loco; walk_speed export stays for Mint/modular.
+		target_speed = 3.2
+	if Input.is_action_pressed("sprint") and not _mixamo_aiming:
+		target_speed *= (1.8 if _mixamo != null else sprint_multiplier)
+	elif _mixamo_aiming:
+		# Showcase: slightly slower while aiming on the move.
+		target_speed = 3.2 * (1.15 if Input.is_action_pressed("sprint") else 0.9)
 
 	var target_velocity: Vector3 = input_vec * target_speed
 	_move_velocity = _move_velocity.lerp(target_velocity, accel_smoothing * delta)
@@ -209,16 +534,19 @@ func _handle_movement(delta: float) -> void:
 	_apply_gravity(delta)
 	if Input.is_action_just_pressed("jump") and is_on_floor():
 		_gravity_velocity = -jump_strength
+		_mint_jump_requested = true
 		Audio.play("res://sounds/jump.ogg")
 
 	velocity = Vector3(_move_velocity.x, -_gravity_velocity, _move_velocity.z)
 	move_and_slide()
 
-	# Face direction of motion (or camera yaw when standing still).
+	# Face direction of motion (or camera yaw when standing still / aiming).
 	# Negated atan2 args put body yaw in Godot's -Z-forward convention so the
 	# body yaw at idle (= view yaw) matches the body yaw during forward motion.
 	var horiz_speed: float = Vector2(velocity.x, velocity.z).length()
-	if horiz_speed > 0.2:
+	if _mixamo_aiming and view != null:
+		_facing_yaw = view.rotation.y
+	elif horiz_speed > 0.2:
 		_facing_yaw = atan2(-velocity.x, -velocity.z)
 	elif view != null:
 		_facing_yaw = view.rotation.y
@@ -226,6 +554,27 @@ func _handle_movement(delta: float) -> void:
 
 	_drive_locomotion_anim()
 	_update_footsteps(delta)
+	if _mixamo != null and _mixamo_aiming and _mixamo_want_fire:
+		_mixamo.call("try_fire", _interact_camera())
+	_refresh_target_lock(delta)
+	_update_aim_crosshair()
+	_update_combat_camera_aim()
+	_update_lock_ui()
+
+
+func _refresh_target_lock(_delta: float) -> void:
+	if _lock_target == null:
+		return
+	if not is_instance_valid(_lock_target) or not _lock_target_alive(_lock_target):
+		clear_target_lock()
+		return
+	# Keep body facing the lock while aiming.
+	if _mixamo_aiming and view != null:
+		var aim: Vector3 = get_lock_aim_point()
+		var flat: Vector3 = aim - global_position
+		flat.y = 0.0
+		if flat.length_squared() > 0.01:
+			_facing_yaw = atan2(-flat.x, -flat.z)
 
 func _apply_gravity(delta: float) -> void:
 	if is_on_floor():
@@ -236,6 +585,12 @@ func _apply_gravity(delta: float) -> void:
 func _drive_locomotion_anim() -> void:
 	_particles_trail.emitting = false
 	var horiz_speed: float = Vector2(velocity.x, velocity.z).length()
+	if _mixamo != null:
+		_drive_mixamo_locomotion(horiz_speed, Input.is_action_pressed("sprint"))
+		return
+	if _mint != null:
+		_drive_mint_locomotion(horiz_speed)
+		return
 	if is_on_floor():
 		if horiz_speed > 0.25:
 			var is_sprinting: bool = horiz_speed > walk_speed * 1.15
@@ -257,6 +612,288 @@ func _drive_locomotion_anim() -> void:
 		_play_anim(airborne_anim, 0.1)
 		if _animation != null:
 			_animation.speed_scale = 1.0
+
+
+func _poll_mixamo_combat_input() -> void:
+	var was_aiming: bool = _mixamo_aiming
+	if _mixamo == null or _input_locked:
+		_mixamo_aiming = false
+		_mixamo_want_fire = false
+		if was_aiming:
+			_refresh_combat_music()
+		return
+	if _mixamo_tool_use_active():
+		_mixamo_aiming = false
+		_mixamo_want_fire = false
+		if was_aiming:
+			_refresh_combat_music()
+		return
+	if _demo_combat_override:
+		_mixamo_aiming = _demo_aim
+		_mixamo_want_fire = _demo_fire and _demo_aim
+		if _mixamo_aiming != was_aiming:
+			_refresh_combat_music()
+		return
+	_mixamo_aiming = Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
+	_mixamo_want_fire = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and _mixamo_aiming
+	if _mixamo_aiming != was_aiming:
+		_refresh_combat_music()
+
+
+## Capture / Movie Maker: force RMB-aim / LMB-fire without OS mouse state.
+func set_demo_combat(aiming: bool, firing: bool = false) -> void:
+	_demo_combat_override = true
+	_demo_aim = aiming
+	_demo_fire = firing and aiming
+	_mixamo_aiming = aiming
+	_mixamo_want_fire = firing and aiming
+	_refresh_combat_music()
+
+
+func clear_demo_combat() -> void:
+	_demo_combat_override = false
+	_demo_aim = false
+	_demo_fire = false
+	_mixamo_aiming = false
+	_mixamo_want_fire = false
+	_refresh_combat_music()
+
+
+func _mixamo_tool_use_active() -> bool:
+	return (
+		_mixamo != null
+		and _mixamo.has_method("is_tool_use_active")
+		and bool(_mixamo.call("is_tool_use_active"))
+	)
+
+
+## Holster + play Digging/Working clip when present; otherwise idle + HUD stub.
+## Optional duration auto-calls end_tool_use() (used by salvage/repair interact).
+func begin_tool_use(kind: String = "repair", duration: float = 0.0) -> void:
+	if _mixamo == null:
+		return
+	_tool_use_token += 1
+	var token: int = _tool_use_token
+	_mixamo_aiming = false
+	_mixamo_want_fire = false
+	if _mixamo.has_method("begin_tool_use"):
+		_mixamo.call("begin_tool_use", kind)
+	_update_tool_use_hud()
+	_update_aim_crosshair()
+	_update_combat_camera_aim()
+	if duration > 0.0 and get_tree() != null:
+		get_tree().create_timer(duration).timeout.connect(
+			func() -> void:
+				if token == _tool_use_token:
+					end_tool_use(),
+			CONNECT_ONE_SHOT
+		)
+
+
+func end_tool_use() -> void:
+	if _mixamo == null:
+		return
+	_tool_use_token += 1
+	if _mixamo.has_method("end_tool_use"):
+		_mixamo.call("end_tool_use")
+	_update_tool_use_hud()
+	_update_aim_crosshair()
+	_update_combat_camera_aim()
+
+
+func is_tool_use_active() -> bool:
+	return _mixamo_tool_use_active()
+
+
+func _drive_mixamo_locomotion(horiz_speed: float, sprinting: bool) -> void:
+	if _mixamo == null:
+		return
+	var move_input := Vector2.ZERO
+	move_input.x = Input.get_axis("move_left", "move_right")
+	move_input.y = Input.get_axis("move_forward", "move_back")
+	if move_input.length() > 1.0:
+		move_input = move_input.normalized()
+	# Map Godot move_forward (negative Z wish) to showcase-style Vector2 where
+	# -Y is forward for clip selection / strafe side.
+	var cam_yaw: float = view.rotation.y if view != null else rotation.y
+	var delta: float = get_physics_process_delta_time()
+	var tool_active: bool = _mixamo_tool_use_active()
+	_mixamo.call(
+		"tick",
+		delta,
+		_mixamo_aiming and _pose_override == "" and not tool_active,
+		_mixamo_want_fire and _pose_override == "" and not tool_active,
+		move_input,
+		sprinting and not _mixamo_aiming and not tool_active,
+		cam_yaw
+	)
+	if horiz_speed > walk_speed * 1.15 and not _mixamo_aiming and not tool_active:
+		_particles_trail.emitting = true
+	_update_tool_use_hud()
+
+
+func _ensure_aim_crosshair() -> void:
+	if _aim_cross != null:
+		return
+	var layer := CanvasLayer.new()
+	layer.name = "MixamoAimUI"
+	layer.layer = 20
+	add_child(layer)
+	_aim_cross = Control.new()
+	_aim_cross.name = "AimCross"
+	_aim_cross.visible = false
+	_aim_cross.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_aim_cross.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(_aim_cross)
+	var h := ColorRect.new()
+	h.color = Color(1.0, 0.85, 0.35, 0.9)
+	h.size = Vector2(18, 2)
+	h.position = Vector2(-9, -1)
+	h.set_anchors_preset(Control.PRESET_CENTER)
+	_aim_cross.add_child(h)
+	var v := ColorRect.new()
+	v.color = Color(1.0, 0.85, 0.35, 0.9)
+	v.size = Vector2(2, 18)
+	v.position = Vector2(-1, -9)
+	v.set_anchors_preset(Control.PRESET_CENTER)
+	_aim_cross.add_child(v)
+	_ensure_tool_use_hud()
+	_ensure_lock_ui()
+
+
+func _ensure_lock_ui() -> void:
+	if _aim_cross == null:
+		return
+	var layer: CanvasLayer = _aim_cross.get_parent() as CanvasLayer
+	if layer == null:
+		return
+	if _lock_label == null:
+		_lock_label = Label.new()
+		_lock_label.name = "TargetLockLabel"
+		_lock_label.text = "TARGET LOCK"
+		_lock_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_lock_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+		_lock_label.offset_top = 48.0
+		_lock_label.add_theme_font_size_override("font_size", 16)
+		_lock_label.modulate = Color(1.0, 0.85, 0.35, 0.95)
+		_lock_label.visible = false
+		_lock_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		layer.add_child(_lock_label)
+	if _lock_ring == null:
+		_lock_ring = Control.new()
+		_lock_ring.name = "TargetLockRing"
+		_lock_ring.size = Vector2(36, 36)
+		_lock_ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_lock_ring.visible = false
+		layer.add_child(_lock_ring)
+		var h := ColorRect.new()
+		h.color = Color(1.0, 0.85, 0.25, 0.95)
+		h.size = Vector2(36, 2)
+		h.position = Vector2(0, 17)
+		h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_lock_ring.add_child(h)
+		var vv := ColorRect.new()
+		vv.color = Color(1.0, 0.85, 0.25, 0.95)
+		vv.size = Vector2(2, 36)
+		vv.position = Vector2(17, 0)
+		vv.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_lock_ring.add_child(vv)
+
+
+func _ensure_tool_use_hud() -> void:
+	if _tool_use_label != null:
+		return
+	var layer: CanvasLayer = _aim_cross.get_parent() as CanvasLayer if _aim_cross != null else null
+	if layer == null:
+		return
+	_tool_use_label = Label.new()
+	_tool_use_label.name = "ToolUsePrompt"
+	_tool_use_label.text = "Working…"
+	_tool_use_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_tool_use_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_tool_use_label.offset_top = 72.0
+	_tool_use_label.add_theme_font_size_override("font_size", 18)
+	_tool_use_label.modulate = Color(0.75, 0.92, 1.0, 0.95)
+	_tool_use_label.visible = false
+	_tool_use_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(_tool_use_label)
+
+
+func _update_tool_use_hud() -> void:
+	if _tool_use_label == null:
+		_ensure_tool_use_hud()
+	if _tool_use_label == null or _mixamo == null:
+		return
+	var show_stub: bool = (
+		_mixamo.has_method("is_tool_use_fallback")
+		and bool(_mixamo.call("is_tool_use_fallback"))
+	)
+	_tool_use_label.visible = show_stub and not _input_locked
+
+
+func _update_aim_crosshair() -> void:
+	if _aim_cross == null:
+		return
+	_aim_cross.visible = _mixamo != null and _mixamo_aiming and not _input_locked
+
+
+func _update_combat_camera_aim() -> void:
+	if view == null or _mixamo == null:
+		return
+	var aiming: bool = _mixamo_aiming and not _input_locked
+	var crouching: bool = (
+		aiming
+		and _mixamo.has_method("is_crouch_aiming")
+		and bool(_mixamo.call("is_crouch_aiming"))
+	)
+	if view.has_method("set_combat_aiming"):
+		view.call("set_combat_aiming", aiming, crouching)
+	else:
+		if "combat_aiming" in view:
+			view.set("combat_aiming", aiming)
+		if "combat_crouching" in view:
+			view.set("combat_crouching", crouching)
+
+
+func _drive_mint_locomotion(horiz_speed: float) -> void:
+	if _pose_override != "":
+		# Kino remote: hold a light aim pose instead of Modular "talk".
+		_mint.call("set_move_blend", 0.0, 0.0)
+		if _mint.has_method("exit_aim_stance"):
+			_mint.call("exit_aim_stance")
+		_mint.call("set_aim_blend", 0.35)
+		return
+	var drawn: bool = _mint.has_method("is_weapon_drawn") and bool(_mint.call("is_weapon_drawn"))
+	if is_on_floor():
+		if horiz_speed > 0.25:
+			var is_sprinting: bool = horiz_speed > walk_speed * 1.15
+			var moving: float = clampf(horiz_speed / walk_speed, 0.0, 1.0)
+			var gait: float = 1.0 if is_sprinting else clampf((horiz_speed / walk_speed) * 0.55, 0.0, 0.55)
+			# Moving aim: loco + arm aim overlay (not frozen stance).
+			if _mint.has_method("exit_aim_stance"):
+				_mint.call("exit_aim_stance")
+			_mint.call("set_move_blend", moving, gait)
+			_mint.call("set_aim_blend", 0.85 if drawn else 0.0)
+			if is_sprinting:
+				_particles_trail.emitting = true
+		else:
+			_mint.call("set_move_blend", 0.0, 0.0)
+			# Stationary + drawn → lock a dedicated aim pose (no Idle fidget).
+			if drawn and _mint.has_method("enter_aim_stance"):
+				_mint.call("enter_aim_stance")
+			elif not drawn:
+				if _mint.has_method("exit_aim_stance"):
+					_mint.call("exit_aim_stance")
+				_mint.call("set_aim_blend", 0.0)
+	else:
+		if _mint.has_method("exit_aim_stance"):
+			_mint.call("exit_aim_stance")
+		_mint.call("set_move_blend", 0.0, 0.0)
+		_mint.call("set_aim_blend", 0.85 if drawn else 0.0)
+	if _mint_jump_requested:
+		_mint_jump_requested = false
+		if _mint.has_method("request_jump"):
+			_mint.call("request_jump")
 
 
 # Capture the authored footstep volume and default to the ship surface (metal).
@@ -304,6 +941,8 @@ func _emit_footstep() -> void:
 	_sound_footsteps.play()
 
 func _play_anim(name: String, blend: float) -> void:
+	if _mint != null or _mixamo != null:
+		return
 	if _animation == null:
 		return
 	if _mc != null:
@@ -410,15 +1049,6 @@ func _quest_anchor_name() -> String:
 
 # Click an interactable to select it (extends reach + makes the target obvious
 # via the HUD prompt). Clicking empty space clears the selection.
-func _unhandled_input(event: InputEvent) -> void:
-	if _input_locked or _auto_walking:
-		return
-	if event is InputEventMouseButton:
-		var mb: InputEventMouseButton = event
-		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
-			_try_click_target(mb.position)
-
-
 func _try_click_target(screen_pos: Vector2) -> void:
 	var camera: Camera3D = _interact_camera()
 	if camera == null:

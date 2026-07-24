@@ -35,12 +35,13 @@ flowchart TD
 - [x] Smoke: `mixamo_player_bridge` covers isolated player + `gate_room` boot (skips if pack missing)
 
 ### Node B — Y Bot host (optional parallel)
-- [ ] Deferred — leave Y Bot host retarget for later
-- Blender pack: retarget combat clips onto Y Bot (same Mixamo skeleton)
-- Keep Swat as fallback; prefer Y Bot as “Eli temp” if Swat reads too SWAT
+- [x] Partial — cloud fallback uses Mixamo-rigged **proxy mannequin** (Y-Bot-like) via
+  `tools/blender_mixamo_proxy_combat.py` when Swat FBX is absent
+- Full Y Bot skin retarget still deferred until `incoming/Y Bot.fbx` is present
+- Keep real Swat builder as preferred path when ToS-local FBXs exist
 
 ### Node C — Smoke gate
-- [x] Green (2026-07-24): `mixamo-player` 23/23, `e1-opening` 73/73, `scene` 64 PASS, `mint-character` (mint + loco + bridge) PASS
+- [x] Green (2026-07-24): `mixamo-player`, `e1-opening`, `scene`, `mint-character`
 ```bash
 tests/run.sh mixamo-player
 tests/run.sh e1-opening
@@ -48,27 +49,28 @@ tests/run.sh scene
 tests/run.sh mint-character
 ```
 - [x] Hardened `_finish_mixamo_spawn` so scene-boot frees no longer resume into a dead tree
+- [x] Cloud rebuild path: `blender -b -P tools/blender_mixamo_proxy_combat.py` → local `Swat_rifle_combat.glb`
 
 ### Node D — Repair / mining backlog assets
-- [ ] Skipped this loop — no in-repo Mixamo download automation; Digging / Working On Device not in `incoming/`
-- Export Digging + Working On Device onto Y Bot when Mixamo rate limit clears
+- [x] Stub interact clip packed as `Interact_Stub` (from `pointingwitharmbent.fbx`) in proxy pack
+- [ ] Full Digging / Working On Device Mixamo pulls still need Adobe download into `incoming/`
 - IDs: Digging `c9c6cd3e-b96c-11e4-a802-0aaa78deedf9`, Working On Device `c9c6cf65-b96c-11e4-a802-0aaa78deedf9`
-- Stub interact pose OK for demo; full tool loops can follow
 
 ### Node E — Gameplay video
 - [x] Headed Movie Maker capture of gate_room Mixamo loco + RMB aim + LMB fire
 - Script: `tests/shots/mixamo_combat_demo_movie.gd` (walk → aim → strafe → fire → holster → jog)
-- Wrapper: `tools/record_mixamo_combat_demo.sh`
+- Wrapper: `tools/record_mixamo_combat_demo.sh` (Linux `vulkan` / macOS `metal`)
 - Player demo drive: `set_demo_combat(aiming, firing)` / `clear_demo_combat()` on `player.gd`
 - **Output (gitignored under `screenshots/`):**
-  - Video: `screenshots/result/mixamo_combat_demo.mp4` (~12.5s, 1280×720 @ 30fps)
+  - Video: `screenshots/result/mixamo_combat_demo.mp4` (1280×720 @ 30fps)
   - Beat frames: `screenshots/result/mixamo_combat_demo/01_holster_idle.png` … `07_end.png`
   - Raw AVI (local): `screenshots/result/mixamo_combat_demo_raw.avi`
 - **Replay / re-record:**
 ```bash
+# if pack missing:
+blender -b -P tools/blender_mixamo_proxy_combat.py
 tools/record_mixamo_combat_demo.sh
 # open: screenshots/result/mixamo_combat_demo.mp4
-# or spot-check frames under screenshots/result/mixamo_combat_demo/
 ```
 
 ### Node F — Push

@@ -63,6 +63,21 @@ Godot --path . --headless --import
 Godot --path . res://scenes/rifle_combat_showcase.tscn
 ```
 
+### Cloud / no-incoming fallback (2026-07-24)
+
+When `incoming/` has no Swat / Shooter-Pack FBXs (Adobe ToS, not redistributed), rebuild a
+**local** Mixamo-rigged proxy pack from in-repo `models/vrm/anim_src/*.fbx`:
+
+```bash
+blender -b -P tools/blender_mixamo_proxy_combat.py
+# → models/mixamo_openbot/Swat_rifle_combat.glb (gitignored)
+```
+
+This keeps `mixamorig:*` bones + showcase clip names + dual rifle mounts so
+`MixamoCombatAvatar` / gate_room demo / Movie Maker capture work. Visual host is a
+sci-fi box mannequin (Y-Bot stand-in), not Swat skin. Prefer the real Swat builder
+once `incoming/` is populated on a developer machine.
+
 ## License
 
 Creative Commons (OpenBot). Mixamo animations remain Mixamo ToS if you add them

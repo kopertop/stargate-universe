@@ -769,6 +769,8 @@ func set_input_locked(locked: bool) -> void:
 # Override the locked-idle pose with a specific clip (""/empty restores idle).
 func set_pose_override(anim: String) -> void:
 	_pose_override = anim
+	if _mixamo != null and anim != "" and _mixamo.has_method("play_interact_stub"):
+		_mixamo.call("play_interact_stub")
 
 # Drive the player toward a world-space target on a straight line. Locks input
 # for the duration. Used by door transitions to sell "walked through the door"

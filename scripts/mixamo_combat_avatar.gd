@@ -80,10 +80,21 @@ func find_skeleton() -> Skeleton3D:
 	return _skel
 
 
+## Play mining/repair stub pose when Interact_Stub clip exists (proxy pack).
+func play_interact_stub() -> bool:
+	if not _ready_ok or _anim == null:
+		return false
+	var clip: String = _pick_clip(["Interact_Stub", "Unarmed_Idle"])
+	if clip == "" or clip == "Unarmed_Idle":
+		return false
+	_play_clip(clip, false, 1.0)
+	return true
+
+
 func mount() -> bool:
 	var path: String = COMBAT_GLB if ResourceLoader.exists(COMBAT_GLB) else IDLE_GLB
 	if not ResourceLoader.exists(path):
-		push_warning("MixamoCombatAvatar: missing %s — rebuild via tools/blender_mixamo_rifle_combat.py" % path)
+		push_warning("MixamoCombatAvatar: missing %s — rebuild via tools/blender_mixamo_rifle_combat.py or tools/blender_mixamo_proxy_combat.py" % path)
 		return false
 	var packed: PackedScene = load(path) as PackedScene
 	if packed == null:

@@ -64,3 +64,8 @@ flowchart TD
 - Mixamo-first; no analytic IK aim
 - Exact clip contract in `docs/animation/mixamo-rifle-combat-showcase.md`
 - Never commit Mixamo FBX/GLB under ToS gitignore
+
+### Node J — Re-record demo (Y Bot)
+- **done** 2026-07-24 — Re-ran `tools/record_mixamo_combat_demo.sh` after Y Bot combat host (`MixamoCombatAvatar.resolve_combat_glb()` → `YBot_rifle_combat.glb`, ~3.6MB local).
+- Output: `screenshots/result/mixamo_combat_demo.mp4` (~14.0s, ~23MB, gitignored). Beat frames under `screenshots/result/mixamo_combat_demo/` (`01_holster_idle` … `07_end`, plus `01b_tool_use`).
+- Record run: non-fatal `planet_gate.gd` overlapping-bodies warning at boot; demo movie completed all beats.

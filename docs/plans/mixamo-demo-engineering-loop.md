@@ -50,6 +50,7 @@ flowchart TD
 - [x] **done 2026-07-24** — Digging + Working On Device exported onto **Y Bot** (`4f5d21e1-4ccc-41f1-b35b-fb2547bd8493`) via authenticated Mixamo API (`animations/export` + `gms_hash` + `characters/:id/monitor` → S3)
 - Local (gitignored): `models/mixamo_openbot/incoming/Digging.fbx`, `models/mixamo_openbot/incoming/Working On Device.fbx`
 - IDs: Digging `c9c6cd3e-b96c-11e4-a802-0aaa78deedf9` · Working On Device `c9c6cf65-b96c-11e4-a802-0aaa78deedf9`
+- **done** — `tools/blender_mixamo_rifle_combat.py` CLIPS includes `Digging` + `Working_On_Device`; rebuild Y Bot pack bakes them into `YBot_rifle_combat.glb` (gitignored)
 
 ### Node H — Interact stubs
 - **done** — `MixamoCombatAvatar.begin_tool_use(kind)` / `end_tool_use()`; Digging/Working clips when present, else Idle + HUD “Working…”

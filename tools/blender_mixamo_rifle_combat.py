@@ -102,6 +102,9 @@ CLIPS: dict[str, Path] = {
 	"Rifle_Kneeling_Aim": IN / "Rifle Aiming And Kneeling.fbx",
 	"Rifle_Stand_To_Kneel": IN / "Rifle Standing To Kneeling.fbx",
 	"Rifle_Crouched_Idle_Aim": IN / "Rifle Crouched Idle Aiming.fbx",
+	# Y Bot tool-use (unarmed; holster rifle before play).
+	"Digging": IN / "Digging.fbx",
+	"Working_On_Device": IN / "Working On Device.fbx",
 }
 
 # Local +Y = barrel toward muzzle. Grip→support Y = MIXAMO_HAND_SPAN.

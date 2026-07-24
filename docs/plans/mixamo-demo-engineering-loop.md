@@ -47,8 +47,9 @@ flowchart TD
 - Wire `MixamoCombatAvatar` / player export to pick host when Y Bot pack present — **done**
 
 ### Node D2 — Repair / mining assets
-- Export Digging `c9c6cd3e-b96c-11e4-a802-0aaa78deedf9` + Working On Device `c9c6cf65-b96c-11e4-a802-0aaa78deedf9` onto Y Bot into `incoming/` (gitignored)
-- Use authenticated Mixamo API (not browser Download button) when rate limit allows
+- [x] **done 2026-07-24** — Digging + Working On Device exported onto **Y Bot** (`4f5d21e1-4ccc-41f1-b35b-fb2547bd8493`) via authenticated Mixamo API (`animations/export` + `gms_hash` + `characters/:id/monitor` → S3)
+- Local (gitignored): `models/mixamo_openbot/incoming/Digging.fbx`, `models/mixamo_openbot/incoming/Working On Device.fbx`
+- IDs: Digging `c9c6cd3e-b96c-11e4-a802-0aaa78deedf9` · Working On Device `c9c6cf65-b96c-11e4-a802-0aaa78deedf9`
 
 ### Node H — Interact stubs
 - **done** — `MixamoCombatAvatar.begin_tool_use(kind)` / `end_tool_use()`; Digging/Working clips when present, else Idle + HUD “Working…”

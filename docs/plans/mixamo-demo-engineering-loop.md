@@ -24,7 +24,7 @@ flowchart TD
 | A In-ship polish | done |
 | B Y Bot host | **deferred → Loop 2** |
 | C Smoke gate | done |
-| D Repair/mining anims | **deferred → Loop 2** (clips optional; stub ships without) |
+| D Repair/mining anims | **done → Loop 2 D2** |
 | E Gameplay video | done (`screenshots/result/mixamo_combat_demo.mp4`) |
 | F Push | done (`bdec6ba`) |
 | G Showpiece ready | done |

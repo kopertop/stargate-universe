@@ -93,3 +93,5 @@ models/mixamo_openbot/incoming/*
 models/mixamo_openbot/Swat_*
 models/mixamo_openbot/*.blend
 models/mixamo_openbot/*.blend1
+docs/demo/*.mp4
+docs/demo/*_raw.avi

@@ -306,14 +306,14 @@ def _build_mannequin(arm: bpy.types.Object) -> list[bpy.types.Object]:
 			print("SKIP mannequin bone", bone_name)
 			continue
 		use_mat = accent if "Head" in bone_name or "Spine2" in bone_name else mat
-		# Mixamo bone space is centimetre-ish; sizes already in that space.
-		obj = _box(f"part_{bone_name.split(':')[-1]}", size * 0.01, Vector((0, 0, 0)), use_mat)
+		# Mixamo bone-local space is centimetres; host.scale (~0.01) converts to metres.
+		# Do NOT pre-scale by 0.01 or parts become millimetre-invisible after parent scale.
+		obj = _box(f"part_{bone_name.split(':')[-1]}", size, Vector((0, 0, 0)), use_mat)
 		obj.parent = arm
 		obj.parent_type = "BONE"
 		obj.parent_bone = bone_name
 		bpy.context.view_layer.update()
-		# Offset in bone local space (Mixamo bone Y often along bone).
-		obj.location = offset * 0.01
+		obj.location = offset
 		obj.rotation_euler = (0.0, 0.0, 0.0)
 		obj.scale = Vector((1.0, 1.0, 1.0))
 		meshes.append(obj)

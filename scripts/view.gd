@@ -31,10 +31,13 @@ extends Node3D
 
 @export_group("Combat")
 # Mixamo combat: mouse always looks while captured; RMB is aim (owned by player).
+# Distances match the signed-off rifle showcase (OTS ~2.65 hip / ~2.5 aim), not
+# the ship platformer spring (~7 m).
 @export var combat_look: bool = false
 @export var combat_aiming: bool = false
-@export var combat_aim_zoom: float = 5.5
-@export var combat_aim_shoulder: float = 0.45
+@export var combat_hip_zoom: float = 3.2
+@export var combat_aim_zoom: float = 2.55
+@export var combat_aim_shoulder: float = 0.55
 @export var combat_hip_fov: float = 52.0
 @export var combat_aim_fov: float = 36.0
 
@@ -65,8 +68,15 @@ func _ready() -> void:
 
 func set_combat_look(enabled: bool) -> void:
 	combat_look = enabled
-	if enabled and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if enabled:
+		# Pull the spring in to showcase hip distance (scene springs are ~7 m).
+		zoom = combat_hip_zoom
+		if spring != null:
+			spring.spring_length = combat_hip_zoom
+		if camera != null:
+			camera.fov = combat_hip_fov
+		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func set_combat_aiming(aiming: bool) -> void:
@@ -74,12 +84,14 @@ func set_combat_aiming(aiming: bool) -> void:
 
 
 func _on_dialog_started(_npc: Node3D, _tree: Array) -> void:
+	combat_aiming = false
 	_release_mouselook()
 
 
 func _on_dialog_closed() -> void:
 	_release_mouselook()
 	if combat_look:
+		# Dialog/Kino closed — resume always-look capture for Mixamo combat.
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
@@ -114,9 +126,25 @@ func _input(event: InputEvent) -> void:
 			if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		elif event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
-			zoom = clampf(zoom - wheel_zoom_step, zoom_maximum, zoom_minimum)
+			if combat_look:
+				var lo: float = 2.2
+				var hi: float = 6.5
+				if combat_aiming:
+					combat_aim_zoom = clampf(combat_aim_zoom - wheel_zoom_step, lo, hi)
+				else:
+					combat_hip_zoom = clampf(combat_hip_zoom - wheel_zoom_step, lo, hi)
+			else:
+				zoom = clampf(zoom - wheel_zoom_step, zoom_maximum, zoom_minimum)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
-			zoom = clampf(zoom + wheel_zoom_step, zoom_maximum, zoom_minimum)
+			if combat_look:
+				var lo2: float = 2.2
+				var hi2: float = 6.5
+				if combat_aiming:
+					combat_aim_zoom = clampf(combat_aim_zoom + wheel_zoom_step, lo2, hi2)
+				else:
+					combat_hip_zoom = clampf(combat_hip_zoom + wheel_zoom_step, lo2, hi2)
+			else:
+				zoom = clampf(zoom + wheel_zoom_step, zoom_maximum, zoom_minimum)
 	elif event is InputEventMouseMotion:
 		var looking: bool = combat_look and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 		looking = looking or (not combat_look and mouselook_active)
@@ -134,7 +162,9 @@ func _physics_process(delta: float) -> void:
 	# When pitch swings above the horizon threshold (rig dipping under the
 	# player to look up), pull the spring in toward `zoom_maximum` so the
 	# character doesn't recede off-screen.
-	var want_zoom: float = combat_aim_zoom if (combat_look and combat_aiming) else zoom
+	var want_zoom: float = zoom
+	if combat_look:
+		want_zoom = combat_aim_zoom if combat_aiming else combat_hip_zoom
 	var target_spring: float = want_zoom
 	if camera_rotation.x > pitch_zoom_in_threshold and not (combat_look and combat_aiming):
 		var t: float = inverse_lerp(pitch_zoom_in_threshold, pitch_max, camera_rotation.x)

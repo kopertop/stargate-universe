@@ -28,9 +28,11 @@ flowchart TD
 ```
 
 ### Node A — In-ship combat polish
-- Launch `gate_room` / `room` with local Swat pack
-- Tune capsule / foot plant / camera OTS if needed vs showcase
-- Ensure dialog/Kino still releases mouse correctly
+- [x] Launch `gate_room` / `room` with local Swat pack (player default `use_mixamo_avatar`)
+- [x] Capsule radius 0.28 + floor-centered plant; foot align deferred once
+- [x] Camera: combat hip/aim zoom (~3.2 / ~2.55) + OTS shoulder 0.55 (showcase-scale, not ship spring 7 m)
+- [x] Dialog clears aim + releases mouse; `dialog_closed` / `kino_closed` re-captures when `combat_look`
+- [x] Smoke: `mixamo_player_bridge` covers isolated player + `gate_room` boot (skips if pack missing)
 
 ### Node B — Y Bot host (optional parallel)
 - Blender pack: retarget combat clips onto Y Bot (same Mixamo skeleton)

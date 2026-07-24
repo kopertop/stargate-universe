@@ -131,6 +131,26 @@ func _ready() -> void:
 	_setup_equipment_mount()
 	_init_footsteps()
 	_configure_combat_camera()
+	_wire_combat_ui_hooks()
+
+
+func _wire_combat_ui_hooks() -> void:
+	# Drop aim when dialog/Kino opens so a held RMB cannot fire under the UI
+	# once the tree unpauses. View already releases / re-captures the mouse.
+	if GameState == null:
+		return
+	if GameState.has_signal("dialog_started") and not GameState.dialog_started.is_connected(_on_combat_ui_suspend):
+		GameState.dialog_started.connect(_on_combat_ui_suspend)
+	# KinoRemote / PauseMenu do not emit an "opened" signal; they pause the tree
+	# and set mouse visible. dialog_started covers NPC talk; Esc pause restores
+	# via saved mouse mode. Clear aim on any dialog_started is enough for talk.
+
+
+func _on_combat_ui_suspend(_a: Variant = null, _b: Variant = null) -> void:
+	_mixamo_aiming = false
+	_mixamo_want_fire = false
+	_update_aim_crosshair()
+	_update_combat_camera_aim()
 
 
 func _mixamo_pack_available() -> bool:
@@ -162,6 +182,7 @@ func _setup_mixamo_avatar() -> void:
 	_mc = null
 	_mint = null
 	_animation = null
+	_tune_mixamo_capsule()
 	call_deferred("_finish_mixamo_spawn")
 
 
@@ -178,10 +199,26 @@ func _finish_mixamo_spawn() -> void:
 func _configure_combat_camera() -> void:
 	if view == null or _mixamo == null:
 		return
+	# Showcase-scale follow height (Mixamo Swat ~1.8 m vs modular ~1.6 m).
+	if "follow_height" in view:
+		view.set("follow_height", 1.28)
 	if view.has_method("set_combat_look"):
 		view.call("set_combat_look", true)
 	elif "combat_look" in view:
 		view.set("combat_look", true)
+
+
+# Match showcase capsule radius; keep floor plant near y=0 (height/2 center).
+func _tune_mixamo_capsule() -> void:
+	var col: CollisionShape3D = get_node_or_null("Collider") as CollisionShape3D
+	if col == null or not (col.shape is CapsuleShape3D):
+		return
+	var src: CapsuleShape3D = col.shape as CapsuleShape3D
+	var cap := CapsuleShape3D.new()
+	cap.radius = 0.28
+	cap.height = src.height if src.height > 0.0 else 1.5
+	col.shape = cap
+	col.position.y = cap.height * 0.5
 
 
 # Mint Eli from data/mint/characters.json — loco via set_move_blend, combat via

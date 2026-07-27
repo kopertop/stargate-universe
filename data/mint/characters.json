@@ -1,0 +1,6 @@
+{
+	"version": 1,
+	"pipeline": "mint-native",
+	"notes": "Mint character hosts retired in favor of Mixamo (scripts/mixamo_host_catalog.gd). models/mint/props/ remains the weapon/tool mesh library (sidearm, rifle, repair_tool, …). Re-add a character slug here only if regenerating a Mint-native body.",
+	"characters": {}
+}

@@ -15,14 +15,14 @@
 			{
 				"id": "find_rush",
 				"label": "Find Rush",
-				"objective": "Find Dr Rush in the Control Interface Room.",
+				"objective": "Head to the Control Interface Room — before Rush does something reckless.",
 				"target": { "room": "control_interface_room", "anchor": "DrRush" },
 				"complete_when": "met_rush"
 			},
 			{
 				"id": "find_rest",
-				"label": "Find a place to rest",
-				"objective": "Find a place to rest. Try your quarters.",
+				"label": "Explore the ship",
+				"objective": "Cool off. Explore the ship — find your way to the Kino room.",
 				"target": { "room": "eli_quarters", "anchor": "" },
 				"complete_when": "eli_quarters_visited"
 			},
@@ -128,6 +128,28 @@
 				"id": "complete",
 				"label": "Episode complete",
 				"objective": "Episode 1: Air — Complete",
+				"target": { "room": "", "anchor": "" },
+				"terminal": true
+			}
+		]
+	},
+	{
+		"id": "e2_explore",
+		"title": "Episode 2: Explore the Ship",
+		"auto_start": false,
+		"tracked": false,
+		"steps": [
+			{
+				"id": "unlock_upper_deck",
+				"label": "Unlock more of the ship",
+				"objective": "Salvage parts from broken panels and unlock the next deck of Destiny via the floor terminal.",
+				"target": { "room": "gate_room", "anchor": "UpperDeckDoor" },
+				"complete_when": "floor_unlocked_beyond_2"
+			},
+			{
+				"id": "explore_complete",
+				"label": "Exploration underway",
+				"objective": "The ship's secrets are yours to uncover.",
 				"target": { "room": "", "anchor": "" },
 				"terminal": true
 			}

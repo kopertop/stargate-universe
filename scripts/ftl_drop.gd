@@ -27,6 +27,9 @@ const FTL_JUMP_SOUND: String = "res://sounds/ftl-jump.ogg"
 
 # Override before `add_child` to swap the cue (e.g. jump-in instead of drop-out).
 @export var sound_path: String = FTL_DROP_SOUND
+# Scale the vertical shake component. 1.0 = the default swirl; ~0.2 biases the jolt
+# to a repeated LEFT-RIGHT shake (the E1 cold-open FTL jump uses this).
+@export var shake_y_scale: float = 1.0
 
 var _t: float = 0.0
 var _rect: ColorRect = null
@@ -53,7 +56,7 @@ func _process(delta: float) -> void:
 		# "swirl" that feels more violent than pure random.
 		var shake: Vector2 = Vector2(
 			sin(_t * SHAKE_FREQUENCY * 1.7),
-			cos(_t * SHAKE_FREQUENCY * 2.3)
+			cos(_t * SHAKE_FREQUENCY * 2.3) * shake_y_scale
 		) * intensity
 		mat.set_shader_parameter("shake", shake)
 	if _t >= DURATION:

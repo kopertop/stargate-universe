@@ -20,4 +20,9 @@ tests/lint/check_save_registration.sh --staged
 # Collection-fork policy: a set of like things (items, discovered rooms,
 # unlocked abilities) must live in ONE registry behind ONE add/enumerate
 # API — not as scattered per-instance `*_found` / `has_*` bool fields.
-exec tests/lint/check_collection_forks.sh --staged
+tests/lint/check_collection_forks.sh --staged
+
+# Mint Idle finger-bind policy: while finger_rig is pending/hand_bias, Idle
+# hosts must stay clean 24-bone Meshy (no finger joints). A bad post-process
+# over-bind turns aim grips into spaghetti mesh.
+exec tests/lint/check_mint_idle_fingers.sh --staged

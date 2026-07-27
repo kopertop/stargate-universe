@@ -15,6 +15,7 @@ extends Node
 # to KinoRemote's own pause handler. This keeps Tab=Kino and Esc=pause
 # distinct without a global priority system.
 
+const _DEMO_CAPTURE: Script = preload("res://scripts/demo_capture.gd")
 const RESTART_CONFIRM_PROMPT: String = "Confirm? This wipes your save."
 
 var _layer: CanvasLayer
@@ -174,6 +175,8 @@ func _button_stylebox_hover() -> StyleBoxFlat:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if bool(_DEMO_CAPTURE.is_demo_capture(get_tree())):
+		return
 	if not event.is_action_pressed("pause"):
 		return
 	# Title scene has no scene path registered — Esc there is a no-op so we

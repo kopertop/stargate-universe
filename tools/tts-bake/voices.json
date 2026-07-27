@@ -1,0 +1,19 @@
+{
+	"_comment": "Character -> timbre reference clip (repo-relative). Reuses the clips minted during the bake-off (tools/tts-bakeoff/refs). IndexTTS-2 clones timbre from these; emotion comes from the per-line preset. Swap a path here to upgrade a character's voice without touching any job.",
+	"_comment_panic": "The *_panic refs were extracted from the real 'Air' cold-open recording (SGU Openning.m4a), vocal-isolated via Demucs then cut to single-speaker windows: Scott's 'I haven't seen Rush… help me find him' cluster, Greer's marshalling barks (attribution best-effort — buried in the overlapping mix), and Eli's 'Okay! I'm coming!' (~2s — the recording has almost no clean Eli, so this is short/marginal). Panicked-rushed timbre base; point cold-open lines here.",
+	"scott":    "tools/tts-bakeoff/refs/scott.wav",
+	"eli":      "tools/tts-bakeoff/refs/eli.wav",
+	"tj":       "tools/tts-bakeoff/refs/tj.wav",
+	"greer":    "tools/tts-bakeoff/refs/greer.wav",
+	"scott_panic": "tools/tts-bakeoff/refs/scott_panic.wav",
+	"greer_panic": "tools/tts-bakeoff/refs/greer_panic.wav",
+	"eli_panic":   "tools/tts-bakeoff/refs/eli_panic.wav",
+	"rush":     "tools/tts-bakeoff/refs/rush.wav",
+	"young":    "tools/tts-bakeoff/refs/young.wav",
+	"chloe":    "tools/tts-bakeoff/refs/chloe.wav",
+	"wray":     "tools/tts-bakeoff/refs/wray.wav",
+	"telford":  "tools/tts-bakeoff/refs/telford.wav",
+	"marine":   "tools/tts-bakeoff/refs/marine.wav",
+	"jack":     "tools/tts-bakeoff/refs/jack.wav",
+	"narrator": "tools/tts-bakeoff/refs/narrator.wav"
+}

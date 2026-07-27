@@ -9,9 +9,16 @@ these docs are written for engineers, not designers.
   and the codebase architecture reference.
 - `engine-reference/` — Engine API notes (Godot 4.6 specific tricks,
   gotchas, version migration notes).
+- `animation/` — Character animation host pipelines (Mixamo → Blender → Godot,
+  rifle-aim process, combat showcase replication, ARDY notes). Start at
+  `animation/rifle-aim-host-pipeline.md` before any aim/IK work; for the
+  playable combat loop see `animation/mixamo-rifle-combat-showcase.md`.
 - `audio-inventory.md` — Catalogue of all SFX + music, by category, with
   source attribution.
 - `deployment-targets.md` — Planned platforms / build configurations.
+- `tts-dialogue.md` — Dynamic runtime voiced dialogue: the `TTSClient` node, the
+  LuxTTS sidecar, available character voices, and how to speak lines in-engine.
+  See also the `/speak` and `/tts` skills.
 
 ## Conventions
 

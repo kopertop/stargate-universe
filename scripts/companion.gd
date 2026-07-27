@@ -14,9 +14,9 @@ extends Node3D
 # Preloaded (not class_name) so this script never depends on another global
 # class being registered first in a headless load — same reason we avoid
 # referencing our own class_name in a factory.
-const NpcScript: Script = preload("res://scripts/npc.gd")
-
-const COLORMAP_PATH: String = "res://models/characters/Textures/colormap.png"
+# Shared crew-appearance source of truth (base models, mission fatigues, gear,
+# Greer's skin tone) so an away-team member matches their ship-side self.
+const CharacterFactoryRef: Script = preload("res://scripts/character_factory.gd")
 const GROUND_MASK: int = 1          # terrain collides on layer 1
 const FOLLOW_DIST: float = 3.2      # idle leash distance from the player
 const MOVE_SPEED: float = 3.6
@@ -33,6 +33,11 @@ var slot: int = 0
 # their pose until a rush_to() coroutine moves them. Set this before adding to
 # the tree (or any time before _process actually decides what to do).
 var stationary: bool = false
+# Peeled-off companions (Scott + Park on the south team) hold their spawn
+# position and do not follow or mine. They still rush_to() on departure muster
+# because the peeled_off check sits AFTER the _rushing check in _process().
+# Set this before setup() via c.set("peeled_off", entry.team == "south").
+var peeled_off: bool = false
 
 var _model: Node3D = null
 var _anim: AnimationPlayer = null
@@ -64,23 +69,28 @@ func _enter_tree() -> void:
 func _build_body(display_name: String, glb_path: String, tint: Color = Color.WHITE) -> void:
 	_model = Node3D.new()
 	_model.name = "Model"
-	_model.scale = Vector3(2.2, 2.2, 2.2)
-	_model.rotation.y = PI   # Kenney mini-chars export +Z forward; flip to -Z
+	_model.rotation.y = PI   # models export +Z forward; flip to -Z
 	add_child(_model)
-	var glb: PackedScene = load(glb_path) as PackedScene if ResourceLoader.exists(glb_path) else null
-	if glb != null:
-		var inst: Node = glb.instantiate()
-		_model.add_child(inst)
-		var colormap: Texture2D = load(COLORMAP_PATH) as Texture2D
-		NpcScript.apply_kenney_colormap(inst, colormap)
+	if CharacterFactoryRef.profile_for(display_name).has("mod"):
+		# PRIMARY pipeline: ModularCharacter dressed for the mission (field
+		# colors; rifle slung + sidearm for military).
+		var mc: Node3D = CharacterFactoryRef.build_modular(display_name)
+		_model.add_child(mc)
+		CharacterFactoryRef.dress_modular(mc, display_name, CharacterFactoryRef.CTX_MISSION)
+		_anim = _find_anim(mc)
+	else:
+		# Legacy mini fallback for unregistered characters.
+		_model.scale = Vector3(2.2, 2.2, 2.2)
+		var resolved: String = CharacterFactoryRef.model_for(display_name, glb_path)
+		var glb: PackedScene = load(resolved) as PackedScene if ResourceLoader.exists(resolved) else null
+		if glb != null:
+			var inst: Node = glb.instantiate()
+			_model.add_child(inst)
+			_anim = _find_anim(inst)
+		CharacterFactoryRef.dress(self, _model, display_name, CharacterFactoryRef.CTX_MISSION, 2.2)
 		if tint != Color.WHITE:
-			# Re-tint the just-applied colormap material per-instance — the atlas
-			# colour × tint shifts the (peach) skin column toward brown without
-			# touching the GLB itself, so Greer can share Scott's body model and
-			# still read as a different character.
-			_apply_tint(inst, tint)
-		_anim = _find_anim(inst)
-		_play_clip("idle")
+			_apply_tint(_model, tint)
+	_play_clip("idle")
 	var tag: Label3D = Label3D.new()
 	tag.text = display_name
 	tag.pixel_size = 0.0042
@@ -104,6 +114,12 @@ func _process(delta: float) -> void:
 		_step_toward(_rush_target, RUSH_SPEED, delta)
 		return
 	if stationary:
+		_set_moving(false)
+		return
+	# Scott + Park (south team): hold spawn position, never follow or mine.
+	# Placed AFTER the _rushing check so they still rush_to() the gate on
+	# departure muster (planet_timer.gd calls rush_to on all "away_team" nodes).
+	if peeled_off:
 		_set_moving(false)
 		return
 	var player: Node3D = get_tree().get_first_node_in_group("player") as Node3D
@@ -216,8 +232,17 @@ func _planar(a: Vector3, b: Vector3) -> float:
 func _play_clip(clip: String) -> void:
 	if _anim == null:
 		return
+	# The shared modular/VRM library has "run", not the mini GLBs' "sprint".
+	var want: String = "run" if clip == "sprint" and not _anim.has_animation("sprint") else clip
+	# Exact names first (incl. "body/<clip>" library form) — substring matching
+	# would hit "body/rifle_fire_walk" for "walk".
+	for cand in [want, "body/" + want]:
+		if _anim.has_animation(cand):
+			if _anim.current_animation != cand:
+				_anim.play(cand, 0.25)
+			return
 	for nm in _anim.get_animation_list():
-		if String(nm).to_lower().contains(clip):
+		if String(nm).to_lower().contains(want):
 			if _anim.current_animation != String(nm):
 				_anim.play(String(nm))
 			return

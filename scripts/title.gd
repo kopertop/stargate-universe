@@ -2,8 +2,8 @@ extends Control
 
 # Boot title screen for Stargate Universe — Episode 1: "Air".
 # Hero shot background with a left-aligned title block and flat menu list.
-# Continue is disabled (greyed) when no save exists; Characters is reserved
-# for a future crew-roster screen; Settings opens an overlay; Exit quits.
+# Continue is disabled (greyed) when no save exists; Characters opens the
+# Mint Character Lab (mint-native crew preview); Settings opens an overlay; Exit quits.
 
 @onready var _btn_continue: Button = $LeftColumn/MenuList/ContinueButton
 @onready var _btn_new_game: Button = $LeftColumn/MenuList/NewGameButton
@@ -60,6 +60,7 @@ func _ready() -> void:
 	_btn_continue.pressed.connect(_on_continue_pressed)
 	_btn_new_game.pressed.connect(_on_new_game_pressed)
 	_btn_settings.pressed.connect(_on_settings_pressed)
+	_btn_characters.pressed.connect(_on_characters_pressed)
 	_btn_exit.pressed.connect(_on_exit_pressed)
 	_back_btn.pressed.connect(_on_back_pressed)
 
@@ -113,7 +114,7 @@ func _ready() -> void:
 	_btn_continue.disabled = not GameState.has_save()
 	if _btn_load != null:
 		_btn_load.disabled = _btn_continue.disabled
-	# Characters is reserved for a future crew-roster screen.
+	# Characters lab was Mint-native; hosts retired — Mixamo is the play path.
 	_btn_characters.disabled = true
 
 	if not _btn_continue.disabled:
@@ -294,8 +295,17 @@ func _add_profile_row(rows: VBoxContainer, prof: Dictionary) -> void:
 
 	var b: Button = Button.new()
 	b.text = _profile_row_label(prof)
-	b.custom_minimum_size = Vector2(420, 48)
+	# A Button sizes its minimum width to its full text, so a long profile label
+	# would expand the row past the panel and shove the Delete button off-screen.
+	# clip_text lets the button shrink below its text width; the overrun behavior
+	# trims with an ellipsis, and left alignment keeps the readable start visible.
+	b.custom_minimum_size = Vector2(360, 48)
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.clip_text = true
+	b.autowrap_mode = TextServer.AUTOWRAP_OFF
+	b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.tooltip_text = b.text
 	b.pressed.connect(_on_profile_chosen.bind(pid))
 	Audio.attach_ui_hover(b)
 	hbox.add_child(b)
@@ -602,6 +612,13 @@ func _on_configure_controller_pressed() -> void:
 func _on_settings_pressed() -> void:
 	_settings_overlay.visible = true
 	_back_btn.grab_focus()
+
+
+func _on_characters_pressed() -> void:
+	# Mint Character Lab retired with models/mint/<slug>/ hosts.
+	GameState.add_log("Character lab unavailable — Mixamo hosts are the play path.")
+	return
+
 
 func _on_back_pressed() -> void:
 	_settings_overlay.visible = false

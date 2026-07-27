@@ -30,6 +30,23 @@ const QuestWaypointScript: Script = preload("res://scripts/quest_waypoint.gd")
 # headless `-s` runs so the bare identifier sometimes resolves at parse-time
 # and sometimes doesn't. preload always works.
 const ShipAlertScript: Script = preload("res://scripts/ship_alert.gd")
+const ElevatorPanelScript: Script = preload("res://scripts/elevator_panel.gd")
+const FloorCodeTerminalScript: Script = preload("res://scripts/floor_code_terminal.gd")
+const AssignmentConsoleScript: Script = preload("res://scripts/assignment_console.gd")
+const SalvagePanelScript: Script = preload("res://scripts/salvage_panel.gd")
+const BridgeConsoleScript: Script = preload("res://scripts/bridge_console.gd")
+const RepairConsoleScript: Script = preload("res://scripts/repair_console.gd")
+const StandoffCameraScript: Script = preload("res://scripts/standoff_camera.gd")
+const StandoffRushScript: Script = preload("res://scripts/standoff_rush.gd")
+const StandoffCinematicScript: Script = preload("res://scripts/standoff_cinematic.gd")
+# Single source of truth for crew appearance (base model + military fatigues +
+# sidearm). Keeps a character looking the same in every room.
+const CharacterFactoryRef: Script = preload("res://scripts/character_factory.gd")
+# Ancient/Lantean glyph cipher + font for in-room console signage. Procedural
+# console labels (door-control panel, power console) render in Ancient glyphs
+# while the room is un-deciphered — so a Kino scouting the room sees the
+# signage but can't read it — then decode when the player walks in.
+const AncientTextRef: Script = preload("res://scripts/ancient_text.gd")
 # Vertical offset above an in-room anchor (NPC head, console top, pickup body)
 # where the diamond sits. Tuned so it clears nametag Label3Ds.
 const QUEST_WAYPOINT_ANCHOR_HEIGHT: float = 2.4
@@ -66,6 +83,24 @@ var _crate_waypoints: Array[Node3D] = []
 # True once the red-alert tint has been applied to this scene, so the objective
 # handler knows whether it needs to clear the tint when the breach is sealed.
 var _alert_applied: bool = false
+# Console signage labels currently shown in the Ancient glyph font (room not yet
+# deciphered). Each entry is {"node": Label3D, "text": String}; decoded to the
+# stored readable text when room_deciphered fires for this room.
+var _ancient_console_labels: Array = []
+# Cold-open standoff actors (#136 staging). Greer + Scott bodies that physically
+# enter and choreograph against Dr Rush during the find_rush dialogue, driven by
+# per-node "action" cues on GameState.dialog_action. Both run PROCESS_MODE_ALWAYS
+# so they keep moving while the open dialog window has the SceneTree paused.
+var _standoff_greer: Node3D = null
+var _standoff_scott: Node3D = null
+var _standoff_rush_pos: Vector3 = Vector3.ZERO
+# Player frame captured when the standoff dialog opens (the actors are restaged
+# behind the player THEN, since the player walks up to Rush well after _ready).
+var _standoff_player_pos: Vector3 = Vector3.ZERO
+var _standoff_player_fwd: Vector3 = Vector3.FORWARD
+# Pause-immune cinematic camera live during the standoff dialog (live play
+# only — never created under instant_mode).
+var _standoff_cam: Node3D = null
 
 
 func _ready() -> void:
@@ -77,11 +112,12 @@ func _ready() -> void:
 		push_error("room.gd: no room_id provided (GameState.next_room_id and @export both empty)")
 		return
 
-	_room_data = ShipLayout.room(room_id)
+	_room_data = ProceduralShip.room(room_id)
 	if _room_data.is_empty():
-		push_error("room.gd: ShipLayout has no row for '%s'" % room_id)
+		push_error("room.gd: ProceduralShip has no row for '%s'" % room_id)
 		return
 
+	_notify_load("Widening corridors…", 0.4)
 	# Some JSON corridors are 3.5 m short-axis (cr_north, room_1751649578881)
 	# which reads as a closet, not a Destiny corridor. Widen the short axis to
 	# a 6 m minimum for corridor-template rooms; the JSON adjacency math still
@@ -90,10 +126,17 @@ func _ready() -> void:
 	_apply_corridor_min_short_axis(6.0)
 
 	# Geometry first so doors can sit against real walls.
+	_notify_load("Building hull…", 0.5)
 	RoomBuilderRef.build(world, _room_data)
+	_notify_load("Sealing bulkheads…", 0.62)
 	_setup_doors()
+	_notify_load("Spawning interactables…", 0.72)
 	_spawn_interactables()
+	_notify_load("Placing player…", 0.82)
 	_place_player()
+	# Cold-open standoff staging — needs the player already placed so Greer can be
+	# positioned "right behind" them. No-op outside the control-room first-meet.
+	_maybe_spawn_standoff()
 	# Red-alert tint applies to lights + WorldEnvironment if the air crisis
 	# is active. Runs after RoomBuilder.build so it catches every light the
 	# accent functions just spawned. Idempotent on re-entry.
@@ -130,6 +173,18 @@ func _ready() -> void:
 		_start_kino_arrival()
 		return
 
+	# On-foot arrival ONLY (we're past the Kino-pilot early-return): the player
+	# physically walked in, so decipher this room — its Ancient-glyph name,
+	# plaques, and consoles resolve to readable English. A remote Kino flyby
+	# took the early return above and only discover_room()'d it (still encrypted).
+	# Connect the console-decode handler BEFORE decipher_room emits (only if any
+	# in-room signage is currently locked — re-entering an already-deciphered
+	# room builds its labels readable and registers nothing).
+	if not _ancient_console_labels.is_empty() \
+			and not GameState.room_deciphered.is_connected(_on_room_deciphered_consoles):
+		GameState.room_deciphered.connect(_on_room_deciphered_consoles)
+	GameState.decipher_room(room_id)
+
 	# Quest diamond waypoint — refreshes on objective_changed so quest
 	# advances mid-room (e.g. picking up the Kino) reposition the diamond
 	# without needing a room reload.
@@ -138,36 +193,25 @@ func _ready() -> void:
 		GameState.objective_changed.connect(_on_quest_objective_changed)
 
 
+# Fire-and-forget stage labels (no await — room _ready must stay synchronous so
+# SceneRouter's current_scene wait does not race mid-build geometry).
+func _notify_load(label: String, progress: float) -> void:
+	var router: Node = get_node_or_null("/root/SceneRouter")
+	if router != null and router.has_method("set_load_stage"):
+		router.call("set_load_stage", label, progress)
+
+
 # Stamp door + matching spawn Marker3D for each connection that originates at
 # this room (and the reverse-edge stamp from any other room that points here).
-# Reads data/room_connections.json on demand — no preload cost when running
-# the gate-room scene.
+# Delegates edge resolution to ProceduralShip.door_edges() which handles both
+# base (authored) rooms and procedurally generated rooms uniformly.
 func _setup_doors() -> void:
-	var connections: Dictionary = _load_connections()
-	if connections.is_empty():
-		return
 	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
 	var d_m: float = float(_room_data.get("height", 200)) * ShipLayout.SCALE
 	var half_x: float = w_m * 0.5
 	var half_z: float = d_m * 0.5
-
-	# Edges originating at THIS room — stamp doors that exit here.
-	for edge: Dictionary in connections.get(room_id, []) as Array:
+	for edge: Dictionary in ProceduralShip.door_edges(room_id):
 		_stamp_door(edge, half_x, half_z)
-	# Edges where ANOTHER room points at us — flip the direction and stamp
-	# matching doors on this side so the trip is two-way without requiring
-	# the connection table to list every edge twice.
-	for from_id: String in connections.keys():
-		for edge: Dictionary in connections[from_id] as Array:
-			if String(edge.get("to", "")) == room_id:
-				var reverse: Dictionary = edge.duplicate()
-				reverse["to"] = from_id
-				reverse["dir"] = _flip_direction(String(edge.get("dir", "")))
-				# Plaque on the return-side door should name the destination
-				# (i.e. the room we came from), not whatever the outgoing
-				# plaque said. _stamp_door auto-derives that from `to`.
-				reverse.erase("plaque")
-				_stamp_door(reverse, half_x, half_z)
 
 
 # Stamps one door + matching arrival marker on the wall indicated by `edge.dir`.
@@ -179,12 +223,22 @@ func _stamp_door(edge: Dictionary, half_x: float, half_z: float) -> void:
 	var target_id: String = String(edge.get("to", ""))
 	if target_id == "":
 		return
-	# Elevator pairs aren't physically adjacent — present them as a lift door on
-	# the -Z wall (deterministic so the reverse edge lands on the matching wall
-	# in the other elevator). Everything else follows wall-axis literally.
+	# Elevator and stairs pairs aren't physically adjacent — present them as a
+	# door on the -Z wall (deterministic so the reverse edge lands on the matching
+	# wall in the other room). Everything else follows wall-axis literally.
 	var is_elevator: bool = (dir == "elevator")
-	if is_elevator:
+	var is_stairs: bool = (dir == "stairs")
+	if is_elevator or is_stairs:
 		dir = "-z"
+	# Upper-deck link: virtual connector between the Obs Deck (f2_r00) and the
+	# authored hydroponics room. Each side uses its own dir token remapped to +z
+	# (south wall) so the two ends are independently positioned.
+	#   UPPER_DECK_DIR        fires on the obs-deck side  → +z (south wall, free)
+	#   UPPER_DECK_RETURN_DIR fires on the hydroponics side → +z (south wall, free)
+	# Using +z (not -z) keeps the stairs door (-z) and this door on separate walls.
+	var is_upper_deck: bool = (dir == "upper_deck" or dir == "upper_deck_return")
+	if is_upper_deck:
+		dir = "+z"
 
 	var along: float = _door_along_offset(target_id, dir)
 	var pos: Vector3 = Vector3.ZERO
@@ -219,12 +273,27 @@ func _stamp_door(edge: Dictionary, half_x: float, half_z: float) -> void:
 	door.set("plaque_label", plaque)
 	door.set("open_prompt", "Step through to %s" % plaque)
 	door.set("transition_prompt", "Step through to %s" % plaque)
-	# Elevator doors stay locked until Engineering Bay power is restored.
-	# Sets the legacy `locked` + `lock_message` exports on door.gd — its
-	# _on_interact() short-circuits when locked.
-	if is_elevator and not GameState.elevator_repaired:
+
+	# Elevator doors stay locked until power is restored (issue #132).
+	# Power is now tracked by ProceduralShip._elevator_powered, which the player
+	# restores via the elevator panel's fuse + mini-game mechanic.
+	# GameState.elevator_repaired is kept as an inert shim so e1_flow / kino
+	# readers continue to compile and assert without change.
+	if is_elevator and not ProceduralShip.is_elevator_powered():
 		door.set("locked", true)
-		door.set("lock_message", "LOCKED — power offline. Restore power at the Engineering Bay (south of cr corridor).")
+		door.set("lock_message", "LOCKED — power offline. Restore elevator power at the control panel.")
+
+	# D3: Target room sealed/damaged → stamp door locked until repaired (issue #131).
+	# ProceduralShip.is_room_sealed() consults the _room_conditions registry, which
+	# starts "sealed" for any row with "locked":true and transitions to "repaired"
+	# after the repair robot completes its work. A repaired room passes this check
+	# as false → door is left unlocked. Never mutates the base row's "locked" flag.
+	var target_row: Dictionary = ProceduralShip.room(target_id)
+	if not is_elevator and not is_stairs and not is_upper_deck and ProceduralShip.is_room_sealed(target_id):
+		var seal_msg: String = String(target_row.get("description", "SEALED — bulkhead unresponsive. Requires structural repair."))
+		door.set("locked", true)
+		door.set("lock_message", seal_msg)
+
 	door.add_to_group("interactable")
 	add_child(door)
 
@@ -250,7 +319,7 @@ func _stamp_door(edge: Dictionary, half_x: float, half_z: float) -> void:
 # converted to metres relative to this room's local origin. Falls back to 0
 # (wall centre) when there's no overlap (elevator pairs across floors).
 func _door_along_offset(target_id: String, dir: String) -> float:
-	var target: Dictionary = ShipLayout.room(target_id)
+	var target: Dictionary = ProceduralShip.room(target_id)
 	if target.is_empty() or _room_data.is_empty():
 		return 0.0
 	var my_sx: float = float(_room_data.get("startX", 0))
@@ -385,15 +454,24 @@ func _spawn_interactables() -> void:
 			# holds the actuator). The Phase C seal mini-quest lives here.
 			_spawn_shuttle_dock()
 		"control_interface_room":
-			# Pre-crisis: Rush is at his console. Once the air crisis starts he
-			# has left to chase the fault elsewhere — the player arrives to an
-			# empty control room, radios Scott, and works the terminal alone
-			# (see _trigger_rush_absent_beat). Young, James, Park are in the
-			# gate room with the unconscious-Young tableau.
-			if not GameState.air_crisis_started:
+			# Rush works his console ONLY until the standoff: after "Well.
+			# That's that, then." he leaves the room for good (user direction)
+			# and isn't seen again until the scrubber beat in the south
+			# corridor. Post-crisis returns hit _trigger_rush_absent_beat.
+			if not GameState.air_crisis_started and not GameState.met_rush:
 				_spawn_dr_rush()
-		"engineering_bay":
-			_spawn_power_console()
+			# Floor 2 access-code terminal: always present in the control room
+			# (a data terminal the player can examine). Disabled once collected.
+			_spawn_floor_code_terminal(2)
+		# TODO(#132): engineering_bay removed from authored floor 0; Engineering
+		# now lives as a generated special on floors 2+. Elevator restore via the
+		# power console is deferred to the fuse-based mechanic in issue #132.
+		# GameState.unlock_elevator() remains callable for e1_flow unit tests.
+		"aft_storage_hall":
+			# D4: Aft Storage Hall seeds Floor-1 parts for the player.
+			# Multiple salvage panels + crates help meet the Floor-3 unlock cost (15).
+			_spawn_salvage_panel(0)
+			_spawn_salvage_panel(1)
 		"south_corridor":
 			# The CO2 scrubber wall panel always exists (it's a fixture), but the
 			# corridor stays EMPTY of people until the player seals the Shuttle
@@ -411,6 +489,11 @@ func _spawn_interactables() -> void:
 			# Optional maintenance scrubber (issue: ship-wide scrubbers). West end
 			# of the long corridor, clear of the mid-wall spur/approach doors.
 			_spawn_co2_scrubber("north_corridor", -350.0)
+		"north_spur":
+			# Repair console for the Sealed Shuttle Bay (issue #131). Only visible
+			# while the bay is still sealed/repairing — clears after repair completes.
+			if ProceduralShip.is_room_sealed("sealed_section_north"):
+				_spawn_repair_console("sealed_section_north")
 		"east_corridor_far":
 			# New maintenance spur off the east corridor — houses a scrubber.
 			_spawn_co2_scrubber("east_far", 0.0)
@@ -427,6 +510,20 @@ func _spawn_interactables() -> void:
 				_spawn_recovery_ward()
 			elif GameState.air_crisis_started:
 				_spawn_infirmary_ward()
+		"elevator_north", "elevator_room_floor_1":
+			# Elevator rooms: wall-mounted floor-selection panel (Phase B).
+			_spawn_elevator_panel()
+			# Floor-2 access code lives in control_interface_room (base room)
+			# but the terminal marker for floor 2 belongs here so the player can
+			# find the panel before they know where the code is. The actual
+			# terminal is spawned in control_interface_room via the generated
+			# floor dispatch below.
+			pass
+		_:
+			# Generated room dispatch. Runs AFTER all authored room ids have
+			# been matched (the _ branch only fires when no authored id matched).
+			if ProceduralShip.is_generated(room_id):
+				_spawn_generated_room_interactables()
 
 
 # Bed against the -Z wall, matching the position used by RoomBuilder._accent_quarters.
@@ -583,6 +680,7 @@ func _spawn_shuttle_dock() -> void:
 	plabel.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
 	plabel.position = panel_pos + Vector3(0.05, 0.55, 0.0)
 	add_child(plabel)
+	_register_ancient_label(plabel, "DOOR CONTROL")
 
 	# --- Three supply crates along the +X wall. Contents: a Large Fuse (wrong
 	# size), the Small Fuse the door needs (crate 2), and ration packs — the
@@ -709,6 +807,7 @@ func _spawn_power_console() -> void:
 	label.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
 	label.position = console.position + Vector3(0.05, 0.6, 0.0)
 	add_child(label)
+	_register_ancient_label(label, "MAIN POWER\n(Elevator)")
 
 
 # Spawn a CO2 scrubber wall panel on the -Z wall at world-x `x`. `unit_id` ""
@@ -775,6 +874,30 @@ func _add_mesh_box(parent: Node3D, pos: Vector3, size: Vector3, mat: StandardMat
 	parent.add_child(mi)
 
 
+# Put an in-room console-signage Label3D into its locked (Ancient glyph) or
+# readable state based on whether this room is deciphered yet. Locked labels are
+# tracked so _on_room_deciphered_consoles can decode them when the player enters.
+func _register_ancient_label(node: Label3D, text: String) -> void:
+	if GameState.is_deciphered(room_id):
+		AncientTextRef.set_readable_font(node)
+		node.text = text
+		return
+	AncientTextRef.set_locked(node, text)
+	_ancient_console_labels.append({"node": node, "text": text})
+
+
+# Decode every locked console label the moment THIS room is deciphered (on-foot
+# entry). AncientText.decode honors instant_mode/headless (settles immediately).
+func _on_room_deciphered_consoles(rid: String) -> void:
+	if rid != room_id:
+		return
+	for entry: Dictionary in _ancient_console_labels:
+		var node: Label3D = entry.get("node") as Label3D
+		if is_instance_valid(node):
+			AncientTextRef.decode(node, String(entry.get("text", "")), self)
+	_ancient_console_labels.clear()
+
+
 # Dr Rush in the control interface room. Stands at the NW console (one of four
 # arranged around the central power pillar by RoomBuilder._accent_control_pillar),
 # body facing -X toward the console so he reads as "focused on his work" when
@@ -790,61 +913,111 @@ func _spawn_dr_rush() -> void:
 	const CONSOLE_OFFSET: float = 4.0
 	var pos: Vector3 = Vector3(CONSOLE_OFFSET + 1.0, 0.0, 0.0)
 	var rush: StaticBody3D = StaticBody3D.new()
-	rush.set_script(NpcScript)
+	rush.set_script(StandoffRushScript)
 	rush.name = "DrRush"
 	rush.position = pos
 	rush.rotation.y = PI * 0.5  # Forward = -X (toward console + pillar at room centre).
 	rush.set("character_name", "Dr Rush")
 	rush.set("prompt", "Talk to Dr Rush")
-	# Choice-tree dialog — Rush brushes Eli off. The only useful instruction is
-	# the closer: "nothing for now, get some rest." That advances the player's
-	# quest to FIND_REST (eli_quarters).
+	# In live play the first meet routes through _run_standoff_cinematic
+	# (letterboxed, Space-advanced cutscene built from this same tree).
+	rush.set("standoff_runner", Callable(self, "_run_standoff_cinematic"))
+	# Cold-open standoff. Speakers in order: Eli → Greer → Scott → Rush (pushes
+	# button, no-op) → dismissal. Under instant_mode (and on repeat talks) the
+	# standoff plays via the standard WoW-style dialog path
+	# (GameState.dialog_started) — the headless suites assert that path.
+	# met_rush flips synchronously in Npc._handle_first_meet BEFORE dialog emits,
+	# so the playthrough can assert immediately after interact() without awaiting.
+	# GDD ref: issue #136 "E1 opening beat: the 'don't push the button' standoff".
 	rush.set("dialogue_tree", [
 		{
-			"speaker": "Dr Rush",
-			"text": "Eli. I'm in the middle of something. What do you need?",
+			"speaker": "Eli",
+			"text": "Rush, don't! That thing could blow up the ship!",
 			"choices": [
-				{"text": "Scott sent me. What should I do?", "next": 1},
-				{"text": "Where are we?", "next": 2},
-				{"text": "What is this ship?", "next": 3},
-				{"text": "I'll leave you to it.", "next": "exit"},
+				{"text": "Step forward.", "next": 1},
+			],
+		},
+		{
+			"speaker": "Sgt Greer",
+			# action: Greer charges in behind-right of Rush and levels his sidearm.
+			# hold: the player can't continue until he's arrived and aimed.
+			"action": "standoff_greer",
+			"hold": true,
+			"text": "Doctor. Step away from the console. Now. I am not asking.",
+			"choices": [
+				{"text": "Watch Greer's hand drift to his sidearm.", "next": 2},
+			],
+		},
+		{
+			"speaker": "Lt Scott",
+			# action: Scott walks in through the door, calling Greer off.
+			"action": "standoff_scott",
+			"text": "Greer — stand down. Nobody's shooting anyone. Rush, we just need a moment.",
+			"choices": [
+				{"text": "Wait for Rush's response.", "next": 3},
 			],
 		},
 		{
 			"speaker": "Dr Rush",
-			"text": "Nothing for now. Honestly. You look exhausted — go get some rest. I'll send for you when I have something.",
+			# action: Rush straightens off the console, rounds on Eli, and lets
+			# him have it — hands waving (centered camera, argue clip).
+			"action": "standoff_rush_talks",
+			"text": "Eli, you don't know what you're talking about. You only THINK you do, because I embedded a rudimentary version of Ancient into the game you played.",
 			"choices": [
-				{"text": "Where would I even go?", "next": 4},
-				{"text": "Understood.", "next": "exit"},
+				{"text": "Watch as Rush presses the button anyway.", "next": 4},
 			],
 		},
 		{
 			"speaker": "Dr Rush",
-			"text": "Several billion light years from Earth, if my early readings are right. The ship doesn't know we're aboard — that's the only reason we're still breathing. Now: rest. Go.",
+			# action: he turns back and STABS the control (the point/press
+			# reach), the button CLICKS, silence hangs, then he shrugs off and
+			# walks away. caption_delay holds his line through press + silence.
+			"action": "standoff_rush_leaves",
+			"caption_delay": 2.2,
+			"text": "Well. That's that, then.",
 			"choices": [
-				{"text": "Where would I even go?", "next": 4},
-				{"text": "Right. Carrying on.", "next": "exit"},
+				{"text": "Watch him go.", "next": 5},
 			],
 		},
 		{
-			"speaker": "Dr Rush",
-			"text": "An Ancient seed ship. Launched long before Atlantis, on a fixed FTL sequence. We're along for the ride. There — that's your briefing. Nothing for you to do right now except sleep.",
+			"speaker": "Eli",
+			# action: Eli steps up to the console Rush abandoned.
+			"action": "standoff_eli_console",
+			"text": "Apparently… that did nothing?",
 			"choices": [
-				{"text": "Where would I even go?", "next": 4},
-				{"text": "Back to the start.", "next": 0},
-				{"text": "Got it.", "next": "exit"},
+				{"text": "Stare at the readout.", "next": 6},
 			],
 		},
 		{
-			"speaker": "Dr Rush",
-			"text": "Your quarters, Eli. Down the corridor, past Control. Find them. Lay down. Stop hovering over my shoulder.",
+			"speaker": "Eli",
+			# action: the standoff disperses — Greer holsters, everyone walks off.
+			"action": "standoff_clear",
+			"text": "And everyone's just… walking away. Okay. I need to find somewhere to cool off.",
 			"choices": [
-				{"text": "On my way.", "next": "exit"},
+				{"text": "Go find your quarters.", "next": "exit"},
 			],
 		},
 	])
 	rush.set("met_flag", "met_rush")
 	rush.set("first_meet_recompute_objective", true)
+	# Short repeat tree so re-talking doesn't replay the standoff.
+	rush.set("repeat_dialogue_tree", [
+		{
+			"speaker": "Dr Rush",
+			"text": "I already told you — there is nothing for you to do here. Go.",
+			"choices": [
+				{"text": "Understood.", "next": "exit"},
+				{"text": "Go where?", "next": 1},
+			],
+		},
+		{
+			"speaker": "Dr Rush",
+			"text": "I don't care, Eli. Anywhere but here. Go be useful somewhere else and let me work.",
+			"choices": [
+				{"text": "Right.", "next": "exit"},
+			],
+		},
+	])
 
 	var cs: CollisionShape3D = CollisionShape3D.new()
 	var cap: CapsuleShape3D = CapsuleShape3D.new()
@@ -854,23 +1027,34 @@ func _spawn_dr_rush() -> void:
 	cs.position = Vector3(0.0, 0.88, 0.0)
 	rush.add_child(cs)
 
-	# Visual body — Kenney "Mini Characters 1" GLB (character-male-f), distinct
-	# from Scott's character-male-d so the two NPCs read differently at a glance.
+	# Visual body — Mint Rush when registered; else Quaternius ModularCharacter.
 	var model_holder: Node3D = Node3D.new()
 	model_holder.name = "Model"
-	model_holder.position = Vector3(0.0, 0.0, 0.0)
-	model_holder.scale = Vector3(2.6, 2.6, 2.6)
-	# Kenney mini characters export with +Z forward; rotate 180° so the model
-	# faces the same direction as its parent StaticBody3D's -Z forward.
+	# Models export +Z forward; rotate 180° so the body faces the parent
+	# StaticBody3D's -Z forward.
 	model_holder.rotation.y = PI
-	var rush_glb: PackedScene = load("res://models/characters/rush.glb")
-	if rush_glb != null:
-		var rush_model: Node = rush_glb.instantiate()
-		model_holder.add_child(rush_model)
-		var colormap: Texture2D = load("res://models/characters/Textures/colormap.png")
-		Npc.apply_kenney_colormap(rush_model, colormap)
-		Npc.play_idle_animation(rush_model)
 	rush.add_child(model_holder)
+	var rush_mint: Node3D = CharacterFactoryRef.build_mint("Dr Rush")
+	if rush_mint != null:
+		# MintCharacter._ready autoplays Idle after clip merge.
+		model_holder.add_child(rush_mint)
+	elif CharacterFactoryRef.profile_for("Dr Rush").has("mod"):
+		var rush_mc: Node3D = CharacterFactoryRef.build_modular("Dr Rush")
+		model_holder.add_child(rush_mc)
+		CharacterFactoryRef.dress_modular(rush_mc, "Dr Rush", CharacterFactoryRef.CTX_SHIP)
+		# Rush WORKS the console: hunched over the controls with BOTH hands
+		# forward (pose_console_work — the interact clip read as "pointing
+		# at something", user render note).
+		rush_mc.call("pose_console_work")
+	else:
+		model_holder.scale = Vector3(2.6, 2.6, 2.6)
+		var rush_glb: PackedScene = load("res://models/characters/rush.glb")
+		if rush_glb != null:
+			var rush_model: Node = rush_glb.instantiate()
+			model_holder.add_child(rush_model)
+			var colormap: Texture2D = load("res://models/characters/Textures/colormap.png")
+			Npc.apply_kenney_colormap(rush_model, colormap)
+			Npc.play_idle_animation(rush_model)
 
 	var tag: Label3D = Label3D.new()
 	tag.name = "Nametag"
@@ -885,6 +1069,717 @@ func _spawn_dr_rush() -> void:
 	rush.add_child(tag)
 
 	add_child(rush)
+	_light_rush_console()
+
+
+# Rush's east console is ALIVE: brighten its screen plate and lay Ancient
+# glyph readout lines on it (the Anquietas font IS the cipher, so plain text
+# renders as glyphs — same trick as the room signage). Mirrors the
+# gate_console.gd TextMesh-on-ScreenPlate idiom so the text inherits the
+# plate's tilt.
+func _light_rush_console() -> void:
+	var console: Node = world.get_node_or_null("ControlConsoleEast")
+	if console == null:
+		return
+	var plate: MeshInstance3D = console.get_node_or_null("ConsoleMesh/ScreenPlate") as MeshInstance3D
+	if plate == null:
+		return
+	# Wake the screen: bright tech-blue glow instead of the idle dim panel.
+	var on_color: Color = Color(0.10, 0.30, 0.55)
+	var on_mat: StandardMaterial3D = StandardMaterial3D.new()
+	on_mat.albedo_color = on_color
+	on_mat.emission_enabled = true
+	on_mat.emission = on_color
+	on_mat.emission_energy_multiplier = 1.6
+	on_mat.roughness = 0.25
+	plate.material_override = on_mat
+	if plate.get_node_or_null("AncientReadout") != null:
+		return
+	var tm: TextMesh = TextMesh.new()
+	tm.text = "DESTINY PRIMARY\nPOWER ROUTING\nACCESS RESTRICTED"
+	var glyph_font: Font = AncientTextRef.ancient_font()
+	if glyph_font != null:
+		tm.font = glyph_font
+	# Sizing mirrors gate_console.gd's proven plate readout (the TextMesh
+	# inherits the ConsoleMesh stage's 2.2x display scale).
+	tm.font_size = RoomBuilderRef.CONSOLE_TEXT_FONT_SIZE
+	tm.pixel_size = 0.0035
+	tm.depth = RoomBuilderRef.CONSOLE_TEXT_DEPTH
+	tm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tm.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var text_color: Color = Color(0.55, 0.85, 1.0)
+	var text_mat: StandardMaterial3D = StandardMaterial3D.new()
+	text_mat.albedo_color = text_color
+	text_mat.emission_enabled = true
+	text_mat.emission = text_color
+	text_mat.emission_energy_multiplier = 2.6
+	# DEPTH-TESTED: no_depth_test (the gate-console default) draws the glyphs
+	# THROUGH anyone standing at the console (user screenshot — text floating
+	# over Rush's back). The 12 mm lift off the plate already prevents
+	# z-fighting, so real occlusion is safe here.
+	text_mat.no_depth_test = false
+	var text_mi: MeshInstance3D = MeshInstance3D.new()
+	text_mi.name = "AncientReadout"
+	text_mi.mesh = tm
+	text_mi.material_override = text_mat
+	text_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# Just proud of the plate's top face (plate is a thin box; +Y is its
+	# surface normal in plate-local space, and the text should lie on it).
+	text_mi.position = Vector3(0.0, 0.012, 0.0)
+	text_mi.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+	plate.add_child(text_mi)
+
+
+# --- Cold-open standoff choreography (#136) ----------------------------------
+
+# Stage the standoff actors when the player first walks into the control room to
+# find Rush (pre-crisis, not yet met). Greer waits behind the player; Scott waits
+# further back by the entry. Both choreograph against Rush on dialogue cues. No-op
+# during a Kino flyby, after the meet, or once the air crisis has begun.
+func _maybe_spawn_standoff() -> void:
+	if room_id != "control_interface_room":
+		return
+	if GameState.kino_pilot_mode or GameState.air_crisis_started or GameState.met_rush:
+		return
+	_spawn_standoff_actors()
+
+
+# Build Greer + Scott bodies positioned relative to the player (so Greer is
+# literally "right behind us"). They are silent military actors in fatigues
+# (soldier.glb), each ALWAYS carrying a sidearm — interaction disabled and off the
+# interact layer so the player can only talk to Rush. PROCESS_MODE_ALWAYS lets them
+# keep moving while the open dialog window has the tree paused.
+func _spawn_standoff_actors() -> void:
+	var rush_node: Node3D = get_node_or_null("DrRush") as Node3D
+	_standoff_rush_pos = rush_node.position if rush_node != null else Vector3(5.0, 0.0, 0.0)
+
+	# Both soldiers wait at the SOUTH door (user blocking: they enter from it
+	# and step up behind Rush on their cues).
+	var door_spot: Vector3 = _south_door_spot()
+	var face_rush: float = atan2(-(_standoff_rush_pos.x - door_spot.x),
+		-(_standoff_rush_pos.z - door_spot.z))
+	_standoff_greer = _spawn_standoff_soldier(
+		"StandoffGreer", "Sgt Greer", door_spot + Vector3(0.5, 0.0, 0.0), face_rush)
+	_standoff_scott = _spawn_standoff_soldier(
+		"StandoffScott", "Lt Scott", door_spot + Vector3(-0.5, 0.0, 0.3), face_rush)
+	# Greer arrives already carrying his rifle slung — its aimed mount is the
+	# grid-verified one (the pistol never read right on camera).
+	var greer_mc: Node = _modular_model(_standoff_greer)
+	if greer_mc != null:
+		greer_mc.call("set_rifle", true, false)
+
+	if not GameState.dialog_action.is_connected(_on_standoff_cue):
+		GameState.dialog_action.connect(_on_standoff_cue)
+	# Restage the moment the standoff dialog opens (the player has by then
+	# walked up to Rush, far from the _ready spawn point).
+	if not GameState.dialog_started.is_connected(_standoff_reposition):
+		GameState.dialog_started.connect(_standoff_reposition)
+
+
+# The spot just inside the room's south (+Z) door — the soldiers' entrance.
+# Falls back to the south wall midpoint when no +Z door exists.
+func _south_door_spot() -> Vector3:
+	var d_m: float = float(_room_data.get("height", 200)) * ShipLayout.SCALE
+	var half_z: float = d_m * 0.5
+	var best: Vector3 = Vector3(0.0, 0.0, half_z - 1.2)
+	for c in get_children():
+		if c is Node3D and (c as Node3D).scene_file_path == "res://objects/door.tscn" \
+				and (c as Node3D).position.z > half_z - 1.5:
+			best = Vector3((c as Node3D).position.x, 0.0, (c as Node3D).position.z - 1.2)
+	return best
+
+
+# Snap the actors to just behind the player when the DrRush standoff dialog opens
+# so Greer is literally "right behind us" wherever the player stopped — the charge
+# to Rush then covers a short, punchy distance instead of the whole room.
+func _standoff_reposition(npc: Node3D, _tree: Array) -> void:
+	if _standoff_greer == null or not is_instance_valid(_standoff_greer):
+		return
+	if npc == null or npc.name != "DrRush":
+		return
+	_standoff_restage()
+	_standoff_cinema_begin()
+
+
+# Where Eli ends up for the confrontation: a couple of metres behind-right
+# of Rush, watching across real distance (user: nobody crowds anybody).
+func _standoff_eli_mark() -> Vector3:
+	return _standoff_rush_pos + Vector3(2.0, 0.0, -1.1)
+
+
+func _standoff_restage() -> void:
+	# Everyone enters from the SOUTH: Eli starts just inside the door (his
+	# walk-in is kicked off by the cutscene runner); the soldiers hold at
+	# the doorway until their cues.
+	var door_spot: Vector3 = _south_door_spot()
+	var eli_mark: Vector3 = _standoff_eli_mark()
+	var sr: Node = get_node_or_null("/root/SceneRouter")
+	if not (sr != null and sr.get("instant_mode")):
+		# Keep his settled Y — snapping to y=0 dropped him a few inches onto
+		# the floor collider in plain view (user render note).
+		player.position = Vector3(door_spot.x, player.position.y, door_spot.z - 0.7)
+		player.rotation.y = atan2(-(eli_mark.x - player.position.x),
+			-(eli_mark.z - player.position.z))
+	_standoff_player_pos = eli_mark
+	_standoff_player_fwd = Vector3(-1.0, 0.0, 0.0)
+	var face_rush: float = atan2(-(_standoff_rush_pos.x - door_spot.x),
+		-(_standoff_rush_pos.z - door_spot.z))
+	_standoff_greer.position = door_spot + Vector3(0.6, 0.0, 0.2)
+	_standoff_greer.rotation.y = face_rush
+	_standoff_scott.position = door_spot + Vector3(-0.6, 0.0, 0.4)
+	_standoff_scott.rotation.y = face_rush
+
+
+# Eli's entrance: he RUNS in from the south door to his mark shouting the
+# warning (cinematic dash = sprint clip, collision-free so he can't snag),
+# then squares up to Rush. The dash zeroes the body's collision layers —
+# restore them, the cutscene hands the body back at the end.
+func _standoff_eli_entrance() -> void:
+	var mark: Vector3 = _standoff_eli_mark()
+	var prev_layer: int = int(player.get("collision_layer"))
+	var prev_mask: int = int(player.get("collision_mask"))
+	var settled_y: float = player.position.y   # flat room — reuse on arrival
+	player.call("cinematic_dash_to", mark, 5.2)
+	var guard: int = 0
+	while guard < 360 and is_instance_valid(player) \
+			and player.position.distance_to(mark) > 0.35:
+		await get_tree().process_frame
+		guard += 1
+	if not is_instance_valid(player):
+		return
+	player.set("collision_layer", prev_layer)
+	player.set("collision_mask", prev_mask)
+	# The dash's ground ray lands on the grate mesh top, a few inches above
+	# the floor collider — restore the settled height so he doesn't visibly
+	# drop when physics resumes (user render note).
+	player.position.y = settled_y
+	player.call("set_input_locked", true)
+	player.rotation.y = atan2(-(_standoff_rush_pos.x - player.position.x),
+		-(_standoff_rush_pos.z - player.position.z))
+
+
+# Play the cold-open standoff as a true CUTSCENE (user direction: it offers
+# only one course forward, so no dialog box) — letterbox + Space-advanced
+# captions from the same tree, choreography cues + StandoffCamera shots
+# underneath. Invoked by standoff_rush.gd on the live first meet only;
+# instant_mode/repeat talks keep the classic dialog path.
+func _run_standoff_cinematic(tree: Array) -> void:
+	if _standoff_greer == null or not is_instance_valid(_standoff_greer):
+		# Actors missing (edge: reload mid-beat) — fall back to the dialog.
+		GameState.dialog_started.emit(get_node_or_null("DrRush") as Node3D, tree)
+		return
+	_standoff_restage()
+	_standoff_cinema_begin(false)   # sequencer ends the camera, not dialog_closed
+	_standoff_shot_rush_intro()     # cold open ON Rush working — player off-frame
+	if player != null and player.has_method("set_input_locked"):
+		player.call("set_input_locked", true)
+	_standoff_eli_entrance()        # Eli RUNS in from the south, shouting
+	# Track the run-in once it's underway — the camera FOLLOWS him to Rush.
+	get_tree().create_timer(1.0, true).timeout.connect(_standoff_shot_eli_run)
+	var seq: Node = StandoffCinematicScript.new()
+	seq.name = "StandoffCinematic"
+	add_child(seq)
+	seq.call("play", tree)
+	await Signal(seq, "finished")
+	if player != null and is_instance_valid(player) and player.has_method("set_input_locked"):
+		player.call("set_input_locked", false)
+	_standoff_cinema_end()
+	seq.queue_free()
+
+
+# A silent standoff actor: a normal NPC (so it inherits the CharacterFactory
+# ship dress — duty blacks + sidearm) PLUS a standoff-only combat helmet and the
+# silent-actor flags (non-interactable, off the interact layer, ALWAYS process so
+# it keeps moving while the open dialog has the tree paused).
+func _spawn_standoff_soldier(npc_name: String, char_name: String, pos: Vector3, yaw: float) -> StaticBody3D:
+	var body: StaticBody3D = _spawn_npc(npc_name, char_name, pos, yaw,
+		CharacterFactoryRef.model_for(char_name, "res://models/characters/scott.glb"), [])
+	# Ship dress only — NO helmets aboard Destiny (user rule); the duty
+	# blacks + sidearm from the ship loadout are the whole kit.
+	body.process_mode = Node.PROCESS_MODE_ALWAYS
+	body.set("enabled", false)
+	body.collision_layer = 0
+	return body
+
+
+# Per-node dialogue cue dispatcher. Each standoff node carries an "action" that
+# DialogScreen fires on GameState.dialog_action the instant it renders. Under
+# instant_mode (headless playthrough) we snap end-states instead of animating so
+# the sacred e1_playthrough never has to pump frames.
+func _on_standoff_cue(action_id: String) -> void:
+	if _standoff_greer == null or not is_instance_valid(_standoff_greer):
+		return
+	var instant: bool = false
+	var sr: Node = get_node_or_null("/root/SceneRouter")
+	if sr != null and sr.get("instant_mode"):
+		instant = true
+	match action_id:
+		"standoff_greer":
+			_standoff_advance_greer(instant)
+		"standoff_scott":
+			_standoff_enter_scott(instant)
+		"standoff_rush_talks":
+			_standoff_rush_talks(instant)
+		"standoff_rush_leaves":
+			_standoff_rush_leaves(instant)
+		"standoff_eli_console":
+			_standoff_eli_console(instant)
+		"standoff_clear":
+			_standoff_clear(instant)
+
+
+# --- Standoff cinema (#136 polish) -------------------------------------------
+# The standoff used to play entirely behind the open dialog panel — the camera
+# stayed in gameplay framing, so Greer's charge and the drawn sidearm were
+# invisible. A pause-immune StandoffCamera now pulls back at dialog-open and
+# re-frames on every cue. Presentation only: instant_mode never creates it.
+
+func _standoff_cinema_begin(hook_dialog_close: bool = true) -> void:
+	var sr: Node = get_node_or_null("/root/SceneRouter")
+	if sr != null and sr.get("instant_mode"):
+		return
+	if _standoff_cam != null and is_instance_valid(_standoff_cam):
+		return
+	_standoff_cam = StandoffCameraScript.new()
+	_standoff_cam.name = "StandoffCamera"
+	add_child(_standoff_cam)
+	# Cutscene captions sit bottom-CENTER (no side panel) — subjects belong
+	# in the middle of the frame, not biased off-axis.
+	_standoff_cam.call("configure", 55.0, 0.0)
+	_standoff_cam.call("activate")
+	# Dialog path: the standoff plays inside ONE dialog; its close ends the
+	# scene. The cinematic path ends the camera itself instead.
+	if hook_dialog_close:
+		GameState.dialog_closed.connect(_standoff_cinema_end, CONNECT_ONE_SHOT)
+	_standoff_shot_wide()
+
+
+func _standoff_cinema_end() -> void:
+	if _standoff_cam != null and is_instance_valid(_standoff_cam):
+		_standoff_cam.call("release")
+		_standoff_cam.queue_free()
+	_standoff_cam = null
+
+
+func _standoff_cam_live() -> bool:
+	return _standoff_cam != null and is_instance_valid(_standoff_cam)
+
+
+# Cold open: Rush alone, hunched over his glowing console (also hides the
+# player's snap to the south door — he stays off-frame until the wide).
+func _standoff_shot_rush_intro() -> void:
+	if not _standoff_cam_live():
+		return
+	var look: Vector3 = _standoff_rush_pos + Vector3.UP * 1.2
+	_standoff_cam.call("frame", look + Vector3(-1.9, 0.5, -1.7), look, 0.1, 0.04)
+
+
+# Opening two-shot: the player and Rush from the open side, pulled WIDE
+# (user note: the old framing was too tight to read the scene).
+func _standoff_shot_wide() -> void:
+	if not _standoff_cam_live():
+		return
+	var eli_p: Vector3 = _standoff_player_pos + Vector3.UP * 1.2
+	var rush_p: Vector3 = _standoff_rush_pos + Vector3.UP * 1.2
+	var mid: Vector3 = (eli_p + rush_p) * 0.5
+	var open: Dictionary = _standoff_open_side(mid, rush_p - eli_p)
+	var d: float = clampf(float(open["clear"]) - 0.8, 4.5, 7.5)
+	_standoff_cam.call("frame", mid + (open["dir"] as Vector3) * d + Vector3.UP * (0.8 + 0.4 * d), mid, 2.0, 0.10)
+
+
+# Eli's run-in: TRACK him across the room so he stays centred all the way
+# to Rush (static lane shots let walkers leave the frame — user note).
+func _standoff_shot_eli_run() -> void:
+	if not _standoff_cam_live() or player == null:
+		return
+	var open: Dictionary = _standoff_open_side(player.position + Vector3.UP * 1.1,
+		_standoff_rush_pos - player.position)
+	var d: float = clampf(float(open["clear"]) - 0.8, 4.0, 5.5)
+	_standoff_cam.call("follow", player,
+		(open["dir"] as Vector3) * d + Vector3.UP * (0.6 + 0.3 * d), 1.2)
+
+
+# Greer's charge: TRACK him from the door to his mark behind Rush.
+func _standoff_shot_greer() -> void:
+	if not _standoff_cam_live() or not is_instance_valid(_standoff_greer):
+		return
+	var a: Vector3 = _standoff_greer.position + Vector3.UP * 1.1
+	var b: Vector3 = _standoff_rush_pos + Vector3.UP * 1.25
+	var open: Dictionary = _standoff_open_side((a + b) * 0.5, b - a)
+	var d: float = clampf(float(open["clear"]) - 0.8, 4.0, 5.5)
+	_standoff_cam.call("follow", _standoff_greer,
+		(open["dir"] as Vector3) * d + Vector3.UP * (0.6 + 0.3 * d), 1.3)
+
+
+# Once Greer has actually arrived and leveled the sidearm: closer two-shot of
+# him squared off against Rush (the cue-time shot framed the charge lane; by
+# arrival he has crossed it).
+func _standoff_shot_greer_aim() -> void:
+	if not _standoff_cam_live() or not is_instance_valid(_standoff_greer):
+		return
+	var a: Vector3 = _standoff_greer.position + Vector3.UP * 1.25
+	var b: Vector3 = _standoff_rush_pos + Vector3.UP * 1.25
+	var mid: Vector3 = (a + b) * 0.5
+	var open: Dictionary = _standoff_open_side(mid, b - a)
+	_standoff_cam.call("frame", mid + (open["dir"] as Vector3) * 3.6 + Vector3.UP * 1.3, mid, 1.4, 0.12)
+
+
+# Scott's entrance: TRACK him from the door to his backup mark.
+func _standoff_shot_scott(anchor: Vector3) -> void:
+	if not _standoff_cam_live() or not is_instance_valid(_standoff_scott):
+		return
+	var a: Vector3 = _standoff_scott.position + Vector3.UP * 1.1
+	var open: Dictionary = _standoff_open_side((a + anchor + Vector3.UP * 1.1) * 0.5, anchor - a)
+	var d: float = clampf(float(open["clear"]) - 0.8, 4.0, 5.5)
+	_standoff_cam.call("follow", _standoff_scott,
+		(open["dir"] as Vector3) * d + Vector3.UP * (0.6 + 0.3 * d), 1.3)
+
+
+# Rush rounding on Eli: dead-center portrait from Eli's side of the line.
+func _standoff_shot_rush_talks() -> void:
+	if not _standoff_cam_live():
+		return
+	var rush_node: Node3D = get_node_or_null("DrRush") as Node3D
+	if rush_node == null:
+		return
+	var look: Vector3 = rush_node.position + Vector3.UP * 1.3
+	var dir: Vector3 = _standoff_player_pos - rush_node.position
+	dir.y = 0.0
+	dir = dir.normalized() if dir.length() > 0.05 else Vector3.RIGHT
+	# BETWEEN the two and off the line (Eli stands ~2.3 m out — going the
+	# full distance parks the camera inside his head), Rush dead-center.
+	var side: Vector3 = dir.cross(Vector3.UP)
+	_standoff_cam.call("frame", look + dir * 1.8 + side * 0.9 + Vector3.UP * 0.3, look, 1.4, 0.0)
+
+
+# Rush walking off: TRACK him out toward the south door so the shrug and the
+# walk-away stay centred.
+func _standoff_shot_rush_leaves() -> void:
+	if not _standoff_cam_live():
+		return
+	var rush_node: Node3D = get_node_or_null("DrRush") as Node3D
+	if rush_node == null:
+		return
+	var a: Vector3 = rush_node.position + Vector3.UP * 1.25
+	var b: Vector3 = _south_door_spot() + Vector3.UP * 1.1
+	var open: Dictionary = _standoff_open_side(a.lerp(b, 0.35), b - a)
+	var d: float = clampf(float(open["clear"]) - 0.8, 3.6, 5.0)
+	_standoff_cam.call("follow", rush_node,
+		(open["dir"] as Vector3) * d + Vector3.UP * 1.5, 1.8)
+
+
+# Eli stepping up to the abandoned console: shot from the console's far side
+# looking back at him over the live screen. HARD CUT — a glide from the
+# exit-lane shot sweeps straight through the central pillar's glow.
+func _standoff_shot_eli_console() -> void:
+	if not _standoff_cam_live():
+		return
+	var look: Vector3 = _standoff_rush_pos + Vector3.UP * 1.25
+	_standoff_cam.call("frame", look + Vector3(-2.6, 0.55, -1.5), look, 0.05, 0.0)
+
+
+# Resolution: hold on Eli at the console (the emotional center now — Rush has
+# walked off) while the soldiers disperse out the south door behind him.
+func _standoff_shot_clear() -> void:
+	if not _standoff_cam_live():
+		return
+	var look: Vector3 = _standoff_rush_pos + Vector3.UP * 1.25
+	var open: Dictionary = _standoff_open_side(look, _standoff_rush_pos - _south_door_spot())
+	var d: float = clampf(float(open["clear"]) - 0.8, 3.6, 5.0)
+	_standoff_cam.call("frame", look + (open["dir"] as Vector3) * d + Vector3.UP * 1.4, look, 2.4, 0.0)
+
+
+# Horizontal unit vector perpendicular to `axis` — the camera's "stand to the
+# side of the action" direction. Falls back to +X for degenerate axes.
+func _flat_side(axis: Vector3) -> Vector3:
+	axis.y = 0.0
+	if axis.length() < 0.01:
+		return Vector3.RIGHT
+	return axis.normalized().cross(Vector3.UP)
+
+
+# Pick whichever perpendicular of `axis` has more open space (chest-height ray
+# from the action midpoint, world layer 1) so shots pull back into the room
+# instead of into the nearest console/wall — the "zoomed in too much" fix.
+# Returns {"dir": Vector3, "clear": float}.
+func _standoff_open_side(mid: Vector3, axis: Vector3) -> Dictionary:
+	var base: Vector3 = _flat_side(axis)
+	var best_dir: Vector3 = base
+	var best_clear: float = 3.0
+	var w3d: World3D = get_world_3d()
+	var space: PhysicsDirectSpaceState3D = w3d.direct_space_state if w3d != null else null
+	for s in [1.0, -1.0]:
+		var d: Vector3 = base * s
+		var clear: float = 12.0
+		if space != null:
+			var q: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(
+				mid + Vector3.UP * 0.3, mid + Vector3.UP * 0.3 + d * 12.0, 1)
+			var hit: Dictionary = space.intersect_ray(q)
+			if hit.has("position"):
+				clear = mid.distance_to(hit["position"] as Vector3)
+		if clear > best_clear:
+			best_clear = clear
+			best_dir = d
+	return {"dir": best_dir, "clear": best_clear}
+
+
+# Nudge a staging spot off any geometry it would intersect (consoles, walls,
+# other bodies): capsule-probe the candidate, then spiral outward in 8
+# directions until clear. `ignore` bodies (the actors being staged) don't
+# block their own spots.
+func _clear_spot(want: Vector3, ignore: Array = []) -> Vector3:
+	var w3d: World3D = get_world_3d()
+	if w3d == null:
+		return want
+	var space: PhysicsDirectSpaceState3D = w3d.direct_space_state
+	if space == null:
+		return want
+	var shape: CapsuleShape3D = CapsuleShape3D.new()
+	shape.radius = 0.34
+	shape.height = 1.6
+	var params: PhysicsShapeQueryParameters3D = PhysicsShapeQueryParameters3D.new()
+	params.shape = shape
+	params.collision_mask = 1 | 4
+	var excludes: Array[RID] = []
+	for body in ignore:
+		if body is CollisionObject3D and is_instance_valid(body):
+			excludes.append((body as CollisionObject3D).get_rid())
+	if player is CollisionObject3D:
+		excludes.append((player as CollisionObject3D).get_rid())
+	params.exclude = excludes
+	for radius in [0.0, 0.5, 1.0, 1.5, 2.0]:
+		for k in range(8 if radius > 0.0 else 1):
+			var ang: float = TAU * float(k) / 8.0
+			var candidate: Vector3 = want + Vector3(cos(ang), 0.0, sin(ang)) * radius
+			params.transform = Transform3D(Basis.IDENTITY, candidate + Vector3.UP * 0.9)
+			if space.intersect_shape(params, 1).is_empty():
+				return candidate
+	return want
+
+
+# Greer's cue: CHARGE in to the right of Rush (behind him), square off, and level
+# the sidearm to aim at him. The dialogue node is held (player can't continue)
+# until GameState.dialog_release fires here — i.e. until Greer has actually
+# arrived and aimed.
+func _standoff_advance_greer(instant: bool) -> void:
+	# Well behind Rush (he faces -X; behind = +X) with the gun levelled
+	# across real distance — review note: nobody crowds anybody.
+	var anchor: Vector3 = _clear_spot(
+		Vector3(_standoff_rush_pos.x + 2.6, 0.0, _standoff_rush_pos.z + 0.45),
+		[_standoff_greer, _standoff_scott, get_node_or_null("DrRush")])
+	var face: float = atan2(-(_standoff_rush_pos.x - anchor.x), -(_standoff_rush_pos.z - anchor.z))
+	if instant:
+		_standoff_greer.position = anchor
+		_standoff_greer.rotation.y = face
+		_standoff_aim(_standoff_greer, true)     # sidearm to hand, leveled at Rush
+		GameState.dialog_release.emit()
+		return
+	_standoff_shot_greer()
+	_standoff_greer.call("walk_to", anchor, 6.0, 0.0)   # charge
+	# Poll arrival — process_frame fires even while the dialog has the tree paused.
+	# Frame ceiling guards against a soft-lock if he can't reach the anchor.
+	var guard: int = 0
+	while guard < 240 and is_instance_valid(_standoff_greer) \
+			and _standoff_greer.position.distance_to(anchor) > 0.45:
+		await get_tree().process_frame
+		guard += 1
+	if not is_instance_valid(_standoff_greer):
+		return
+	# Kill the walker BEFORE posing: its remaining arrival steps re-face the
+	# travel direction and stomp the clip back to walk/idle, which is how
+	# Greer ended up beside Rush, unposed, facing nowhere (live-play bug).
+	_standoff_greer.call("stop_walk")
+	_standoff_greer.position = anchor            # clean final mark (spot is pre-cleared)
+	_standoff_greer.rotation.y = face            # square off at Rush
+	_standoff_aim(_standoff_greer, true)         # draw + level the sidearm at Rush
+	_standoff_shot_greer_aim()                   # tighten on the drawn weapon
+	GameState.dialog_release.emit()              # now the player may continue
+
+
+# Scott's cue: walk in from behind, stepping up beside the player toward the
+# confrontation. His sidearm stays holstered — he's de-escalating, not aiming.
+func _standoff_enter_scott(instant: bool) -> void:
+	# Behind Greer and well off to one side — backing him up from distance.
+	# (Greer's mark is ~2.6 m behind Rush along +X.)
+	var anchor: Vector3 = _clear_spot(
+		Vector3(_standoff_rush_pos.x + 4.0, 0.0, _standoff_rush_pos.z + 1.6),
+		[_standoff_greer, _standoff_scott, get_node_or_null("DrRush")])
+	if instant:
+		_standoff_scott.position = anchor
+		return
+	_standoff_shot_scott(anchor)
+	_standoff_scott.call("walk_to", anchor, 3.4, 0.0)   # quick — he's urgent
+	# Square off at Rush once he lands (walk_to faces travel direction).
+	var face: float = atan2(-(_standoff_rush_pos.x - anchor.x), -(_standoff_rush_pos.z - anchor.z))
+	var guard: int = 0
+	while guard < 240 and is_instance_valid(_standoff_scott) \
+			and _standoff_scott.position.distance_to(anchor) > 0.45:
+		await get_tree().process_frame
+		guard += 1
+	if is_instance_valid(_standoff_scott):
+		_standoff_scott.call("stop_walk")
+		_standoff_scott.rotation.y = face
+	# The order lands: Greer LOWERS the rifle (slings it, stands down) the
+	# moment Scott is on station.
+	_standoff_aim(_standoff_greer, false)
+
+
+# Rush's speaking cue: he straightens off the console, rounds on Eli, and
+# lets him have it — hands waving (argue clip), framed dead-center.
+func _standoff_rush_talks(instant: bool) -> void:
+	if instant:
+		return
+	var rush_node: Node3D = get_node_or_null("DrRush") as Node3D
+	if rush_node == null:
+		return
+	rush_node.rotation.y = atan2(-(_standoff_player_pos.x - rush_node.position.x),
+		-(_standoff_player_pos.z - rush_node.position.z))
+	var mc: Node = _modular_model(rush_node)
+	if mc != null:
+		mc.call("play_clip", "argue")
+	_standoff_shot_rush_talks()
+
+
+# Rush's exit cue: he turns back to the console and STABS the control (the
+# point/press reach), the button CLICKS, a beat of silence hangs (his
+# "Well. That's that, then." is caption-delayed to match), then he shrugs
+# the whole confrontation off and walks toward the south exit.
+func _standoff_rush_leaves(instant: bool) -> void:
+	if instant:
+		return   # presentation only — quest state already flipped at interact
+	var rush_node: Node3D = get_node_or_null("DrRush") as Node3D
+	if rush_node == null:
+		return
+	rush_node.rotation.y = PI * 0.5   # back to the console (-X)
+	var mc: Node = _modular_model(rush_node)
+	if mc != null:
+		mc.call("play_clip", "interact")   # the pointed press
+	await get_tree().create_timer(0.7, true).timeout
+	if not is_instance_valid(rush_node) or not is_inside_tree():
+		return
+	Audio.play("res://sounds/menu_click.ogg")   # the button press
+	await get_tree().create_timer(1.5, true).timeout   # ...nothing happens
+	if not is_instance_valid(rush_node) or not is_inside_tree():
+		return
+	_standoff_shot_rush_leaves()
+	var door_spot: Vector3 = _south_door_spot()
+	rush_node.call("walk_to", door_spot + Vector3(-1.4, 0.0, -1.6), 1.7, 0.5)
+
+
+# Eli's cue: he steps into the operator spot Rush abandoned and works the
+# console himself. auto_walk unlocks player input on arrival, so re-lock —
+# the cutscene still owns the player until it ends.
+func _standoff_eli_console(instant: bool) -> void:
+	if instant:
+		return
+	_standoff_shot_eli_console()
+	var mark: Vector3 = _standoff_rush_pos
+	player.call("auto_walk_to", mark, 1.6)
+	var guard: int = 0
+	while guard < 240 and is_instance_valid(player) \
+			and player.position.distance_to(mark) > 0.35:
+		await get_tree().process_frame
+		guard += 1
+	if not is_instance_valid(player):
+		return
+	player.call("set_input_locked", true)
+	player.rotation.y = PI * 0.5            # square up to the console (-X)
+	var pmc: Node = player.get("_mc")
+	if pmc != null:
+		pmc.call("play_clip", "interact")
+
+
+# Resolution cue: Greer lowers the weapon, both soldiers walk back out the
+# south door they came through, and the actors despawn so re-entry shows
+# just-Rush (the repeat dialogue).
+func _standoff_clear(instant: bool) -> void:
+	# Meeting Rush at Control Interface brings ship soft-locks online — doors
+	# that were only hotwire-gated open for free going forward.
+	GameState.clear_all_soft_locks()
+	if instant:
+		_despawn_standoff()
+		return
+	_standoff_shot_clear()
+	_standoff_aim(_standoff_greer, false)        # holster the sidearm, stand down
+	var exit_pt: Vector3 = _south_door_spot()
+	_standoff_greer.call("walk_to", exit_pt + Vector3(0.45, 0.0, 0.0), 2.6, 0.2)
+	_standoff_scott.call("walk_to", exit_pt + Vector3(-0.55, 0.0, 0.3), 2.6, 0.0)
+	# Despawn after they have had time to clear. The timer only ticks once the
+	# player closes the dialog (tree unpauses), by which point they're at the door.
+	await get_tree().create_timer(4.0).timeout
+	_despawn_standoff()
+
+
+func _despawn_standoff() -> void:
+	_standoff_cinema_end()
+	# Rush has left the building: he walked out during the resolution and is
+	# not talkable again until the scrubber beat (re-entry won't respawn him
+	# either — _spawn_interactables gates on met_rush).
+	var rush_node: Node3D = get_node_or_null("DrRush") as Node3D
+	if rush_node != null:
+		rush_node.queue_free()
+	if GameState.dialog_action.is_connected(_on_standoff_cue):
+		GameState.dialog_action.disconnect(_on_standoff_cue)
+	if GameState.dialog_started.is_connected(_standoff_reposition):
+		GameState.dialog_started.disconnect(_standoff_reposition)
+	for actor in [_standoff_greer, _standoff_scott]:
+		if actor != null and is_instance_valid(actor):
+			actor.queue_free()
+	_standoff_greer = null
+	_standoff_scott = null
+
+
+# Raise/lower a standoff actor's RIFLE between the back sling and the aimed
+# hand mount (the rifle's hand transform is the grid-verified one — the
+# pistol's never read right on camera). Safe under instant_mode.
+func _standoff_aim(actor: Node3D, aimed: bool) -> void:
+	if actor == null or not is_instance_valid(actor):
+		return
+	var mc: Node = _modular_model(actor)
+	if mc != null:
+		mc.call("set_rifle", true, aimed)
+		mc.call("play_clip", "rifle_aim" if aimed else "idle")
+		return
+	# Legacy mini path.
+	var holder: Node = actor.get_node_or_null("Model")
+	var skel: Skeleton3D = CharacterFactoryRef._find_skeleton(holder)
+	if skel == null:
+		return
+	CharacterFactoryRef._remove_gear(skel, "Sidearm")
+	CharacterFactoryRef.attach_gear(skel, "sidearm", 2.6, aimed)
+	var anim: AnimationPlayer = _find_animplayer(holder)
+	if anim == null:
+		return
+	if aimed and anim.has_animation("holding-right-shoot"):
+		anim.play("holding-right-shoot")
+	elif aimed and anim.has_animation("holding-right"):
+		anim.play("holding-right")
+	elif anim.has_animation("idle"):
+		anim.play("idle")
+
+
+# The ModularCharacter under an actor's Model holder, or null on legacy minis.
+func _modular_model(actor: Node3D) -> Node:
+	var holder: Node = actor.get_node_or_null("Model")
+	if holder == null:
+		return null
+	for c in holder.get_children():
+		if c.has_method("set_slot"):
+			return c
+	return null
+
+
+func _find_animplayer(node: Node) -> AnimationPlayer:
+	if node == null:
+		return null
+	var stack: Array = [node]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is AnimationPlayer:
+			return n
+		for c in n.get_children():
+			stack.append(c)
+	return null
 
 
 # Post-crisis "Rush isn't here" beat. Eli radios Scott, Scott hands the
@@ -989,17 +1884,24 @@ func _spawn_npc(
 
 	var model_holder: Node3D = Node3D.new()
 	model_holder.name = "Model"
-	model_holder.scale = Vector3(2.6, 2.6, 2.6)
-	# Kenney mini chars export +Z forward; rotate so model faces -Z (parent forward).
+	# Models face +Z as exported; rotate so they face -Z (parent forward).
 	model_holder.rotation.y = PI
-	var glb: PackedScene = load(glb_path)
-	if glb != null:
-		var inst: Node = glb.instantiate()
-		model_holder.add_child(inst)
-		var colormap: Texture2D = load("res://models/characters/Textures/colormap.png")
-		Npc.apply_kenney_colormap(inst, colormap)
-		Npc.play_idle_animation(inst)
 	body.add_child(model_holder)
+	if CharacterFactoryRef.profile_for(character_name).has("mod"):
+		# PRIMARY pipeline: Quaternius ModularCharacter at real-world scale,
+		# dressed for ship context (duty tint + sidearm for military).
+		var mc: Node3D = CharacterFactoryRef.build_modular(character_name)
+		model_holder.add_child(mc)
+		CharacterFactoryRef.dress_modular(mc, character_name, CharacterFactoryRef.CTX_SHIP)
+	else:
+		# Legacy mini fallback for unregistered characters.
+		model_holder.scale = Vector3(2.6, 2.6, 2.6)
+		var glb: PackedScene = load(CharacterFactoryRef.model_for(character_name, glb_path))
+		if glb != null:
+			var inst: Node = glb.instantiate()
+			model_holder.add_child(inst)
+			Npc.play_idle_animation(inst)
+		CharacterFactoryRef.dress(body, model_holder, character_name, CharacterFactoryRef.CTX_SHIP)
 
 	var tag: Label3D = Label3D.new()
 	tag.name = "Nametag"
@@ -1195,7 +2097,13 @@ func _spawn_infirmary_ward() -> void:
 	var ym: Node3D = young.get_node_or_null("Model") as Node3D
 	if ym != null:
 		ym.rotation = Vector3(-PI * 0.5, PI, 0.0)
-		ym.position = Vector3(0.0, 0.18, 0.7)
+		# Modular bodies are real-height (~1.7 m): slide the feet toward the
+		# bed's -Z end so the whole body lands on the mattress. The mini
+		# fallback keeps its original tuck.
+		if _modular_model(young) != null:
+			ym.position = Vector3(0.0, 0.15, -0.55)
+		else:
+			ym.position = Vector3(0.0, 0.18, 0.7)
 
 	# Desk against the +X wall.
 	var desk_pos: Vector3 = Vector3(half_x - 1.2, 0.0, -half_z + 2.4)
@@ -1449,7 +2357,7 @@ func _refresh_quest_waypoint() -> void:
 				placed = true
 	else:
 		# Cross-room — point at the door leading to the next hop on the path.
-		var next_hop: String = ShipLayout.next_room_toward(room_id, target_room)
+		var next_hop: String = ProceduralShip.next_room_toward(room_id, target_room)
 		if next_hop != "":
 			var door: Node3D = _find_door_to(next_hop)
 			if door != null:
@@ -1594,3 +2502,175 @@ func _humanize(id: String) -> String:
 			continue
 		out.append(p[0].to_upper() + p.substr(1))
 	return " ".join(out)
+
+
+# ── Phase B interactable spawners ─────────────────────────────────────────────
+
+# Elevator floor-selection panel on the -Z wall (facing into the room).
+func _spawn_elevator_panel() -> void:
+	var d_m: float = float(_room_data.get("height", 200)) * ShipLayout.SCALE
+	var half_z: float = d_m * 0.5
+	var panel: StaticBody3D = StaticBody3D.new()
+	panel.set_script(ElevatorPanelScript)
+	panel.name = "ElevatorPanel"
+	# Position on the -Z wall at chest height. The script builds its own visual.
+	panel.position = Vector3(0.0, 0.0, -half_z + 0.08)
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = Vector3(0.6, 1.8, 0.3)
+	cs.shape = box
+	cs.position = Vector3(0.0, 0.9, 0.0)
+	panel.add_child(cs)
+	add_child(panel)
+
+
+# Floor-code terminal on the +X wall (right side when facing -Z into the room).
+# Spawning is one-shot per floor: if the code is already known, we still spawn
+# (so the player can see it was here) but it starts disabled.
+func _spawn_floor_code_terminal(target_floor: int) -> void:
+	if target_floor <= 1:
+		return  # Floor 1 has no code gating.
+	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
+	var half_x: float = w_m * 0.5
+	var terminal: StaticBody3D = StaticBody3D.new()
+	terminal.set_script(FloorCodeTerminalScript)
+	terminal.name = "FloorCodeTerminal_F%d" % target_floor
+	terminal.set("target_floor", target_floor)
+	terminal.position = Vector3(half_x - 0.08, 0.0, 0.0)
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = Vector3(0.3, 1.8, 0.6)
+	cs.shape = box
+	cs.position = Vector3(0.0, 0.9, 0.0)
+	terminal.add_child(cs)
+	add_child(terminal)
+
+
+# Dispatch for generated rooms: assignment console for unassigned storage,
+# or assigned-function props for already-assigned rooms. Also places a
+# floor-code terminal in rooms designated as the code-carrier for floor n+1.
+func _spawn_generated_room_interactables() -> void:
+	var type_id: String = String(_room_data.get("type", ""))
+	var assigned_fn: String = ProceduralShip.assigned_function(room_id)
+	var floor_n: int = int(_room_data.get("floor", 0))
+
+	# Check if this room is the designated code-carrier for the next floor.
+	# ProceduralShip.floor_code_terminal_room(n) returns the room where floor
+	# n's code terminal should be placed. We iterate the next few floors to see
+	# if this room qualifies for any of them.
+	for check_floor in range(2, 10):
+		var code_room: String = ProceduralShip.floor_code_terminal_room(check_floor)
+		if code_room == room_id:
+			_spawn_floor_code_terminal(check_floor)
+			break  # One code terminal per room max.
+
+	# Elevator landing rooms on generated floors get a panel.
+	# The landing room is always "f{n}_r00" (entry corridor, first room placed).
+	if room_id == ("f%d_r00" % floor_n) and floor_n >= 2:
+		_spawn_elevator_panel()
+
+	# Already assigned: dispatch on the function type.
+	if assigned_fn != "":
+		match assigned_fn:
+			"hydroponics_bay":
+				_spawn_co2_scrubber("gen_%s" % room_id, 0.0)
+			# armory, machine_shop, recreation, medical_annex — set-dressing
+			# deferred to Phase C; for now they're empty but labeled.
+			_:
+				pass
+		return
+
+	# Unassigned storage rooms get the assignment console.
+	if type_id == "storage":
+		_spawn_assignment_console()
+
+	# Bridge rooms get the Core-Loop config console (issue #133).
+	if type_id == "bridge":
+		_spawn_bridge_console()
+
+	# D4 parts economy: place salvage panels in control/power/storage rooms so
+	# the player can gather parts toward the next-floor unlock cost.
+	# One panel per power_node room; one per storage room (alongside the console);
+	# one per control_room / engineering generated room.
+	match type_id:
+		"power_node", "control_room", "engineering":
+			_spawn_salvage_panel(0)
+		"storage":
+			_spawn_salvage_panel(1)  # Offset from assignment console side
+
+
+# D4: Salvage panel on the +X wall. One-shot: dismantling grants `parts`.
+# side_offset: 0 = centred, 1 = offset toward +Z (avoids assignment console).
+func _spawn_salvage_panel(side_offset: int = 0) -> void:
+	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
+	var half_x: float = w_m * 0.5
+	var z_off: float = 0.0 if side_offset == 0 else 1.5
+	var panel: StaticBody3D = StaticBody3D.new()
+	panel.set_script(SalvagePanelScript)
+	panel.name = "SalvagePanel"
+	panel.position = Vector3(half_x - 0.08, 0.0, z_off)
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = Vector3(0.3, 1.8, 0.6)
+	cs.shape = box
+	cs.position = Vector3(0.0, 0.9, 0.0)
+	panel.add_child(cs)
+	add_child(panel)
+
+
+# Repair console for a sealed/damaged target room (issue #131).
+# Mounts on the +X wall at room centre, facing into the room (-X).
+# `target_room_id` is the room the player wants to unlock via repair.
+func _spawn_repair_console(target_room_id: String) -> void:
+	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
+	var half_x: float = w_m * 0.5
+	var console: StaticBody3D = StaticBody3D.new()
+	console.set_script(RepairConsoleScript)
+	console.name = "RepairConsole"
+	console.set("target_room_id", target_room_id)
+	console.position = Vector3(half_x - 0.08, 0.0, 0.0)
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = Vector3(0.3, 1.8, 0.6)
+	cs.shape = box
+	cs.position = Vector3(0.0, 0.9, 0.0)
+	console.add_child(cs)
+	add_child(console)
+
+
+# Bridge Core-Loop config console on the -X wall (issue #133).
+# Mirrors _spawn_assignment_console layout; console_room_id passed so the
+# console can look up the room's position in the ship layout if needed.
+func _spawn_bridge_console() -> void:
+	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
+	var half_x: float = w_m * 0.5
+	var console: StaticBody3D = StaticBody3D.new()
+	console.set_script(BridgeConsoleScript)
+	console.name = "BridgeConsole"
+	console.set("console_room_id", room_id)
+	console.position = Vector3(-half_x + 0.08, 0.0, 0.0)
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = Vector3(0.3, 1.8, 0.6)
+	cs.shape = box
+	cs.position = Vector3(0.0, 0.9, 0.0)
+	console.add_child(cs)
+	add_child(console)
+
+
+# Assignment console on the -X wall (left side when facing into the room).
+func _spawn_assignment_console() -> void:
+	var w_m: float = float(_room_data.get("width", 200)) * ShipLayout.SCALE
+	var half_x: float = w_m * 0.5
+	var console: StaticBody3D = StaticBody3D.new()
+	console.set_script(AssignmentConsoleScript)
+	console.name = "AssignmentConsole"
+	console.set("console_room_id", room_id)
+	console.position = Vector3(-half_x + 0.08, 0.0, 0.0)
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = Vector3(0.3, 1.8, 0.6)
+	cs.shape = box
+	cs.position = Vector3(0.0, 0.9, 0.0)
+	console.add_child(cs)
+	add_child(console)

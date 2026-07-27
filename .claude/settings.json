@@ -4,6 +4,18 @@
     "type": "command",
     "command": "bash .claude/statusline.sh"
   },
+  "extraKnownMarketplaces": {
+    "gamestack": {
+      "source": {
+        "source": "github",
+        "repo": "rondorkerin/gamestack"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "gamestack@gamestack": true,
+    "godot@gamestack": true
+  },
   "permissions": {
     "allow": [
       "Bash(git status*)",

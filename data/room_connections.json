@@ -93,8 +93,27 @@
 		},
 		{
 			"dir": "+z",
-			"to": "engineering_bay",
-			"plaque": "Engineering Bay"
+			"to": "aft_storage_hall",
+			"plaque": "Aft Storage Hall"
+		}
+	],
+	"aft_storage_hall": [
+		{
+			"dir": "+x",
+			"to": "aft_crew_corridor",
+			"plaque": "Aft Crew Corridor"
+		}
+	],
+	"aft_crew_corridor": [
+		{
+			"dir": "+x",
+			"to": "aft_quarters_a",
+			"plaque": "Crew Quarters Beta"
+		},
+		{
+			"dir": "+z",
+			"to": "aft_quarters_b",
+			"plaque": "Crew Quarters Gamma"
 		}
 	],
 	"elevator_north": [

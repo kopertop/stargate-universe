@@ -16,6 +16,12 @@ prefabs they instance live in `../objects/`.
 - `planet.tscn` — Off-ship planet scene (lime planet).
 - `*.tres` — Environment + lighting resources used by the scenes.
 
+- `vrm_lab.tscn` — VRM character lab (legacy path).
+- `quaternius_lab.tscn` / `anim_lab.tscn` / `character_lab.tscn` — legacy
+  Quaternius / Kenney character labs (do not extend for new crew).
+- `mint_character_lab.tscn` — **Mint-native** character turntable + clip
+  picker. Use this for new characters and future editor/menu previews.
+
 ## Conventions
 
 - Every scene with a player must declare `script = ExtResource(...)` for an

@@ -18,12 +18,17 @@ signal item_changed(id: String, count: int)
 # `item_id` is the now-equipped item there, or "" when the slot was cleared.
 # Character mount + equipment UI listen to this.
 signal equipment_changed(slot: String, item_id: String)
+# Hotbar wield: `index` is 0–3, `item_id` is the newly active item (may be "").
+signal wield_changed(index: int, item_id: String)
 
 const ITEMS_PATH: String = "res://data/items.json"
 
 # The four equipment slots, in canonical display order. Equipment item defs in
 # data/items.json carry `category: "equipment"` + `slot: <one of these>`.
 const EQUIP_SLOTS: Array[String] = ["head", "torso", "back", "legs"]
+# Subnautica-style tool/weapon hotbar (HUD slots 1–4 / D-pad). Index 0 = tablet
+# / kino remote; index 1 = sidearm; 2–3 reserved.
+const WIELD_SLOT_COUNT: int = 4
 
 # Ordered catalog (display order) + id->definition lookup.
 var _catalog: Array = []
@@ -34,6 +39,9 @@ var _items: Dictionary = {}
 # present when filled (an absent key means the slot is empty). This is the
 # single registry for "what the crew member is wearing" — no per-slot bools.
 var _equipped: Dictionary = {}
+# Hotbar assignments: fixed-length array of item ids ("" = empty frame).
+var _wield_slots: Array[String] = ["", "", "", ""]
+var _active_wield_index: int = 0
 var _loaded: bool = false
 var _registered: bool = false
 
@@ -329,10 +337,103 @@ func carry_capacity_modifier() -> int:
 	return int(equipped_effect_total("carry_capacity", 0.0))
 
 
+# --- hotbar wield (weapons-tools) --------------------------------------------
+#
+# ONE registry (_wield_slots + _active_wield_index) for "what is in the player's
+# hands." Distinct from wearable equipment (armor paper-doll). Items with
+# `wieldable: true` in data/items.json may be assigned to a hotbar index.
+
+func is_wieldable(id: String) -> bool:
+	_ensure_loaded()
+	var def: Dictionary = _by_id.get(id, {})
+	return def.get("wieldable", false) == true
+
+
+func wield_kind(id: String) -> String:
+	_ensure_loaded()
+	return String((_by_id.get(id, {}) as Dictionary).get("wield_kind", ""))
+
+
+func is_interface_tool(id: String) -> bool:
+	return wield_kind(id) == "interface"
+
+
+func is_weapon(id: String) -> bool:
+	return wield_kind(id) == "weapon"
+
+
+func hotbar_item(index: int) -> String:
+	if index < 0 or index >= WIELD_SLOT_COUNT:
+		return ""
+	return _wield_slots[index]
+
+
+func active_wield_index() -> int:
+	return _active_wield_index
+
+
+func active_wield_id() -> String:
+	return hotbar_item(_active_wield_index)
+
+
+func assign_hotbar(index: int, item_id: String) -> void:
+	if index < 0 or index >= WIELD_SLOT_COUNT:
+		return
+	if item_id != "" and not is_wieldable(item_id):
+		return
+	if item_id != "" and count(item_id) <= 0:
+		return
+	if _wield_slots[index] == item_id:
+		return
+	_wield_slots[index] = item_id
+	if index == _active_wield_index:
+		wield_changed.emit(_active_wield_index, item_id)
+
+
+func select_wield(index: int) -> void:
+	if index < 0 or index >= WIELD_SLOT_COUNT:
+		return
+	var id: String = _wield_slots[index]
+	if id != "" and count(id) <= 0:
+		_wield_slots[index] = ""
+		id = ""
+	_active_wield_index = index
+	wield_changed.emit(index, id)
+
+
+# Seed the opening hotbar after a new-game reset: tablet in slot 1 only.
+# Called from GameState.seed_starter_tools().
+func seed_starter_wield() -> void:
+	_ensure_loaded()
+	_wield_slots = ["", "", "", ""]
+	if has("kino_remote"):
+		_wield_slots[0] = "kino_remote"
+	elif has("tablet"):
+		_wield_slots[0] = "tablet"
+	if has("sidearm"):
+		_wield_slots[1] = "sidearm"
+	_active_wield_index = 0
+	wield_changed.emit(0, active_wield_id())
+
+
+# Upgrade path: tablet → kino_remote keeps the same hotbar index.
+func replace_hotbar_item(from_id: String, to_id: String) -> void:
+	for i in WIELD_SLOT_COUNT:
+		if _wield_slots[i] == from_id:
+			_wield_slots[i] = to_id if (to_id != "" and has(to_id)) else ""
+	if active_wield_id() == from_id or _wield_slots[_active_wield_index] == to_id:
+		wield_changed.emit(_active_wield_index, active_wield_id())
+
+
 # --- save / load -------------------------------------------------------------
 
 func serialize() -> Dictionary:
-	return {"items": _items.duplicate(), "equipped": _equipped.duplicate()}
+	return {
+		"items": _items.duplicate(),
+		"equipped": _equipped.duplicate(),
+		"wield_slots": _wield_slots.duplicate(),
+		"active_wield": _active_wield_index,
+	}
 
 
 func deserialize(data: Dictionary, _version: int) -> void:
@@ -363,6 +464,16 @@ func deserialize(data: Dictionary, _version: int) -> void:
 					_equipped[String(slot)] = item_id
 		for slot2 in _equipped:
 			equipment_changed.emit(String(slot2), String(_equipped[slot2]))
+	_wield_slots = ["", "", "", ""]
+	if data.has("wield_slots"):
+		var slots: Variant = data.get("wield_slots", [])
+		if slots is Array:
+			for i in mini(WIELD_SLOT_COUNT, (slots as Array).size()):
+				var wid: String = String((slots as Array)[i])
+				if wid != "" and is_wieldable(wid) and count(wid) > 0:
+					_wield_slots[i] = wid
+	_active_wield_index = clampi(int(data.get("active_wield", 0)), 0, WIELD_SLOT_COUNT - 1)
+	wield_changed.emit(_active_wield_index, active_wield_id())
 	changed.emit()
 
 
@@ -370,4 +481,7 @@ func reset() -> void:
 	_ensure_loaded()
 	_items.clear()
 	_equipped.clear()
+	_wield_slots = ["", "", "", ""]
+	_active_wield_index = 0
 	changed.emit()
+	wield_changed.emit(0, "")

@@ -76,10 +76,48 @@ func _ready() -> void:
 	# Kino. Only meaningful for room-id transition doors (the obfuscated ones).
 	if target_room_id != "" and not _plaque_labels.is_empty():
 		GameState.room_deciphered.connect(_on_room_deciphered)
+	if GameState.has_signal("soft_locks_changed") and not GameState.soft_locks_changed.is_connected(_on_soft_locks_changed):
+		GameState.soft_locks_changed.connect(_on_soft_locks_changed)
+	var inv: Node = get_node_or_null("/root/Inventory")
+	if inv != null and inv.has_signal("wield_changed") and not inv.wield_changed.is_connected(_on_wield_changed_for_prompt):
+		inv.wield_changed.connect(_on_wield_changed_for_prompt)
+
+
+func _on_wield_changed_for_prompt(_index: int, _item_id: String) -> void:
+	_refresh_prompt()
+
+
+func _on_soft_locks_changed() -> void:
+	_refresh_prompt()
+	_refresh_status_light()
+
+
+func _is_soft_locked() -> bool:
+	if source_room_id == "" or target_room_id == "":
+		return false
+	return GameState.is_soft_locked(source_room_id, target_room_id)
+
+
+func _is_effectively_locked() -> bool:
+	return locked or _is_soft_locked()
+
 
 func _refresh_prompt() -> void:
-	if locked:
-		prompt = lock_message
+	if _is_effectively_locked():
+		if _is_soft_locked() and not locked:
+			# Soft-lock: door itself is the hotwire target (panel is a backup).
+			var tool: String = _active_interface_tool()
+			match tool:
+				"tablet":
+					prompt = "Hack access panel"
+				"kino_remote":
+					prompt = "Force-open panel"
+				"":
+					prompt = "LOCKED — need access tablet (hotbar 1)"
+				_:
+					prompt = "Select access tablet (hotbar 1)"
+		else:
+			prompt = lock_message
 	elif requires_kino and not Inventory.has("kino_remote"):
 		prompt = requires_kino_message
 	elif _is_transition_door():
@@ -95,7 +133,23 @@ func _refresh_prompt() -> void:
 	else:
 		prompt = open_prompt
 
+
+func _active_interface_tool() -> String:
+	var inv: Node = get_node_or_null("/root/Inventory")
+	if inv == null:
+		return ""
+	var active: String = String(inv.call("active_wield_id"))
+	if inv.call("is_interface_tool", active):
+		return active
+	if inv.call("has", "kino_remote") or inv.call("has", "tablet"):
+		return "unowned"
+	return ""
+
+
 func _on_interact(by: Node) -> void:
+	if _is_soft_locked():
+		_try_soft_lock_unlock(by)
+		return
 	if locked:
 		return
 	if requires_kino and not Inventory.has("kino_remote"):
@@ -104,6 +158,42 @@ func _on_interact(by: Node) -> void:
 		_transition(by)
 	else:
 		_toggle()
+
+
+func _try_soft_lock_unlock(by: Node) -> void:
+	var tool: String = _active_interface_tool()
+	if tool != "tablet" and tool != "kino_remote":
+		if tool == "unowned":
+			GameState.add_log("Select your access tablet on hotbar slot 1, then use the door.")
+		else:
+			GameState.add_log("I need my tablet to open this panel.")
+		_refresh_prompt()
+		return
+	var force: bool = tool == "kino_remote"
+	var verb: String = "Force-opening" if force else "Hotwiring"
+	GameState.add_log("%s the bulkhead panel…" % verb)
+	if by.has_method("begin_tool_use"):
+		by.call("begin_tool_use", "repair", 0.0)
+	var mg: Node = get_node_or_null("/root/HotwireMinigame")
+	var ok: bool = false
+	if mg != null and mg.has_method("play"):
+		ok = bool(await mg.call("play", force))
+	else:
+		ok = true
+	if is_instance_valid(by) and by.has_method("end_tool_use"):
+		by.call("end_tool_use")
+	if not ok:
+		GameState.add_log("Access attempt cancelled.")
+		_refresh_prompt()
+		return
+	if not _is_soft_locked():
+		return
+	GameState.clear_soft_lock(source_room_id, target_room_id)
+	unlock()
+	if force:
+		GameState.add_log("Force-open complete. Bulkhead responds.")
+	else:
+		GameState.add_log("Hotwire complete. Bulkhead responds.")
 
 
 func _is_transition_door() -> bool:
@@ -419,7 +509,7 @@ func _refresh_status_light() -> void:
 	if _status_mat == null:
 		return
 	var c: Color
-	if locked:
+	if _is_effectively_locked():
 		c = Color(1.0, 0.20, 0.10, 1.0)    # red — locked
 	elif _is_open:
 		c = Color(0.30, 1.0, 0.55, 1.0)    # green — passable

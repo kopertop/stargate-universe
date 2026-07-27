@@ -1,12 +1,36 @@
 [
   {
+    "id": "tablet",
+    "name": "Access Tablet",
+    "category": "tool",
+    "icon": "res://sprites/ui/items/tablet.png",
+    "description": "Eli's jury-rigged tablet. Opens sealed door panels and hotwires Destiny's stubborn bulkhead controls until a proper interface is found.",
+    "stackable": false,
+    "show_in_inventory": true,
+    "wieldable": true,
+    "wield_kind": "interface"
+  },
+  {
     "id": "kino_remote",
     "name": "Kino Remote",
     "category": "tool",
     "icon": "res://sprites/ui/items/kino_remote.png",
-    "description": "Handheld Ancient controller for the Kino reconnaissance orbs. Opens the ship map, ship systems, and the Kino fleet view.",
+    "description": "Handheld Ancient controller for the Kino reconnaissance orbs. Opens the ship map, ship systems, and the Kino fleet view. Can force-open soft-locked bulkheads.",
     "stackable": false,
-    "show_in_inventory": true
+    "show_in_inventory": true,
+    "wieldable": true,
+    "wield_kind": "interface"
+  },
+  {
+    "id": "sidearm",
+    "name": "Sidearm",
+    "category": "weapon",
+    "icon": "res://sprites/ui/items/small_fuse.png",
+    "description": "Standard Expedition sidearm. Select from the hotbar to aim and fire.",
+    "stackable": false,
+    "show_in_inventory": true,
+    "wieldable": true,
+    "wield_kind": "weapon"
   },
   {
     "id": "kino_orb",

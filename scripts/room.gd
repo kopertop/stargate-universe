@@ -117,6 +117,7 @@ func _ready() -> void:
 		push_error("room.gd: ProceduralShip has no row for '%s'" % room_id)
 		return
 
+	_notify_load("Widening corridors…", 0.4)
 	# Some JSON corridors are 3.5 m short-axis (cr_north, room_1751649578881)
 	# which reads as a closet, not a Destiny corridor. Widen the short axis to
 	# a 6 m minimum for corridor-template rooms; the JSON adjacency math still
@@ -125,9 +126,13 @@ func _ready() -> void:
 	_apply_corridor_min_short_axis(6.0)
 
 	# Geometry first so doors can sit against real walls.
+	_notify_load("Building hull…", 0.5)
 	RoomBuilderRef.build(world, _room_data)
+	_notify_load("Sealing bulkheads…", 0.62)
 	_setup_doors()
+	_notify_load("Spawning interactables…", 0.72)
 	_spawn_interactables()
+	_notify_load("Placing player…", 0.82)
 	_place_player()
 	# Cold-open standoff staging — needs the player already placed so Greer can be
 	# positioned "right behind" them. No-op outside the control-room first-meet.
@@ -186,6 +191,14 @@ func _ready() -> void:
 	_refresh_quest_waypoint()
 	if not GameState.objective_changed.is_connected(_on_quest_objective_changed):
 		GameState.objective_changed.connect(_on_quest_objective_changed)
+
+
+# Fire-and-forget stage labels (no await — room _ready must stay synchronous so
+# SceneRouter's current_scene wait does not race mid-build geometry).
+func _notify_load(label: String, progress: float) -> void:
+	var router: Node = get_node_or_null("/root/SceneRouter")
+	if router != null and router.has_method("set_load_stage"):
+		router.call("set_load_stage", label, progress)
 
 
 # Stamp door + matching spawn Marker3D for each connection that originates at
@@ -1680,6 +1693,9 @@ func _standoff_eli_console(instant: bool) -> void:
 # south door they came through, and the actors despawn so re-entry shows
 # just-Rush (the repeat dialogue).
 func _standoff_clear(instant: bool) -> void:
+	# Meeting Rush at Control Interface brings ship soft-locks online — doors
+	# that were only hotwire-gated open for free going forward.
+	GameState.clear_all_soft_locks()
 	if instant:
 		_despawn_standoff()
 		return

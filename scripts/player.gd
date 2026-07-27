@@ -11,11 +11,12 @@ signal auto_walk_finished
 @export var view: Node3D
 
 @export_subgroup("Avatar")
-# Mixamo Swat combat host (signed-off aim/fire). Falls back to Mint, then modular,
-# when the local ToS-gitignored pack is missing.
+# Mixamo host (signed-off aim/fire). Falls back to modular when the local
+# ToS-gitignored pack is missing. Mint character hosts were removed — props only.
 @export var use_mixamo_avatar: bool = true
-# Mint-native Eli (Animation Studio). Used when Mixamo pack is absent / disabled.
-@export var use_mint_avatar: bool = true
+# Deprecated: Mint body GLBs are gone. Kept so old captures can force-off Mixamo
+# without resurrecting MintCharacter.
+@export var use_mint_avatar: bool = false
 
 @export_subgroup("Movement")
 @export var walk_speed: float = 8.0          # m/s
@@ -351,7 +352,49 @@ func _setup_mixamo_avatar() -> void:
 	_mint = null
 	_animation = null
 	_tune_mixamo_capsule()
+	_sync_mixamo_weapon_visibility()
+	_bind_inventory_wield_signals()
 	call_deferred("_finish_mixamo_spawn")
+
+
+func _bind_inventory_wield_signals() -> void:
+	var inv: Node = get_node_or_null("/root/Inventory")
+	if inv == null:
+		return
+	if inv.has_signal("changed") and not inv.changed.is_connected(_on_inventory_changed_for_weapon):
+		inv.changed.connect(_on_inventory_changed_for_weapon)
+	if inv.has_signal("item_changed") and not inv.item_changed.is_connected(_on_item_changed_for_weapon):
+		inv.item_changed.connect(_on_item_changed_for_weapon)
+	if inv.has_signal("wield_changed") and not inv.wield_changed.is_connected(_on_wield_changed_for_weapon):
+		inv.wield_changed.connect(_on_wield_changed_for_weapon)
+
+
+func _on_inventory_changed_for_weapon() -> void:
+	_sync_mixamo_weapon_visibility()
+
+
+func _on_item_changed_for_weapon(_id: String, _count: int) -> void:
+	_sync_mixamo_weapon_visibility()
+
+
+func _on_wield_changed_for_weapon(_index: int, _item_id: String) -> void:
+	_sync_mixamo_weapon_visibility()
+
+
+## Rifle mesh is cosmetic until a weapon item is owned. Holster/draw still
+## follows aim once carried. Active interface tools get a held slate prop.
+func _sync_mixamo_weapon_visibility() -> void:
+	if _mixamo == null:
+		return
+	var inv: Node = get_node_or_null("/root/Inventory")
+	var carried: bool = inv != null and inv.has_method("has") and bool(inv.call("has", "sidearm"))
+	if _mixamo.has_method("set_weapon_visible"):
+		_mixamo.call("set_weapon_visible", carried)
+	var wield: String = ""
+	if inv != null and inv.has_method("active_wield_id"):
+		wield = String(inv.call("active_wield_id"))
+	if _mixamo.has_method("set_held_interface"):
+		_mixamo.call("set_held_interface", wield)
 
 
 func _finish_mixamo_spawn() -> void:
@@ -632,6 +675,16 @@ func _poll_mixamo_combat_input() -> void:
 		_mixamo_aiming = _demo_aim
 		_mixamo_want_fire = _demo_fire and _demo_aim
 		if _mixamo_aiming != was_aiming:
+			_refresh_combat_music()
+		return
+	# Aim/fire only while the sidearm (or other weapon) is the active hotbar item.
+	var inv: Node = get_node_or_null("/root/Inventory")
+	var wield_id: String = String(inv.call("active_wield_id")) if inv != null else ""
+	var weapon_ready: bool = inv != null and bool(inv.call("is_weapon", wield_id))
+	if not weapon_ready:
+		_mixamo_aiming = false
+		_mixamo_want_fire = false
+		if was_aiming:
 			_refresh_combat_music()
 		return
 	_mixamo_aiming = Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)

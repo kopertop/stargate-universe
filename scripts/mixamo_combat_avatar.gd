@@ -55,6 +55,9 @@ var _anim: AnimationPlayer = null
 var _skel: Skeleton3D = null
 var _rifle: Node3D = null
 var _rifle_holster: Node3D = null
+# When false, neither hand nor back rifle meshes are shown (no weapon owned).
+var _weapon_carried: bool = true
+var _held_tablet: MeshInstance3D = null
 var _muzzle: Node3D = null
 var _stance: Stance = Stance.HOLSTER
 var _fire_cd: float = 0.0
@@ -98,6 +101,14 @@ static func create(for_character: String = "Eli", host_override: String = "") ->
 	avatar.set("character_name", for_character)
 	avatar.set("force_host", host_override)
 	return avatar
+
+
+## Preload the combat GLB into `_pack_cache` so room transitions don't reparse ~50MB.
+static func warm_pack_cache(for_character: String = "Eli", host_override: String = "") -> void:
+	var path: String = resolve_combat_glb(for_character, host_override)
+	if path == "" or not ResourceLoader.exists(path):
+		return
+	_cached_combat_pack(path)
 
 
 func is_combat_ready() -> bool:
@@ -158,7 +169,7 @@ func mount() -> bool:
 			+ "tools/blender_mixamo_rifle_combat.py --host eli|greer|swat|ybot|xbot"
 		)
 		return false
-	var packed: PackedScene = load(path) as PackedScene
+	var packed: PackedScene = _cached_combat_pack(path)
 	if packed == null:
 		return false
 	_host = packed.instantiate() as Node3D
@@ -176,7 +187,21 @@ func mount() -> bool:
 	_dampen_character_sheen()
 	_play_clip(_pick_clip(IDLE_CLIPS), true)
 	_ready_ok = _anim != null
+	# Default: hide gun until Inventory says a weapon is owned.
+	set_weapon_visible(false)
 	return _ready_ok
+
+
+static var _pack_cache: Dictionary = {}  # path -> PackedScene
+
+
+static func _cached_combat_pack(path: String) -> PackedScene:
+	if _pack_cache.has(path):
+		return _pack_cache[path] as PackedScene
+	var packed: PackedScene = load(path) as PackedScene
+	if packed != null:
+		_pack_cache[path] = packed
+	return packed
 
 
 ## Mixamo Ch42/Alex packs ship specular/gloss maps that Godot often wires as
@@ -468,11 +493,73 @@ func _set_rifle_holstered(holstered: bool) -> void:
 		return
 	_rifle_holstered = holstered
 	_recoil_kick = 0.0
+	if not _weapon_carried:
+		_rifle.visible = false
+		if _rifle_holster != null:
+			_rifle_holster.visible = false
+		return
 	if _rifle_holster != null:
 		_rifle.visible = not holstered
 		_rifle_holster.visible = holstered
 	else:
 		_rifle.visible = true
+
+
+## Hide or show both rifle meshes. New Game starts with no weapon carried.
+func set_weapon_visible(carried: bool) -> void:
+	_weapon_carried = carried
+	if not carried:
+		_rifle_holstered = true
+	_set_rifle_holstered(_rifle_holstered)
+
+
+## Show a simple held tablet / remote prop when that hotbar item is active.
+func set_held_interface(kind: String) -> void:
+	_ensure_held_tablet()
+	if _held_tablet == null:
+		return
+	var show: bool = kind == "tablet" or kind == "kino_remote"
+	_held_tablet.visible = show
+	if show:
+		# Slightly cooler emissive for kino remote vs warm tablet bezel.
+		var mat: StandardMaterial3D = _held_tablet.material_override as StandardMaterial3D
+		if mat != null:
+			mat.emission = Color(0.25, 0.75, 0.95) if kind == "kino_remote" else Color(0.35, 0.55, 0.85)
+			mat.albedo_color = Color(0.12, 0.14, 0.18) if kind == "kino_remote" else Color(0.18, 0.18, 0.20)
+
+
+func _ensure_held_tablet() -> void:
+	if _held_tablet != null or _skel == null:
+		return
+	var bone_name: String = ""
+	for candidate in ["mixamorig_RightHand", "mixamorig:RightHand", "RightHand", "Hand_R"]:
+		if _skel.find_bone(candidate) >= 0:
+			bone_name = candidate
+			break
+	if bone_name == "":
+		return
+	var attach := BoneAttachment3D.new()
+	attach.name = "HeldInterfaceAttach"
+	attach.bone_name = bone_name
+	_skel.add_child(attach)
+	_held_tablet = MeshInstance3D.new()
+	_held_tablet.name = "HeldTablet"
+	var box := BoxMesh.new()
+	box.size = Vector3(0.16, 0.22, 0.012)
+	_held_tablet.mesh = box
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.18, 0.18, 0.20)
+	mat.metallic = 0.35
+	mat.roughness = 0.45
+	mat.emission_enabled = true
+	mat.emission = Color(0.35, 0.55, 0.85)
+	mat.emission_energy_multiplier = 1.4
+	_held_tablet.material_override = mat
+	# Palm-facing flat slate in the right hand.
+	_held_tablet.position = Vector3(0.04, 0.08, 0.02)
+	_held_tablet.rotation_degrees = Vector3(70.0, 0.0, 15.0)
+	attach.add_child(_held_tablet)
+	_held_tablet.visible = false
 
 
 func _lock_root_translation_tracks() -> void:

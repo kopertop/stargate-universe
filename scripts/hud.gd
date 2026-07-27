@@ -113,14 +113,14 @@ const ACTION_SLOT_SIZE: Vector2 = Vector2(56, 56)
 const ACTION_BAR_MARGIN: float = 18.0
 # Fixed slot roster. Each slot's hotkey is its NUMBER (1-4) on keyboard, or a
 # D-pad direction (Up / Right / Down / Left) when a controller is connected — the
-# glyph shown reflects whichever device is active. `action` is the InputMap action
-# the slot fires; the slot's number key + D-pad button are added to that action at
-# runtime (_setup_action_slot_binds). Empty `id` == reserved slot (frame only).
+# glyph shown reflects whichever device is active. Slots select the wielded
+# tool/weapon (Inventory hotbar); they do NOT fire interact / open Kino.
+# Empty `id` == reserved slot (frame only) until an item is assigned.
 const ACTION_SLOTS: Array = [
-	{"id": "interact", "action": "interact", "key": KEY_1, "pad": JOY_BUTTON_DPAD_UP, "arrow": "↑"},
-	{"id": "kino_remote", "action": "kino_remote", "key": KEY_2, "pad": JOY_BUTTON_DPAD_RIGHT, "arrow": "→"},
-	{"id": "", "action": "", "key": KEY_3, "pad": JOY_BUTTON_DPAD_DOWN, "arrow": "↓"},
-	{"id": "", "action": "", "key": KEY_4, "pad": JOY_BUTTON_DPAD_LEFT, "arrow": "←"},
+	{"index": 0, "key": KEY_1, "pad": JOY_BUTTON_DPAD_UP, "arrow": "↑"},
+	{"index": 1, "key": KEY_2, "pad": JOY_BUTTON_DPAD_RIGHT, "arrow": "→"},
+	{"index": 2, "key": KEY_3, "pad": JOY_BUTTON_DPAD_DOWN, "arrow": "↓"},
+	{"index": 3, "key": KEY_4, "pad": JOY_BUTTON_DPAD_LEFT, "arrow": "←"},
 ]
 var _action_bar: CenterContainer = null
 var _action_slots_box: HBoxContainer = null
@@ -231,6 +231,10 @@ func _ready() -> void:
 	GameState.oxygen_changed.connect(_on_oxygen_changed)
 	GameState.kino_changed.connect(_on_kino_changed)
 	GameState.quest_step_changed.connect(_on_quest_step_changed)
+	if Inventory.has_signal("wield_changed") and not Inventory.wield_changed.is_connected(_on_wield_changed):
+		Inventory.wield_changed.connect(_on_wield_changed)
+	if Inventory.has_signal("changed") and not Inventory.changed.is_connected(_on_inventory_changed_for_bar):
+		Inventory.changed.connect(_on_inventory_changed_for_bar)
 	# The Chat panel is a NARRATIVE transcript: it is fed by dialogue_shown
 	# (character speech) + narrative_added (stage directions / scripted lines),
 	# NOT log_added — log_added is the noisy system journal (discovery, resources,
@@ -863,13 +867,15 @@ func _build_action_bar() -> void:
 		Input.joy_connection_changed.connect(_on_joy_connection_changed)
 
 
-# Add each slot's number key + D-pad button to the action it fires, so pressing
-# 1-4 (or the D-pad) triggers the slot exactly like its native keybind. Idempotent.
+# Add each slot's number key + D-pad button to a dedicated wield_slot_N action
+# so pressing 1–4 (or the D-pad) selects the hotbar item without firing interact
+# or opening the Kino remote. Idempotent.
 func _setup_action_slot_binds() -> void:
 	for entry in ACTION_SLOTS:
-		var action: String = String(entry["action"])
-		if action == "" or not InputMap.has_action(action):
-			continue
+		var idx: int = int(entry["index"])
+		var action: String = "wield_slot_%d" % (idx + 1)
+		if not InputMap.has_action(action):
+			InputMap.add_action(action)
 		var key_ev: InputEventKey = InputEventKey.new()
 		key_ev.physical_keycode = int(entry["key"])
 		if not _action_has_event(action, key_ev):
@@ -891,16 +897,31 @@ func _on_joy_connection_changed(_device: int, _connected: bool) -> void:
 	_refresh_action_bar()
 
 
+func _on_wield_changed(_index: int, _item_id: String) -> void:
+	_refresh_action_bar()
+
+
+func _on_inventory_changed_for_bar() -> void:
+	_refresh_action_bar()
+
+
 # A controller is "active" (so the bar shows D-pad arrows) when one is connected.
 func _controller_active() -> bool:
 	return not Input.get_connected_joypads().is_empty()
 
 
-# One slot per currently-available tool. Today just the Kino Remote (gated on
-# acquisition); the list is the single extension point for future tools. The
-# icon is pulled from the item catalog so HUD + inventory share one source.
-# During the scout beat the slot gets an attention border + pulse and the
-# repurposed KinoHint label shows a caption above the bar.
+func _unhandled_input(event: InputEvent) -> void:
+	for entry in ACTION_SLOTS:
+		var idx: int = int(entry["index"])
+		var action: String = "wield_slot_%d" % (idx + 1)
+		if event.is_action_pressed(action):
+			Inventory.select_wield(idx)
+			get_viewport().set_input_as_handled()
+			return
+
+
+# One slot per hotbar index. Icons come from Inventory.hotbar_item; the active
+# wield gets a gold attention border. Scout beat still pulses the Kino slot.
 func _refresh_action_bar() -> void:
 	if _action_slots_box == null:
 		return
@@ -912,23 +933,19 @@ func _refresh_action_bar() -> void:
 	_kino_hint.visible = false
 
 	var scouting: bool = GameState.quest_step == GameState.QUEST_SCOUT_KINO
-	var idx: int = 0
+	var active_idx: int = int(Inventory.active_wield_index())
 	for entry in ACTION_SLOTS:
-		idx += 1
-		var slot_id: String = String(entry["id"])
-		var action: String = String(entry["action"])
-		# The Kino slot only carries its icon/click once the remote is owned; the
-		# frame is always present so the bar reads as a fixed 4-slot row.
-		var owned: bool = slot_id != "kino_remote" or Inventory.has("kino_remote")
-		var attention: bool = scouting and slot_id == "kino_remote" and owned
-		var slot: Panel = _make_action_slot(entry, slot_id if owned else "", attention)
+		var idx: int = int(entry["index"])
+		var item_id: String = String(Inventory.hotbar_item(idx))
+		var selected: bool = idx == active_idx and item_id != ""
+		var attention: bool = selected or (scouting and item_id == "kino_remote")
+		var slot: Panel = _make_action_slot(entry, item_id, attention, idx)
 		_action_slots_box.add_child(slot)
-		if attention:
+		if scouting and item_id == "kino_remote":
 			_action_pulse = create_tween().set_loops()
 			_action_pulse.tween_property(slot, "modulate:a", 0.55, 0.6)
 			_action_pulse.tween_property(slot, "modulate:a", 1.0, 0.6)
 
-	# Scout-beat caption above the bar (reuses the old KinoHint label).
 	if scouting and Inventory.has("kino_remote"):
 		_kino_hint.text = "Open the Kino Remote"
 		_kino_hint.offset_top = -52.0 - ACTION_SLOT_SIZE.y - ACTION_BAR_MARGIN
@@ -936,15 +953,12 @@ func _refresh_action_bar() -> void:
 		_kino_hint.visible = true
 
 
-# One fixed action slot. `entry` is the ACTION_SLOTS dict (drives the hotkey
-# glyph: its number 1-4 on keyboard, or its D-pad arrow when a controller is
-# connected). `item_id` empty == reserved slot (frame + glyph only).
-func _make_action_slot(entry: Dictionary, item_id: String, attention: bool) -> Panel:
+# One fixed action slot. Click selects that hotbar index.
+func _make_action_slot(entry: Dictionary, item_id: String, attention: bool, slot_index: int) -> Panel:
 	var slot: Panel = Panel.new()
 	slot.custom_minimum_size = ACTION_SLOT_SIZE
 	slot.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	if item_id != "":
-		slot.gui_input.connect(_on_action_slot_input.bind(item_id))
+	slot.gui_input.connect(_on_action_slot_input.bind(slot_index))
 	var border: Color = SKIN_ACCENT_GOLD if attention else SKIN_ACCENT
 	slot.add_theme_stylebox_override("panel", _make_wow_stylebox(border))
 
@@ -963,10 +977,8 @@ func _make_action_slot(entry: Dictionary, item_id: String, attention: bool) -> P
 			tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			slot.add_child(tex)
 
-	# Hotkey glyph (top-left): the slot number 1-4, or its D-pad arrow under a
-	# controller. This IS the slot's trigger — pressing it fires the slot action.
 	var key: Label = Label.new()
-	key.text = String(entry["arrow"]) if _controller_active() else OS.get_keycode_string(int(entry["key"]))
+	key.text = String(entry["arrow"]) if _controller_active() else str(int(entry["index"]) + 1)
 	key.add_theme_font_size_override("font_size", 15)
 	key.add_theme_color_override("font_color", SKIN_ACCENT_GOLD)
 	key.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
@@ -977,20 +989,14 @@ func _make_action_slot(entry: Dictionary, item_id: String, attention: bool) -> P
 	return slot
 
 
-# Left-clicking a filled action slot fires its action (mirrors the keybind).
-func _on_action_slot_input(event: InputEvent, item_id: String) -> void:
+# Left-clicking a slot selects that hotbar index.
+func _on_action_slot_input(event: InputEvent, slot_index: int) -> void:
 	if not (event is InputEventMouseButton):
 		return
 	var mb: InputEventMouseButton = event
 	if not (mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT):
 		return
-	match item_id:
-		"kino_remote":
-			if has_node("/root/KinoRemote"):
-				get_node("/root/KinoRemote").call("open_remote")
-		"interact":
-			if _player != null and _player.has_method("try_interact"):
-				_player.call("try_interact")
+	Inventory.select_wield(slot_index)
 	accept_event()
 
 # Upper-right quest tracker: a transparent VBox holding the accent quest title

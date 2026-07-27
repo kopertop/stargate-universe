@@ -114,8 +114,8 @@ func _ready() -> void:
 	_btn_continue.disabled = not GameState.has_save()
 	if _btn_load != null:
 		_btn_load.disabled = _btn_continue.disabled
-	# Characters → Mint Character Lab (Eli + mint-native roster). Always available.
-	_btn_characters.disabled = false
+	# Characters lab was Mint-native; hosts retired — Mixamo is the play path.
+	_btn_characters.disabled = true
 
 	if not _btn_continue.disabled:
 		_btn_continue.grab_focus()
@@ -615,10 +615,9 @@ func _on_settings_pressed() -> void:
 
 
 func _on_characters_pressed() -> void:
-	# Mint-native crew lab (Eli first). Pause/autosave treat empty path as title —
-	# set a marker so we aren't mistaken for in-world gameplay.
-	GameState.current_scene_path = "res://scenes/mint_character_lab.tscn"
-	get_tree().change_scene_to_file("res://scenes/mint_character_lab.tscn")
+	# Mint Character Lab retired with models/mint/<slug>/ hosts.
+	GameState.add_log("Character lab unavailable — Mixamo hosts are the play path.")
+	return
 
 
 func _on_back_pressed() -> void:

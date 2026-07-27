@@ -29,6 +29,7 @@ const CharacterFactoryRef: Script = preload("res://scripts/character_factory.gd"
 # Preload bypasses class_name registration timing — same reason as room.gd.
 const ShipAlertScript: Script = preload("res://scripts/ship_alert.gd")
 const DOOR_SCENE: PackedScene = preload("res://objects/door.tscn")
+const DoorAccessPanelScript: Script = preload("res://scripts/door_access_panel.gd")
 const QUEST_WAYPOINT_ANCHOR_HEIGHT: float = 2.4
 const QUEST_WAYPOINT_DOOR_HEIGHT: float = 1.8
 
@@ -187,13 +188,16 @@ func _ready() -> void:
 		if arg.begins_with("coldopen_autoskip="):
 			_autoskip_after = arg.substr(18).to_float()
 
+	_notify_load("Building Gate Room…", 0.35)
 	# Build the room and gate furniture before anything else looks for nodes.
 	_build_floor()
 	_build_walls_and_ceiling()
+	_notify_load("Mezzanine + stairs…", 0.45)
 	_build_mezzanine()
 	_build_staircases()
 	_build_gate_platform()
 	_build_structural_columns()
+	_notify_load("Consoles + crew…", 0.55)
 	_build_consoles()
 	_build_npcs()
 	_build_lighting_props()
@@ -204,6 +208,7 @@ func _ready() -> void:
 	if ShipAlertScript.is_alert_active():
 		ShipAlertScript.apply_to_scene(self)
 
+	_notify_load("Gate ring + horizon…", 0.65)
 	# Spawn the procedural Stargate node — we keep ONLY its animated event horizon
 	# (+ ripples + light + activation logic); the visible ring is the new gunmetal
 	# GLB. Floor-pinned: centre one inner-radius up so the hole reaches the deck.
@@ -244,6 +249,7 @@ func _ready() -> void:
 		var horizon_scale: float = inner_r / 2.32
 		_stargate.scale = Vector3(horizon_scale, horizon_scale, 1.0)
 
+	_notify_load("Access panels…", 0.8)
 	# Place the spawn markers now that the room geometry is in place.
 	_create_spawn_markers()
 
@@ -251,6 +257,7 @@ func _ready() -> void:
 	# and create the matching return-trip arrival marker. Floor 2 is generated on
 	# demand so the room.gd target always exists before the transition fires.
 	_build_upper_deck_stairs_door()
+	_setup_east_exit_access()
 
 	# Returning through the gate from the lime planet: the away team came back
 	# WITH the player — spawn them standing just behind the FromPlanet landing.
@@ -566,6 +573,63 @@ func _build_upper_deck_stairs_door() -> void:
 	marker.position = stair_top + Vector3(-1.2, 0.0, 0.0)
 	marker.rotation.y = -PI * 0.5  # face +X into room (away from wall)
 	add_child(marker)
+
+
+# Fire-and-forget load labels for SceneRouter's overlay (sync _ready — no await).
+func _notify_load(label: String, progress: float) -> void:
+	var router: Node = get_node_or_null("/root/SceneRouter")
+	if router != null and router.has_method("set_load_stage"):
+		router.call("set_load_stage", label, progress)
+
+
+# Soft-lock access panel beside the authored ExitDoor (east corridor). Player
+# must hotwire with the tablet (or force-open with Kino Remote) before the door
+# will open — until Control Interface clears all soft-locks.
+func _setup_east_exit_access() -> void:
+	# Safety net: New Game can wipe Inventory after GameState seeded tools
+	# (SaveManager registration order). Ensure the access tablet exists here too.
+	if GameState.has_method("seed_starter_tools"):
+		if not Inventory.has("tablet") and not Inventory.has("kino_remote"):
+			GameState.seed_starter_tools()
+		elif Inventory.has("tablet") or Inventory.has("kino_remote"):
+			# Items present but hotbar empty (wipe left counts without wield).
+			if String(Inventory.hotbar_item(0)) == "":
+				Inventory.seed_starter_wield()
+				if Inventory.has("kino_remote"):
+					Inventory.replace_hotbar_item("tablet", "kino_remote")
+	var door: Node = get_node_or_null("ExitDoor")
+	if door == null:
+		push_warning("gate_room: ExitDoor missing — access panel skipped")
+		return
+	if door.get("source_room_id") == null or String(door.get("source_room_id")) == "":
+		door.set("source_room_id", "gate_room")
+	# Ensure soft-lock exists for mid-session boots that skipped GameState.reset.
+	if not GameState.is_soft_locked("gate_room", "stargate_corridor_east_connector") and not GameState.met_rush:
+		GameState.add_soft_lock("gate_room", "stargate_corridor_east_connector")
+	if has_node("EastExitAccessPanel"):
+		return
+	var panel: StaticBody3D = StaticBody3D.new()
+	panel.set_script(DoorAccessPanelScript)
+	panel.name = "EastExitAccessPanel"
+	panel.set("room_a", "gate_room")
+	panel.set("room_b", "stargate_corridor_east_connector")
+	panel.set("door_node_path", door.get_path())
+	# Recessed to the right of the east exit (door faces +Z into the room).
+	# Closer + larger collider so Scott doesn't steal every E press.
+	var door_n: Node3D = door as Node3D
+	panel.position = door_n.position + Vector3(0.95, 0.0, 0.55)
+	panel.rotation.y = door_n.rotation.y
+	var cs: CollisionShape3D = CollisionShape3D.new()
+	var box: BoxShape3D = BoxShape3D.new()
+	box.size = Vector3(0.55, 1.6, 0.7)
+	cs.shape = box
+	cs.position = Vector3(0.0, 1.0, 0.0)
+	panel.add_child(cs)
+	add_child(panel)
+	if door.has_method("_refresh_prompt"):
+		door.call("_refresh_prompt")
+	if door.has_method("_refresh_status_light"):
+		door.call("_refresh_status_light")
 
 
 func _apply_pending_save_spawn() -> void:

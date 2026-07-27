@@ -62,6 +62,8 @@ signal kino_closed()
 # Kino map's door-pip dim-on-traverse and survives save/load via
 # doors_traversed.
 signal door_traversed(key: String)
+# Soft-locked door edges changed (hotwire / force-open / control-room clear).
+signal soft_locks_changed()
 # Fired when a Kino is deployed/dropped from the tracked list — lets the Kino
 # map (or any future retrieval UI) refresh its deployed-Kino markers.
 signal deployed_kinos_changed()
@@ -307,6 +309,11 @@ var rooms_deciphered: Array[String] = []
 # through. Both directions resolve to the same key via door_key(). Drives the
 # Kino map's bright-vs-dim pip styling and survives save/load.
 var doors_traversed: Array[String] = []
+# Soft-locked bulkheads that need the interface tool (tablet hotwire / Kino
+# force-open) until Control Interface access clears them. ONE registry keyed
+# by door_key() — not per-door bools (collection-fork policy). Distinct from
+# ProceduralShip._room_conditions (structural seal / repair robot).
+var soft_locked_doors: Array[String] = []
 # The ONE discovery registry (no per-type forks — see the collection-fork lint).
 # Keyed by the discoverable's stable node name (e.g. "LimeNode3", "Poi_ruin_1")
 # → { "category": String, "label": String }. A node is "discovered" once it's in
@@ -644,6 +651,7 @@ func reset() -> void:
 	rooms_discovered.clear()
 	rooms_deciphered.clear()
 	doors_traversed.clear()
+	soft_locked_doors.clear()
 	discovered_pois.clear()
 	breaches_sealed.clear()
 	power_percent = STATUS_OFFLINE
@@ -688,6 +696,9 @@ func reset() -> void:
 	# Seed the tracked-resource opening stock (water/food/parts/lime) so a fresh
 	# run starts with the authored amounts and scarcity targeting is meaningful.
 	seed_default_resources()
+	# Tablet on the hotbar; soft-lock the Gate Room east exit.
+	seed_starter_tools()
+	seed_opening_soft_locks()
 	met_scott = false
 	met_rush = false
 	pressure_suits_found = false
@@ -892,7 +903,14 @@ func acquire_kino() -> void:
 	if inv != null and inv.call("has", "kino_remote"):
 		return
 	if inv != null:
+		# Tablet upgrades into the Kino Remote (same hotbar slot).
+		if inv.call("has", "tablet"):
+			inv.call("remove_item", "tablet", 1, "upgraded_to_kino_remote")
 		inv.call("add_item", "kino_remote", 1)
+		if inv.has_method("replace_hotbar_item"):
+			inv.call("replace_hotbar_item", "tablet", "kino_remote")
+		elif inv.has_method("assign_hotbar"):
+			inv.call("assign_hotbar", 0, "kino_remote")
 	# Used to be buried mid-ladder in _next_air_quest_step() — surfaced here
 	# alongside its trigger so the side-effect is co-located with the world-
 	# state change. start_air_crisis() also sets it, so either path (picking
@@ -900,7 +918,7 @@ func acquire_kino() -> void:
 	# prologue.
 	prologue_complete = true
 	kino_changed.emit(true)
-	add_log("Acquired the Kino Remote.")
+	add_log("Acquired the Kino Remote — tablet upgraded.")
 	advance_air_quest()
 
 func mark_quarters_found(log_msg: String = "Found Crew Quarters Alpha.") -> void:
@@ -1151,6 +1169,52 @@ func seed_default_resources() -> void:
 		return
 	for row in TRACKED_RESOURCES:
 		inv.call("set_count", String(row["id"]), int(row.get("default_amount", 0)))
+
+
+# Opening tools for a new run: Access Tablet only (no weapon yet).
+func seed_starter_tools() -> void:
+	var inv: Node = _inv()
+	if inv == null:
+		return
+	if not inv.call("has", "tablet"):
+		inv.call("add_item", "tablet", 1, "starter")
+	# Sidearm is granted later — New Game must not show a gun.
+	if inv.has_method("seed_starter_wield"):
+		inv.call("seed_starter_wield")
+
+
+# Soft-locks that block Gate Room exits until hotwired (or cleared at Control).
+func seed_opening_soft_locks() -> void:
+	soft_locked_doors.clear()
+	add_soft_lock("gate_room", "stargate_corridor_east_connector")
+
+
+func add_soft_lock(a: String, b: String) -> void:
+	var key: String = door_key(a, b)
+	if soft_locked_doors.has(key):
+		return
+	soft_locked_doors.append(key)
+	soft_locks_changed.emit()
+
+
+func clear_soft_lock(a: String, b: String) -> void:
+	var key: String = door_key(a, b)
+	if not soft_locked_doors.has(key):
+		return
+	soft_locked_doors.erase(key)
+	soft_locks_changed.emit()
+
+
+func clear_all_soft_locks() -> void:
+	if soft_locked_doors.is_empty():
+		return
+	soft_locked_doors.clear()
+	soft_locks_changed.emit()
+	add_log("Control Interface access — ship bulkheads respond without hotwiring.")
+
+
+func is_soft_locked(a: String, b: String) -> bool:
+	return soft_locked_doors.has(door_key(a, b))
 
 
 # The ids of every tracked resource, in registry order. The ONE enumerable
@@ -2068,6 +2132,7 @@ func serialize() -> Dictionary:
 		"rooms_discovered": rooms_discovered.duplicate(),
 		"rooms_deciphered": rooms_deciphered.duplicate(),
 		"doors_traversed": doors_traversed.duplicate(),
+		"soft_locked_doors": soft_locked_doors.duplicate(),
 		"discovered_pois": discovered_pois.duplicate(true),
 		"breaches_sealed": breaches_sealed.duplicate(),
 		"current_room_id": current_room_id,
@@ -2213,6 +2278,13 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	doors_traversed.clear()
 	for d in data.get("doors_traversed", []):
 		doors_traversed.append(String(d))
+	soft_locked_doors.clear()
+	for sk in data.get("soft_locked_doors", []):
+		soft_locked_doors.append(String(sk))
+	# Old saves predate soft-locks: if Rush already met, keep empty; else seed
+	# the opening Gate Room lock so Continue still gates the east exit.
+	if not data.has("soft_locked_doors") and not met_rush:
+		seed_opening_soft_locks()
 	discovered_pois.clear()
 	var saved_pois: Variant = data.get("discovered_pois", null)
 	if saved_pois is Dictionary:

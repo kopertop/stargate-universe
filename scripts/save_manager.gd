@@ -668,6 +668,20 @@ func start_new_game(profile_name := "") -> void:
 		var sys: Object = _systems[id]
 		if sys.has_method("reset"):
 			sys.call("reset")
+	# GameState.reset seeds the access tablet AFTER wiping Inventory — but Inventory
+	# is its own registered system, so a later Inventory.reset() in this loop
+	# would clobber that seed. Re-seed opening tools + soft-locks AFTER every
+	# system has wiped (weapons-tools New Game empty-hotbar bug).
+	# Use the SceneTree root (not get_node("/root/...")) so -s smoke tests work.
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var gs: Node = tree.root.get_node_or_null("GameState") if tree != null and tree.root != null else null
+	if gs != null:
+		if gs.has_method("seed_default_resources"):
+			gs.call("seed_default_resources")
+		if gs.has_method("seed_starter_tools"):
+			gs.call("seed_starter_tools")
+		if gs.has_method("seed_opening_soft_locks"):
+			gs.call("seed_opening_soft_locks")
 	# A fresh playthrough gets a fresh profile so its autosave ring + permanent
 	# checkpoints never mingle with a prior run's. New Game passes the
 	# player-chosen display name; an empty name falls back to "Default".

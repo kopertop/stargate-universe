@@ -30,7 +30,7 @@ const FOG_COLOR: Color = Color(0.08, 0.08, 0.09)
 const METAL_COLOR: Color = Color(0.17, 0.18, 0.205)
 const METAL_ROUGHNESS: float = 0.42
 const METAL_METALLIC: float = 0.85
-const FLOOR_ROUGHNESS: float = 0.28
+const FLOOR_ROUGHNESS: float = 0.20
 const FLOOR_METALLIC: float = 0.9
 
 ## Console screen constants

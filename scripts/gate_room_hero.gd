@@ -45,7 +45,7 @@ const GATE_RING_GLOW_COLOR: Color = Color(0.75, 0.88, 0.96)
 const VORTEX_UV_SCALE: float = 3.0
 const VORTEX_CHURN_SPEED: float = 1.5
 const VORTEX_COLOR: Color = Color(0.4, 0.75, 1.0)
-const VORTEX_INTENSITY: float = 1.2
+const VORTEX_INTENSITY: float = 1.4
 
 ## Ceiling dome parameters
 const CEILING_DOWNLIGHT_ENERGY: float = 25.0

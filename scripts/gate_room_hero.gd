@@ -38,7 +38,7 @@ const SCREEN_COLOR: Color = Color(0.22, 0.45, 0.85)
 const SCREEN_ENERGY: float = 0.65
 
 ## Chevron glow parameters for better visibility
-const GATE_RING_GLOW_SIZE: float = 3.0
+const GATE_RING_GLOW_SIZE: float = 15.0
 const GATE_RING_GLOW_COLOR: Color = Color(0.75, 0.88, 0.96)
 
 ## Vortex shader parameters
@@ -103,7 +103,7 @@ func _build_gate_ring() -> void:
 		var chevron := _cone(
 			Vector3(0.4, 0.3, 0.4),
 			Vector3(cos(angle) * GATE_RING_RADIUS, 0.4, sin(angle) * GATE_RING_RADIUS),
-			_standard_material(Color(0.05, 0.05, 0.06), 0.6, 0.7)
+			_emissive(Color(0.75, 0.88, 0.96), GATE_RING_GLOW_SIZE)
 		)
 		chevron.rotate_y(angle + PI / 2.0)
 		add_child(chevron)

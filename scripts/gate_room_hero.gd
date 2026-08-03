@@ -38,7 +38,7 @@ const SCREEN_COLOR: Color = Color(0.22, 0.45, 0.85)
 const SCREEN_ENERGY: float = 0.65
 
 ## Chevron glow parameters for better visibility
-const GATE_RING_GLOW_SIZE: float = 15.0
+const GATE_RING_GLOW_SIZE: float = 20.0
 const GATE_RING_GLOW_COLOR: Color = Color(0.75, 0.88, 0.96)
 
 ## Vortex shader parameters

@@ -1,5 +1,7 @@
 extends Node
 
+# @no-save: passive utility node — holds no state, reads config from
+# AccessibilitySettings at runtime. Queried by player controller / view.
 # Aim assist system for Stargate Universe. Provides three modes:
 #   1. Magnetic pull — gently biases the camera/aim toward nearby interactables
 #      and valid targets. Strength scales from 0 (off) to 1 (strong).
@@ -31,7 +33,9 @@ var _settings: Node = null
 
 
 func _ready() -> void:
-	_settings = get_node_or_null("/root/AccessibilitySettings")
+	_settings = get_node_or_null("/root/Accessibility/AccessibilitySettings")
+	if _settings == null:
+		_settings = get_node_or_null("/root/AccessibilitySettings")
 	set_process(false)  # Passive — queried by the player controller, not ticked.
 
 

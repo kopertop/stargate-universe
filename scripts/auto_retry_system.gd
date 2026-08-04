@@ -1,5 +1,8 @@
 extends Node
 
+# @no-save: transient retry state only — retry count, timer, and is_retrying
+# flag are ephemeral and reset on progress or scene reload. Settings are read
+# from Accessibility/AccessibilitySettings. No durable state to persist.
 # Auto-fail retry system for Stargate Universe. Provides automatic retry
 # options when the player fails a critical task (dies, fails a puzzle, runs
 # out of time). Configurable:
@@ -25,7 +28,9 @@ const RETRY_DELAY: float = 2.0  # seconds before auto-retry fires
 
 
 func _ready() -> void:
-	_settings = get_node_or_null("/root/AccessibilitySettings")
+	_settings = get_node_or_null("/root/Accessibility/AccessibilitySettings")
+	if _settings == null:
+		_settings = get_node_or_null("/root/AccessibilitySettings")
 	# Connect to GameState failure signals if they exist.
 	var gs: Node = get_node_or_null("/root/GameState")
 	if gs != null:

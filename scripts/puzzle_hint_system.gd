@@ -1,5 +1,8 @@
 extends Node
 
+# @no-save: transient runtime state only — hint data is loaded from JSON,
+# and the puzzle context / timer / hint-shown flag are all set at runtime
+# by the scene and reset on puzzle entry/exit. No durable state to persist.
 # Puzzle hint system for Stargate Universe. Provides context-aware hints
 # for puzzles and interactables. Hints appear after a configurable delay
 # (default 30s) if the player hasn't made progress on the current puzzle.
@@ -33,7 +36,9 @@ var _settings: Node = null
 
 
 func _ready() -> void:
-	_settings = get_node_or_null("/root/AccessibilitySettings")
+	_settings = get_node_or_null("/root/Accessibility/AccessibilitySettings")
+	if _settings == null:
+		_settings = get_node_or_null("/root/AccessibilitySettings")
 	_load_hints_data()
 	set_process(true)
 

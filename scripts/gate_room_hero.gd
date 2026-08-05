@@ -1,7 +1,7 @@
 # Gate-room hero procedural builder
 # Copyright (c) 2024-2026 Newstex. All rights reserved.
 
-extends Spatial
+extends Node3D
 
 ## Hallway configuration constants
 const HALL_WIDTH: float = 12.0
@@ -21,7 +21,7 @@ const CAM_ANGLE_PITCH: float = -0.55
 
 ## Environment lighting constants
 const AMBIENT_COLOR: Color = Color(0.03, 0.03, 0.04)
-const AMBIENT_ENERGY: float = 0.15
+const AMBIENT_ENERGY: float = 3.0
 const GLOBAL_ENERGY: float = 1.0
 const FOG_DENSITY: float = 0.005
 const FOG_COLOR: Color = Color(0.08, 0.08, 0.09)
@@ -45,7 +45,7 @@ const GATE_RING_GLOW_COLOR: Color = Color(0.75, 0.88, 0.96)
 const VORTEX_UV_SCALE: float = 3.0
 const VORTEX_CHURN_SPEED: float = 1.5
 const VORTEX_COLOR: Color = Color(0.4, 0.75, 1.0)
-const VORTEX_INTENSITY: float = 1.4
+const VORTEX_INTENSITY: float = 3.0
 
 ## Ceiling dome parameters
 const CEILING_DOWNLIGHT_ENERGY: float = 25.0
@@ -83,7 +83,7 @@ func _build_gate_ring() -> void:
 		_standard_material(Color(0.12, 0.12, 0.13), 0.4, 0.8),
 		Quaternion()
 	)
-	platform.translate_y(-0.5)
+	platform.position.y -= 0.5
 	add_child(platform)
 	
 	# Ring geometry at gate center
@@ -93,13 +93,13 @@ func _build_gate_ring() -> void:
 		_standard_material(Color(0.09, 0.09, 0.1), 0.5, 0.9),
 		Quaternion()
 	)
-	ring.translate_y(0.4)
-	ring.translate_z(GATE_RING_RADIUS * 0.5)
+	ring.position.y += 0.4
+	ring.position.z += GATE_RING_RADIUS * 0.5
 	add_child(ring)
 	
 	# Segmented chevrons (triangular segments)
 	for i in range(9):
-		var angle := deg2rad(i * 40.0 - 180.0)
+		var angle := deg_to_rad(i * 40.0 - 180.0)
 		var chevron := _cone(
 			Vector3(0.4, 0.3, 0.4),
 			Vector3(cos(angle) * GATE_RING_RADIUS, 0.4, sin(angle) * GATE_RING_RADIUS),
@@ -115,46 +115,48 @@ func _build_gate_ring() -> void:
 		_standard_material(Color(0.15, 0.15, 0.17), 0.35, 0.85),
 		Quaternion()
 	)
-	stair.translate_y(0.3)
-	stair.translate_z(-1.0)
+	stair.position.y += 0.3
+	stair.position.z += -1.0
 	add_child(stair)
 
 func _build_vortex() -> void:
 	# Load vortex material from shader
 	var vortex_mesh := MeshInstance3D.new()
 	var vortex_shape := CylinderMesh.new()
-	vortex_shape.radius = GATE_RING_RADIUS
+	vortex_shape.top_radius = GATE_RING_RADIUS
+	vortex_shape.bottom_radius = GATE_RING_RADIUS
 	vortex_shape.height = 0.1
 	vortex_shape.radial_segments = 32
-	vortex_shape.height_segments = 1
-	vortex_shape.open_ended = true
+	vortex_shape.rings = 1
 	vortex_mesh.mesh = vortex_shape
 	
 	# Apply portal shader
-	vortex_mesh.material_override = preload("res://shaders/hero_portal.gdshader")
+	var portal_mat := ShaderMaterial.new()
+	portal_mat.shader = preload("res://shaders/hero_portal.gdshader")
+	vortex_mesh.material_override = portal_mat
 	add_child(vortex_mesh)
 
 func _build_console_banks() -> void:
 	# Front console bank (left side)
-	_build_console_row(x_desk: 3.0, z: 4.5, yaw: -0.3, rows: 3, cols: 4)
+	_build_console_row(3.0, 4.5, -0.3, 3, 4)
 	
 	# Front console bank (right side)
-	_build_console_row(x_desk: -3.0, z: 4.5, yaw: 0.3, rows: 3, cols: 4)
+	_build_console_row(-3.0, 4.5, 0.3, 3, 4)
 	
 	# Rear console bank (left side)
-	_build_console_row(x_desk: 3.0, z: -4.5, yaw: -0.3, rows: 2, cols: 4)
+	_build_console_row(3.0, -4.5, -0.3, 2, 4)
 	
 	# Rear console bank (right side)
-	_build_console_row(x_desk: -3.0, z: -4.5, yaw: 0.3, rows: 2, cols: 4)
+	_build_console_row(-3.0, -4.5, 0.3, 2, 4)
 
 func _build_console_row(x_desk: float, z: float, yaw: float, rows: int, cols: int) -> void:
 	var desk := _box(
 		Vector3(0.4 * cols, 0.4, cols * 0.3),
 		Vector3(x_desk, 0.6, z),
 		_standard_material(Color(0.2, 0.22, 0.24), 0.3, 0.9),
-		Quaternion().rotated_y(yaw)
+		Quaternion(Vector3.UP, yaw)
 	)
-	desk.translate_y(0.0)
+	desk.position.y += 0.0
 	add_child(desk)
 	
 	for i in range(rows):
@@ -166,7 +168,7 @@ func _build_console_row(x_desk: float, z: float, yaw: float, rows: int, cols: in
 			)
 			screen.rotate_x(-0.55)
 			add_child(screen)
-	
+
 	# Lip trim
 	var lip := _box(
 		Vector3(0.5 * cols + 0.05, 0.05, 0.15),
@@ -175,7 +177,7 @@ func _build_console_row(x_desk: float, z: float, yaw: float, rows: int, cols: in
 	)
 	lip.rotate_x(-0.55)
 	lip.rotate_y(yaw)
-	lip.translate_y(-0.02)
+	lip.position.y += -0.02
 	add_child(lip)
 
 func _build_ceiling() -> void:
@@ -190,16 +192,15 @@ func _build_ceiling() -> void:
 	
 	# Downlights on dome
 	for i in range(4):
-		var angle := deg2rad(i * 90.0)
+		var angle := deg_to_rad(i * 90.0)
 		var light_pos := Vector3(cos(angle) * 6.0, HALL_HEIGHT * 0.5 - 0.3, sin(angle) * 6.0)
-		var downlight := _emissive(Color(0.9, 0.9, 1.0), CEILING_DOWNLIGHT_ENERGY)
-		downlight.look_at(Vector3(0.0, HALL_HEIGHT * 0.5 - 0.3, 0.0))
-		downlight.translate(light_pos)
+		var downlight_mat := _emissive(Color(0.9, 0.9, 1.0), CEILING_DOWNLIGHT_ENERGY)
+		var downlight := _box(Vector3(0.3, 0.3, 0.3), light_pos, downlight_mat)
 		add_child(downlight)
 	
 	# Rim bands
 	for i in range(6):
-		var angle := deg2rad(i * 60.0)
+		var angle := deg_to_rad(i * 60.0)
 		var rim := _box(
 			Vector3(0.1, 0.4, 0.3),
 			Vector3(cos(angle) * 5.5, HALL_HEIGHT * 0.45, sin(angle) * 5.5),
@@ -215,7 +216,7 @@ func _build_floor() -> void:
 		Vector3(0.0, 0.05, HALL_LENGTH * 0.5),
 		_standard_material(Color(0.1, 0.1, 0.12), FLOOR_ROUGHNESS, FLOOR_METALLIC)
 	)
-	floor.translate_y(0.05)
+	floor.position.y += 0.05
 	add_child(floor)
 	
 	# Grid plates
@@ -225,7 +226,7 @@ func _build_floor() -> void:
 			Vector3(-3.0 + i * 2.0, 0.025, -4.0),
 			_standard_material(Color(0.08, 0.08, 0.09), FLOOR_ROUGHNESS * 1.5, FLOOR_METALLIC)
 		)
-		plate.translate_y(0.06)
+		plate.position.y += 0.06
 		add_child(plate)
 
 func _setup_lighting() -> void:
@@ -233,9 +234,7 @@ func _setup_lighting() -> void:
 	var ambient := DirectionalLight3D.new()
 	ambient.light_color = AMBIENT_COLOR
 	ambient.light_energy = AMBIENT_ENERGY
-	ambient.transform.basis = Basis(-Vector3(1, 0, 0))
-	ambient.rotate_x(deg2rad(45.0))
-	ambient.rotate_y(deg2rad(-45.0))
+	ambient.rotation = Vector3(deg_to_rad(45.0), deg_to_rad(-45.0), 0.0)
 	ambient.name = "AmbientKey"
 	add_child(ambient)
 	
@@ -243,27 +242,28 @@ func _setup_lighting() -> void:
 	var ring_glow := DirectionalLight3D.new()
 	ring_glow.light_color = GATE_RING_GLOW_COLOR
 	ring_glow.light_energy = GATE_RING_GLOW_SIZE
-	ring_glow.transform.basis = Basis(-Vector3(0, 1, 0))
-	ring_glow.look_at(Vector3(GATE_RING_RADIUS * 2.5, HALL_HEIGHT * 0.5, -5.0))
 	ring_glow.name = "RingGlow"
 	add_child(ring_glow)
+	ring_glow.look_at(Vector3(GATE_RING_RADIUS * 2.5, HALL_HEIGHT * 0.5, -5.0))
 	
 	# Vortex fill light (subtle blue)
-	var vortex_fill := PointLight3D.new()
+	var vortex_fill := OmniLight3D.new()
 	vortex_fill.light_color = VORTEX_COLOR
 	vortex_fill.light_energy = 0.5
 	vortex_fill.position = Vector3(0.0, HALL_HEIGHT * 0.6, -2.0)
 	vortex_fill.name = "VortexFill"
 	add_child(vortex_fill)
 	
-	# Fog
-	get_viewport().set_camera(get_node("Camera"))
-	Environment3D.new()
-	get_viewport().environment.fog_enabled = true
-	get_viewport().environment.fog_density = FOG_DENSITY
-	get_viewport().environment.fog_color = FOG_COLOR
-	get_viewport().environment.ambient_light_color = AMBIENT_COLOR
-	get_viewport().environment.ambient_light_energy = AMBIENT_ENERGY
+	# Fog and environment
+	var world_env := WorldEnvironment.new()
+	var env := Environment.new()
+	env.fog_enabled = true
+	env.fog_density = FOG_DENSITY
+	env.fog_light_color = FOG_COLOR
+	env.ambient_light_color = AMBIENT_COLOR
+	env.ambient_light_energy = AMBIENT_ENERGY
+	world_env.environment = env
+	add_child(world_env)
 
 func _build_camera() -> void:
 	var camera := Camera3D.new()
@@ -279,8 +279,8 @@ func _build_camera() -> void:
 	backdrop.mesh = backdrop_mesh
 	backdrop.material_override = _standard_material(Color(0.02, 0.02, 0.02), 0.9, 0.1)
 	backdrop.position = Vector3(-6.0, 7.5, -15.0)
-	backdrop.look_at(camera.global_transform.origin)
 	add_child(backdrop)
+	backdrop.look_at(camera.global_transform.origin)
 
 ## Helper materials
 func _standard_material(color: Color, roughness: float, metallic: float) -> StandardMaterial3D:
@@ -293,8 +293,8 @@ func _standard_material(color: Color, roughness: float, metallic: float) -> Stan
 func _emissive(color: Color, energy: float) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
-	mat.emission_color = color
-	mat.emission_energy = energy
+	mat.emission = color
+	mat.emission_energy_multiplier = energy
 	return mat
 
 ## Geometry helpers
@@ -308,25 +308,26 @@ func _box(size: Vector3, position: Vector3, material: Material, rotation: Quater
 	mesh.quaternion = rotation
 	return mesh
 
-func _cone(height: float, position: Vector3, material: Material) -> MeshInstance3D:
+func _cone(size: Vector3, position: Vector3, material: Material) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
 	var shape := CylinderMesh.new()
-	shape.height = height
-	shape.radius = height * 0.3
+	shape.height = size.y
+	shape.top_radius = size.x * 0.5
+	shape.bottom_radius = size.x * 0.5
 	shape.radial_segments = 16
-	shape.height_segments = 1
+	shape.rings = 1
 	mesh.mesh = shape
 	mesh.material_override = material
 	mesh.position = position
 	return mesh
 
-func _sphere(radius: float, position: Vector3, material: Material) -> MeshInstance3D:
+func _sphere(size: Vector3, position: Vector3, material: Material) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
 	var shape := SphereMesh.new()
-	shape.radius = radius
-	shape.height = radius * 2.0
+	shape.radius = size.x
+	shape.height = size.x * 2.0
 	shape.radial_segments = 32
-	shape.height_segments = 16
+	shape.rings = 16
 	mesh.mesh = shape
 	mesh.material_override = material
 	mesh.position = position

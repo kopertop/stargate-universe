@@ -73,6 +73,7 @@ InvestigationSystem="*res://scripts/investigation_system.gd"
 DiplomacySystem="*res://scripts/diplomacy_system.gd"
 FactionSystem="*res://scripts/faction_system.gd"
 MutinySystem="*res://scripts/mutiny_system.gd"
+TimerSystem="*res://scripts/timer_system.gd"
 
 [editor_plugins]
 

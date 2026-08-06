@@ -10,7 +10,7 @@
 #   6. questlog     — data-driven QuestLog autoload (predicate + event advance,
 #                     save round-trip, old-format migration)
 #
-# Usage: tests/run.sh [lint|scene|flow|quest|playthrough|resume|autopilot|questlog|inventory|atmosphere|kino-doors|kino-autoexplore|gamepad|footfall|npc-chat|shaders|ancient-text|discovery-toast|door-plaque|crate|shared-mat|unit-frame|quest-tracker|hud-wow|gate-two-way|equip-mount|equip-assets|char-panel|equip-integration|planet-gen|planet-resources|planet-integration|biome-desert|biome-jungle|biome-toxic|biome-urban|biome-alien-tech|knockout|ftl-loop|music|save|save-integration|elevator-power|bridge-loop|consumption|repair-robot|setdressing|e1-opening|cold-open|away-split|char-gen|vrm|modular|tts-dialogue|achievements|accessibility|all]
+# Usage: tests/run.sh [lint|scene|flow|quest|playthrough|resume|autopilot|questlog|inventory|atmosphere|kino-doors|kino-autoexplore|gamepad|footfall|npc-chat|shaders|ancient-text|discovery-toast|door-plaque|crate|shared-mat|unit-frame|quest-tracker|hud-wow|gate-two-way|equip-mount|equip-assets|char-panel|equip-integration|planet-gen|planet-resources|planet-integration|biome-desert|biome-jungle|biome-toxic|biome-urban|biome-alien-tech|knockout|ftl-loop|music|timer|save|save-integration|elevator-power|bridge-loop|consumption|repair-robot|setdressing|e1-opening|cold-open|away-split|char-gen|vrm|modular|tts-dialogue|achievements|accessibility|all]
 #                                                                          (default: all)
 #
 # Pre-commit hook: .githooks/pre-commit invokes the lint subset via
@@ -78,6 +78,7 @@ RAN_SCRUBBERS=0
 RAN_PROCSHIP=0
 RAN_FTLLOOP=0
 RAN_MUSIC=0
+RAN_TIMER=0
 RAN_FOOTFALL=0
 RAN_ELEVPOWER=0
 RAN_BRIDGELOOP=0
@@ -135,6 +136,7 @@ RC_SCRUBBERS=0
 RC_PROCSHIP=0
 RC_FTLLOOP=0
 RC_MUSIC=0
+RC_TIMER=0
 RC_ELEVPOWER=0
 RC_BRIDGELOOP=0
 RC_CONSUMPTION=0
@@ -476,6 +478,12 @@ if [[ "$MODE" == "music" || "$MODE" == "all" ]]; then
 	RAN_MUSIC=1
 fi
 
+if [[ "$MODE" == "timer" || "$MODE" == "all" ]]; then
+	"$GODOT_BIN" --headless --quit-after 600 -s "res://tests/smoke/timer_system.gd" 2>&1
+	RC_TIMER=$?
+	RAN_TIMER=1
+fi
+
 if [[ "$MODE" == "elevator-power" || "$MODE" == "all" ]]; then
 	run_script_test "elevator_power" "res://tests/smoke/elevator_power.gd"
 	RC_ELEVPOWER=$?
@@ -669,6 +677,7 @@ echo "==============================="
 [[ $RAN_PROCSHIP -eq 1 ]] && echo "test_procedural_ship: $([[ $RC_PROCSHIP -eq 0 ]] && echo PASS || echo "FAIL ($RC_PROCSHIP)")" || echo "test_procedural_ship: SKIPPED"
 [[ $RAN_FTLLOOP -eq 1 ]] && echo "ftl_loop:            $([[ $RC_FTLLOOP -eq 0 ]] && echo PASS || echo "FAIL ($RC_FTLLOOP)")" || echo "ftl_loop:            SKIPPED"
 [[ $RAN_MUSIC -eq 1 ]] && echo "music_director:      $([[ $RC_MUSIC -eq 0 ]] && echo PASS || echo "FAIL ($RC_MUSIC)")" || echo "music_director:      SKIPPED"
+[[ $RAN_TIMER -eq 1 ]] && echo "timer_system:        $([[ $RC_TIMER -eq 0 ]] && echo PASS || echo "FAIL ($RC_TIMER)")" || echo "timer_system:        SKIPPED"
 [[ $RAN_ELEVPOWER -eq 1 ]] && echo "elevator_power:      $([[ $RC_ELEVPOWER -eq 0 ]] && echo PASS || echo "FAIL ($RC_ELEVPOWER)")" || echo "elevator_power:      SKIPPED"
 [[ $RAN_BRIDGELOOP -eq 1 ]] && echo "bridge_loop_config:  $([[ $RC_BRIDGELOOP -eq 0 ]] && echo PASS || echo "FAIL ($RC_BRIDGELOOP)")" || echo "bridge_loop_config:  SKIPPED"
 [[ $RAN_CONSUMPTION -eq 1 ]] && echo "consumption:         $([[ $RC_CONSUMPTION -eq 0 ]] && echo PASS || echo "FAIL ($RC_CONSUMPTION)")" || echo "consumption:         SKIPPED"
@@ -690,7 +699,7 @@ echo "==============================="
 [[ $RAN_SAVE -eq 1 ]] && echo "save_ingame_ui:      $([[ $RC_SAVE_INGAME -eq 0 ]] && echo PASS || echo "FAIL ($RC_SAVE_INGAME)")" || echo "save_ingame_ui:      SKIPPED"
 [[ $RAN_SAVE_INTEGRATION -eq 1 ]] && echo "save_integration:    $([[ $RC_SAVE_INTEGRATION -eq 0 ]] && echo PASS || echo "FAIL ($RC_SAVE_INTEGRATION)")" || echo "save_integration:    SKIPPED"
 
-if [[ ( $RAN_LINT -eq 1 && $RC_LINT -ne 0 ) || ( $RAN_LINT -eq 1 && $RC_FORKS -ne 0 ) || ( $RAN_SCENE -eq 1 && $RC_SCENE -ne 0 ) || ( $RAN_FLOW -eq 1 && $RC_FLOW -ne 0 ) || ( $RAN_QUEST -eq 1 && $RC_QUEST -ne 0 ) || ( $RAN_PLAY -eq 1 && $RC_PLAY -ne 0 ) || ( $RAN_RESUME -eq 1 && $RC_RESUME -ne 0 ) || ( $RAN_AUTOPILOT -eq 1 && $RC_AUTOPILOT -ne 0 ) || ( $RAN_QUESTLOG -eq 1 && $RC_QUESTLOG -ne 0 ) || ( $RAN_INV -eq 1 && $RC_INV -ne 0 ) || ( $RAN_ATMO -eq 1 && $RC_ATMO -ne 0 ) || ( $RAN_KINODOORS -eq 1 && $RC_KINODOORS -ne 0 ) || ( $RAN_KINOEXPLORE -eq 1 && $RC_KINOEXPLORE -ne 0 ) || ( $RAN_KINODISC -eq 1 && $RC_KINODISC -ne 0 ) || ( $RAN_GAMEPAD -eq 1 && $RC_GAMEPAD -ne 0 ) || ( $RAN_FOOTFALL -eq 1 && $RC_FOOTFALL -ne 0 ) || ( $RAN_NPCCHAT -eq 1 && $RC_NPCCHAT -ne 0 ) || ( $RAN_SHADER -eq 1 && $RC_SHADER -ne 0 ) || ( $RAN_ANCIENTTEXT -eq 1 && $RC_ANCIENTTEXT -ne 0 ) || ( $RAN_DISCTOAST -eq 1 && $RC_DISCTOAST -ne 0 ) || ( $RAN_DOORPLAQUE -eq 1 && $RC_DOORPLAQUE -ne 0 ) || ( $RAN_CRATE -eq 1 && $RC_CRATE -ne 0 ) || ( $RAN_UNITFRAME -eq 1 && $RC_UNITFRAME -ne 0 ) || ( $RAN_QUESTTRACKER -eq 1 && $RC_QUESTTRACKER -ne 0 ) || ( $RAN_HUDWOW -eq 1 && $RC_HUDWOW -ne 0 ) || ( $RAN_HUDWOWCOH -eq 1 && $RC_HUDWOWCOH -ne 0 ) || ( $RAN_HUDSCALE -eq 1 && $RC_HUDSCALE -ne 0 ) || ( $RAN_HUDCHAT -eq 1 && $RC_HUDCHAT -ne 0 ) || ( $RAN_GATETWOWAY -eq 1 && $RC_GATETWOWAY -ne 0 ) || ( $RAN_EQUIPMOUNT -eq 1 && $RC_EQUIPMOUNT -ne 0 ) || ( $RAN_EQUIPASSETS -eq 1 && $RC_EQUIPASSETS -ne 0 ) || ( $RAN_CHARPANEL -eq 1 && $RC_CHARPANEL -ne 0 ) || ( $RAN_EQUIPINT -eq 1 && $RC_EQUIPINT -ne 0 ) || ( $RAN_PLANETGEN -eq 1 && $RC_PLANETGEN -ne 0 ) || ( $RAN_PLANETRES -eq 1 && $RC_PLANETRES -ne 0 ) || ( $RAN_PLANETINT -eq 1 && $RC_PLANETINT -ne 0 ) || ( $RAN_BIOMEDESERT -eq 1 && $RC_BIOMEDESERT -ne 0 ) || ( $RAN_BIOMEJUNGLE -eq 1 && $RC_BIOMEJUNGLE -ne 0 ) || ( $RAN_BIOMETOXIC -eq 1 && $RC_BIOMETOXIC -ne 0 ) || ( $RAN_BIOMEURBAN -eq 1 && $RC_BIOMEURBAN -ne 0 ) || ( $RAN_KNOCKOUT -eq 1 && $RC_KNOCKOUT -ne 0 ) || ( $RAN_SCRUBBERS -eq 1 && $RC_SCRUBBERS -ne 0 ) || ( $RAN_PROCSHIP -eq 1 && $RC_PROCSHIP -ne 0 ) || ( $RAN_FTLLOOP -eq 1 && $RC_FTLLOOP -ne 0 ) || ( $RAN_MUSIC -eq 1 && $RC_MUSIC -ne 0 ) || ( $RAN_ELEVPOWER -eq 1 && $RC_ELEVPOWER -ne 0 ) || ( $RAN_BRIDGELOOP -eq 1 && $RC_BRIDGELOOP -ne 0 ) || ( $RAN_CONSUMPTION -eq 1 && $RC_CONSUMPTION -ne 0 ) || ( $RAN_REPAIR -eq 1 && $RC_REPAIR -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_UNIT -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_RESUME -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_ORCH -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_BROWSER -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_INGAME -ne 0 ) || ( $RAN_SAVE_INTEGRATION -eq 1 && $RC_SAVE_INTEGRATION -ne 0 ) || ( $RAN_E1OPEN -eq 1 && $RC_E1OPEN -ne 0 ) || ( $RAN_COLDOPEN -eq 1 && $RC_COLDOPEN -ne 0 ) || ( $RAN_AWAYSPLIT -eq 1 && $RC_AWAYSPLIT -ne 0 ) || ( $RAN_CHARGEN -eq 1 && $RC_CHARGEN -ne 0 ) || ( $RAN_VRM -eq 1 && $RC_VRM -ne 0 ) || ( $RAN_MODULAR -eq 1 && $RC_MODULAR -ne 0 ) || ( $RAN_TTSDIALOGUE -eq 1 && $RC_TTSDIALOGUE -ne 0 ) || ( $RAN_ACHIEVEMENTS -eq 1 && $RC_ACHIEVEMENTS -ne 0 ) || ( $RAN_ACCESSIBILITY -eq 1 && $RC_ACCESSIBILITY -ne 0 ) ]]; then
+if [[ ( $RAN_LINT -eq 1 && $RC_LINT -ne 0 ) || ( $RAN_LINT -eq 1 && $RC_FORKS -ne 0 ) || ( $RAN_SCENE -eq 1 && $RC_SCENE -ne 0 ) || ( $RAN_FLOW -eq 1 && $RC_FLOW -ne 0 ) || ( $RAN_QUEST -eq 1 && $RC_QUEST -ne 0 ) || ( $RAN_PLAY -eq 1 && $RC_PLAY -ne 0 ) || ( $RAN_RESUME -eq 1 && $RC_RESUME -ne 0 ) || ( $RAN_AUTOPILOT -eq 1 && $RC_AUTOPILOT -ne 0 ) || ( $RAN_QUESTLOG -eq 1 && $RC_QUESTLOG -ne 0 ) || ( $RAN_INV -eq 1 && $RC_INV -ne 0 ) || ( $RAN_ATMO -eq 1 && $RC_ATMO -ne 0 ) || ( $RAN_KINODOORS -eq 1 && $RC_KINODOORS -ne 0 ) || ( $RAN_KINOEXPLORE -eq 1 && $RC_KINOEXPLORE -ne 0 ) || ( $RAN_KINODISC -eq 1 && $RC_KINODISC -ne 0 ) || ( $RAN_GAMEPAD -eq 1 && $RC_GAMEPAD -ne 0 ) || ( $RAN_FOOTFALL -eq 1 && $RC_FOOTFALL -ne 0 ) || ( $RAN_NPCCHAT -eq 1 && $RC_NPCCHAT -ne 0 ) || ( $RAN_SHADER -eq 1 && $RC_SHADER -ne 0 ) || ( $RAN_ANCIENTTEXT -eq 1 && $RC_ANCIENTTEXT -ne 0 ) || ( $RAN_DISCTOAST -eq 1 && $RC_DISCTOAST -ne 0 ) || ( $RAN_DOORPLAQUE -eq 1 && $RC_DOORPLAQUE -ne 0 ) || ( $RAN_CRATE -eq 1 && $RC_CRATE -ne 0 ) || ( $RAN_UNITFRAME -eq 1 && $RC_UNITFRAME -ne 0 ) || ( $RAN_QUESTTRACKER -eq 1 && $RC_QUESTTRACKER -ne 0 ) || ( $RAN_HUDWOW -eq 1 && $RC_HUDWOW -ne 0 ) || ( $RAN_HUDWOWCOH -eq 1 && $RC_HUDWOWCOH -ne 0 ) || ( $RAN_HUDSCALE -eq 1 && $RC_HUDSCALE -ne 0 ) || ( $RAN_HUDCHAT -eq 1 && $RC_HUDCHAT -ne 0 ) || ( $RAN_GATETWOWAY -eq 1 && $RC_GATETWOWAY -ne 0 ) || ( $RAN_EQUIPMOUNT -eq 1 && $RC_EQUIPMOUNT -ne 0 ) || ( $RAN_EQUIPASSETS -eq 1 && $RC_EQUIPASSETS -ne 0 ) || ( $RAN_CHARPANEL -eq 1 && $RC_CHARPANEL -ne 0 ) || ( $RAN_EQUIPINT -eq 1 && $RC_EQUIPINT -ne 0 ) || ( $RAN_PLANETGEN -eq 1 && $RC_PLANETGEN -ne 0 ) || ( $RAN_PLANETRES -eq 1 && $RC_PLANETRES -ne 0 ) || ( $RAN_PLANETINT -eq 1 && $RC_PLANETINT -ne 0 ) || ( $RAN_BIOMEDESERT -eq 1 && $RC_BIOMEDESERT -ne 0 ) || ( $RAN_BIOMEJUNGLE -eq 1 && $RC_BIOMEJUNGLE -ne 0 ) || ( $RAN_BIOMETOXIC -eq 1 && $RC_BIOMETOXIC -ne 0 ) || ( $RAN_BIOMEURBAN -eq 1 && $RC_BIOMEURBAN -ne 0 ) || ( $RAN_KNOCKOUT -eq 1 && $RC_KNOCKOUT -ne 0 ) || ( $RAN_SCRUBBERS -eq 1 && $RC_SCRUBBERS -ne 0 ) || ( $RAN_PROCSHIP -eq 1 && $RC_PROCSHIP -ne 0 ) || ( $RAN_FTLLOOP -eq 1 && $RC_FTLLOOP -ne 0 ) || ( $RAN_MUSIC -eq 1 && $RC_MUSIC -ne 0 ) || ( $RAN_TIMER -eq 1 && $RC_TIMER -ne 0 ) || ( $RAN_ELEVPOWER -eq 1 && $RC_ELEVPOWER -ne 0 ) || ( $RAN_BRIDGELOOP -eq 1 && $RC_BRIDGELOOP -ne 0 ) || ( $RAN_CONSUMPTION -eq 1 && $RC_CONSUMPTION -ne 0 ) || ( $RAN_REPAIR -eq 1 && $RC_REPAIR -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_UNIT -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_RESUME -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_ORCH -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_BROWSER -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_INGAME -ne 0 ) || ( $RAN_SAVE_INTEGRATION -eq 1 && $RC_SAVE_INTEGRATION -ne 0 ) || ( $RAN_E1OPEN -eq 1 && $RC_E1OPEN -ne 0 ) || ( $RAN_COLDOPEN -eq 1 && $RC_COLDOPEN -ne 0 ) || ( $RAN_AWAYSPLIT -eq 1 && $RC_AWAYSPLIT -ne 0 ) || ( $RAN_CHARGEN -eq 1 && $RC_CHARGEN -ne 0 ) || ( $RAN_VRM -eq 1 && $RC_VRM -ne 0 ) || ( $RAN_MODULAR -eq 1 && $RC_MODULAR -ne 0 ) || ( $RAN_TTSDIALOGUE -eq 1 && $RC_TTSDIALOGUE -ne 0 ) || ( $RAN_ACHIEVEMENTS -eq 1 && $RC_ACHIEVEMENTS -ne 0 ) || ( $RAN_ACCESSIBILITY -eq 1 && $RC_ACCESSIBILITY -ne 0 ) ]]; then
 	exit 1
 fi
 exit 0

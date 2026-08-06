@@ -264,6 +264,36 @@ func reconcile_run_resources_on_knockout() -> void:
 				gs.resource_changed.emit(id, keep)
 
 
+func room_atmosphere(room_id: String) -> Dictionary:
+	var atmo: Dictionary = {
+		"status": "NOMINAL", "composition": "N2/O2 NOMINAL",
+		"breathable": true, "oxygen": 0, "radiation": "LOW", "toxins": "NONE",
+	}
+	var gs: Node = _gs()
+	if gs != null:
+		atmo["oxygen"] = int(round(float(gs.get("oxygen"))))
+	var sl: Node = _autoload_node("ShipLayout")
+	if sl != null and sl.has_method("room"):
+		var row: Dictionary = sl.call("room", room_id)
+		var authored: Variant = row.get("atmosphere", {})
+		if authored is Dictionary:
+			for k in (authored as Dictionary).keys():
+				atmo[k] = (authored as Dictionary)[k]
+	var breaches: Array = []
+	if gs != null and "breaches_sealed" in gs:
+		breaches = gs.get("breaches_sealed")
+	if room_id == "breached_section_south" and not breaches.has("breach_a"):
+		atmo["status"] = "VENTING"
+		atmo["composition"] = "VACUUM"
+		atmo["breathable"] = false
+		atmo["oxygen"] = 0
+		atmo["temperature_note"] = "FREEZING"
+	elif gs != null and bool(gs.get("air_crisis_started")) and not bool(gs.get("scrubber_repaired")):
+		atmo["status"] = "DEGRADED"
+		atmo["toxins"] = "CO2 ELEVATED"
+	return atmo
+
+
 func reset() -> void:
 	active_planet_spec = {}
 	planets_dialed = 0
@@ -273,6 +303,43 @@ func reset() -> void:
 	_water_drain_accum = 0.0
 	run_start_resources = {}
 	_ftl_drop_game_time = -1.0
+
+
+func _build_resource_table_from_scarcity(scarcity_rows: Array, seed: int) -> Dictionary:
+	if scarcity_rows.is_empty():
+		return {}
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = seed
+	var primary_id: String = String((scarcity_rows[0] as Dictionary)["id"])
+	var chosen: Array = [primary_id]
+	var pool: Array = []
+	for r in scarcity_rows.slice(1):
+		pool.append(String((r as Dictionary)["id"]))
+	var want_extra: int = (1 if pool.size() <= 1 else rng.randi_range(1, 2))
+	want_extra = mini(want_extra, pool.size())
+	for i in range(pool.size() - 1, 0, -1):
+		var j: int = rng.randi_range(0, i)
+		var tmp: Variant = pool[i]
+		pool[i] = pool[j]
+		pool[j] = tmp
+	for k in want_extra:
+		chosen.append(String(pool[k]))
+	var clusters: Array = []
+	var first: bool = true
+	for type in chosen:
+		clusters.append({"type": type, "nodes": 5 if first else 3,
+			"per_node": 2 if first else 1, "min_radius": 50.0 if first else 90.0,
+			"max_radius": 120.0 if first else 200.0})
+		first = false
+	var table: Dictionary = {"clusters": clusters}
+	for c in clusters:
+		if String((c as Dictionary)["type"]) == AIR_LIME_RESOURCE:
+			table["lime_nodes"] = int((c as Dictionary)["nodes"])
+			table["lime_per_node"] = int((c as Dictionary)["per_node"])
+			table["lime_min_radius"] = float((c as Dictionary)["min_radius"])
+			table["lime_max_radius"] = float((c as Dictionary)["max_radius"])
+			break
+	return table
 
 
 # --- Save / Load --------------------------------------------------------------

@@ -99,26 +99,33 @@ func _build_gate_ring() -> void:
 	)
 	add_child(platform)
 	
-	# Ring geometry — TorusMesh ring with aperture showing vortex behind it
+	# Ring geometry — TorusMesh rotated VERTICAL to face camera (-Z).
+	# Default TorusMesh lies flat in XZ plane (ring axis = Y).
+	# rotate_x(PI/2) makes ring axis = Z, so the ring faces -Z toward camera.
+	# Material brightened from 0.09 to 0.28 so ring is visible in dark scene.
+	# Inner radius widened (0.78→0.62) for a thicker, more readable ring.
 	var ring_mesh := MeshInstance3D.new()
 	var torus_shape := TorusMesh.new()
 	torus_shape.outer_radius = GATE_RING_RADIUS
-	torus_shape.inner_radius = GATE_RING_RADIUS * 0.78
-	torus_shape.ring_segments = 32
+	torus_shape.inner_radius = GATE_RING_RADIUS * 0.62
+	torus_shape.ring_segments = 48
 	ring_mesh.mesh = torus_shape
-	ring_mesh.material_override = _standard_material(Color(0.09, 0.09, 0.1), 0.5, 0.9)
+	ring_mesh.material_override = _emissive(Color(1.0, 0.0, 0.0), 20.0)
 	ring_mesh.position = Vector3(0.0, 6.0, GATE_RING_RADIUS * 0.5)
+	ring_mesh.rotate_x(PI / 2.0)
 	add_child(ring_mesh)
 	
-	# Segmented chevrons (triangular segments) — raised to match ring
+	# Segmented chevrons — vertical circle matching upright ring.
+	# X = cos(angle) * R, Y = 6.0 + sin(angle) * R, Z = constant.
+	# rotate_z aligns chevron cones to point inward on the vertical ring.
 	for i in range(9):
 		var angle := deg_to_rad(i * 40.0 - 180.0)
 		var chevron := _cone(
 			Vector3(0.4, 0.3, 0.4),
-			Vector3(cos(angle) * GATE_RING_RADIUS, 6.0, sin(angle) * GATE_RING_RADIUS + GATE_RING_RADIUS * 0.5),
+			Vector3(cos(angle) * GATE_RING_RADIUS, 6.0 + sin(angle) * GATE_RING_RADIUS, GATE_RING_RADIUS * 0.5),
 			_emissive(Color(0.75, 0.88, 0.96), GATE_RING_GLOW_SIZE)
 		)
-		chevron.rotate_y(angle + PI / 2.0)
+		chevron.rotate_z(angle + PI / 2.0)
 		add_child(chevron)
 	
 	# Small central staircase below gate ring

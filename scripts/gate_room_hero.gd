@@ -99,15 +99,16 @@ func _build_gate_ring() -> void:
 	)
 	add_child(platform)
 	
-	# Ring geometry at gate center — raised to camera line-of-sight height
-	var ring := _box(
-		Vector3(GATE_RING_RADIUS * 2.0, 0.8, GATE_RING_RADIUS * 2.0),
-		Vector3(0.0, 6.0, 0.0),
-		_standard_material(Color(0.09, 0.09, 0.1), 0.5, 0.9),
-		Quaternion()
-	)
-	ring.position.z += GATE_RING_RADIUS * 0.5
-	add_child(ring)
+	# Ring geometry — TorusMesh ring with aperture showing vortex behind it
+	var ring_mesh := MeshInstance3D.new()
+	var torus_shape := TorusMesh.new()
+	torus_shape.outer_radius = GATE_RING_RADIUS
+	torus_shape.inner_radius = GATE_RING_RADIUS * 0.78
+	torus_shape.ring_segments = 32
+	ring_mesh.mesh = torus_shape
+	ring_mesh.material_override = _standard_material(Color(0.09, 0.09, 0.1), 0.5, 0.9)
+	ring_mesh.position = Vector3(0.0, 6.0, GATE_RING_RADIUS * 0.5)
+	add_child(ring_mesh)
 	
 	# Segmented chevrons (triangular segments) — raised to match ring
 	for i in range(9):
@@ -131,21 +132,24 @@ func _build_gate_ring() -> void:
 	add_child(stair)
 
 func _build_vortex() -> void:
-	# Load vortex material from shader
+	# Vortex portal disc — PlaneMesh gives proper 0..1 UVs that the shader's
+	# (UV - 0.5) * 2.0 mapping converts to -1..1 disc coordinates.
+	# CylinderMesh UVs break the radial shader (confirmed: vortex invisible).
+	# PlaneMesh size = ring diameter so the disc fills the aperture.
 	var vortex_mesh := MeshInstance3D.new()
-	var vortex_shape := CylinderMesh.new()
-	vortex_shape.top_radius = GATE_RING_RADIUS
-	vortex_shape.bottom_radius = GATE_RING_RADIUS
-	vortex_shape.height = 0.1
-	vortex_shape.radial_segments = 32
-	vortex_shape.rings = 1
+	var vortex_shape := PlaneMesh.new()
+	vortex_shape.size = Vector2(GATE_RING_RADIUS * 2.0, GATE_RING_RADIUS * 2.0)
 	vortex_mesh.mesh = vortex_shape
-	# Position vortex at gate ring height
+	# Position vortex at gate ring height, facing camera at Z=-19
 	vortex_mesh.position = Vector3(0.0, 6.0, GATE_RING_RADIUS * 0.5)
+	# PlaneMesh faces +Y by default; rotate to face -Z (toward camera)
+	vortex_mesh.rotate_x(-PI / 2.0)
 	
 	# Apply portal shader
 	var portal_mat := ShaderMaterial.new()
 	portal_mat.shader = preload("res://shaders/hero_portal.gdshader")
+	# Wire noise texture to shader uniform — without this, texture() returns black
+	portal_mat.set_shader_parameter("noise_tex", preload("res://assets/hero/noise_1024.png"))
 	vortex_mesh.material_override = portal_mat
 	add_child(vortex_mesh)
 
@@ -260,10 +264,14 @@ func _setup_lighting() -> void:
 	add_child(ring_glow)
 	ring_glow.look_at(Vector3(GATE_RING_RADIUS * 2.5, HALL_HEIGHT * 0.5, -5.0))
 	
-	# Vortex fill light (subtle blue) — positioned at gate ring height
+	# Vortex fill light — positioned at gate ring height, moderate energy to
+	# illuminate the gate room interior while keeping dark cinematic tone.
+	# Previous cycle: 4.0=too dark (exterior read), 20.0=too bright (washed out).
+	# 10.0 + omni_range 25 covers the hall without blowing highlights.
 	var vortex_fill := OmniLight3D.new()
 	vortex_fill.light_color = VORTEX_COLOR
-	vortex_fill.light_energy = 4.0
+	vortex_fill.light_energy = 10.0
+	vortex_fill.omni_range = 25.0
 	vortex_fill.position = Vector3(0.0, 6.0, 1.75)
 	vortex_fill.name = "VortexFill"
 	add_child(vortex_fill)

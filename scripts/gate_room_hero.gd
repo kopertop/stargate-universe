@@ -5,7 +5,7 @@ extends Node3D
 
 ## Hallway configuration constants
 const HALL_WIDTH: float = 12.0
-const HALL_LENGTH: float = 24.0
+const HALL_LENGTH: float = 48.0
 const HALL_HEIGHT: float = 12.0
 
 ## Gate room configuration constants
@@ -21,7 +21,7 @@ const CAM_ANGLE_PITCH: float = -0.55
 
 ## Environment lighting constants
 const AMBIENT_COLOR: Color = Color(0.03, 0.03, 0.04)
-const AMBIENT_ENERGY: float = 3.0
+const AMBIENT_ENERGY: float = 12.0
 const GLOBAL_ENERGY: float = 1.0
 const FOG_DENSITY: float = 0.005
 const FOG_COLOR: Color = Color(0.08, 0.08, 0.09)
@@ -51,6 +51,10 @@ const VORTEX_INTENSITY: float = 3.0
 const CEILING_DOWNLIGHT_ENERGY: float = 25.0
 const CEILING_RIM_ENERGY: float = 1.5
 
+## Render capture — saves image from _process() as fallback when harness camera fails
+var _frame_count: int = 0
+const _CAPTURE_FRAME: int = 180
+
 func _ready() -> void:
 	# Build all scene components
 	_build_hall()
@@ -60,17 +64,27 @@ func _ready() -> void:
 	_build_ceiling()
 	_build_floor()
 	
-	# Camera setup
+	# Camera setup — positioned at harness location for correct view
 	_build_camera()
 	
 	# Lighting setup
 	_setup_lighting()
 
+func _process(delta: float) -> void:
+	_frame_count += 1
+	if _frame_count == _CAPTURE_FRAME:
+		var img := get_viewport().get_texture().get_image()
+		img.save_png("user://hero.png")
+		print("HERO_CAPTURE saved at frame ", _frame_count)
+
 func _build_hall() -> void:
+	# Hall centered at Z=0 to encompass render camera at Z=-19
+	var hall_mat := _standard_material(METAL_COLOR, METAL_ROUGHNESS, METAL_METALLIC)
+	hall_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	var hall := _box(
 		Vector3(HALL_WIDTH, HALL_HEIGHT, HALL_LENGTH),
-		Vector3(0.0, HALL_HEIGHT * 0.5, HALL_LENGTH * 0.5),
-		_standard_material(METAL_COLOR, METAL_ROUGHNESS, METAL_METALLIC),
+		Vector3(0.0, HALL_HEIGHT * 0.5, 0.0),
+		hall_mat,
 		Quaternion()
 	)
 	add_child(hall)
@@ -79,44 +93,41 @@ func _build_gate_ring() -> void:
 	# Main gate ring platform
 	var platform := _box(
 		Vector3(8.0, 1.0, 8.0),
-		Vector3(0.0, HALL_HEIGHT * 0.5 - 0.5, 0.0),
+		Vector3(0.0, 0.0, 0.0),
 		_standard_material(Color(0.12, 0.12, 0.13), 0.4, 0.8),
 		Quaternion()
 	)
-	platform.position.y -= 0.5
 	add_child(platform)
 	
-	# Ring geometry at gate center
+	# Ring geometry at gate center — raised to camera line-of-sight height
 	var ring := _box(
 		Vector3(GATE_RING_RADIUS * 2.0, 0.8, GATE_RING_RADIUS * 2.0),
-		Vector3(0.0, 0.4, 0.0),
+		Vector3(0.0, 6.0, 0.0),
 		_standard_material(Color(0.09, 0.09, 0.1), 0.5, 0.9),
 		Quaternion()
 	)
-	ring.position.y += 0.4
 	ring.position.z += GATE_RING_RADIUS * 0.5
 	add_child(ring)
 	
-	# Segmented chevrons (triangular segments)
+	# Segmented chevrons (triangular segments) — raised to match ring
 	for i in range(9):
 		var angle := deg_to_rad(i * 40.0 - 180.0)
 		var chevron := _cone(
 			Vector3(0.4, 0.3, 0.4),
-			Vector3(cos(angle) * GATE_RING_RADIUS, 0.4, sin(angle) * GATE_RING_RADIUS),
+			Vector3(cos(angle) * GATE_RING_RADIUS, 6.0, sin(angle) * GATE_RING_RADIUS + GATE_RING_RADIUS * 0.5),
 			_emissive(Color(0.75, 0.88, 0.96), GATE_RING_GLOW_SIZE)
 		)
 		chevron.rotate_y(angle + PI / 2.0)
 		add_child(chevron)
 	
-	# Small central staircase
+	# Small central staircase below gate ring
 	var stair := _box(
 		Vector3(2.0, 0.6, 3.0),
-		Vector3(0.0, 0.3, 0.0),
+		Vector3(0.0, 0.3, -1.0),
 		_standard_material(Color(0.15, 0.15, 0.17), 0.35, 0.85),
 		Quaternion()
 	)
 	stair.position.y += 0.3
-	stair.position.z += -1.0
 	add_child(stair)
 
 func _build_vortex() -> void:
@@ -129,6 +140,8 @@ func _build_vortex() -> void:
 	vortex_shape.radial_segments = 32
 	vortex_shape.rings = 1
 	vortex_mesh.mesh = vortex_shape
+	# Position vortex at gate ring height
+	vortex_mesh.position = Vector3(0.0, 6.0, GATE_RING_RADIUS * 0.5)
 	
 	# Apply portal shader
 	var portal_mat := ShaderMaterial.new()
@@ -168,7 +181,7 @@ func _build_console_row(x_desk: float, z: float, yaw: float, rows: int, cols: in
 			)
 			screen.rotate_x(-0.55)
 			add_child(screen)
-
+	
 	# Lip trim
 	var lip := _box(
 		Vector3(0.5 * cols + 0.05, 0.05, 0.15),
@@ -211,19 +224,20 @@ func _build_ceiling() -> void:
 		add_child(rim)
 
 func _build_floor() -> void:
+	# Floor centered at Z=0 to match hall
 	var floor := _box(
 		Vector3(HALL_WIDTH, 0.1, HALL_LENGTH),
-		Vector3(0.0, 0.05, HALL_LENGTH * 0.5),
+		Vector3(0.0, 0.05, 0.0),
 		_standard_material(Color(0.1, 0.1, 0.12), FLOOR_ROUGHNESS, FLOOR_METALLIC)
 	)
 	floor.position.y += 0.05
 	add_child(floor)
 	
-	# Grid plates
-	for i in range(4):
+	# Grid plates spread across hall length
+	for i in range(8):
 		var plate := _box(
 			Vector3(3.0, 0.05, 5.0),
-			Vector3(-3.0 + i * 2.0, 0.025, -4.0),
+			Vector3(-3.0 + (i % 4) * 2.0, 0.025, -18.0 + (i / 4) * 22.0),
 			_standard_material(Color(0.08, 0.08, 0.09), FLOOR_ROUGHNESS * 1.5, FLOOR_METALLIC)
 		)
 		plate.position.y += 0.06
@@ -246,11 +260,11 @@ func _setup_lighting() -> void:
 	add_child(ring_glow)
 	ring_glow.look_at(Vector3(GATE_RING_RADIUS * 2.5, HALL_HEIGHT * 0.5, -5.0))
 	
-	# Vortex fill light (subtle blue)
+	# Vortex fill light (subtle blue) — positioned at gate ring height
 	var vortex_fill := OmniLight3D.new()
 	vortex_fill.light_color = VORTEX_COLOR
-	vortex_fill.light_energy = 0.5
-	vortex_fill.position = Vector3(0.0, HALL_HEIGHT * 0.6, -2.0)
+	vortex_fill.light_energy = 4.0
+	vortex_fill.position = Vector3(0.0, 6.0, 1.75)
 	vortex_fill.name = "VortexFill"
 	add_child(vortex_fill)
 	
@@ -266,21 +280,15 @@ func _setup_lighting() -> void:
 	add_child(world_env)
 
 func _build_camera() -> void:
+	# Scene camera at harness position for correct render view
 	var camera := Camera3D.new()
-	camera.position = Vector3(0.0, CAM_HEIGHT, -4.5)
-	camera.rotation = Vector3(CAM_ANGLE_PITCH, CAM_ANGLE_Y, 0.0)
+	camera.position = Vector3(0.0, 2.6, -19.0)
+	camera.fov = 76.0
+	camera.current = true
 	camera.name = "Camera3D"
 	add_child(camera)
-	
-	# Camera backdrop (dark void fill)
-	var backdrop := MeshInstance3D.new()
-	var backdrop_mesh := BoxMesh.new()
-	backdrop_mesh.size = Vector3(12.0, 15.0, 0.1)
-	backdrop.mesh = backdrop_mesh
-	backdrop.material_override = _standard_material(Color(0.02, 0.02, 0.02), 0.9, 0.1)
-	backdrop.position = Vector3(-6.0, 7.5, -15.0)
-	add_child(backdrop)
-	backdrop.look_at(camera.global_transform.origin)
+	# look_at AFTER add_child so node is in the scene tree
+	camera.look_at(Vector3(0.0, 6.0, 1.75), Vector3.UP)
 
 ## Helper materials
 func _standard_material(color: Color, roughness: float, metallic: float) -> StandardMaterial3D:

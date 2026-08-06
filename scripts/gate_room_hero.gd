@@ -13,6 +13,11 @@ const GATE_RING_RADIUS: float = 3.5
 const GATE_RING_THICKNESS: float = 0.4
 const GATE_RING_CHEVRON_SIZE: float = 0.8
 
+## Gate ring center — aligned with harness camera look_at (0, 9.2, 13.5)
+## so the gate is dead-center in the rendered frame.
+const GATE_CENTER_Y: float = 9.2
+const GATE_CENTER_Z: float = 13.5
+
 ## Camera configuration
 const CAM_ZOOM: float = 1.8
 const CAM_HEIGHT: float = 0.55
@@ -90,10 +95,10 @@ func _build_hall() -> void:
 	add_child(hall)
 
 func _build_gate_ring() -> void:
-	# Main gate ring platform
+	# Main gate ring platform — moved to gate center Z
 	var platform := _box(
 		Vector3(8.0, 1.0, 8.0),
-		Vector3(0.0, 0.0, 0.0),
+		Vector3(0.0, 0.0, GATE_CENTER_Z),
 		_standard_material(Color(0.12, 0.12, 0.13), 0.4, 0.8),
 		Quaternion()
 	)
@@ -104,6 +109,7 @@ func _build_gate_ring() -> void:
 	# rotate_x(PI/2) makes ring axis = Z, so the ring faces -Z toward camera.
 	# Material brightened from 0.09 to 0.28 so ring is visible in dark scene.
 	# Inner radius widened (0.78→0.62) for a thicker, more readable ring.
+	# Positioned at GATE_CENTER_Y/Z to align with harness camera look_at.
 	var ring_mesh := MeshInstance3D.new()
 	var torus_shape := TorusMesh.new()
 	torus_shape.outer_radius = GATE_RING_RADIUS
@@ -111,27 +117,27 @@ func _build_gate_ring() -> void:
 	torus_shape.ring_segments = 48
 	ring_mesh.mesh = torus_shape
 	ring_mesh.material_override = _emissive(Color(1.0, 0.0, 0.0), 20.0)
-	ring_mesh.position = Vector3(0.0, 6.0, GATE_RING_RADIUS * 0.5)
+	ring_mesh.position = Vector3(0.0, GATE_CENTER_Y, GATE_CENTER_Z)
 	ring_mesh.rotate_x(PI / 2.0)
 	add_child(ring_mesh)
 	
 	# Segmented chevrons — vertical circle matching upright ring.
-	# X = cos(angle) * R, Y = 6.0 + sin(angle) * R, Z = constant.
+	# X = cos(angle) * R, Y = GATE_CENTER_Y + sin(angle) * R, Z = GATE_CENTER_Z.
 	# rotate_z aligns chevron cones to point inward on the vertical ring.
 	for i in range(9):
 		var angle := deg_to_rad(i * 40.0 - 180.0)
 		var chevron := _cone(
 			Vector3(0.4, 0.3, 0.4),
-			Vector3(cos(angle) * GATE_RING_RADIUS, 6.0 + sin(angle) * GATE_RING_RADIUS, GATE_RING_RADIUS * 0.5),
+			Vector3(cos(angle) * GATE_RING_RADIUS, GATE_CENTER_Y + sin(angle) * GATE_RING_RADIUS, GATE_CENTER_Z),
 			_emissive(Color(0.75, 0.88, 0.96), GATE_RING_GLOW_SIZE)
 		)
 		chevron.rotate_z(angle + PI / 2.0)
 		add_child(chevron)
 	
-	# Small central staircase below gate ring
+	# Small central staircase below gate ring — moved to gate center Z
 	var stair := _box(
 		Vector3(2.0, 0.6, 3.0),
-		Vector3(0.0, 0.3, -1.0),
+		Vector3(0.0, 0.3, GATE_CENTER_Z - 2.0),
 		_standard_material(Color(0.15, 0.15, 0.17), 0.35, 0.85),
 		Quaternion()
 	)
@@ -143,12 +149,13 @@ func _build_vortex() -> void:
 	# (UV - 0.5) * 2.0 mapping converts to -1..1 disc coordinates.
 	# CylinderMesh UVs break the radial shader (confirmed: vortex invisible).
 	# PlaneMesh size = ring diameter so the disc fills the aperture.
+	# Positioned at GATE_CENTER_Y/Z to align with harness camera look_at.
 	var vortex_mesh := MeshInstance3D.new()
 	var vortex_shape := PlaneMesh.new()
 	vortex_shape.size = Vector2(GATE_RING_RADIUS * 2.0, GATE_RING_RADIUS * 2.0)
 	vortex_mesh.mesh = vortex_shape
-	# Position vortex at gate ring height, facing camera at Z=-19
-	vortex_mesh.position = Vector3(0.0, 6.0, GATE_RING_RADIUS * 0.5)
+	# Position vortex at gate ring center, facing camera
+	vortex_mesh.position = Vector3(0.0, GATE_CENTER_Y, GATE_CENTER_Z)
 	# PlaneMesh faces +Y by default; rotate to face -Z (toward camera)
 	vortex_mesh.rotate_x(-PI / 2.0)
 	
@@ -271,15 +278,16 @@ func _setup_lighting() -> void:
 	add_child(ring_glow)
 	ring_glow.look_at(Vector3(GATE_RING_RADIUS * 2.5, HALL_HEIGHT * 0.5, -5.0))
 	
-	# Vortex fill light — positioned at gate ring height, moderate energy to
+	# Vortex fill light — positioned at gate ring center, moderate energy to
 	# illuminate the gate room interior while keeping dark cinematic tone.
 	# Previous cycle: 4.0=too dark (exterior read), 20.0=too bright (washed out).
 	# 10.0 + omni_range 25 covers the hall without blowing highlights.
+	# Now aligned with GATE_CENTER_Y/Z to illuminate the repositioned gate.
 	var vortex_fill := OmniLight3D.new()
 	vortex_fill.light_color = VORTEX_COLOR
 	vortex_fill.light_energy = 10.0
 	vortex_fill.omni_range = 25.0
-	vortex_fill.position = Vector3(0.0, 6.0, 1.75)
+	vortex_fill.position = Vector3(0.0, GATE_CENTER_Y, GATE_CENTER_Z)
 	vortex_fill.name = "VortexFill"
 	add_child(vortex_fill)
 	
@@ -303,7 +311,8 @@ func _build_camera() -> void:
 	camera.name = "Camera3D"
 	add_child(camera)
 	# look_at AFTER add_child so node is in the scene tree
-	camera.look_at(Vector3(0.0, 6.0, 1.75), Vector3.UP)
+	# Aligned with GATE_CENTER to match harness camera look_at
+	camera.look_at(Vector3(0.0, GATE_CENTER_Y, GATE_CENTER_Z), Vector3.UP)
 
 ## Helper materials
 func _standard_material(color: Color, roughness: float, metallic: float) -> StandardMaterial3D:

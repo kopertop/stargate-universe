@@ -56,6 +56,10 @@ const VORTEX_INTENSITY: float = 3.0
 const CEILING_DOWNLIGHT_ENERGY: float = 25.0
 const CEILING_RIM_ENERGY: float = 1.5
 
+## Wall window-slit parameters — warm amber emissive alcoves on side walls
+const WALL_SLIT_COLOR: Color = Color(0.9, 0.55, 0.2)
+const WALL_SLIT_ENERGY: float = 5.0
+
 ## Render capture — saves image from _process() as fallback when harness camera fails
 var _frame_count: int = 0
 const _CAPTURE_FRAME: int = 180
@@ -68,6 +72,7 @@ func _ready() -> void:
 	_build_console_banks()
 	_build_ceiling()
 	_build_floor()
+	_build_wall_slits()
 	
 	# Camera setup — positioned at harness location for correct view
 	_build_camera()
@@ -263,6 +268,29 @@ func _build_floor() -> void:
 		)
 		plate.position.y += 0.06
 		add_child(plate)
+
+func _build_wall_slits() -> void:
+	# Warm amber emissive window-slits on both side walls.
+	# Concept art shows recessed alcoves with warm amber/orange lighting.
+	# This makes the ribbed walls visible without raising global ambient.
+	# Slits are vertical bars placed along X = ±(HALL_WIDTH/2 - 0.1).
+	var slit_mat := _emissive(WALL_SLIT_COLOR, WALL_SLIT_ENERGY)
+	for i in range(6):
+		var z_pos := -16.0 + i * 7.0
+		# Left wall (negative X)
+		var slit_l := _box(
+			Vector3(0.15, 3.0, 1.2),
+			Vector3(-HALL_WIDTH * 0.5 + 0.1, 5.5, z_pos),
+			slit_mat
+		)
+		add_child(slit_l)
+		# Right wall (positive X)
+		var slit_r := _box(
+			Vector3(0.15, 3.0, 1.2),
+			Vector3(HALL_WIDTH * 0.5 - 0.1, 5.5, z_pos),
+			slit_mat
+		)
+		add_child(slit_r)
 
 func _setup_lighting() -> void:
 	# Ambient key

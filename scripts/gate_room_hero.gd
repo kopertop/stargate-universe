@@ -130,15 +130,28 @@ func _build_gate_ring() -> void:
 	# Segmented chevrons — vertical circle matching upright ring.
 	# X = cos(angle) * R, Y = GATE_CENTER_Y + sin(angle) * R, Z = GATE_CENTER_Z.
 	# rotate_z aligns chevron cones to point inward on the vertical ring.
+	# Each chevron has an OmniLight3D so it reads as a true glowing emitter
+	# that illuminates the surrounding ring, not just a self-lit silhouette.
+	# Emission energy boosted from 20→120 for dramatic bloom-level brightness.
 	for i in range(9):
 		var angle := deg_to_rad(i * 40.0 - 180.0)
+		var chevron_pos := Vector3(cos(angle) * GATE_RING_RADIUS, GATE_CENTER_Y + sin(angle) * GATE_RING_RADIUS, GATE_CENTER_Z)
 		var chevron := _cone(
 			Vector3(0.4, 0.3, 0.4),
-			Vector3(cos(angle) * GATE_RING_RADIUS, GATE_CENTER_Y + sin(angle) * GATE_RING_RADIUS, GATE_CENTER_Z),
-			_emissive(Color(0.75, 0.88, 0.96), GATE_RING_GLOW_SIZE)
+			chevron_pos,
+			_emissive(GATE_RING_GLOW_COLOR, 120.0)
 		)
 		chevron.rotate_z(angle + PI / 2.0)
 		add_child(chevron)
+		# Point light at each chevron — warm-bright emitter that spills onto ring
+		var chevron_light := OmniLight3D.new()
+		chevron_light.light_color = GATE_RING_GLOW_COLOR
+		chevron_light.light_energy = 5.0
+		chevron_light.omni_range = 4.0
+		chevron_light.omni_attenuation = 1.5
+		chevron_light.position = chevron_pos
+		chevron_light.name = "ChevronLight%d" % i
+		add_child(chevron_light)
 	
 	# Small central staircase below gate ring — moved to gate center Z
 	var stair := _box(

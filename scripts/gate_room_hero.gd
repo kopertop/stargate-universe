@@ -355,9 +355,11 @@ func _standard_material(color: Color, roughness: float, metallic: float) -> Stan
 
 func _emissive(color: Color, energy: float) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
+	mat.albedo_color = color * 0.15
+	mat.emission_enabled = true
 	mat.emission = color
 	mat.emission_energy_multiplier = energy
+	mat.disable_ambient_light = true
 	return mat
 
 ## Geometry helpers

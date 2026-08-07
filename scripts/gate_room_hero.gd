@@ -121,7 +121,7 @@ func _build_gate_ring() -> void:
 	torus_shape.inner_radius = GATE_RING_RADIUS * 0.62
 	torus_shape.ring_segments = 48
 	ring_mesh.mesh = torus_shape
-	ring_mesh.material_override = _emissive(Color(1.0, 0.0, 0.0), 20.0)
+	ring_mesh.material_override = _standard_material(Color(0.15, 0.16, 0.18), 0.35, 0.9)
 	ring_mesh.position = Vector3(0.0, GATE_CENTER_Y, GATE_CENTER_Z)
 	ring_mesh.rotate_x(PI / 2.0)
 	add_child(ring_mesh)

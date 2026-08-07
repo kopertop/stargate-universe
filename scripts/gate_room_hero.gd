@@ -387,6 +387,16 @@ func _setup_lighting() -> void:
 	env.fog_light_color = FOG_COLOR
 	env.ambient_light_color = AMBIENT_COLOR
 	env.ambient_light_energy = AMBIENT_ENERGY
+	# Screen Space Reflections — target concept art shows mirror-like wet floor
+	# reflecting gate portal and architecture. SSR makes the dark metallic floor
+	# (roughness 0.20, metallic 0.9) actually reflect the bright vortex and
+	# surrounding geometry instead of appearing as a flat dark plane.
+	# Moderate settings to avoid blue-wash trap from portal reflection spillage.
+	env.ssr_enabled = true
+	env.ssr_max_steps = 64
+	env.ssr_fade_in = 0.15
+	env.ssr_fade_out = 2.0
+	env.ssr_depth_tolerance = 0.2
 	world_env.environment = env
 	add_child(world_env)
 

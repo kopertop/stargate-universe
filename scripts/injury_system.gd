@@ -22,7 +22,9 @@ extends Node
 # SUFFOCATION — oxygen depletion / toxic atmosphere (recoverable; the E1 case).
 # HOSTILE     — alien defense fauna / hostile NPC (recoverable, mostly).
 # DEPLOYMENT  — gate-window recall cut too close (recoverable; the window_closed case).
-enum InjuryCause { FALL, IMPACT, SUFFOCATION, HOSTILE, DEPLOYMENT }
+# DEHYDRATION — water depleted; stamina drain → vision blur → knockout (recoverable).
+# STARVATION  — food depleted; health drain → slow movement → knockout (recoverable).
+enum InjuryCause { FALL, IMPACT, SUFFOCATION, HOSTILE, DEPLOYMENT, DEHYDRATION, STARVATION }
 
 # --- Tag (outcome) ---------------------------------------------------------
 # RECOVERABLE — MedBay can process it (time-based recovery → back on feet).
@@ -43,6 +45,8 @@ const CAUSE_STRINGS: Dictionary = {
 	InjuryCause.SUFFOCATION: "asphyxiation",
 	InjuryCause.HOSTILE: "alien_defense",
 	InjuryCause.DEPLOYMENT: "window_closed",
+	InjuryCause.DEHYDRATION: "dehydration",
+	InjuryCause.STARVATION: "starvation",
 }
 
 signal injury_registered(cause: InjuryCause, tag: InjuryTag)

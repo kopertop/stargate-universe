@@ -53,6 +53,14 @@
 		"quest_id": "e7_justice",
 		"auto_start": false,
 		"completion_predicate": "investigation_completed",
+		"next_episode_id": "e10_sabotage"
+	},
+	{
+		"id": "e10_sabotage",
+		"title": "Sabotage",
+		"quest_id": "e10_sabotage",
+		"auto_start": false,
+		"completion_predicate": "sabotage_resolved",
 		"next_episode_id": "e12_divided"
 	},
 	{
@@ -61,6 +69,14 @@
 		"quest_id": "e12_divided",
 		"auto_start": false,
 		"completion_predicate": "e12_standoff_resolved",
+		"next_episode_id": "e20_incursion"
+	},
+	{
+		"id": "e20_incursion",
+		"title": "Incursion",
+		"quest_id": "e20_incursion",
+		"auto_start": false,
+		"completion_predicate": "incursion_resolved",
 		"next_episode_id": ""
 	}
 ]

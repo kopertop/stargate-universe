@@ -283,7 +283,10 @@ func _evaluate_predicate(key: String) -> bool:
 			# Placeholder for E3 — not yet implemented.
 			return false
 		"darkness_resolved":
-			# Placeholder for E4 — not yet implemented.
+			# E4: true when the nebula system reports the escape is complete.
+			var ns: Node = _autoload_node("NebulaSystem")
+			if ns != null and ns.has_method("is_complete"):
+				return ns.call("is_complete")
 			return false
 		"earth_contact_made":
 			# Placeholder for E5 — not yet implemented.
@@ -297,6 +300,24 @@ func _evaluate_predicate(key: String) -> bool:
 				if lm != null and lm.has_method("all_missions_done"):
 					all_done = lm.call("all_missions_done")
 			return all_done
+		"investigation_completed":
+			# E7: true when the investigation system reports the case solved.
+			var inv: Node = _autoload_node("InvestigationSystem")
+			if inv != null and inv.has_method("is_case_solved"):
+				return inv.call("is_case_solved")
+			return false
+		"e12_standoff_resolved":
+			# E12: true when the mutiny system reports the standoff resolved.
+			var ms: Node = _autoload_node("MutinySystem")
+			if ms != null and ms.has_method("is_standoff_resolved"):
+				return ms.call("is_standoff_resolved")
+			return false
+		"incursion_resolved":
+			# E20: true when the incursion system reports completion.
+			var isys: Node = _autoload_node("IncursionSystem")
+			if isys != null and isys.has_method("is_complete"):
+				return isys.call("is_complete")
+			return false
 		_:
 			push_warning("EpisodeManager: unknown predicate '%s'" % key)
 			return false

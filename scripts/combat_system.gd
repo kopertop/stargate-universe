@@ -225,8 +225,9 @@ func fire(origin: Vector3, direction: Vector3) -> bool:
 	var sfx: String = String(wr.get("sound_fire"))
 	if sfx != "":
 		var audio: Node = _autoload_node("Audio")
-		if audio != null and audio.has_method("play_sfx"):
-			audio.call("play_sfx", sfx)
+		if audio != null and audio.has_method("play"):
+			audio.call("play", sfx)
+	AudioZones.play_combat_fire()
 	weapon_fired.emit(String(wr.get("id")))
 	_emit_ammo_changed()
 	# Damage application.
@@ -257,8 +258,9 @@ func start_reload() -> bool:
 	var sfx: String = String(sfx_val) if sfx_val != null else ""
 	if sfx != "":
 		var audio: Node = _autoload_node("Audio")
-		if audio != null and audio.has_method("play_sfx"):
-			audio.call("play_sfx", sfx)
+		if audio != null and audio.has_method("play"):
+			audio.call("play", sfx)
+	AudioZones.play_combat_reload()
 	return true
 
 
@@ -344,6 +346,7 @@ func apply_damage_to_enemy(enemy_id: String, amount: float) -> void:
 	var enemy: Node = _find_enemy(enemy_id)
 	if enemy == null:
 		return
+	AudioZones.play_combat_hit()
 	# Apply damage directly to the enemy's health.
 	if enemy.has_method("take_damage"):
 		enemy.call("take_damage", amount)

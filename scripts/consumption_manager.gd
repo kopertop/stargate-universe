@@ -104,11 +104,17 @@ func tick(delta: float) -> void:
 	var gs: Node = _autoload("GameState")
 	if gs == null:
 		return
+	# Combined multiplier: power-grid penalty (>1.0) * emergency-rationing
+	# reduction (<1.0 when ConsequencesSystem says both food+water are
+	# critically low). Emergency rationing lets the ship limp longer.
+	var power_mult: float = _power_efficiency_multiplier()
+	var ration_mult: float = _emergency_rationing_multiplier()
+	var combined_mult: float = power_mult * ration_mult
 	for id in _accum.keys():
 		var amount: float = per_cycle_amount(id)
 		if amount <= 0.0:
 			continue
-		var rate_per_sec: float = amount / _cycle_seconds
+		var rate_per_sec: float = (amount / _cycle_seconds) * combined_mult
 		_accum[id] = float(_accum[id]) + rate_per_sec * delta
 		while float(_accum[id]) >= 1.0:
 			_accum[id] = float(_accum[id]) - 1.0
@@ -213,6 +219,53 @@ func deserialize(data: Dictionary, _version: int) -> void:
 		for id in gs.call("tracked_resource_ids"):
 			if not _accum.has(id):
 				_accum[id] = 0.0
+
+
+# --- power-grid integration ---------------------------------------------------
+
+# Returns a multiplier >= 1.0 representing how much harder consumption works
+# when ship power is degraded. 1.0 = all rooms POWERED (no penalty). Each
+# DEGRADED room adds POWER_DEGRADED_PENALTY; each OFFLINE room adds
+# POWER_OFFLINE_PENALTY. The multiplier scales per-cycle consumption so that
+# life support in a dark ship burns resources faster (pumps labour harder,
+# backup systems waste more).
+#
+# Ties to PowerGrid per the power-grid task contract: degraded rooms reduce
+# life-support efficiency, offline rooms force emergency rationing.
+const POWER_DEGRADED_PENALTY: float = 0.05   # +5% per degraded room
+const POWER_OFFLINE_PENALTY: float = 0.15   # +15% per offline room
+
+func _power_efficiency_multiplier() -> float:
+	var pg: Node = _autoload("PowerGrid")
+	if pg == null or not pg.has_method("get_all_room_states"):
+		return 1.0
+	var states: Dictionary = pg.call("get_all_room_states")
+	if states.is_empty():
+		return 1.0
+	# PowerState enum: POWERED=0, DEGRADED=1, OFFLINE=2
+	var degraded: int = 0
+	var offline: int = 0
+	for room_id in states.keys():
+		var s: int = int(states[room_id])
+		if s == 1:
+			degraded += 1
+		elif s == 2:
+			offline += 1
+	return 1.0 + (float(degraded) * POWER_DEGRADED_PENALTY) + (float(offline) * POWER_OFFLINE_PENALTY)
+
+
+# --- emergency-rationing integration -----------------------------------------
+
+# Returns a multiplier <= 1.0 representing how much consumption is reduced
+# when ConsequencesSystem declares emergency rationing (both food AND water
+# critically low). 1.0 = no rationing (normal consumption). When rationing is
+# active, returns ConsequencesSystem.consumption_multiplier() (< 1.0) so the
+# crew ekes out the remaining stores longer.
+func _emergency_rationing_multiplier() -> float:
+	var cs: Node = _autoload("ConsequencesSystem")
+	if cs == null or not cs.has_method("consumption_multiplier"):
+		return 1.0
+	return float(cs.call("consumption_multiplier"))
 
 
 # --- helpers ------------------------------------------------------------------

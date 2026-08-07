@@ -56,6 +56,18 @@ var current_episode: String = EPISODE_AIR
 var quest_step: String = QUEST_TALK_SCOTT
 var episode_complete: bool = false
 
+# --- E2 "Light" power-restoration flags ---
+var engineering_found: bool = false  # @collection-ok: E2 story flag — engineering discovery beat
+var junction_located: bool = false  # @collection-ok: E2 story flag — junction located beat
+var junction_repaired: bool = false  # @collection-ok: E2 story flag — junction repaired beat
+var power_routed: bool = false  # @collection-ok: E2 story flag — power distribution beat
+
+# --- E4 "Darkness" nebula crisis flags ---
+var nebula_trap_detected: bool = false  # @collection-ok: E4 story flag — nebula trap beat
+var power_conservation_started: bool = false  # @collection-ok: E4 story flag — conservation puzzle beat
+var planet_resources_collected: bool = false  # @collection-ok: E4 story flag — planet mission beat
+var nebula_escape_complete: bool = false  # @collection-ok: E4 story flag — escape beat
+
 
 func _ready() -> void:
 	var sm: Node = _autoload_node("SaveManager")
@@ -452,6 +464,144 @@ func mark_pressure_suits_found() -> void:
 	pressure_suits_found = true
 	_add_log("Recovered a cache of pressure suits — no-atmosphere worlds are survivable now.")
 
+# --- E2 "Light" power-restoration story methods ---
+
+func find_engineering() -> void:
+	if engineering_found:
+		return
+	engineering_found = true
+	_add_log("Engineering Bay located. The main conduit junction is here.")
+	_advance_e2_quest()
+
+func mark_engineering_found() -> void:
+	find_engineering()
+
+func locate_junction() -> void:
+	if junction_located:
+		return
+	junction_located = true
+	_add_log("Power conduit junction identified. It's damaged but repairable.")
+	_advance_e2_quest()
+
+func mark_junction_located() -> void:
+	locate_junction()
+
+func repair_junction() -> void:
+	if junction_repaired:
+		return
+	junction_repaired = true
+	# Restore the generator to full output via PowerGrid.
+	var pg: Node = _autoload_node("PowerGrid")
+	if pg != null and pg.has_method("repair_generator"):
+		pg.call("repair_generator")
+	_add_log("Conduit junction repaired. Generator output restored.")
+	_advance_e2_quest()
+
+func mark_junction_repaired() -> void:
+	repair_junction()
+
+func route_power() -> void:
+	if power_routed:
+		return
+	power_routed = true
+	# Clear damaged sections on critical rooms so power flows.
+	var pg: Node = _autoload_node("PowerGrid")
+	if pg != null:
+		if pg.has_method("repair_generator"):
+			pg.call("repair_generator")
+		for room_id in ["gate_room", "control_interface_room"]:
+			if pg.has_method("set_room_override"):
+				pg.call("set_room_override", room_id, -1)
+			if pg.has_method("set_section_repaired"):
+				pg.call("set_section_repaired", room_id)
+	_add_log("Power routed to critical systems. Gate Room and Control Interface Room are online.")
+	_advance_e2_quest()
+
+func mark_power_routed() -> void:
+	route_power()
+
+# --- E4 "Darkness" nebula crisis story methods ---
+
+func detect_nebula_trap() -> void:
+	if nebula_trap_detected:
+		return
+	nebula_trap_detected = true
+	var ns: Node = _autoload_node("NebulaSystem")
+	if ns != null and ns.has_method("start_crisis"):
+		ns.call("start_crisis")
+	_add_log("Destiny is trapped in a nebula. Power is draining — get to the Control Interface Room.")
+	_advance_e4_quest()
+
+func mark_nebula_trap_detected() -> void:
+	detect_nebula_trap()
+
+func begin_conservation() -> void:
+	if power_conservation_started:
+		return
+	power_conservation_started = true
+	var ns: Node = _autoload_node("NebulaSystem")
+	if ns != null and ns.has_method("begin_conservation"):
+		ns.call("begin_conservation")
+	_add_log("Conservation protocols active. Choose which systems to shut down.")
+	_advance_e4_quest()
+
+func mark_power_conservation_started() -> void:
+	begin_conservation()
+
+func start_low_power_mission() -> void:
+	var ns: Node = _autoload_node("NebulaSystem")
+	if ns != null and ns.has_method("begin_planet_mission"):
+		ns.call("begin_planet_mission")
+	_add_log("Away team deployed in low-power mode. Limited Kino. No sprint. Find resources.")
+	_advance_e4_quest()
+
+func collect_planet_resources(amount: int = 1) -> void:
+	var ns: Node = _autoload_node("NebulaSystem")
+	if ns != null and ns.has_method("collect_resource"):
+		var ready: bool = ns.call("collect_resource", amount)
+		if ready and not planet_resources_collected:
+			planet_resources_collected = true
+			_add_log("Enough resources gathered. Return to Destiny and escape the nebula.")
+			_advance_e4_quest()
+
+func mark_planet_resources_collected() -> void:
+	if planet_resources_collected:
+		return
+	planet_resources_collected = true
+	var ns: Node = _autoload_node("NebulaSystem")
+	if ns != null and ns.has_method("begin_planet_mission"):
+		ns.call("begin_planet_mission")
+		if ns.has_method("collect_resource"):
+			ns.call("collect_resource", 99)  # ensure escape ready
+	_add_log("Enough resources gathered. Return to Destiny and escape the nebula.")
+	_advance_e4_quest()
+
+func escape_nebula() -> void:
+	if nebula_escape_complete:
+		return
+	nebula_escape_complete = true
+	var ns: Node = _autoload_node("NebulaSystem")
+	if ns != null:
+		if ns.has_method("begin_escape"):
+			ns.call("begin_escape")
+		if ns.has_method("complete_escape"):
+			ns.call("complete_escape")
+	_add_log("Engines jump-started. Destiny breaks free of the nebula.")
+	_advance_e4_quest()
+
+func mark_nebula_escape_complete() -> void:
+	escape_nebula()
+
+func _advance_e4_quest() -> void:
+	var ql: Node = _autoload_node("QuestLog")
+	if ql != null and ql.has_method("advance"):
+		ql.call("advance", "e4_darkness")
+
+func _advance_e2_quest() -> void:
+	var ql: Node = _autoload_node("QuestLog")
+	if ql != null and ql.has_method("advance"):
+		ql.call("advance", "e2_explore")
+
 
 func _unlock_elevator() -> void:
 	var gs: Node = _gs()
@@ -493,6 +643,14 @@ func serialize() -> Dictionary:
 		"met_rush": met_rush,
 		"pressure_suits_found": pressure_suits_found,
 		"episode_complete": episode_complete,
+		"engineering_found": engineering_found,
+		"junction_located": junction_located,
+		"junction_repaired": junction_repaired,
+		"power_routed": power_routed,
+		"nebula_trap_detected": nebula_trap_detected,
+		"power_conservation_started": power_conservation_started,
+		"planet_resources_collected": planet_resources_collected,
+		"nebula_escape_complete": nebula_escape_complete,
 	}
 
 
@@ -516,6 +674,14 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	met_rush = data.get("met_rush", false) == true
 	pressure_suits_found = data.get("pressure_suits_found", false) == true
 	episode_complete = data.get("episode_complete", false) == true
+	engineering_found = data.get("engineering_found", false) == true
+	junction_located = data.get("junction_located", false) == true
+	junction_repaired = data.get("junction_repaired", false) == true
+	power_routed = data.get("power_routed", false) == true
+	nebula_trap_detected = data.get("nebula_trap_detected", false) == true
+	power_conservation_started = data.get("power_conservation_started", false) == true
+	planet_resources_collected = data.get("planet_resources_collected", false) == true
+	nebula_escape_complete = data.get("nebula_escape_complete", false) == true
 
 
 func reset() -> void:
@@ -538,3 +704,11 @@ func reset() -> void:
 	met_rush = false
 	pressure_suits_found = false
 	episode_complete = false
+	engineering_found = false
+	junction_located = false
+	junction_repaired = false
+	power_routed = false
+	nebula_trap_detected = false
+	power_conservation_started = false
+	planet_resources_collected = false
+	nebula_escape_complete = false

@@ -192,6 +192,32 @@ var met_rush: bool:
 var pressure_suits_found: bool:
 	get: return bool(_gp("QuestFlowSystem","pressure_suits_found",false))
 	set(v): _sp("QuestFlowSystem","pressure_suits_found",v)
+# --- E2 "Light" power-restoration proxy properties ---
+var engineering_found: bool:
+	get: return bool(_gp("QuestFlowSystem","engineering_found",false))
+	set(v): _sp("QuestFlowSystem","engineering_found",v)
+var junction_located: bool:
+	get: return bool(_gp("QuestFlowSystem","junction_located",false))
+	set(v): _sp("QuestFlowSystem","junction_located",v)
+var junction_repaired: bool:
+	get: return bool(_gp("QuestFlowSystem","junction_repaired",false))
+	set(v): _sp("QuestFlowSystem","junction_repaired",v)
+var power_routed: bool:
+	get: return bool(_gp("QuestFlowSystem","power_routed",false))
+	set(v): _sp("QuestFlowSystem","power_routed",v)
+# --- E4 "Darkness" nebula crisis proxy properties ---
+var nebula_trap_detected: bool:
+	get: return bool(_gp("QuestFlowSystem","nebula_trap_detected",false))
+	set(v): _sp("QuestFlowSystem","nebula_trap_detected",v)
+var power_conservation_started: bool:
+	get: return bool(_gp("QuestFlowSystem","power_conservation_started",false))
+	set(v): _sp("QuestFlowSystem","power_conservation_started",v)
+var planet_resources_collected: bool:
+	get: return bool(_gp("QuestFlowSystem","planet_resources_collected",false))
+	set(v): _sp("QuestFlowSystem","planet_resources_collected",v)
+var nebula_escape_complete: bool:
+	get: return bool(_gp("QuestFlowSystem","nebula_escape_complete",false))
+	set(v): _sp("QuestFlowSystem","nebula_escape_complete",v)
 var scrubber_diagnosed: bool:
 	get: return bool(_gp("ScrubberSystem","scrubber_diagnosed",false))
 	set(v): _sp("ScrubberSystem","scrubber_diagnosed",v)
@@ -581,6 +607,28 @@ func clear_infirmary_recovery() -> void: _callv("QuestFlowSystem", "clear_infirm
 func check_episode_complete() -> void: _callv("QuestFlowSystem", "check_episode_complete")
 func complete_episode_air() -> void: _callv("QuestFlowSystem", "complete_episode_air")
 func mark_pressure_suits_found() -> void: _callv("QuestFlowSystem", "mark_pressure_suits_found")
+
+# --- E2 "Light" power-restoration facades ---
+func find_engineering() -> void: _callv("QuestFlowSystem", "find_engineering")
+func mark_engineering_found() -> void: _callv("QuestFlowSystem", "mark_engineering_found")
+func locate_junction() -> void: _callv("QuestFlowSystem", "locate_junction")
+func mark_junction_located() -> void: _callv("QuestFlowSystem", "mark_junction_located")
+func repair_junction() -> void: _callv("QuestFlowSystem", "repair_junction")
+func mark_junction_repaired() -> void: _callv("QuestFlowSystem", "mark_junction_repaired")
+func route_power() -> void: _callv("QuestFlowSystem", "route_power")
+func mark_power_routed() -> void: _callv("QuestFlowSystem", "mark_power_routed")
+
+# --- E4 "Darkness" nebula crisis facades ---
+func detect_nebula_trap() -> void: _callv("QuestFlowSystem", "detect_nebula_trap")
+func mark_nebula_trap_detected() -> void: _callv("QuestFlowSystem", "mark_nebula_trap_detected")
+func begin_conservation() -> void: _callv("QuestFlowSystem", "begin_conservation")
+func mark_power_conservation_started() -> void: _callv("QuestFlowSystem", "mark_power_conservation_started")
+func start_low_power_mission() -> void: _callv("QuestFlowSystem", "start_low_power_mission")
+func collect_planet_resources(a: int = 1) -> void: _callv("QuestFlowSystem", "collect_planet_resources", [a])
+func mark_planet_resources_collected() -> void: _callv("QuestFlowSystem", "mark_planet_resources_collected")
+func escape_nebula() -> void: _callv("QuestFlowSystem", "escape_nebula")
+func mark_nebula_escape_complete() -> void: _callv("QuestFlowSystem", "mark_nebula_escape_complete")
+
 func biome_flags() -> Dictionary:
 	return {"pressure_suits_found": pressure_suits_found}
 
@@ -632,6 +680,8 @@ func _save_scalar_fields() -> Array[Array]:
 		["kino_active_floor","i",-1],["compass_show_lime","b",true],["compass_show_kinos","b",true],["compass_show_companions","b",true],
 		["compass_show_gate","b",true],["compass_show_pois","b",true],["ship_phase_override","f",-1.0],["planet_window_override","f",-1.0],
 		["crew_count","i",6],["active_sections","i",3],
+		["engineering_found","b",false],["junction_located","b",false],["junction_repaired","b",false],["power_routed","b",false],
+		["nebula_trap_detected","b",false],["power_conservation_started","b",false],["planet_resources_collected","b",false],["nebula_escape_complete","b",false],
 	]
 
 func serialize() -> Dictionary:
@@ -647,14 +697,19 @@ func serialize() -> Dictionary:
 		if k is Dictionary:
 			ka.append((k as Dictionary).duplicate(true))
 	d["deployed_kinos"] = ka
-	for sys in ["QuestFlowSystem","ScrubberSystem","PlanetSystem","KinoSystem"]:
+	for sys in ["QuestFlowSystem","ScrubberSystem","PlanetSystem","KinoSystem","NebulaSystem"]:
 		var n: Node = _autoload_node(sys)
 		if n != null and n.has_method("serialize"):
 			d.merge(n.call("serialize"), true)
 	return d
 
 func _db(d: Dictionary, k: String, def: bool) -> bool:
-	return d.get(k, def) == true
+	var v: Variant = d.get(k, def)
+	if v is bool:
+		return v
+	if v is int:
+		return int(v) != 0
+	return v != null
 func _ds(d: Dictionary, k: String, def: String) -> String:
 	var v: Variant = d.get(k, def)
 	return v if v is String else def
@@ -745,7 +800,7 @@ func reset() -> void:
 	hull_percent = STATUS_OFFLINE
 	current_room_id = ""
 	_poi_toast_timer = null
-	for sys in ["QuestFlowSystem","ScrubberSystem","PlanetSystem","KinoSystem"]:
+	for sys in ["QuestFlowSystem","ScrubberSystem","PlanetSystem","KinoSystem","NebulaSystem"]:
 		var n: Node = _autoload_node(sys)
 		if n != null and n.has_method("reset"):
 			n.call("reset")

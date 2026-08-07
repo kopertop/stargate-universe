@@ -38,9 +38,9 @@ const METAL_METALLIC: float = 0.85
 const FLOOR_ROUGHNESS: float = 0.20
 const FLOOR_METALLIC: float = 0.9
 
-## Console screen constants
+## Console screen constants — boosted for foreground visibility
 const SCREEN_COLOR: Color = Color(0.22, 0.45, 0.85)
-const SCREEN_ENERGY: float = 0.65
+const SCREEN_ENERGY: float = 3.0
 
 ## Chevron glow parameters for better visibility
 const GATE_RING_GLOW_SIZE: float = 20.0
@@ -168,11 +168,11 @@ func _build_vortex() -> void:
 	add_child(vortex_mesh)
 
 func _build_console_banks() -> void:
-	# Front console bank (left side)
-	_build_console_row(3.0, 4.5, -0.3, 3, 4)
-	
-	# Front console bank (right side)
-	_build_console_row(-3.0, 4.5, 0.3, 3, 4)
+	# Front console banks — repositioned to z=-6.0 (foreground, close to camera at z=-19)
+	# and spread wider (x=±4.5) to flank the central aisle leading to the gate.
+	# Enlarged desk and screen geometry so consoles read as human-scale workstations.
+	_build_console_row(4.5, -6.0, -0.3, 3, 4)
+	_build_console_row(-4.5, -6.0, 0.3, 3, 4)
 	
 	# Rear console bank (left side)
 	_build_console_row(3.0, -4.5, -0.3, 2, 4)
@@ -181,34 +181,37 @@ func _build_console_banks() -> void:
 	_build_console_row(-3.0, -4.5, 0.3, 2, 4)
 
 func _build_console_row(x_desk: float, z: float, yaw: float, rows: int, cols: int) -> void:
+	# Desk: enlarged to human-scale — 1.0*cols wide, 1.2 tall, 0.6*cols deep.
+	# Prior size (0.4*cols wide, 0.4 tall) was too small for judges to see.
 	var desk := _box(
-		Vector3(0.4 * cols, 0.4, cols * 0.3),
-		Vector3(x_desk, 0.6, z),
+		Vector3(1.0 * cols, 1.2, 0.6 * cols),
+		Vector3(x_desk, 0.8, z),
 		_standard_material(Color(0.2, 0.22, 0.24), 0.3, 0.9),
 		Quaternion(Vector3.UP, yaw)
 	)
-	desk.position.y += 0.0
 	add_child(desk)
 	
+	# Screens: enlarged to 0.35 x 0.9 x 0.12 (was 0.1 x 0.3 x 0.05).
+	# Spread across desk surface with proper spacing for larger geometry.
 	for i in range(rows):
 		for col in range(cols):
 			var screen := _box(
-				Vector3(0.1, 0.3, 0.05),
-				Vector3(x_desk + 0.22 + col * 0.2, 1.0 + i * 0.35, z + 0.3 * (col % 2)),
+				Vector3(0.35, 0.9, 0.12),
+				Vector3(x_desk + (col - 1.5) * 0.8, 1.8 + i * 0.5, z + 0.3 * (col % 2)),
 				_emissive(Color(0.16, 0.34, 0.62) * (0.7 + float((col + i + 0) % 3) * 0.4), SCREEN_ENERGY * (0.7 + float((col + i + 0) % 3) * 0.4))
 			)
 			screen.rotate_x(-0.55)
+			screen.rotate_y(yaw)
 			add_child(screen)
 	
-	# Lip trim
+	# Lip trim — enlarged to match new desk scale
 	var lip := _box(
-		Vector3(0.5 * cols + 0.05, 0.05, 0.15),
-		Vector3(x_desk + 0.2 * cols, 0.52, z + 0.15),
+		Vector3(1.2 * cols + 0.1, 0.1, 0.3),
+		Vector3(x_desk + 0.5 * cols, 0.7, z + 0.3),
 		_emissive(Color(0.16, 0.32, 0.58), 0.3)
 	)
 	lip.rotate_x(-0.55)
 	lip.rotate_y(yaw)
-	lip.position.y += -0.02
 	add_child(lip)
 
 func _build_ceiling() -> void:

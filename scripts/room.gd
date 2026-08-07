@@ -142,6 +142,8 @@ func _ready() -> void:
 		ShipAlertScript.set_caution(self)
 	GameState.discover_room(room_id, String(_room_data.get("name", room_id)))
 	GameState.set_current_room(room_id)
+	# Enter the ambient audio zone for this room type.
+	AudioZones.enter_ship_zone(String(_room_data.get("type", "")))
 	# Leaving the infirmary after a recovery beat clears the knockout flag so the
 	# next infirmary visit shows the normal post-crisis ward (issue #92).
 	if room_id != "infirmary" and GameState.recovering_in_infirmary:

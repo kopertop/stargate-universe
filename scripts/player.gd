@@ -277,9 +277,22 @@ func _handle_movement(delta: float) -> void:
 		return
 
 	var target_speed: float = _traversal_speed()
-	# Sprint only in normal mode.
-	if Input.is_action_pressed("sprint") and _traversal_mode == TraversalMode.NORMAL:
+	# Sprint only in normal mode, and only if ConsequencesSystem says stamina
+	# permits it (dehydration / starvation can lock sprint out).
+	var cs: Node = get_tree().root.get_node_or_null("ConsequencesSystem") if get_tree() != null else null
+	var can_sprint: bool = true
+	if cs != null and cs.has_method("sprint_allowed"):
+		can_sprint = bool(cs.call("sprint_allowed"))
+	var want_sprint: bool = Input.is_action_pressed("sprint") and _traversal_mode == TraversalMode.NORMAL and can_sprint
+	if want_sprint:
 		target_speed *= sprint_multiplier
+	# Apply starvation / dehydration movement multiplier from ConsequencesSystem.
+	if cs != null and cs.has_method("movement_multiplier"):
+		target_speed *= float(cs.call("movement_multiplier"))
+	# Feed sprint state back so ConsequencesSystem drains stamina this frame.
+	if cs != null and cs.has_method("tick_sprint"):
+		var moving: bool = input_vec.length() > 0.1
+		cs.call("tick_sprint", want_sprint and moving)
 
 	var target_velocity: Vector3 = input_vec * target_speed
 	_move_velocity = _move_velocity.lerp(target_velocity, accel_smoothing * delta)

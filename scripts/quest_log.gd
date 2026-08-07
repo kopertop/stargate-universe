@@ -418,6 +418,22 @@ func _evaluate_predicate(key: String) -> bool:
 				if ps.call("is_floor_unlocked", fn):
 					return true
 			return false
+		"engineering_found":
+			return gs.get("engineering_found") == true
+		"junction_located":
+			return gs.get("junction_located") == true
+		"junction_repaired":
+			return gs.get("junction_repaired") == true
+		"power_routed":
+			return gs.get("power_routed") == true
+		"nebula_trap_detected":
+			return gs.get("nebula_trap_detected") == true
+		"power_conservation_started":
+			return gs.get("power_conservation_started") == true
+		"planet_resources_collected":
+			return gs.get("planet_resources_collected") == true
+		"nebula_escape_complete":
+			return gs.get("nebula_escape_complete") == true
 		_:
 			push_warning("QuestLog: unknown predicate '%s'" % key)
 			return false

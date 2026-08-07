@@ -30,6 +30,8 @@ func _ready() -> void:
 	# Score the gate world — lonely open-planet bed + hopeful solo violin (covers both
 	# the on-foot away team and a piloted Kino recon; FtlLoop's PLANET phase sets this too).
 	set_mood("planet")
+	# Enter the planet biome ambient audio zone (wind + wildlife bed).
+	AudioZones.enter_planet_zone(String(spec.get("biome", "desert")))
 	# Stream terrain around the player by default; kino recon retargets below.
 	if _chunk_manager != null and _chunk_manager.has_method("configure"):
 		_chunk_manager.set("tracked", _player)

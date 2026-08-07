@@ -1,0 +1,33 @@
+{
+	"_comment": "Food/water consumption consequences config (issue #134 consequences). ConsequencesSystem autoload reads this to drive dehydration, starvation, stamina, and emergency rationing. All tunables live here so designers can balance without touching code. Rates are per-second; stamina is 0–100. Thresholds are resource counts below which the named effect activates. Emergency rationing multiplier scales consumption_manager rates when the ship is critically low on both food and water.",
+
+	"player_character_id": "eli",
+
+	"stamina": {
+		"max": 100.0,
+		"regen_per_sec": 4.0,
+		"sprint_drain_per_sec": 8.0,
+		"min_to_sprint": 15.0
+	},
+
+	"dehydration": {
+		"water_threshold": 0,
+		"stamina_drain_per_sec": 2.5,
+		"vision_blur_at_stamina_pct": 25.0,
+		"knockout_severity": 0.5
+	},
+
+	"starvation": {
+		"food_threshold": 0,
+		"health_drain_per_sec": 0.8,
+		"slow_movement_multiplier": 0.6,
+		"knockout_severity": 0.5
+	},
+
+	"emergency_rationing": {
+		"water_critical": 3,
+		"food_critical": 3,
+		"consumption_multiplier": 0.5,
+		"stamina_regen_multiplier": 0.3
+	}
+}

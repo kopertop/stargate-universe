@@ -69,6 +69,7 @@ func _ready() -> void:
 	_build_hall()
 	_build_gate_ring()
 	_build_vortex()
+	_build_buttresses()
 	_build_console_banks()
 	_build_ceiling()
 	_build_floor()
@@ -178,6 +179,40 @@ func _build_vortex() -> void:
 	portal_mat.set_shader_parameter("energy", VORTEX_INTENSITY)
 	vortex_mesh.material_override = portal_mat
 	add_child(vortex_mesh)
+
+func _build_buttresses() -> void:
+	# Large diagonal buttress beams flanking the gate ring.
+	# 4 beams total: 2 left (negative X) and 2 right (positive X).
+	# Each runs diagonally from floor/wall level up to near the gate ring.
+	var beam_mat := _standard_material(Color(0.14, 0.15, 0.17), 0.4, 0.75)
+	var strip_mat := _emissive(Color(0.3, 0.4, 0.5), 2.0)
+	
+	# Beam start/end points: [floor_wall, near_gate] for each beam
+	var beam_configs: Array = [
+		[Vector3(-5.5, 0.5, 15.0), Vector3(-4.2, 8.5, 13.0)],  # left-front
+		[Vector3(-5.5, 0.5, 12.0), Vector3(-4.2, 8.5, 13.5)],  # left-rear
+		[Vector3(5.5, 0.5, 15.0), Vector3(4.2, 8.5, 13.0)],   # right-front
+		[Vector3(5.5, 0.5, 12.0), Vector3(4.2, 8.5, 13.5)],   # right-rear
+	]
+	
+	for config in beam_configs:
+		var start_pt: Vector3 = config[0]
+		var end_pt: Vector3 = config[1]
+		var midpoint: Vector3 = (start_pt + end_pt) * 0.5
+		var direction: Vector3 = (end_pt - start_pt).normalized()
+		var beam_len: float = (end_pt - start_pt).length()
+		
+		# Orient box long axis (+Z) along the beam direction
+		var beam_rot := Quaternion(Vector3(0.0, 0.0, 1.0), direction)
+		
+		# Main beam — dark metal structural support
+		var beam := _box(Vector3(0.5, 0.5, beam_len), midpoint, beam_mat, beam_rot)
+		add_child(beam)
+		
+		# Emissive strip — thin glow line on outer face for visibility
+		var outer_x: float = signf(midpoint.x) * 0.3
+		var strip := _box(Vector3(0.1, 0.1, beam_len), midpoint + Vector3(outer_x, 0.0, 0.0), strip_mat, beam_rot)
+		add_child(strip)
 
 func _build_console_banks() -> void:
 	# Front console banks — repositioned to z=-6.0 (foreground, close to camera at z=-19)

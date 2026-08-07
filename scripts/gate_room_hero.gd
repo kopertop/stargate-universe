@@ -227,34 +227,49 @@ func _build_console_row(x_desk: float, z: float, yaw: float, rows: int, cols: in
 	add_child(lip)
 
 func _build_ceiling() -> void:
-	# Tiered ceiling dome structure
-	var dome := _sphere(
-		Vector3(8.0, 0.1, 8.0),
-		Vector3(0.0, HALL_HEIGHT * 0.5, 0.0),
-		_standard_material(Color(0.14, 0.15, 0.17), 0.4, 0.75)
-	)
-	dome.scale.y = 0.5
-	add_child(dome)
+	# Tiered ceiling dome — concentric stepped rings at decreasing radii,
+	# matching the target concept art's multi-level dome structure.
+	# Each tier is a flat ring (TorusMesh) at a specific height and radius,
+	# stacked from wide (low) to narrow (high) to create the telescoping dome.
+	var dome_mat := _standard_material(Color(0.14, 0.15, 0.17), 0.4, 0.75)
 	
-	# Downlights on dome
+	# 5 concentric tiers: wide base → narrow apex
+	var tier_count := 5
+	for i in range(tier_count):
+		var t := float(i) / float(tier_count)
+		var radius := 6.5 * (1.0 - t * 0.7)
+		var ring_height := HALL_HEIGHT * 0.5 + t * 2.5
+		var tier := MeshInstance3D.new()
+		var tier_shape := TorusMesh.new()
+		tier_shape.outer_radius = radius
+		tier_shape.inner_radius = radius * 0.82
+		tier_shape.ring_segments = 48
+		tier.mesh = tier_shape
+		tier.material_override = dome_mat
+		tier.position = Vector3(0.0, ring_height, 0.0)
+		tier.rotate_x(PI / 2.0)
+		add_child(tier)
+		
+		# Emissive rim on each tier for visible stepped banding
+		var rim_mat := _emissive(Color(0.4, 0.45, 0.5), CEILING_RIM_ENERGY * (1.0 + t * 0.5))
+		var rim := MeshInstance3D.new()
+		var rim_shape := TorusMesh.new()
+		rim_shape.outer_radius = radius * 1.02
+		rim_shape.inner_radius = radius * 0.98
+		rim_shape.ring_segments = 48
+		rim.mesh = rim_shape
+		rim.material_override = rim_mat
+		rim.position = Vector3(0.0, ring_height - 0.05, 0.0)
+		rim.rotate_x(PI / 2.0)
+		add_child(rim)
+	
+	# Downlights between tiers — spotlights pointing down at the gate area
 	for i in range(4):
-		var angle := deg_to_rad(i * 90.0)
-		var light_pos := Vector3(cos(angle) * 6.0, HALL_HEIGHT * 0.5 - 0.3, sin(angle) * 6.0)
+		var angle := deg_to_rad(i * 90.0 + 45.0)
+		var light_pos := Vector3(cos(angle) * 5.0, HALL_HEIGHT * 0.5 - 0.5, sin(angle) * 5.0)
 		var downlight_mat := _emissive(Color(0.9, 0.9, 1.0), CEILING_DOWNLIGHT_ENERGY)
 		var downlight := _box(Vector3(0.3, 0.3, 0.3), light_pos, downlight_mat)
 		add_child(downlight)
-	
-	# Rim bands
-	for i in range(6):
-		var angle := deg_to_rad(i * 60.0)
-		var rim := _box(
-			Vector3(0.1, 0.4, 0.3),
-			Vector3(cos(angle) * 5.5, HALL_HEIGHT * 0.45, sin(angle) * 5.5),
-			_emissive(Color(0.4, 0.45, 0.5), CEILING_RIM_ENERGY)
-		)
-		rim.rotate_x(PI / 2.0)
-		rim.rotate_y(angle)
-		add_child(rim)
 
 func _build_floor() -> void:
 	# Floor centered at Z=0 to match hall

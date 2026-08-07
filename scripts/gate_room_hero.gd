@@ -50,7 +50,7 @@ const GATE_RING_GLOW_COLOR: Color = Color(0.75, 0.88, 0.96)
 const VORTEX_UV_SCALE: float = 3.0
 const VORTEX_CHURN_SPEED: float = 1.5
 const VORTEX_COLOR: Color = Color(0.4, 0.75, 1.0)
-const VORTEX_INTENSITY: float = 3.0
+const VORTEX_INTENSITY: float = 6.0
 
 ## Ceiling dome parameters
 const CEILING_DOWNLIGHT_ENERGY: float = 25.0
@@ -159,8 +159,12 @@ func _build_vortex() -> void:
 	var vortex_shape := PlaneMesh.new()
 	vortex_shape.size = Vector2(GATE_RING_RADIUS * 2.0, GATE_RING_RADIUS * 2.0)
 	vortex_mesh.mesh = vortex_shape
-	# Position vortex at gate ring center, facing camera
-	vortex_mesh.position = Vector3(0.0, GATE_CENTER_Y, GATE_CENTER_Z)
+	# Position vortex at gate ring center, facing camera.
+	# Z offset of -0.2 toward camera eliminates z-fighting with the TorusMesh
+	# ring tube (whose center is also at GATE_CENTER_Z). Without this offset,
+	# the coplanar vortex plane and ring interior cause depth-buffer conflicts
+	# that make the vortex flicker or disappear entirely.
+	vortex_mesh.position = Vector3(0.0, GATE_CENTER_Y, GATE_CENTER_Z - 0.2)
 	# PlaneMesh faces +Y by default; rotate to face -Z (toward camera)
 	vortex_mesh.rotate_x(-PI / 2.0)
 	
@@ -169,6 +173,9 @@ func _build_vortex() -> void:
 	portal_mat.shader = preload("res://shaders/hero_portal.gdshader")
 	# Wire noise texture to shader uniform — without this, texture() returns black
 	portal_mat.set_shader_parameter("noise_tex", preload("res://assets/hero/noise_1024.png"))
+	# Wire VORTEX_INTENSITY to shader energy uniform (doubled from 3.0→6.0)
+	# so the vortex plasma reads as a luminous churning disc, not a dim grey patch.
+	portal_mat.set_shader_parameter("energy", VORTEX_INTENSITY)
 	vortex_mesh.material_override = portal_mat
 	add_child(vortex_mesh)
 

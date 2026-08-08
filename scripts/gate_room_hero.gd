@@ -139,15 +139,15 @@ func _build_gate_ring() -> void:
 		var chevron := _cone(
 			Vector3(0.4, 0.3, 0.4),
 			chevron_pos,
-			_emissive(GATE_RING_GLOW_COLOR, 120.0)
+			_emissive(GATE_RING_GLOW_COLOR, 180.0)
 		)
 		chevron.rotate_z(angle + PI / 2.0)
 		add_child(chevron)
 		# Point light at each chevron — warm-bright emitter that spills onto ring
 		var chevron_light := OmniLight3D.new()
 		chevron_light.light_color = GATE_RING_GLOW_COLOR
-		chevron_light.light_energy = 5.0
-		chevron_light.omni_range = 4.0
+		chevron_light.light_energy = 9.0
+		chevron_light.omni_range = 6.0
 		chevron_light.omni_attenuation = 1.5
 		chevron_light.position = chevron_pos
 		chevron_light.name = "ChevronLight%d" % i

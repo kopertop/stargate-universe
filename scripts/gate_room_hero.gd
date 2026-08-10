@@ -11,7 +11,7 @@ const HALL_HEIGHT: float = 12.0
 ## Gate room configuration constants
 const GATE_RING_RADIUS: float = 3.5
 const GATE_RING_THICKNESS: float = 0.4
-const GATE_RING_CHEVRON_SIZE: float = 0.8
+const GATE_RING_CHEVRON_SIZE: float = 1.5
 
 ## Gate ring center — aligned with harness camera look_at (0, 9.2, 13.5)
 ## so the gate is dead-center in the rendered frame.
@@ -134,11 +134,15 @@ func _build_gate_ring() -> void:
 	# Each chevron has an OmniLight3D so it reads as a true glowing emitter
 	# that illuminates the surrounding ring, not just a self-lit silhouette.
 	# Emission energy boosted from 20→120 for dramatic bloom-level brightness.
+	# Chevron geometry scaled UP (GATE_RING_CHEVRON_SIZE 0.8→1.5) and pushed
+	# 0.25 toward camera so they read as distinct triangular glyphs against the
+	# ring instead of being buried in the torus silhouette / half-occluded by
+	# the vortex disc (judges: "chevrons not reading").
 	for i in range(9):
 		var angle := deg_to_rad(i * 40.0 - 180.0)
-		var chevron_pos := Vector3(cos(angle) * GATE_RING_RADIUS, GATE_CENTER_Y + sin(angle) * GATE_RING_RADIUS, GATE_CENTER_Z)
+		var chevron_pos := Vector3(cos(angle) * GATE_RING_RADIUS, GATE_CENTER_Y + sin(angle) * GATE_RING_RADIUS, GATE_CENTER_Z - 0.25)
 		var chevron := _cone(
-			Vector3(0.4, 0.3, 0.4),
+			Vector3(GATE_RING_CHEVRON_SIZE, 0.45, GATE_RING_CHEVRON_SIZE),
 			chevron_pos,
 			_emissive(GATE_RING_GLOW_COLOR, 180.0)
 		)

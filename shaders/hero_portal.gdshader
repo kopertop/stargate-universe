@@ -34,7 +34,7 @@ uniform float detail                                = 4.0;    // base fBm freque
 // Radial annulus profile (in 0..1 disc radius). The bright churning band now
 // spans most of the disc (peak pushed outward) with a clear dark centre, so the
 // vortex reads as a LARGE energy mass filling the ring, not a small hot dot.
-uniform float hole_radius   : hint_range(0.0, 0.7)  = 0.25;   // dark centre extent
+uniform float hole_radius   : hint_range(0.0, 0.7)  = 0.52;   // dark centre extent
 uniform float ring_peak     : hint_range(0.1, 0.95) = 0.66;   // brightest band radius
 uniform float rim_fade      : hint_range(0.6, 1.15) = 1.08;   // outer fade edge
 uniform float ring_sharp    : hint_range(0.3, 4.0)  = 0.7;    // band tightness (low = broad)

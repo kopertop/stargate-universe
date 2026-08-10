@@ -141,12 +141,21 @@ func _build_gate_ring() -> void:
 	for i in range(9):
 		var angle := deg_to_rad(i * 40.0 - 180.0)
 		var chevron_pos := Vector3(cos(angle) * GATE_RING_RADIUS, GATE_CENTER_Y + sin(angle) * GATE_RING_RADIUS, GATE_CENTER_Z - 0.25)
-		var chevron := _cone(
-			Vector3(GATE_RING_CHEVRON_SIZE, 0.45, GATE_RING_CHEVRON_SIZE),
-			chevron_pos,
-			_emissive(GATE_RING_GLOW_COLOR, 180.0)
-		)
-		chevron.rotate_z(angle + PI / 2.0)
+		# True triangular chevron glyph (PrismMesh, apex +X) rotated so the apex
+		# points INWARD toward the ring center — reads as a Stargate chevron
+		# instead of a round pip on a smooth ring (judges: "chevrons not reading").
+		# PrismMesh triangle cross-section lies in the XZ plane (edge-on to the
+		# camera); rotate_x(PI/2) first brings the triangular face to face -Z,
+		# then rotate_z(angle + PI) aims the apex radially inward.
+		var chevron := MeshInstance3D.new()
+		var glyph := PrismMesh.new()
+		glyph.size = Vector3(1.8, 0.8, 1.2)
+		glyph.left_to_right = true
+		chevron.mesh = glyph
+		chevron.material_override = _emissive(GATE_RING_GLOW_COLOR, 180.0)
+		chevron.position = chevron_pos
+		chevron.rotate_x(PI / 2.0)
+		chevron.rotate_z(angle + PI)
 		add_child(chevron)
 		# Point light at each chevron — warm-bright emitter that spills onto ring
 		var chevron_light := OmniLight3D.new()

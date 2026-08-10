@@ -334,6 +334,26 @@ func _build_ceiling() -> void:
 		rim.rotate_x(PI / 2.0)
 		add_child(rim)
 
+		# Machined concentric rib rings on each band face — non-emissive
+		# cool-steel tori slightly proud of the band surface, catching the
+		# downlight/rim glow so the dome reads as engineered concentric
+		# rings (target: machined ceiling; gd-qa-1 "mechanical concentric
+		# rings" gap). Geometry only — no emissive (12:20 REJECT anchor).
+		var rib_mat := _standard_material(Color(0.24, 0.26, 0.31), 0.35, 0.85)
+		for j in range(2):
+			var rib_t := 0.35 + j * 0.35
+			var r_mid := (r_bottom + r_top) * 0.5
+			var rib := MeshInstance3D.new()
+			var rib_shape := TorusMesh.new()
+			rib_shape.outer_radius = r_mid * 1.02
+			rib_shape.inner_radius = r_mid * 0.98
+			rib_shape.ring_segments = 48
+			rib.mesh = rib_shape
+			rib.material_override = rib_mat
+			rib.position = Vector3(0.0, y_lo + band_h * rib_t, dome_z)
+			rib.rotate_x(PI / 2.0)
+			add_child(rib)
+
 	# Apex pip — small emissive disc closes the dome top, slightly proud of
 	# the topmost band cap so it reads as the dome's keystone
 	var apex_mat := _emissive(Color(0.55, 0.6, 0.68), CEILING_RIM_ENERGY * 1.5)

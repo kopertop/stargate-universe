@@ -302,13 +302,13 @@ func _build_ceiling() -> void:
 	# ACCEPTed value, per journal: do not tune rim energy).
 	var dome_mat := _standard_material(Color(0.14, 0.15, 0.17), 0.4, 0.75)
 	var dome_z := GATE_CENTER_Z - 5.5
-	var band_count := 4
+	var band_count := 5
 	var base_y := 10.6
-	var band_h := 0.3
+	var band_h := 0.4
 	for i in range(band_count):
 		var t := float(i) / float(band_count)
-		var r_bottom := 5.8 * (1.0 - t * 0.78)
-		var r_top := 5.8 * (1.0 - (t + 1.0 / float(band_count)) * 0.78)
+		var r_bottom := 5.9 * (1.0 - t * 0.88)
+		var r_top := 5.9 * (1.0 - (t + 1.0 / float(band_count)) * 0.88)
 		var y_lo := base_y + i * band_h
 		var band := MeshInstance3D.new()
 		var band_shape := CylinderMesh.new()
@@ -325,12 +325,12 @@ func _build_ceiling() -> void:
 		var rim_mat := _emissive(Color(0.55, 0.6, 0.68), CEILING_RIM_ENERGY * (1.0 + t * 0.5))
 		var rim := MeshInstance3D.new()
 		var rim_shape := TorusMesh.new()
-		rim_shape.outer_radius = r_top * 1.03
-		rim_shape.inner_radius = r_top * 0.97
+		rim_shape.outer_radius = r_top * 1.06
+		rim_shape.inner_radius = r_top * 0.94
 		rim_shape.ring_segments = 48
 		rim.mesh = rim_shape
 		rim.material_override = rim_mat
-		rim.position = Vector3(0.0, y_lo + band_h + 0.03, dome_z)
+		rim.position = Vector3(0.0, y_lo + band_h + 0.06, dome_z)
 		rim.rotate_x(PI / 2.0)
 		add_child(rim)
 

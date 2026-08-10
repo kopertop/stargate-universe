@@ -54,7 +54,7 @@ const VORTEX_INTENSITY: float = 6.0
 
 ## Ceiling dome parameters
 const CEILING_DOWNLIGHT_ENERGY: float = 25.0
-const CEILING_RIM_ENERGY: float = 1.5
+const CEILING_RIM_ENERGY: float = 6.0
 
 ## Wall window-slit parameters — warm amber emissive alcoves on side walls
 const WALL_SLIT_COLOR: Color = Color(0.9, 0.55, 0.2)
@@ -313,7 +313,7 @@ func _build_ceiling() -> void:
 		add_child(tier)
 		
 		# Emissive rim on each tier for visible stepped banding
-		var rim_mat := _emissive(Color(0.4, 0.45, 0.5), CEILING_RIM_ENERGY * (1.0 + t * 0.5))
+		var rim_mat := _emissive(Color(0.55, 0.6, 0.68), CEILING_RIM_ENERGY * (1.0 + t * 0.5))
 		var rim := MeshInstance3D.new()
 		var rim_shape := TorusMesh.new()
 		rim_shape.outer_radius = radius * 1.02

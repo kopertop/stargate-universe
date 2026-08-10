@@ -343,15 +343,38 @@ func _build_floor() -> void:
 	floor.position.y += 0.05
 	add_child(floor)
 	
-	# Grid plates spread across hall length
-	for i in range(8):
-		var plate := _box(
-			Vector3(3.0, 0.05, 5.0),
-			Vector3(-3.0 + (i % 4) * 2.0, 0.025, -18.0 + (i / 4) * 22.0),
-			_standard_material(Color(0.08, 0.08, 0.09), FLOOR_ROUGHNESS * 1.5, FLOOR_METALLIC)
+	# Wet metal grid plates (rubric 7): 4 columns x 7 rows covering the
+	# visible floor from the camera (z=-19) to the gate (z=13.5). Plates are
+	# wet-reflective (roughness 0.20, metallic 0.9) so they catch the vortex
+	# reflection; dark matte seam strips between them form the grid lines
+	# that converge toward the gate in one-point perspective.
+	var plate_mat := _standard_material(Color(0.09, 0.09, 0.10), 0.20, FLOOR_METALLIC)
+	var seam_mat := _standard_material(Color(0.015, 0.015, 0.02), 0.55, 0.5)
+	for cx: float in [-4.35, -1.45, 1.45, 4.35]:
+		for rz: float in [-18.0, -13.0, -8.0, -3.0, 2.0, 7.0, 12.0]:
+			var plate := _box(
+				Vector3(2.8, 0.05, 4.8),
+				Vector3(cx, 0.025, rz),
+				plate_mat
+			)
+			plate.position.y += 0.06
+			add_child(plate)
+	# Column seams — at the gaps between plate columns, converge in perspective
+	for cx: float in [-2.9, 0.0, 2.9]:
+		var seam_c := _box(
+			Vector3(0.2, 0.02, 35.0),
+			Vector3(cx, 0.10, -3.0),
+			seam_mat
 		)
-		plate.position.y += 0.06
-		add_child(plate)
+		add_child(seam_c)
+	# Row seams — at the gaps between plate rows, horizontal grid lines
+	for rz: float in [-15.5, -10.5, -5.5, -0.5, 4.5, 9.5]:
+		var seam_r := _box(
+			Vector3(12.0, 0.02, 0.2),
+			Vector3(0.0, 0.10, rz),
+			seam_mat
+		)
+		add_child(seam_r)
 
 func _build_wall_slits() -> void:
 	# Warm amber emissive window-slits on both side walls.

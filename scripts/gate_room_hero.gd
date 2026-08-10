@@ -340,8 +340,8 @@ func _build_ceiling() -> void:
 		# rings (target: machined ceiling; gd-qa-1 "mechanical concentric
 		# rings" gap). Geometry only — no emissive (12:20 REJECT anchor).
 		var rib_mat := _standard_material(Color(0.24, 0.26, 0.31), 0.35, 0.85)
-		for j in range(2):
-			var rib_t := 0.35 + j * 0.35
+		for j in range(3):
+			var rib_t := 0.25 + j * 0.25
 			var r_mid := (r_bottom + r_top) * 0.5
 			var rib := MeshInstance3D.new()
 			var rib_shape := TorusMesh.new()

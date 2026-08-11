@@ -25,7 +25,7 @@ uniform vec3  rim_color   : source_color = vec3(0.03, 0.10, 0.30);  // deep blue
 uniform vec3  hole_color  : source_color = vec3(0.0, 0.01, 0.04);   // dark unstable centre
 
 uniform float energy        : hint_range(0.0, 8.0) = 4.8;
-uniform float swirl         : hint_range(0.0, 16.0) = 7.0;    // angular twist per radius
+uniform float swirl         : hint_range(0.0, 16.0) = 3.5;    // angular twist per radius (halved from 7.0: strong shear wrapped noise into tight concentric arcs/bullseye; gentler shear keeps one coherent rotating mass with soft spiral arms — nebula churn)
 uniform float spin_speed                            = 0.35;   // whole-vortex rotation
 uniform float flow_speed                            = 0.55;   // churn / drift rate
 uniform float warp_amount   : hint_range(0.0, 2.0)  = 0.85;

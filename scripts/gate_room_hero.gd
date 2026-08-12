@@ -58,7 +58,7 @@ const CEILING_RIM_ENERGY: float = 6.0
 
 ## Wall window-slit parameters — warm amber emissive alcoves on side walls
 const WALL_SLIT_COLOR: Color = Color(0.9, 0.55, 0.2)
-const WALL_SLIT_ENERGY: float = 5.0
+const WALL_SLIT_ENERGY: float = 0.5
 
 ## Render capture — saves image from _process() as fallback when harness camera fails
 var _frame_count: int = 0

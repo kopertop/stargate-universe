@@ -77,3 +77,4 @@ worker/venv2/
 
 # Dreaming session artifacts
 .dreaming/
+geometry_test_scenarios.json

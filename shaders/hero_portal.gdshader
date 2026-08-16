@@ -28,7 +28,7 @@ uniform float energy        : hint_range(0.0, 8.0) = 4.8;
 uniform float swirl         : hint_range(0.0, 16.0) = 3.5;    // angular twist per radius (halved from 7.0: strong shear wrapped noise into tight concentric arcs/bullseye; gentler shear keeps one coherent rotating mass with soft spiral arms — nebula churn)
 uniform float spin_speed                            = 0.35;   // whole-vortex rotation
 uniform float flow_speed                            = 0.55;   // churn / drift rate
-uniform float warp_amount   : hint_range(0.0, 2.0)  = 0.85;
+uniform float warp_amount   : hint_range(0.0, 2.0)  = 1.2;
 uniform float detail                                = 4.0;    // base fBm frequency
 
 // Radial annulus profile (in 0..1 disc radius). The bright churning band now

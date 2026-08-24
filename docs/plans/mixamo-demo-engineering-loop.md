@@ -58,8 +58,7 @@ flowchart TD
 - Demo movie beat: holster → tool-use → walk (`01b_tool_use`)
 
 ### Node I / J / K — Verify + show
-- `tests/run.sh mixamo-player` + `e1-opening` + `scene`
-- Re-record `tools/record_mixamo_combat_demo.sh` only if host or feel changed
+- **done 2026-07-24 (cloud)** — `mixamo-player` 30/30, `e1-opening` PASS, `scene` 64, `mint-character` PASS (Rush Meshy soft-skip). Rebuilt via `tools/blender_mixamo_proxy_combat.py` (no Mixamo `incoming/`). Re-recorded `tools/record_mixamo_combat_demo.sh` (opengl3) → `screenshots/result/mixamo_combat_demo.mp4` (~14.0s) + `docs/demo/mixamo_combat_demo_*.jpg` / preview reel. Branch `cursor/mixamo-character-combat-scene-e52c`.
 - Conventional commits; never Mixamo ToS / `models/mint/rush` / screenshot binaries
 
 ## Hard rules
@@ -67,7 +66,7 @@ flowchart TD
 - Exact clip contract in `docs/animation/mixamo-rifle-combat-showcase.md`
 - Never commit Mixamo FBX/GLB under ToS gitignore
 
-### Node J — Re-record demo (Y Bot)
-- **done** 2026-07-24 — Re-ran `tools/record_mixamo_combat_demo.sh` after Y Bot combat host (`MixamoCombatAvatar.resolve_combat_glb()` → `YBot_rifle_combat.glb`, ~3.6MB local).
-- Output: `screenshots/result/mixamo_combat_demo.mp4` (~14.0s, ~23MB, gitignored). Beat frames under `screenshots/result/mixamo_combat_demo/` (`01_holster_idle` … `07_end`, plus `01b_tool_use`).
+### Node J — Re-record demo (Y Bot / proxy)
+- **done** 2026-07-24 — Prefer Y Bot pack when present; cloud agents use proxy `Swat_rifle_combat.glb` from `vrm/anim_src`.
+- Output: `screenshots/result/mixamo_combat_demo.mp4` (~14.0s, gitignored). Beat frames under `screenshots/result/mixamo_combat_demo/` and evidence JPGs in `docs/demo/`.
 - Record run: non-fatal `planet_gate.gd` overlapping-bodies warning at boot; demo movie completed all beats.

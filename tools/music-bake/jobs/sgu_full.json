@@ -1,0 +1,24 @@
+{
+	"_comment": "Full SGU composable-music stem library (18 stems). Bake AFTER the sample batch is approved. Stem defs (prompts/durations/influence) live in palette.py — edit there and re-bake; this file only selects which ids to render. Mood->stem composition lives in data/music_moods.json.",
+	"out_dir": "sounds/music/loops",
+	"stems": [
+		"bed_ship_warm",
+		"bed_derelict_cold",
+		"bed_planet_open",
+		"bed_space_vast",
+		"pad_strings_warm",
+		"pad_strings_tense",
+		"pad_shimmer",
+		"mel_cello_lonely",
+		"mel_violin_hope",
+		"mel_piano_sparse",
+		"pulse_slow",
+		"pulse_drive",
+		"perc_action",
+		"sting_discovery",
+		"sting_alarm",
+		"riser_jump",
+		"impact_jump",
+		"braam_danger"
+	]
+}

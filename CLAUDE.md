@@ -1,100 +1,145 @@
 # Stargate Universe
 
-A browser-based sci-fi open-world RPG set in the Stargate Universe TV series. Players take on the
-role of crew aboard the ancient ship Destiny, exploring uncharted galaxies, managing resources,
-making story-defining choices, and surviving against alien threats — all running natively in the
-browser with WebGPU rendering.
+A sci-fi open-world RPG set in the Stargate Universe TV series. Players take on the role of crew
+aboard the ancient ship Destiny, exploring uncharted galaxies, managing resources, making
+story-defining choices, and surviving against alien threats.
+
+## Current Status
+
+_Snapshot — refresh with `/help`. Last updated: 2026-05-21._
+
+- **Phase:** Production · **Active sprint:** sprint-005 (first Godot-era sprint) · **Branch:** `godot`
+- **Sprint-005 goal:** Make E1 Mission 1 actually playable — wire rooms via doors, add Kino pickup + UI, flesh out hull breach + seal interaction, ship mission-complete trigger.
+- **Done:** Concept, Systems Design (15 GDDs in `design/gdd/`), engine pivot to Godot 4.6, E1 gate-room slice + headless smoke tests
+- **Sprint format:** Task tables in `production/sprints/sprint-NNN.md` (no `production/epics/` hierarchy)
+- **Sprints 1–4 archived:** `production/sprints/archive-browser-stack/` — all pre-pivot Three.js work. Do not resume; conceptual notes folded into design GDDs + memory.
+- **Tech debt — not blocking:** missing `docs/architecture/architecture.md`, `docs/architecture/control-manifest.md`, `design/accessibility-requirements.md` (4 ADRs exist in `docs/architecture/`)
 
 ## Engine
 
-Built on **`@kopertop/vibe-game-engine`** ([kopertop/vibe-game-engine](https://github.com/kopertop/vibe-game-engine))
-via the `@ggez/*` package ecosystem.
+**Godot 4.6** (Forward+ renderer). Bootstrapped from
+[KenneyNL/Starter-Kit-3D-Platformer](https://github.com/KenneyNL/Starter-Kit-3D-Platformer) — a
+CC0-licensed third-person platformer kit. Kit assets live in `models/`, `meshes/`, `objects/`,
+`sounds/`, `sprites/`, `fonts/`, `vector/`. The kit's `scripts/` are GDScript.
 
-- **Renderer:** Three.js r181 + WebGPU (`three/webgpu`), WebGL fallback
-- **Physics:** Crashcat (`@ggez/runtime-physics-crashcat`) — always Crashcat, never Rapier
-- **Animation:** `@ggez/anim-runtime` + `@ggez/anim-three` with VRM retargeting
-- **Event bus:** `@ggez/gameplay-runtime` typed event bus
-- **Scene system:** ggez World Editor → `scene.runtime.json` exports consumed at runtime
-- **Build:** Vite + Bun + Wrangler (Cloudflare Pages deployment)
+### Status
 
-## Architecture Status
+This branch (`reset-stack`) is a **complete engine pivot** away from the previous browser-based
+stack (Three.js + WebGPU + ggez + Crashcat + VRM). The previous stack is preserved on `main`.
 
-### Implemented
+Reason for pivot: character animation and display had never worked properly on the browser stack;
+character pipelines in Godot are battle-tested and the Kenney kit ships a working one.
 
-- Fixed-timestep game loop (ggez game-dev shell)
-- VRM character system (~3,600 LOC — character loading, retargeting, LOD)
-- Crashcat physics integration
-- Typed event bus
+### What carried over from the browser branch
+
+- `design/gdd/` — 15 Game Design Documents (engine-agnostic)
+- `production/` — sprint plans, milestones (mostly engine-agnostic)
+- `docs/` — narrative, audio inventory, deployment notes
+- `.claude/` — subagent definitions, slash commands (some need rewriting for Godot)
+
+### What was dropped
+
+- Three.js + WebGPU rendering
+- `@kopertop/vibe-game-engine` (ggez) plugin system
+- Crashcat physics
+- VRM character system (~3,600 LOC)
+- TypeScript + Vite + Bun + Wrangler / Cloudflare Pages deployment
+- `scene.runtime.json` pipeline
 - Auto-discovered scene system
-- Ship state management
-- Basic inventory
-
-### Pending
-
-- Dialogue system (`/add-dialogue`)
-- NPC AI (`/add-npc`)
-- Save / load (`/add-save-field`)
-- HUD / player UI (`/add-hud-element`)
-- Crafting system (`/add-recipe`)
-- Planet generation (`/add-planet`, `/add-biome`)
-
+- All browser tests (Vitest, Playwright)
 
 ## Key Paths
 
 | Path | Contents |
 |---|---|
-| `src/game/` | Core game shell — app, camera, physics, player controller |
-| `src/systems/` | Custom gameplay systems (ECS-style) |
-| `src/scenes/` | Scene modules — each scene = one level/area |
-| `src/animations/` | Animation bundles from ggez animation editor |
-| `src/ui/` | HUD, menus, overlays (HTML overlay on canvas) |
-| `design/gdd/` | Per-system Game Design Documents (15 GDDs authored) |
-| `assets/` | Shared models, textures, audio |
-| `production/` | Sprint plans, milestones, session state |
+| `project.godot` | Godot project config |
+| `scenes/` | Godot `.tscn` scenes (main, level, ui) |
+| `scripts/` | GDScript files (`audio.gd`, `hud.gd`, `main.gd`, `player.gd`, `view.gd`) |
+| `models/` | Kenney `.glb` 3D models — characters, props, level pieces |
+| `meshes/` | `.tres` mesh resources |
+| `objects/` | Reusable `.tscn` prefabs (player, enemies, pickups) |
+| `sounds/` | Kit sound effects |
+| `sprites/` | UI sprites and 2D art |
+| `fonts/` | Bitmap and TTF fonts |
+| `design/gdd/` | Per-system Game Design Documents (carried from browser branch) |
+| `production/` | Sprint plans, milestone tracking |
+| `docs/` | Narrative reference, audio inventory |
 
-## Skills
+## Navigation aids
 
-To add content to this game, use the **vibe-game-engine Agent Skills** from
-`~/.claude/skills/` (or the engine's `skills/` directory). The most relevant skills are:
-
-| Skill | What it creates |
-|---|---|
-| `/add-scene` | New level or area with scene module + runtime.json stub |
-| `/add-npc` | NPC with VRM model, schedule, and dialogue hooks |
-| `/add-dialogue` | Branching dialogue tree (Bioware-style) |
-| `/add-item` | Inventory item (collectible, tool, consumable, story artifact) |
-| `/add-quest` | Quest with objectives, stages, and rewards |
-| `/add-crew-member` | Named Destiny crew member with VRM config and relationship arc |
-| `/add-episode` | Story episode with narrative beats, choices, and episode-end snapshot |
-| `/add-planet` | Full planet definition for the planetary-runs system |
-| `/add-level` | **META** — full level orchestrating scene + NPCs + quests + audio |
-
-See [`docs/skills-roadmap.xlsx`](https://github.com/kopertop/vibe-game-engine/blob/main/docs/skills-roadmap.xlsx)
-in the engine repo for the complete 47-skill inventory.
+Every meaningful directory has its own `AGENTS.md` cheatsheet: a one-page
+summary of what lives there, project-specific conventions, and links back
+to CLAUDE.md + related docs. Read the local `AGENTS.md` FIRST when entering
+a new directory — it's faster than grepping ten files. CLAUDE.md remains
+the project-wide source of truth; the per-directory files defer to it for
+anything they don't override.
 
 ## Dev Conventions
 
-- **Indentation:** Tabs (not spaces)
-- **Style:** Functional TypeScript preferred — pure functions, no classes unless required by a library
-- **Modules:** ESM only (`import`/`export`); no `require()`
-- **Async:** `async`/`await` always; no `.then()` chains
-- **Validation:** Zod for runtime validation at all content boundaries
-- **Package manager:** Bun
-- **Naming:** `kebab-case` files, `camelCase` variables/functions, `PascalCase` types, `UPPER_SNAKE_CASE` constants
-- **Target:** 60 FPS, 16.6 ms frame budget
+- **Language:** GDScript (kit's idiom); C# only if a system genuinely requires it
+- **Indentation:** Tabs (Godot default)
+- **Scenes:** Composition over inheritance — small `.tscn` files combined via `instance`
+- **Signals:** Prefer Godot signals over polling for cross-node communication
+- **Static typing:** `func foo(x: int) -> void:` — enforce typed GDScript everywhere
+- **Naming:** `snake_case` files, `snake_case` variables/functions, `PascalCase` nodes/classes
+- **Resources:** Use `Resource` types for save data and content definitions
+
+## Skills
+
+The `/add-scene`, `/add-npc`, `/add-dialogue` etc. slash commands in `.claude/skills/` were written
+for the browser stack and **need to be rewritten for Godot**. Treat them as stale until ported.
+
+CCGS testing skills (`/smoke-check`, `/playtest-report`, `/qa-plan`, `/test-setup`, `/test-helpers`,
+`/soak-test`, `/dev-story`, `/regression-suite`, `/skill-test`) are imported and Godot-aware.
+
+Use the **godot-specialist** and **godot-gdscript-specialist** subagents for engine-specific work.
+
+## Testing
+
+Headless smoke + flow tests live in `tests/smoke/` (Godot `SceneTree`-extending scripts, no
+GDUnit4 needed). Run:
+
+```bash
+tests/run.sh         # all (lint + scene + flow + quest + playthrough)
+tests/run.sh scene   # scene-boot only
+tests/run.sh flow    # e1-flow only
+tests/run.sh lint    # save-registration policy only
+```
+
+See `tests/README.md` for details. Both tests must pass before any branch can claim the E1
+vertical slice ships.
+
+### Pre-commit hook
+
+Per-clone install (one-time, no dependencies):
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The hook runs two policy lints (both `--staged`):
+
+1. `tests/lint/check_save_registration.sh` — the **save-registration policy**:
+   every autoload in `project.godot` must either (a) call
+   `SaveManager.register_system("<id>", self)` somewhere in its script, or
+   (b) carry a `# @no-save: <reason>` marker declaring it stateless. Without this
+   guard, a new system that holds gameplay state can ship without being captured
+   by the auto-save pipeline — state would silently disappear across save/load.
+2. `tests/lint/check_collection_forks.sh` — the **collection-fork policy**: no
+   top-level bool field in `scripts/*.gd` may use acquisition vocabulary
+   (`*_found`, `*_acquired`, `has_*`, `got_*`, …). A set of like things (items,
+   discovered rooms, unlocks) must live in ONE registry behind ONE add/enumerate
+   API, not scattered per-instance bools that every consumer must special-case
+   (the cause of the looted-fuse inventory bug #41 and the quest fork #36). Opt
+   out genuinely-distinct state with `# @collection-ok: <reason>`.
 
 ## Collaboration Protocol
 
-**User-driven collaboration, not autonomous execution.**
-Every task follows: **Question → Options → Decision → Draft → Approval**
-
-- Ask before writing to any file
-- Show drafts or summaries before requesting approval
-- No commits without user instruction
+User-driven, not autonomous. Every task: **Question → Options → Decision → Draft → Approval**.
+Ask before writing to any file. Show drafts before approval. No commits without instruction.
 
 ## Extended Docs
 
 - `@.claude/docs/coordination-rules.md` — agent coordination rules
-- `@.claude/docs/coding-standards.md` — detailed coding standards
-- `@.claude/docs/context-management.md` — context management across sessions
+- `@.claude/docs/coding-standards.md` — coding standards (browser-era; needs Godot update)
 - `design/gdd/` — per-system Game Design Documents

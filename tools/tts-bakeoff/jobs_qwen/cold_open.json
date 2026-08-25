@@ -1,0 +1,23 @@
+{
+	"_comment": "Game-ready cold-open VO via Qwen3 Base-model clone of the picked per-mode VoiceDesign refs (refs_qwen/<char>_<mode>.wav). id -> sounds/dialog/prologue/<id>.wav once promoted; baked first to out/qwen3_clone/ for review.",
+	"lines": [
+		{ "id": "open-scott-evac",    "char": "scott", "mode": "panic",    "text": "This is Scott. Slow down the evac — we're coming in too hot!" },
+		{ "id": "open-scott-side",    "char": "scott", "mode": "barked",   "text": "There's no time to explain — off to the side!" },
+		{ "id": "open-scott-norush",  "char": "scott", "mode": "standard", "text": "I haven't seen Rush. I don't know if he made it through." },
+		{ "id": "open-scott-rush",    "char": "scott", "mode": "barked",   "text": "Rush! … Rush!" },
+		{ "id": "open-scott-findhim", "char": "scott", "mode": "standard", "text": "Help me find him." },
+		{ "id": "open-scott-eli-now", "char": "scott", "mode": "barked",   "text": "Eli! NOW!" },
+
+		{ "id": "open-greer-clear",   "char": "greer", "mode": "barked",   "text": "Clear! Keep 'em moving!" },
+		{ "id": "open-greer-move",    "char": "greer", "mode": "barked",   "text": "Move, move, move!" },
+
+		{ "id": "open-eli-whatisthis","char": "eli",   "mode": "standard", "text": "Okay... what is this place?" },
+		{ "id": "open-eli-coming",    "char": "eli",   "mode": "panic",    "text": "Okay! I'm coming!" },
+
+		{ "id": "open-tj-fingers",    "char": "tj",    "mode": "standard", "text": "Can you move your fingers?" },
+		{ "id": "open-tj-sling",      "char": "tj",    "mode": "standard", "text": "Okay — hold your arm there, we'll get it in a sling." },
+
+		{ "id": "young-myship",       "char": "young", "mode": "standard", "text": "This is my ship. We do this my way." },
+		{ "id": "rush-discovery",     "char": "rush",  "mode": "standard", "text": "This ship could be the most important discovery mankind has ever made." }
+	]
+}

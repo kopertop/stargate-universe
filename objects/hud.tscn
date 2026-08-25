@@ -1,0 +1,177 @@
+[gd_scene load_steps=11 format=3 uid="uid://b1hudsgu000"]
+
+[ext_resource type="Script" uid="uid://bap462su1xjtx" path="res://scripts/hud.gd" id="1_hud"]
+[ext_resource type="Texture2D" path="res://sprites/ui/dialog_panel.png" id="2_dlgpanel"]
+[ext_resource type="Texture2D" path="res://sprites/ui/dialog_nameplate.png" id="3_dlgnamep"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_objective"]
+font_size = 16
+font_color = Color(0.95, 0.98, 1, 1)
+outline_size = 6
+outline_color = Color(0, 0, 0, 0.65)
+shadow_color = Color(0, 0, 0, 0.45)
+shadow_offset = Vector2(1, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_interact"]
+font_size = 20
+font_color = Color(1, 1, 1, 1)
+outline_size = 8
+outline_color = Color(0, 0, 0, 0.85)
+shadow_color = Color(0, 0, 0, 0.5)
+shadow_offset = Vector2(1, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_kinohint"]
+font_size = 16
+font_color = Color(0.95, 0.8, 0.45, 1)
+outline_size = 6
+outline_color = Color(0, 0, 0, 0.85)
+
+[sub_resource type="LabelSettings" id="LabelSettings_dlgname"]
+font_size = 18
+font_color = Color(0.7, 0.95, 1, 1)
+outline_size = 5
+outline_color = Color(0, 0, 0, 0.85)
+
+[sub_resource type="LabelSettings" id="LabelSettings_dlgline"]
+font_size = 20
+font_color = Color(0.96, 0.98, 1, 1)
+outline_size = 4
+outline_color = Color(0, 0, 0, 0.75)
+
+[node name="HUD" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_hud")
+
+[node name="Objective" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.0
+anchor_top = 0.0
+offset_left = 24.0
+offset_top = 184.0
+offset_right = 700.0
+offset_bottom = 226.0
+text = "Objective: —"
+label_settings = SubResource("LabelSettings_objective")
+
+[node name="InteractPrompt" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -260.0
+offset_top = -120.0
+offset_right = 260.0
+offset_bottom = -90.0
+grow_horizontal = 2
+grow_vertical = 0
+horizontal_alignment = 1
+text = ""
+label_settings = SubResource("LabelSettings_interact")
+
+[node name="KinoHint" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -260.0
+offset_top = -52.0
+offset_right = -24.0
+offset_bottom = -24.0
+grow_horizontal = 0
+grow_vertical = 0
+horizontal_alignment = 2
+text = "[Tab]  Kino Remote"
+label_settings = SubResource("LabelSettings_kinohint")
+visible = false
+
+[node name="DialogPanel" type="NinePatchRect" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -440.0
+offset_top = -240.0
+offset_right = 440.0
+offset_bottom = -150.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+texture = ExtResource("2_dlgpanel")
+patch_margin_left = 18
+patch_margin_top = 18
+patch_margin_right = 18
+patch_margin_bottom = 18
+
+[node name="Nameplate" type="NinePatchRect" parent="DialogPanel"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.0
+anchor_top = 0.0
+offset_left = 18.0
+offset_top = -16.0
+offset_right = 240.0
+offset_bottom = 20.0
+mouse_filter = 2
+texture = ExtResource("3_dlgnamep")
+patch_margin_left = 14
+patch_margin_top = 14
+patch_margin_right = 14
+patch_margin_bottom = 14
+
+[node name="Name" type="Label" parent="DialogPanel/Nameplate"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "Speaker"
+label_settings = SubResource("LabelSettings_dlgname")
+
+[node name="Line" type="Label" parent="DialogPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 28.0
+offset_top = 28.0
+offset_right = -28.0
+offset_bottom = -22.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+horizontal_alignment = 0
+vertical_alignment = 1
+autowrap_mode = 2
+text = ""
+label_settings = SubResource("LabelSettings_dlgline")
+
+[node name="Log" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 1.0
+anchor_top = 0.0
+anchor_right = 1.0
+offset_left = -340.0
+offset_top = 18.0
+offset_right = -24.0
+offset_bottom = 130.0
+grow_horizontal = 0
+alignment = 0

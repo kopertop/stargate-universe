@@ -1,0 +1,13 @@
+{
+	"_comment": "Single source of truth for the TTS emotion bake-off. Every engine reads THIS file so the only variable a listener hears is the engine's emotional rendering. Lines are real Scott lines from design/voice-line-manifest.md. The reference clip + its transcript clone Scott's timbre into every cloning engine.",
+	"voice": "scott",
+	"reference_wav": "sounds/dialog/prologue/scott_clear.wav",
+	"reference_text": "Okay, it's safe. Start sending people through.",
+	"lines": [
+		{ "id": "scott-cover",            "mood": "panic", "text": "Get to cover! Now!",                                            "tags": ["panic", "shout"] },
+		{ "id": "scott-contact",          "mood": "panic", "text": "Contact! Two o'clock!",                                         "tags": ["panic", "shout"] },
+		{ "id": "scott-retreat",          "mood": "panic", "text": "Fall back to the gate! Go!",                                    "tags": ["panic", "shout"] },
+		{ "id": "scott-bark-duty",        "mood": "calm",  "text": "I volunteered for this mission. Whatever happens, I'm responsible.", "tags": ["calm"] },
+		{ "id": "scott-bark-planet-nice", "mood": "calm",  "text": "Some of these planets... makes you forget where we are.",       "tags": ["calm", "sigh"] }
+	]
+}

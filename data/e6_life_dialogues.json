@@ -1,0 +1,283 @@
+{
+	"_comment": "E6 Life — personal story dialogue trees for crew relationship missions. Three personal quests: TJ medical supplies, Camille political mediation, Greer emotional guard. Each has a multi-node dialogue tree with branching choices that fire dialogue actions (wired to RelationshipSystem via GameState.dialog_action). Relationship thresholds gate whether the mission is available.",
+
+	"missions": [
+		{
+			"id": "tj_medical_supplies",
+			"crew": "TJ",
+			"display_name": "TJ — Medical Supplies",
+			"required_level": "friendly",
+			"location": "Med Bay",
+			"summary": "TJ is running low on medical supplies. She confides in Eli that the medical bay库存 is dangerously thin. Help her inventory what's left and find a way to replenish stock.",
+			"dialogue_tree": [
+				{
+					"speaker": "TJ",
+					"text": "Eli. I need to talk to someone, and you're... you're one of the few people on this ship who actually listens. We're running out of supplies. Antibiotics, analgesics, bandages — I've been rationing for weeks. If we don't find more soon, people are going to die from treatable injuries.",
+					"choices": [
+						{ "text": "What do you need me to do?", "next": 1, "action": "tj_mission_accept" },
+						{ "text": "Can't Rush help with the Ancient systems?", "next": 2, "action": "tj_mission_defer" },
+						{ "text": "I'm dealing with my own problems right now.", "next": 3, "action": "tj_mission_decline" }
+					]
+				},
+				{
+					"speaker": "TJ",
+					"text": "I need someone I trust to help me inventory what's left. The storage room on the lower deck has crates we never opened — medical supplies from the original expedition. If some of those are still viable, we buy ourselves time. But I can't leave the med bay unattended. I need you to go down there and check.",
+					"choices": [
+						{ "text": "I'll head down there now.", "next": 4, "action": "tj_mission_start" },
+						{ "text": "What should I look for?", "next": 5 }
+					]
+				},
+				{
+					"speaker": "TJ",
+					"text": "Rush? Rush is too busy staring at Ancient code to care about whether someone's leg gets infected. I've asked. He said the ship's medical systems are 'not a priority.' Not a priority. Tell that to the next person who comes in with a fracture.",
+					"choices": [
+						{ "text": "I'll help you, TJ.", "next": 1, "action": "tj_mission_accept" },
+						{ "text": "Maybe I can talk to him.", "next": 6, "action": "tj_mission_intervene" }
+					]
+				},
+				{
+					"speaker": "TJ",
+					"text": "I understand. Everyone has their own weight to carry. But Eli — when the time comes and someone you care about needs medical care we can't provide... remember this conversation.",
+					"choices": [
+						{ "text": "I'll come back when I can help.", "next": "exit" }
+					]
+				},
+				{
+					"speaker": "TJ",
+					"text": "Thank you, Eli. The storage room is on the lower deck, section C. Look for crates with red cross markings. Check expiration dates — anything older than two years, leave it. Bring back what you find. And be careful — some of those containers might be compromised.",
+					"choices": [
+						{ "text": "On my way.", "next": "exit", "action": "tj_mission_depart" }
+					]
+				},
+				{
+					"speaker": "TJ",
+					"text": "Broad-spectrum antibiotics, sterile bandages, surgical tools, painkillers — morphine if we're lucky. The Ancient medical systems can synthesize some compounds, but we need raw materials. If you find any sealed medical kits, those are gold. And if you find anything you don't recognize, don't open it — bring it to me.",
+					"choices": [
+						{ "text": "Got it. I'll head down.", "next": 4, "action": "tj_mission_start" }
+					]
+				},
+				{
+					"speaker": "TJ",
+					"text": "If you can get Rush to spare even an hour on the medical systems, that would be... more than anyone's managed so far. But don't make promises you can't keep. I've been let down by enough promises.",
+					"choices": [
+						{ "text": "I'll try. And I'll help with the inventory too.", "next": 4, "action": "tj_mission_start" },
+						{ "text": "I'll focus on the inventory for now.", "next": 4, "action": "tj_mission_start" }
+					]
+				},
+				{
+					"speaker": "TJ",
+					"text": "You found them. Eli, you actually found viable supplies. Some of these antibiotics are still good. This... this buys us weeks. Maybe months. I don't know what to say. Thank you. Really.",
+					"choices": [
+						{ "text": "I'm glad I could help.", "next": 8, "action": "tj_mission_complete_humble" },
+						{ "text": "You'd do the same for any of us.", "next": 8, "action": "tj_mission_complete_modest" },
+						{ "text": "We take care of our own, TJ.", "next": 8, "action": "tj_mission_complete_team" }
+					]
+				},
+				{
+					"speaker": "TJ",
+					"text": "You know, when I signed up for this mission — if you can call being stranded on an Ancient ship a mission — I thought I'd be alone out here. But you proved me wrong. If you ever need anything, Eli — and I mean anything — you come to me. I won't forget this.",
+					"choices": [
+						{ "text": "Thank you, TJ.", "next": "exit", "action": "tj_mission_done" }
+					]
+				}
+			],
+			"ambient_lines": [
+				"I've been doing triage in my head. It's not a good habit.",
+				"The Ancients had medicine we can only dream of. Locked behind panels we can't open.",
+				"Every time someone walks in here, I wonder if this is the one I can't fix."
+			]
+		},
+		{
+			"id": "camille_political_mediation",
+			"crew": "Camille",
+			"display_name": "Camille — Political Mediation",
+			"required_level": "neutral",
+			"location": "Observation Deck",
+			"summary": "Camille is trying to mediate between the military and civilian factions. Tensions are rising over resource allocation. She needs Eli to help bridge the gap.",
+			"dialogue_tree": [
+				{
+					"speaker": "Camille",
+					"text": "Eli. Perfect timing. I was just reviewing the latest resource allocation proposals. Colonel Young wants to prioritize military operations. Rush wants every watt diverted to research. And the civilians — they just want to eat. I'm trying to hold this together, but I need someone who can talk to all sides without it turning into a shouting match.",
+					"choices": [
+						{ "text": "What's the situation?", "next": 1 },
+						{ "text": "Why me?", "next": 2, "action": "camille_mission_curious" },
+						{ "text": "I'm not a diplomat.", "next": 3, "action": "camille_mission_hesitant" }
+					]
+				},
+				{
+					"speaker": "Camille",
+					"text": "The military contingent controls the weapons and the gate room. The science team controls the power grid and the research. The civilians — Chloe, the technicians, the kitchen staff — they're caught in the middle. Everyone's scared, and scared people do stupid things. I need someone who can carry messages without escalating. Someone both sides trust.",
+					"choices": [
+						{ "text": "I'll do it. What do you need?", "next": 4, "action": "camille_mission_accept" },
+						{ "text": "Both sides trust me? Are you sure about that?", "next": 5, "action": "camille_mission_doubt" }
+					]
+				},
+				{
+					"speaker": "Camille",
+					"text": "Because you're not military, not science, not IOA. You're the guy who solved the kino puzzle on his first day. You're the one who found the lime. People respect competence out here, Eli, and you've shown it. More importantly, you listen. That's rarer than you think.",
+					"choices": [
+						{ "text": "Okay. What do you need me to do?", "next": 4, "action": "camille_mission_accept" },
+						{ "text": "I'm not sure I'm the right person.", "next": 3, "action": "camille_mission_hesitant" }
+					]
+				},
+				{
+					"speaker": "Camille",
+					"text": "No one is, Eli. That's the point. There's no career diplomat on this ship. There's just us. But if we don't try, the cracks become fissures, and fissures become fractures. I've seen it happen before. People die when institutions fail. I'd rather not see that here.",
+					"choices": [
+						{ "text": "Alright. I'll help.", "next": 4, "action": "camille_mission_accept" },
+						{ "text": "I need to think about it.", "next": "exit" }
+					]
+				},
+				{
+					"speaker": "Camille",
+					"text": "First, talk to Colonel Young. He's in the gate room. Acknowledge his authority — he needs to hear that the civilians respect the chain of command. Then talk to Rush. Don't push him, just listen. He needs to feel like someone understands his priorities. Finally, talk to the civilians in the mess hall. Let them know their concerns are being heard. Three conversations. That's all I ask.",
+					"choices": [
+						{ "text": "I'll start with Young.", "next": 6, "action": "camille_mission_start_young" },
+						{ "text": "I'll start with Rush.", "next": 7, "action": "camille_mission_start_rush" },
+						{ "text": "I'll start with the civilians.", "next": 8, "action": "camille_mission_start_civilians" }
+					]
+				},
+				{
+					"speaker": "Camille",
+					"text": "You don't need to be trusted by everyone. You need to be heard by everyone. There's a difference. Trust comes later. Right now, the simple act of listening — to all sides, without judgment — is more valuable than any treaty. People are starving to be heard out here, Eli. Be the ear.",
+					"choices": [
+						{ "text": "Okay. I'll do it.", "next": 4, "action": "camille_mission_accept" }
+					]
+				},
+				{
+					"speaker": "Camille",
+					"text": "Good. Young respects directness. Don't beat around the bush — tell him you're there because Camille asked, and that the civilians want to support the military's mission. He'll respond to that. When you're done, come back and tell me how it went.",
+					"choices": [
+						{ "text": "Understood.", "next": "exit", "action": "camille_mission_depart" }
+					]
+				},
+				{
+					"speaker": "Camille",
+					"text": "Interesting choice. Rush is... complicated. He respects intelligence, not authority. Don't try to manage him — just present the civilian perspective as a puzzle. 'How do we keep the crew alive long enough to finish your research?' That frames it as his problem, not a political demand. He'll respond better to that.",
+					"choices": [
+						{ "text": "I'll try that approach.", "next": "exit", "action": "camille_mission_depart" }
+					]
+				},
+				{
+					"speaker": "Camille",
+					"text": "The civilians. Good. They're the most frightened, and the most overlooked. Listen to them, Eli. Really listen. Don't make promises — just let them know that someone in a position to influence decisions cares about what they think. That alone will buy us goodwill.",
+					"choices": [
+						{ "text": "I will.", "next": "exit", "action": "camille_mission_depart" }
+					]
+				},
+				{
+					"speaker": "Camille",
+					"text": "You did it. I've spoken with Young, Rush, and the civilian representatives. They all mentioned you. Young said you were 'surprisingly reasonable.' Rush said you 'asked the right questions.' And the civilians — they said they finally feel like someone's listening. Eli, you've done more in three conversations than I managed in a week of formal meetings.",
+					"choices": [
+						{ "text": "I just listened.", "next": 10, "action": "camille_mission_complete_humble" },
+						{ "text": "It was your plan, Camille.", "next": 10, "action": "camille_mission_complete_credit" },
+						{ "text": "Maybe there's hope for this crew after all.", "next": 10, "action": "camille_mission_complete_hope" }
+					]
+				},
+				{
+					"speaker": "Camille",
+					"text": "Don't sell yourself short. Listening is a skill, and you used it well. This ship needs people like you — not just heroes, but mediators. I won't forget what you did today, Eli. When the next crisis comes — and it will — I'll know who to stand beside.",
+					"choices": [
+						{ "text": "Thank you, Camille.", "next": "exit", "action": "camille_mission_done" }
+					]
+				}
+			],
+			"ambient_lines": [
+				"Politics is the art of making people feel heard before you ask them to compromise.",
+				"I used to negotiate with heads of state. Now I'm mediating between a sergeant and a botanist.",
+				"The ship doesn't have a government. It has a series of ongoing arguments."
+			]
+		},
+		{
+			"id": "greer_emotional_guard",
+			"crew": "Sgt Greer",
+			"display_name": "Greer — Emotional Guard",
+			"required_level": "wary",
+			"location": "Gate Room",
+			"summary": "Greer has been on edge, more aggressive than usual. He's carrying something heavy. Eli is one of the few people Greer might open up to. Help him deal with what's eating him.",
+			"dialogue_tree": [
+				{
+					"speaker": "Sgt Greer",
+					"text": "What do you want, Wallace? I'm busy. The perimeter doesn't check itself.",
+					"choices": [
+						{ "text": "You seem on edge. Everything okay?", "next": 1, "action": "greer_mission_concern" },
+						{ "text": "Just checking in, Sergeant.", "next": 2, "action": "greer_mission_casual" },
+						{ "text": "I'll leave you to it.", "next": "exit" }
+					]
+				},
+				{
+					"speaker": "Sgt Greer",
+					"text": "On edge? I'm always on edge. That's the job. When I stop being on edge, people die. So unless you've got something useful to say, Wallace, I suggest you find somewhere else to be.",
+					"choices": [
+						{ "text": "Scott asked me to check on you.", "next": 3, "action": "greer_mission_scott_sent" },
+						{ "text": "I'm asking because I care, Sergeant.", "next": 4, "action": "greer_mission_direct" },
+						{ "text": "Fair enough. I'll go.", "next": "exit" }
+					]
+				},
+				{
+					"speaker": "Sgt Greer",
+					"text": "Checking in. Right. You know what, Wallace? I've been doing this long enough to know when someone's been sent to 'check on me.' I'm not a child. I don't need a babysitter. But since you're here — you want to know what's on my mind? Really?",
+					"choices": [
+						{ "text": "Yeah. I do.", "next": 4, "action": "greer_mission_direct" },
+						{ "text": "Only if you want to tell me.", "next": 5, "action": "greer_mission_patient" }
+					]
+				},
+				{
+					"speaker": "Sgt Greer",
+					"text": "Scott sent you. Of course he did. That kid worries too much. But... fine. You want to know what's eating me? It's not the mission. It's not the aliens. It's not even this damn ship. It's the fact that every time I close my eyes, I see the faces of the people I couldn't save.",
+					"choices": [
+						{ "text": "Tell me about them.", "next": 5, "action": "greer_mission_open_up" },
+						{ "text": "You can't save everyone, Greer.", "next": 6, "action": "greer_mission_platitude" },
+						{ "text": "That's a heavy thing to carry.", "next": 5, "action": "greer_mission_empathy" }
+					]
+				},
+				{
+					"speaker": "Sgt Greer",
+					"text": "There was a private on my first deployment. Rivera. Kid was nineteen. Barely could shave. I was his squad leader. We got ambushed in a village — I told him to hold position, and he listened. He was supposed to be safe. He was supposed to come home. The CO didn't wait for backup. Sent us in. Rivera didn't make it. And every time I hear someone say 'casualties are acceptable,' I see that kid's face.",
+					"choices": [
+						{ "text": "That wasn't your fault, Greer.", "next": 7, "action": "greer_mission_absolve" },
+						{ "text": "You carry his memory. That's not nothing.", "next": 7, "action": "greer_mission_honor" },
+						{ "text": "Is that why you push yourself so hard?", "next": 8, "action": "greer_mission_insight" }
+					]
+				},
+				{
+					"speaker": "Sgt Greer",
+					"text": "You can't save everyone. No kidding, Wallace. You think I don't know that? I've known that since I was twenty-two years old. Knowing it doesn't help. It doesn't make the faces go away. It doesn't make the nights any shorter. But sure, thanks for the wisdom.",
+					"choices": [
+						{ "text": "I'm sorry. That was the wrong thing to say.", "next": 5, "action": "greer_mission_apologize" },
+						{ "text": "Then what does help?", "next": 8, "action": "greer_mission_insight" }
+					]
+				},
+				{
+					"speaker": "Sgt Greer",
+					"text": "Not my fault. That's what the counselor said too. And maybe it's true. But 'not your fault' doesn't bring Rivera back. Doesn't bring any of them back. What helps is making sure it doesn't happen again. What helps is being the best damn sergeant on this ship so that when the next thing comes, I'm ready. That's all I've got, Wallace. That's all I've ever had.",
+					"choices": [
+						{ "text": "That's more than most people have.", "next": 9, "action": "greer_mission_validate" },
+						{ "text": "Is it enough, though?", "next": 8, "action": "greer_mission_insight" }
+					]
+				},
+				{
+					"speaker": "Sgt Greer",
+					"text": "I push myself because if I stop, I have to think. And when I think, I see them. Rivera. the civilians we lost during the evacuation. The ones who didn't make it to the gate in time. Every face. Every name. I push myself because the alternative is standing still and drowning in it. So yeah, Wallace. That's why I push. That's why I'm 'on edge.' Because the moment I relax, the ghosts come back.",
+					"choices": [
+						{ "text": "You don't have to carry this alone, Greer.", "next": 9, "action": "greer_mission_support" },
+						{ "text": "What if I helped you carry it?", "next": 9, "action": "greer_mission_offer" }
+					]
+				},
+				{
+					"speaker": "Sgt Greer",
+					"text": "You know what, Wallace? I didn't expect that. Most people either avoid me or feed me platitudes. You actually listened. That's... that's not nothing. I'm not going to suddenly start group therapy or whatever. But knowing someone on this ship gives a damn — that helps. More than you know. Thanks, Eli.",
+					"choices": [
+						{ "text": "Anytime, Sergeant.", "next": "exit", "action": "greer_mission_done" },
+						{ "text": "We're all in this together, Greer.", "next": "exit", "action": "greer_mission_done_team" }
+					]
+				}
+			],
+			"ambient_lines": [
+				"Perimeter's clear. Again. Same as the last twelve times I checked.",
+				"I don't do 'feelings,' Wallace. I do perimeter checks.",
+				"You know what's worse than aliens? Paperwork about aliens."
+			]
+		}
+	]
+}

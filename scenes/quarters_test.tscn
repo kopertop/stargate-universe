@@ -1,0 +1,137 @@
+[gd_scene format=3 uid="uid://b2qrwm5pq8tcv"]
+
+[ext_resource type="Script" uid="uid://c8q5lkxvgnwqb" path="res://scripts/quarters_preview_tint.gd" id="1_tint"]
+[ext_resource type="ArrayMesh" uid="uid://drnskcwlcyxeh" path="res://models/props/space_station_kit/bed-single.obj" id="2_bed"]
+[ext_resource type="PackedScene" uid="uid://chvqsrmx34grc" path="res://models/props/space_station_kit/container-tall.glb" id="5_locker"]
+[ext_resource type="PackedScene" uid="uid://b70i8fs5ikpva" path="res://models/props/space_station_kit/table.glb" id="6_desk"]
+[ext_resource type="PackedScene" uid="uid://ngn8l67dmp13" path="res://models/props/space_station_kit/chair-cushion.glb" id="7_chair"]
+[ext_resource type="PackedScene" uid="uid://dask714uwpjoy" path="res://models/props/kino_remote.glb" id="8_kino"]
+
+[sub_resource type="Environment" id="EnvFill"]
+background_mode = 1
+background_color = Color(0.05, 0.06, 0.08, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.6, 0.65, 0.75, 1)
+ambient_light_energy = 0.4
+
+[sub_resource type="StandardMaterial3D" id="FloorMat"]
+albedo_color = Color(0.24, 0.23, 0.25, 1)
+roughness = 0.6
+
+[sub_resource type="BoxMesh" id="FloorBox"]
+size = Vector3(10, 0.1, 12)
+
+[sub_resource type="StandardMaterial3D" id="WallMat"]
+albedo_color = Color(0.4, 0.35, 0.34, 1)
+roughness = 0.58
+
+[sub_resource type="BoxMesh" id="WallBox"]
+size = Vector3(0.2, 5.4, 12)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ch4vr"]
+albedo_color = Color(0.62, 0.58, 0.52, 1)
+roughness = 0.55
+
+[sub_resource type="StandardMaterial3D" id="SconceHousingMat"]
+albedo_color = Color(0.2, 0.2, 0.22, 1)
+metallic = 0.5
+roughness = 0.45
+
+[sub_resource type="BoxMesh" id="SconceHousingBox"]
+size = Vector3(0.46, 0.74, 0.16)
+
+[sub_resource type="StandardMaterial3D" id="SconcePlateMat"]
+albedo_color = Color(1, 0.78, 0.5, 1)
+roughness = 0.4
+emission_enabled = true
+emission = Color(1, 0.78, 0.5, 1)
+emission_energy_multiplier = 3.0
+
+[sub_resource type="BoxMesh" id="SconcePlateBox"]
+size = Vector3(0.32, 0.6, 0.08)
+
+[node name="QuartersTest" type="Node3D" unique_id=359857797]
+script = ExtResource("1_tint")
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=1285032247]
+transform = Transform3D(0.766, -0.42, 0.485, 0, 0.755, 0.656, -0.643, -0.503, 0.578, 4, 6, 4)
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=758245458]
+transform = Transform3D(0.766, -0.643, 0, 0.5, 0.595, -0.628, 0.404, 0.481, 0.778, -2, 4, 2)
+light_energy = 0.7
+
+[node name="Environment" type="WorldEnvironment" parent="." unique_id=1930127137]
+environment = SubResource("EnvFill")
+
+[node name="Floor" type="MeshInstance3D" parent="." unique_id=1324791876]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.05, 0)
+material_override = SubResource("FloorMat")
+mesh = SubResource("FloorBox")
+
+[node name="BackWall" type="MeshInstance3D" parent="." unique_id=2074941877]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 0, 2.7, -6.05)
+material_override = SubResource("WallMat")
+mesh = SubResource("WallBox")
+
+[node name="SideWallEast" type="MeshInstance3D" parent="." unique_id=423924055]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.05, 2.7, 0)
+material_override = SubResource("WallMat")
+mesh = SubResource("WallBox")
+
+[node name="Bed" type="MeshInstance3D" parent="." unique_id=902767139]
+transform = Transform3D(2.5, 0, 0, 0, 2.5, 0, 0, 0, 2.5, -1.5, 0, -4)
+mesh = ExtResource("2_bed")
+surface_material_override/0 = SubResource("StandardMaterial3D_ch4vr")
+surface_material_override/1 = SubResource("StandardMaterial3D_ch4vr")
+
+[node name="Locker" parent="." unique_id=1361107435 instance=ExtResource("5_locker")]
+transform = Transform3D(-2.5, 0, -3.0616e-07, 0, 2.5, 0, 3.0616e-07, 0, -2.5, -1.5, 0, 5.3)
+
+[node name="Desk" parent="." unique_id=761215471 instance=ExtResource("6_desk")]
+transform = Transform3D(-1.0928e-07, 0, -2.5, 0, 2.5, 0, 2.5, 0, -1.0928e-07, 3.6, 0, 0)
+
+[node name="Chair" parent="." unique_id=593026701 instance=ExtResource("7_chair")]
+transform = Transform3D(1.767767, 0, 1.767767, 0, 2.5, 0, -1.767767, 0, 1.767767, 2, 0, 0)
+
+[node name="KinoRemote" parent="." unique_id=487050392 instance=ExtResource("8_kino")]
+transform = Transform3D(0.2, 0, 0, 0, 0.2, 0, 0, 0, 0.2, 3.6, 1.02, 0)
+
+[node name="WallLightLeft" type="Node3D" parent="." unique_id=1790582917]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.2, 2.6, -5.85)
+
+[node name="Housing" type="MeshInstance3D" parent="WallLightLeft" unique_id=953266599]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.08)
+material_override = SubResource("SconceHousingMat")
+mesh = SubResource("SconceHousingBox")
+
+[node name="Plate" type="MeshInstance3D" parent="WallLightLeft" unique_id=1808343379]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.16)
+material_override = SubResource("SconcePlateMat")
+mesh = SubResource("SconcePlateBox")
+
+[node name="Glow" type="OmniLight3D" parent="WallLightLeft" unique_id=1335460803]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.3)
+light_color = Color(1, 0.78, 0.5, 1)
+light_energy = 2.4
+omni_range = 4.5
+omni_attenuation = 1.8
+
+[node name="WallLightRight" type="Node3D" parent="." unique_id=670838873]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.6, 2.6, -5.85)
+
+[node name="Housing" type="MeshInstance3D" parent="WallLightRight" unique_id=280573911]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.08)
+material_override = SubResource("SconceHousingMat")
+mesh = SubResource("SconceHousingBox")
+
+[node name="Plate" type="MeshInstance3D" parent="WallLightRight" unique_id=2116275828]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.16)
+material_override = SubResource("SconcePlateMat")
+mesh = SubResource("SconcePlateBox")
+
+[node name="Glow" type="OmniLight3D" parent="WallLightRight" unique_id=1814491104]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.3)
+light_color = Color(1, 0.78, 0.5, 1)
+light_energy = 2.4
+omni_range = 4.5
+omni_attenuation = 1.8

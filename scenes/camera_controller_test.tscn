@@ -1,0 +1,22 @@
+[gd_scene load_steps=2 format=3 uid="uid://cameratest001"]
+
+[ext_resource type="Script" path="res://scripts/camera_controller_test.gd" id="1_test"]
+
+[node name="TestCameraScene" type="Node3D"]
+
+[node name="CameraController" type="Node" parent="." script="&resource 1"]
+controller_mode = 0
+controller_transition_duration = 1.0
+controller_transitioning = false
+controller_transition_progress = 1.0
+controller_from_mode = 0
+controller_transition_time = 0.0
+
+[node name="Camera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 40.0, 60.0)
+fov = 50.0
+
+[node name="TestPlanet" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+mesh = SubResource("SphereMesh_spheren")
+surface_material_override/0 = null

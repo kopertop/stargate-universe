@@ -1,0 +1,694 @@
+[
+  {
+    "id": "infirmary",
+    "display_name": "Infirmary",
+    "category": "special_once",
+    "template_id": "quarters-template",
+    "max_count": 1,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": true,
+    "key_room": true,
+    "setdressing": {
+      "accent_color": [0.55, 0.88, 0.75],
+      "hero_props": [
+        {
+          "glb": "res://models/props/space_station_kit/bed-single.glb",
+          "pos": [-1.5, 0.0, -2.5],
+          "yaw": 0.0,
+          "scale": 2.5,
+          "tint": [0.62, 0.58, 0.52]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/bed-single.glb",
+          "pos": [1.5, 0.0, -2.5],
+          "yaw": 0.0,
+          "scale": 2.5,
+          "tint": [0.62, 0.58, 0.52]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/computer-system.glb",
+          "pos": [0.0, 0.0, 1.5],
+          "yaw": 3.14159,
+          "scale": 2.0,
+          "tint": [0.38, 0.50, 0.42],
+          "blocker": [1.2, 1.0, 0.8]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/container-tall.glb",
+          "pos": [-2.8, 0.0, 1.5],
+          "yaw": 0.0,
+          "scale": 2.0,
+          "tint": [0.42, 0.48, 0.45]
+        }
+      ],
+      "signage": [
+        {"text": "INFIRMARY", "wall": "-z", "height": 2.8}
+      ],
+      "accent_lights": [
+        {"pos": [0.0, 2.5, 0.0], "energy": 1.4, "range": 8.0}
+      ]
+    }
+  },
+  {
+    "id": "bridge",
+    "display_name": "Bridge",
+    "category": "special_once",
+    "template_id": "control-room-template",
+    "max_count": 1,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": true,
+    "key_room": true,
+    "setdressing": {
+      "accent_color": [0.20, 0.65, 1.0],
+      "hero_props": [
+        {
+          "glb": "res://models/props/space_station_kit/table-display-planet.glb",
+          "pos": [0.0, 0.0, 1.5],
+          "yaw": 0.0,
+          "scale": 2.5,
+          "tint": [0.28, 0.32, 0.42],
+          "blocker": [1.8, 1.0, 1.8]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/chair-armrest.glb",
+          "pos": [-1.2, 0.0, 0.2],
+          "yaw": 0.5236,
+          "scale": 2.2,
+          "tint": [0.22, 0.26, 0.34]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/chair-armrest.glb",
+          "pos": [1.2, 0.0, 0.2],
+          "yaw": -0.5236,
+          "scale": 2.2,
+          "tint": [0.22, 0.26, 0.34]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/computer-wide.glb",
+          "pos": [0.0, 0.0, -3.5],
+          "yaw": 0.0,
+          "scale": 2.2,
+          "tint": [0.32, 0.36, 0.44],
+          "blocker": [2.0, 1.2, 0.8]
+        }
+      ],
+      "signage": [
+        {"text": "BRIDGE", "wall": "-z", "height": 3.2}
+      ],
+      "accent_lights": [
+        {"pos": [-2.0, 2.0, 0.0], "energy": 1.2, "range": 6.0},
+        {"pos": [2.0, 2.0, 0.0], "energy": 1.2, "range": 6.0}
+      ]
+    }
+  },
+  {
+    "id": "water_storage",
+    "display_name": "Water Storage",
+    "category": "special_once",
+    "template_id": "storage-template",
+    "max_count": 1,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": false,
+    "key_room": true
+  },
+  {
+    "id": "observation_deck",
+    "display_name": "Observation Deck",
+    "category": "special_once",
+    "template_id": "quarters-template",
+    "max_count": 1,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": true,
+    "key_room": true,
+    "setdressing": {
+      "accent_color": [0.40, 0.60, 1.0],
+      "hero_props": [
+        {
+          "glb": "res://models/props/space_station_kit/chair-cushion.glb",
+          "pos": [0.0, 0.0, 1.5],
+          "yaw": 3.14159,
+          "scale": 2.2,
+          "tint": [0.26, 0.30, 0.40]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/chair-cushion.glb",
+          "pos": [-1.8, 0.0, 1.5],
+          "yaw": 3.14159,
+          "scale": 2.2,
+          "tint": [0.26, 0.30, 0.40]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/chair-cushion.glb",
+          "pos": [1.8, 0.0, 1.5],
+          "yaw": 3.14159,
+          "scale": 2.2,
+          "tint": [0.26, 0.30, 0.40]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/table-display.glb",
+          "pos": [0.0, 0.0, 0.0],
+          "yaw": 0.0,
+          "scale": 2.0,
+          "tint": [0.32, 0.36, 0.48],
+          "blocker": [1.6, 1.0, 1.6]
+        }
+      ],
+      "signage": [
+        {"text": "OBSERVATION DECK", "wall": "+z", "height": 2.8}
+      ],
+      "accent_lights": [
+        {"pos": [0.0, 2.8, -1.5], "energy": 1.6, "range": 10.0}
+      ],
+      "window_slab": true
+    }
+  },
+  {
+    "id": "interface_chair",
+    "display_name": "Interface Chair Room",
+    "category": "special_once",
+    "template_id": "control-room-template",
+    "max_count": 1,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": true,
+    "key_room": true,
+    "setdressing": {
+      "accent_color": [0.85, 0.45, 1.0],
+      "hero_props": [
+        {
+          "glb": "res://models/props/space_station_kit/chair-armrest.glb",
+          "pos": [0.0, 0.0, 0.5],
+          "yaw": 3.14159,
+          "scale": 3.0,
+          "tint": [0.45, 0.22, 0.58],
+          "blocker": [1.8, 1.2, 1.8]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/computer-system.glb",
+          "pos": [-2.5, 0.0, 1.5],
+          "yaw": 1.5708,
+          "scale": 2.0,
+          "tint": [0.38, 0.28, 0.48]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/computer-system.glb",
+          "pos": [2.5, 0.0, 1.5],
+          "yaw": -1.5708,
+          "scale": 2.0,
+          "tint": [0.38, 0.28, 0.48]
+        }
+      ],
+      "signage": [
+        {"text": "INTERFACE CHAIR", "wall": "-z", "height": 3.2}
+      ],
+      "accent_lights": [
+        {"pos": [0.0, 1.8, 0.5], "energy": 2.0, "range": 7.0}
+      ]
+    }
+  },
+  {
+    "id": "astrometrics",
+    "display_name": "Astrometrics",
+    "category": "special_once",
+    "template_id": "control-room-template",
+    "max_count": 1,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": true,
+    "key_room": true,
+    "setdressing": {
+      "accent_color": [0.20, 0.80, 1.0],
+      "hero_props": [
+        {
+          "glb": "res://models/props/space_station_kit/table-display-planet.glb",
+          "pos": [0.0, 0.0, 0.0],
+          "yaw": 0.0,
+          "scale": 2.8,
+          "tint": [0.20, 0.28, 0.45],
+          "blocker": [2.2, 1.2, 2.2]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/table-display.glb",
+          "pos": [-2.8, 0.0, 1.5],
+          "yaw": 1.5708,
+          "scale": 2.2,
+          "tint": [0.22, 0.30, 0.44]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/table-display.glb",
+          "pos": [2.8, 0.0, 1.5],
+          "yaw": -1.5708,
+          "scale": 2.2,
+          "tint": [0.22, 0.30, 0.44]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/chair-cushion.glb",
+          "pos": [0.0, 0.0, 2.2],
+          "yaw": 3.14159,
+          "scale": 2.0,
+          "tint": [0.24, 0.32, 0.42]
+        }
+      ],
+      "signage": [
+        {"text": "ASTROMETRICS", "wall": "-z", "height": 3.2}
+      ],
+      "accent_lights": [
+        {"pos": [0.0, 2.5, 0.0], "energy": 1.5, "range": 9.0}
+      ]
+    }
+  },
+  {
+    "id": "weapons_control",
+    "display_name": "Weapons Control",
+    "category": "special_once",
+    "template_id": "control-room-template",
+    "max_count": 1,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": true,
+    "key_room": true,
+    "setdressing": {
+      "accent_color": [1.0, 0.35, 0.20],
+      "hero_props": [
+        {
+          "glb": "res://models/props/space_station_kit/computer-wide.glb",
+          "pos": [0.0, 0.0, -3.5],
+          "yaw": 0.0,
+          "scale": 2.2,
+          "tint": [0.40, 0.24, 0.20],
+          "blocker": [2.0, 1.2, 0.8]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/computer-system.glb",
+          "pos": [-2.5, 0.0, -1.5],
+          "yaw": 0.5236,
+          "scale": 2.0,
+          "tint": [0.36, 0.22, 0.18]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/computer-system.glb",
+          "pos": [2.5, 0.0, -1.5],
+          "yaw": -0.5236,
+          "scale": 2.0,
+          "tint": [0.36, 0.22, 0.18]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/chair-armrest.glb",
+          "pos": [0.0, 0.0, -1.8],
+          "yaw": 0.0,
+          "scale": 2.2,
+          "tint": [0.30, 0.18, 0.16]
+        }
+      ],
+      "signage": [
+        {"text": "WEAPONS CONTROL", "wall": "-z", "height": 3.2}
+      ],
+      "accent_lights": [
+        {"pos": [-2.0, 2.0, -2.0], "energy": 1.2, "range": 6.0},
+        {"pos": [2.0, 2.0, -2.0], "energy": 1.2, "range": 6.0}
+      ]
+    }
+  },
+  {
+    "id": "mess_hall",
+    "display_name": "Mess Hall",
+    "category": "special_limited",
+    "template_id": "quarters-template",
+    "max_count": 2,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": false,
+    "key_room": true
+  },
+  {
+    "id": "engineering",
+    "display_name": "Engineering",
+    "category": "special_limited",
+    "template_id": "control-room-template",
+    "max_count": 2,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": false,
+    "key_room": true
+  },
+  {
+    "id": "shuttle_bay",
+    "display_name": "Shuttle Bay",
+    "category": "special_limited",
+    "template_id": "storage-template",
+    "max_count": 2,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": false,
+    "key_room": true
+  },
+  {
+    "id": "ground_vehicle_bay",
+    "display_name": "Ground Vehicle Bay",
+    "category": "special_limited",
+    "template_id": "storage-template",
+    "max_count": 2,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": false,
+    "key_room": true
+  },
+  {
+    "id": "manufacturing_shop",
+    "display_name": "Manufacturing Shop",
+    "category": "special_limited",
+    "template_id": "storage-template",
+    "max_count": 2,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": false,
+    "key_room": true
+  },
+  {
+    "id": "stasis_pods",
+    "display_name": "Stasis Pod Chamber",
+    "category": "special_limited",
+    "template_id": "quarters-template",
+    "max_count": 2,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": true,
+    "key_room": true,
+    "setdressing": {
+      "accent_color": [0.30, 0.75, 0.90],
+      "hero_props": [
+        {
+          "glb": "res://models/props/space_station_kit/bed-single-cover.glb",
+          "pos": [-2.0, 0.0, -2.0],
+          "yaw": 0.0,
+          "scale": 2.5,
+          "tint": [0.25, 0.48, 0.60]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/bed-single-cover.glb",
+          "pos": [0.0, 0.0, -2.0],
+          "yaw": 0.0,
+          "scale": 2.5,
+          "tint": [0.25, 0.48, 0.60]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/bed-single-cover.glb",
+          "pos": [2.0, 0.0, -2.0],
+          "yaw": 0.0,
+          "scale": 2.5,
+          "tint": [0.25, 0.48, 0.60]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/computer-system.glb",
+          "pos": [0.0, 0.0, 1.5],
+          "yaw": 3.14159,
+          "scale": 2.0,
+          "tint": [0.28, 0.40, 0.52]
+        }
+      ],
+      "signage": [
+        {"text": "STASIS POD CHAMBER", "wall": "+z", "height": 2.8}
+      ],
+      "accent_lights": [
+        {"pos": [-2.0, 1.5, -1.5], "energy": 0.8, "range": 5.0},
+        {"pos": [2.0, 1.5, -1.5], "energy": 0.8, "range": 5.0}
+      ]
+    }
+  },
+  {
+    "id": "research_lab",
+    "display_name": "Research Laboratory",
+    "category": "special_limited",
+    "template_id": "control-room-template",
+    "max_count": 2,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": false,
+    "key_room": true
+  },
+  {
+    "id": "armory",
+    "display_name": "Armory",
+    "category": "assignable",
+    "template_id": "storage-template",
+    "max_count": -1,
+    "floor_weight": 0,
+    "assignable": true,
+    "authored_setdressing": false,
+    "key_room": true
+  },
+  {
+    "id": "machine_shop",
+    "display_name": "Machine Shop",
+    "category": "assignable",
+    "template_id": "storage-template",
+    "max_count": -1,
+    "floor_weight": 0,
+    "assignable": true,
+    "authored_setdressing": false,
+    "key_room": true
+  },
+  {
+    "id": "recreation",
+    "display_name": "Recreation Room",
+    "category": "assignable",
+    "template_id": "quarters-template",
+    "max_count": -1,
+    "floor_weight": 0,
+    "assignable": true,
+    "authored_setdressing": false,
+    "key_room": true
+  },
+  {
+    "id": "hydroponics_bay",
+    "display_name": "Hydroponics Bay",
+    "category": "assignable",
+    "template_id": "hydroponics-template",
+    "max_count": -1,
+    "floor_weight": 0,
+    "assignable": true,
+    "authored_setdressing": false,
+    "key_room": true
+  },
+  {
+    "id": "medical_annex",
+    "display_name": "Medical Annex",
+    "category": "assignable",
+    "template_id": "quarters-template",
+    "max_count": -1,
+    "floor_weight": 0,
+    "assignable": true,
+    "authored_setdressing": false,
+    "key_room": true
+  },
+  {
+    "id": "corridor",
+    "display_name": "Corridor",
+    "category": "filler",
+    "template_id": "corridor-template",
+    "max_count": -1,
+    "floor_weight": 5,
+    "assignable": false,
+    "authored_setdressing": false,
+    "key_room": false
+  },
+  {
+    "id": "storage",
+    "display_name": "Storage Room",
+    "category": "filler",
+    "template_id": "storage-template",
+    "max_count": -1,
+    "floor_weight": 3,
+    "assignable": false,
+    "authored_setdressing": false,
+    "key_room": false
+  },
+  {
+    "id": "power_node",
+    "display_name": "Power Node",
+    "category": "filler",
+    "template_id": "control-room-template",
+    "max_count": -1,
+    "floor_weight": 2,
+    "assignable": false,
+    "authored_setdressing": false,
+    "key_room": false
+  },
+  {
+    "id": "recycling",
+    "display_name": "Recycling Bay",
+    "category": "filler",
+    "template_id": "storage-template",
+    "max_count": -1,
+    "floor_weight": 2,
+    "assignable": false,
+    "authored_setdressing": false,
+    "key_room": false
+  },
+  {
+    "id": "crew_quarters",
+    "display_name": "Crew Quarters",
+    "category": "filler",
+    "template_id": "quarters-template",
+    "max_count": -1,
+    "floor_weight": 2,
+    "assignable": false,
+    "authored_setdressing": false,
+    "key_room": false
+  },
+  {
+    "id": "gate_room",
+    "display_name": "Gate Room",
+    "category": "preset",
+    "template_id": "gate-room-template",
+    "max_count": 1,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": true,
+    "key_room": true
+  },
+  {
+    "id": "kino_room",
+    "display_name": "Kino Room",
+    "category": "preset",
+    "template_id": "kino-room-template",
+    "max_count": 1,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": true,
+    "key_room": true
+  },
+  {
+    "id": "control_interface_room",
+    "display_name": "Control Interface Room",
+    "category": "preset",
+    "template_id": "control-room-template",
+    "max_count": 1,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": true,
+    "key_room": true
+  },
+  {
+    "id": "quarters",
+    "display_name": "Crew Quarters",
+    "category": "preset",
+    "template_id": "quarters-template",
+    "max_count": 1,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": true,
+    "key_room": true,
+    "setdressing": {
+      "accent_color": [0.95, 0.86, 0.72],
+      "hero_props": [
+        {
+          "glb": "res://models/props/space_station_kit/container-tall.glb",
+          "pos": [3.4, 0.0, -4.6],
+          "yaw": 0.0,
+          "scale": 2.0,
+          "tint": [0.44, 0.47, 0.52]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/container-tall.glb",
+          "pos": [-3.6, 0.0, -4.6],
+          "yaw": 3.14159,
+          "scale": 2.0,
+          "tint": [0.40, 0.43, 0.49]
+        }
+      ],
+      "accent_lights": [
+        {"pos": [0.0, 3.0, 0.0], "energy": 1.8, "range": 12.0}
+      ]
+    }
+  },
+  {
+    "id": "control_room",
+    "display_name": "Control Interface Room",
+    "category": "preset",
+    "template_id": "control-room-template",
+    "max_count": 1,
+    "floor_weight": 0,
+    "assignable": false,
+    "authored_setdressing": true,
+    "key_room": true,
+    "setdressing": {
+      "accent_color": [0.78, 0.86, 1.0],
+      "hero_props": [
+        {
+          "glb": "res://models/props/space_station_kit/container-tall.glb",
+          "pos": [-13.0, 0.0, -10.5],
+          "yaw": 0.0,
+          "scale": 2.2,
+          "tint": [0.40, 0.44, 0.52],
+          "blocker": [1.0, 1.6, 1.0]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/container-tall.glb",
+          "pos": [13.0, 0.0, -10.5],
+          "yaw": 0.0,
+          "scale": 2.2,
+          "tint": [0.40, 0.44, 0.52],
+          "blocker": [1.0, 1.6, 1.0]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/computer-wide.glb",
+          "pos": [-15.0, 0.0, -4.0],
+          "yaw": 1.5708,
+          "scale": 2.2,
+          "tint": [0.34, 0.40, 0.50],
+          "blocker": [0.8, 1.2, 2.0]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/computer-wide.glb",
+          "pos": [15.0, 0.0, -4.0],
+          "yaw": -1.5708,
+          "scale": 2.2,
+          "tint": [0.34, 0.40, 0.50],
+          "blocker": [0.8, 1.2, 2.0]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/container-tall.glb",
+          "pos": [-13.0, 0.0, 9.0],
+          "yaw": 0.0,
+          "scale": 2.2,
+          "tint": [0.40, 0.44, 0.52],
+          "blocker": [1.0, 1.6, 1.0]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/container-tall.glb",
+          "pos": [13.0, 0.0, 9.0],
+          "yaw": 0.0,
+          "scale": 2.2,
+          "tint": [0.40, 0.44, 0.52],
+          "blocker": [1.0, 1.6, 1.0]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/computer-system.glb",
+          "pos": [-15.0, 0.0, 5.0],
+          "yaw": 1.5708,
+          "scale": 2.0,
+          "tint": [0.34, 0.40, 0.50],
+          "blocker": [0.8, 1.2, 1.0]
+        },
+        {
+          "glb": "res://models/props/space_station_kit/computer-system.glb",
+          "pos": [15.0, 0.0, 5.0],
+          "yaw": -1.5708,
+          "scale": 2.0,
+          "tint": [0.34, 0.40, 0.50],
+          "blocker": [0.8, 1.2, 1.0]
+        }
+      ],
+      "accent_lights": [
+        {"pos": [0.0, 3.4, -9.0], "energy": 2.0, "range": 17.0},
+        {"pos": [0.0, 3.4, 0.0], "energy": 2.0, "range": 17.0},
+        {"pos": [0.0, 3.4, 9.0], "energy": 2.0, "range": 17.0}
+      ]
+    }
+  }
+]

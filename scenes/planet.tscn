@@ -1,0 +1,50 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Environment" uid="uid://bqnqgflivjvue" path="res://scenes/main-environment.tres" id="1_env"]
+[ext_resource type="Script" path="res://scripts/camera_xray.gd" id="camera_xray"]
+[ext_resource type="Script" path="res://scripts/planet.gd" id="2_planet"]
+[ext_resource type="PackedScene" uid="uid://dl2ed4gkybggf" path="res://objects/player.tscn" id="3_player"]
+[ext_resource type="Script" uid="uid://bcg2kkbsnttec" path="res://scripts/view.gd" id="4_view"]
+[ext_resource type="PackedScene" uid="uid://b1hudsgu000" path="res://objects/hud.tscn" id="5_hud"]
+
+[node name="Planet" type="Node3D"]
+script = ExtResource("2_planet")
+
+[node name="Environment" type="WorldEnvironment" parent="."]
+environment = ExtResource("1_env")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.707107, -0.353553, 0.612372, 0, 0.866025, 0.5, -0.707107, -0.353553, 0.612372, 0, 12, 0)
+light_energy = 1.2
+shadow_enabled = true
+
+[node name="World" type="Node3D" parent="."]
+
+[node name="FromShipGate" type="Marker3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0.05, -5)
+
+[node name="Player" parent="." node_paths=PackedStringArray("view") groups=["player"] instance=ExtResource("3_player")]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0.05, -5)
+view = NodePath("../View")
+
+[node name="View" type="Node3D" parent="." node_paths=PackedStringArray("target")]
+[node name="View" type="Node3D" parent="." node_paths=PackedStringArray("target")]
+script = ExtResource("4_view")
+target = NodePath("../Player")
+
+[node name="CameraXRay" type="Node3D" parent="View"]
+script = ExtResource("camera_xray")
+
+[node name="SpringArm" type="SpringArm3D" parent="View"]
+collision_mask = 2
+spring_length = 8.0
+margin = 0.2
+
+[node name="Camera" type="Camera3D" parent="View/SpringArm"]
+current = true
+fov = 62.0
+
+[node name="HUDLayer" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="HUD" parent="HUDLayer" instance=ExtResource("5_hud")]

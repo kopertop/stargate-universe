@@ -1,0 +1,264 @@
+{
+	"desert": {
+		"label": "Desert",
+		"terrain": {
+			"height": 3.0,
+			"frequency": 0.006,
+			"detail_frequency": 0.018,
+			"detail_strength": 0.25,
+			"slope_limit_deg": 30.0
+		},
+		"ground_color": [0.66, 0.56, 0.36],
+		"sky_horizon": [0.85, 0.74, 0.55],
+		"prop_set": "rocks",
+		"prop_density": 0.7,
+		"ambient_sfx": "wind_dry",
+		"footstep_surface": "desert",
+		"hazard": {
+			"type": "heat",
+			"temperature_c": 48,
+			"gate_window": 150.0,
+			"water_drain_per_sec": 0.05
+		},
+		"walkability": {
+			"max_prop_height": 1.6
+		}
+	},
+	"temperate": {
+		"label": "Temperate",
+		"terrain": {
+			"height": 3.2,
+			"frequency": 0.006,
+			"detail_frequency": 0.018,
+			"detail_strength": 0.25,
+			"slope_limit_deg": 30.0
+		},
+		"ground_color": [0.40, 0.52, 0.34],
+		"sky_horizon": [0.62, 0.74, 0.86],
+		"prop_set": "rocks",
+		"prop_density": 0.7,
+		"ambient_sfx": "wind_soft",
+		"footstep_surface": "dirt",
+		"hazard": {
+			"type": "none",
+			"temperature_c": 18,
+			"gate_window": 180.0,
+			"water_drain_per_sec": 0.0167
+		},
+		"walkability": {
+			"max_prop_height": 1.6
+		}
+	},
+	"jungle": {
+		"label": "Jungle",
+		"terrain": {
+			"height": 3.4,
+			"frequency": 0.007,
+			"detail_frequency": 0.020,
+			"detail_strength": 0.25,
+			"slope_limit_deg": 30.0
+		},
+		"ground_color": [0.20, 0.34, 0.18],
+		"sky_horizon": [0.55, 0.68, 0.52],
+		"prop_set": "foliage",
+		"prop_density": 1.2,
+		"ambient_sfx": "jungle_amb",
+		"footstep_surface": "dirt",
+		"hazard": {
+			"type": "humidity",
+			"temperature_c": 32,
+			"gate_window": 175.0,
+			"water_drain_per_sec": 0.025,
+			"traps": {
+				"count": 7,
+				"damage_per_second": 14.0,
+				"tick_interval": 0.5,
+				"radius": 2.4,
+				"min_radius": 26.0,
+				"max_radius": 150.0,
+				"cause": "trap",
+				"telegraph": "rustling vines"
+			}
+		},
+		"walkability": {
+			"max_prop_height": 2.0
+		}
+	},
+	"toxic": {
+		"label": "Toxic",
+		"terrain": {
+			"height": 2.6,
+			"frequency": 0.006,
+			"detail_frequency": 0.016,
+			"detail_strength": 0.22,
+			"slope_limit_deg": 28.0
+		},
+		"ground_color": [0.34, 0.40, 0.22],
+		"sky_horizon": [0.46, 0.52, 0.30],
+		"prop_set": "rocks",
+		"prop_density": 0.5,
+		"ambient_sfx": "toxic_amb",
+		"footstep_surface": "swamp",
+		"hazard": {
+			"type": "toxin",
+			"toxins": "CHLORINE",
+			"breathable": false,
+			"gate_window": 160.0,
+			"water_drain_per_sec": 0.0167,
+			"oxygen_drain_per_sec": 2.5,
+			"suit_drain_multiplier": 0.25,
+			"requires_flag": "pressure_suits_found"
+		},
+		"walkability": {
+			"max_prop_height": 1.6
+		}
+	},
+	"urban": {
+		"label": "Urban Settlement",
+		"terrain": {
+			"height": 1.8,
+			"frequency": 0.005,
+			"detail_frequency": 0.014,
+			"detail_strength": 0.20,
+			"slope_limit_deg": 26.0
+		},
+		"ground_color": [0.44, 0.44, 0.46],
+		"sky_horizon": [0.58, 0.60, 0.66],
+		"prop_set": "structures",
+		"prop_density": 0.9,
+		"ambient_sfx": "city_wind",
+		"footstep_surface": "dirt",
+		"hazard": {
+			"type": "none",
+			"gate_window": 180.0,
+			"water_drain_per_sec": 0.0167
+		},
+		"walkability": {
+			"max_prop_height": 2.4
+		},
+		"settlement": {
+			"building_count": 14,
+			"min_radius": 18.0,
+			"max_radius": 130.0,
+			"building_color": [0.52, 0.52, 0.56]
+		},
+		"negotiation": {
+			"npc_count": 3,
+			"min_radius": 16.0,
+			"max_radius": 60.0,
+			"residents": [
+				{
+					"name": "Merchant Oren",
+					"tint": [0.78, 0.66, 0.50],
+					"trade": {"resource": "water", "amount": 4},
+					"tree": [
+						{
+							"speaker": "Merchant Oren",
+							"text": "Travellers from the ring. You look parched. I have water to spare — for a fair word.",
+							"choices": [
+								{"text": "We could use water. What's your price?", "next": 1},
+								{"text": "Just passing through.", "next": "exit"}
+							]
+						},
+						{
+							"speaker": "Merchant Oren",
+							"text": "No price. You closed the ring's old wound years before our time. Take it — with thanks.",
+							"choices": [
+								{"text": "Gratefully accept the water.", "action": "trade:water:4", "next": 2}
+							]
+						},
+						{
+							"speaker": "Merchant Oren",
+							"text": "Safe roads, ring-walkers.",
+							"choices": [
+								{"text": "Thank you.", "next": "exit"}
+							]
+						}
+					]
+				},
+				{
+					"name": "Watchwoman Sela",
+					"tint": [0.62, 0.58, 0.70],
+					"trade": {},
+					"tree": [
+						{
+							"speaker": "Watchwoman Sela",
+							"text": "Keep clear of the eastern blocks after dusk — the floors there give way. Lost two of our own to it.",
+							"choices": [
+								{"text": "We'll stay west. Thank you for the warning.", "next": "exit"},
+								{"text": "Understood.", "next": "exit"}
+							]
+						}
+					]
+				},
+				{
+					"name": "Elder Maro",
+					"tint": [0.70, 0.62, 0.54],
+					"trade": {"resource": "parts", "amount": 3},
+					"tree": [
+						{
+							"speaker": "Elder Maro",
+							"text": "You wear the ring-makers' look about you. We salvage their machines but cannot read them. Trade?",
+							"choices": [
+								{"text": "We can read some. What do you offer?", "next": 1},
+								{"text": "Another time, Elder.", "next": "exit"}
+							]
+						},
+						{
+							"speaker": "Elder Maro",
+							"text": "Salvaged parts — take what you can carry, if you tell us what the glyphs by the well mean.",
+							"choices": [
+								{"text": "Decode the glyphs and accept the parts.", "action": "trade:parts:3", "next": 2},
+								{"text": "We can't help with that. Keep your parts.", "next": "exit"}
+							]
+						},
+						{
+							"speaker": "Elder Maro",
+							"text": "The ring-makers' wisdom lives on. Go well.",
+							"choices": [
+								{"text": "Farewell, Elder.", "next": "exit"}
+							]
+						}
+					]
+				}
+			]
+		}
+	},
+	"alien_tech": {
+		"label": "Alien Tech",
+		"terrain": {
+			"height": 2.4,
+			"frequency": 0.006,
+			"detail_frequency": 0.018,
+			"detail_strength": 0.22,
+			"slope_limit_deg": 28.0
+		},
+		"ground_color": [0.30, 0.28, 0.40],
+		"sky_horizon": [0.40, 0.36, 0.56],
+		"prop_set": "structures",
+		"prop_density": 0.8,
+		"ambient_sfx": "tech_hum",
+		"footstep_surface": "metal",
+		"hazard": {
+			"type": "radiation",
+			"radiation": "MODERATE",
+			"gate_window": 170.0,
+			"water_drain_per_sec": 0.0167,
+			"sensors": {
+				"count": 6,
+				"base_damage_per_second": 10.0,
+				"escalation": 1.5,
+				"max_damage_per_second": 60.0,
+				"tick_interval": 0.5,
+				"radius": 2.0,
+				"min_radius": 24.0,
+				"max_radius": 150.0,
+				"cause": "alien_defense",
+				"telegraph": "humming light-beam"
+			}
+		},
+		"walkability": {
+			"max_prop_height": 2.4
+		}
+	}
+}

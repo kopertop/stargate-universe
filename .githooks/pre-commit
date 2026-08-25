@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Stargate Universe pre-commit hook.
+#
+# Install (one-time, per clone):
+#   git config core.hooksPath .githooks
+#
+# Bypass an individual commit (emergency only — fix forward in the next
+# commit):
+#   git commit --no-verify
+
+set -e
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+# Save-registration policy: every new autoload that holds gameplay state
+# must register with SaveManager so it rides along in auto-save.
+tests/lint/check_save_registration.sh --staged
+
+# Collection-fork policy: a set of like things (items, discovered rooms,
+# unlocked abilities) must live in ONE registry behind ONE add/enumerate
+# API — not as scattered per-instance `*_found` / `has_*` bool fields.
+exec tests/lint/check_collection_forks.sh --staged

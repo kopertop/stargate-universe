@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://b1playthroughroot"]
+
+[ext_resource type="Script" path="res://tests/playthrough/bootstrap.gd" id="1_bootstrap"]
+
+[node name="PlaythroughBootstrap" type="Node"]
+script = ExtResource("1_bootstrap")

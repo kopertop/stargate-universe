@@ -1,0 +1,21 @@
+{
+	"_comment": "Chatterbox-Turbo paralinguistic-tag test. Each character clones from a fixed reference clip in refs/; lines embed inline tags ([gasp]/[laugh]/[sigh]/[cough]/[chuckle]) plus a per-line exaggeration (0=flat .. ~1.5=intense). Goal: hear whether Turbo renders the tags AND varies emotion while keeping each voice consistent.",
+	"characters": {
+		"scott": "refs/scott.wav",
+		"eli": "refs/eli.wav",
+		"tj": "refs/tj.wav"
+	},
+	"lines": [
+		{ "char": "scott", "id": "breach",   "text": "[gasp] Incoming! Everybody down — get to cover!",                 "exaggeration": 1.5 },
+		{ "char": "scott", "id": "relief",   "text": "[sigh] Okay... okay, we're clear. Everybody still with me?",       "exaggeration": 0.5 },
+		{ "char": "scott", "id": "rally",    "text": "On your feet, Marines. We are not done yet. [cough] Move out!",     "exaggeration": 1.0 },
+
+		{ "char": "eli",   "id": "wow",      "text": "[gasp] Whoa, whoa, whoa — are you seeing this right now?!",        "exaggeration": 1.3 },
+		{ "char": "eli",   "id": "joke",     "text": "[laugh] Oh, that's great. We're lost in space and the Kino's out of battery.", "exaggeration": 0.8 },
+		{ "char": "eli",   "id": "nervous",  "text": "[sigh] Okay. Deep breaths, Eli. You've totally got this. [chuckle] Probably.", "exaggeration": 0.7 },
+
+		{ "char": "tj",    "id": "triage",   "text": "Stay with me — [gasp] I need a hand over here, now!",              "exaggeration": 1.2 },
+		{ "char": "tj",    "id": "reassure", "text": "[sigh] You're going to be okay. Just breathe. I've got you.",       "exaggeration": 0.4 },
+		{ "char": "tj",    "id": "weary",    "text": "[sigh] I haven't slept in two days. [cough] But the patient's stable.", "exaggeration": 0.6 }
+	]
+}

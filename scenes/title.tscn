@@ -1,0 +1,391 @@
+[gd_scene load_steps=11 format=3 uid="uid://cgr0title00"]
+
+[ext_resource type="Script" path="res://scripts/title.gd" id="1_title"]
+[ext_resource type="Texture2D" uid="uid://ca12obecc51v3" path="res://design/concept-art/destiny-ship/exterior-hero-shot.png" id="2_bg"]
+
+[sub_resource type="Gradient" id="Gradient_scrim"]
+offsets = PackedFloat32Array(0.0, 0.55, 1.0)
+colors = PackedColorArray(0.0, 0.0, 0.0, 0.92, 0.0, 0.0, 0.0, 0.55, 0.0, 0.0, 0.0, 0.0)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_scrim"]
+gradient = SubResource("Gradient_scrim")
+fill_from = Vector2(0, 0.5)
+fill_to = Vector2(1, 0.5)
+width = 512
+height = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_normal"]
+bg_color = Color(0, 0, 0, 0)
+content_margin_left = 4.0
+content_margin_top = 14.0
+content_margin_right = 4.0
+content_margin_bottom = 14.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_hover"]
+bg_color = Color(1, 1, 1, 0.06)
+content_margin_left = 4.0
+content_margin_top = 14.0
+content_margin_right = 4.0
+content_margin_bottom = 14.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+bg_color = Color(0.03, 0.07, 0.12, 0.96)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.45, 0.78, 1.0, 0.7)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+content_margin_left = 28.0
+content_margin_top = 24.0
+content_margin_right = 28.0
+content_margin_bottom = 24.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_overlay_dim"]
+bg_color = Color(0, 0, 0, 0.55)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_pill_normal"]
+bg_color = Color(0.04, 0.09, 0.15, 0.78)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.45, 0.78, 1.0, 0.75)
+corner_radius_top_left = 26
+corner_radius_top_right = 26
+corner_radius_bottom_right = 26
+corner_radius_bottom_left = 26
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_pill_hover"]
+bg_color = Color(0.1, 0.22, 0.36, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.75, 0.93, 1.0, 1)
+corner_radius_top_left = 26
+corner_radius_top_right = 26
+corner_radius_bottom_right = 26
+corner_radius_bottom_left = 26
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+
+[node name="Title" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_title")
+
+[node name="Background" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+texture = ExtResource("2_bg")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="LeftScrim" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 9
+anchor_bottom = 1.0
+anchor_right = 0.55
+texture = SubResource("GradientTexture2D_scrim")
+expand_mode = 1
+stretch_mode = 0
+mouse_filter = 2
+
+[node name="LeftColumn" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 9
+anchor_bottom = 1.0
+offset_left = 64.0
+offset_top = 80.0
+offset_right = 460.0
+offset_bottom = -80.0
+theme_override_constants/separation = 0
+mouse_filter = 2
+
+[node name="TitleBlock" type="VBoxContainer" parent="LeftColumn"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="GameTitle" type="Label" parent="LeftColumn/TitleBlock"]
+layout_mode = 2
+text = "STARGATE
+UNIVERSE"
+theme_override_font_sizes/font_size = 60
+theme_override_colors/font_color = Color(0.96, 0.98, 1, 1)
+theme_override_constants/line_spacing = -6
+
+[node name="TitleDivider" type="ColorRect" parent="LeftColumn/TitleBlock"]
+custom_minimum_size = Vector2(240, 1)
+layout_mode = 2
+color = Color(0.6, 0.7, 0.85, 0.55)
+
+[node name="Subtitle" type="Label" parent="LeftColumn/TitleBlock"]
+layout_mode = 2
+text = "D E S T I N Y    R E S T O R E D"
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.85, 0.9, 0.96, 0.95)
+
+[node name="MidSpacer" type="Control" parent="LeftColumn"]
+custom_minimum_size = Vector2(0, 72)
+layout_mode = 2
+
+[node name="MenuList" type="VBoxContainer" parent="LeftColumn"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="TopSep" type="ColorRect" parent="LeftColumn/MenuList"]
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+color = Color(0.55, 0.65, 0.78, 0.32)
+
+[node name="ContinueButton" type="Button" parent="LeftColumn/MenuList"]
+layout_mode = 2
+text = "CONTINUE GAME"
+alignment = 0
+theme_override_font_sizes/font_size = 17
+theme_override_colors/font_color = Color(0.93, 0.96, 1, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
+theme_override_colors/font_pressed_color = Color(1, 1, 1, 1)
+theme_override_colors/font_disabled_color = Color(0.55, 0.62, 0.72, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_normal")
+
+[node name="ContinueSep" type="ColorRect" parent="LeftColumn/MenuList"]
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+color = Color(0.55, 0.65, 0.78, 0.32)
+
+[node name="NewGameButton" type="Button" parent="LeftColumn/MenuList"]
+layout_mode = 2
+text = "NEW GAME"
+alignment = 0
+theme_override_font_sizes/font_size = 17
+theme_override_colors/font_color = Color(0.93, 0.96, 1, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
+theme_override_colors/font_pressed_color = Color(1, 1, 1, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_hover")
+
+[node name="NewGameSep" type="ColorRect" parent="LeftColumn/MenuList"]
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+color = Color(0.55, 0.65, 0.78, 0.32)
+
+[node name="SettingsButton" type="Button" parent="LeftColumn/MenuList"]
+layout_mode = 2
+text = "SETTINGS"
+alignment = 0
+theme_override_font_sizes/font_size = 17
+theme_override_colors/font_color = Color(0.93, 0.96, 1, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
+theme_override_colors/font_pressed_color = Color(1, 1, 1, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_hover")
+
+[node name="SettingsSep" type="ColorRect" parent="LeftColumn/MenuList"]
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+color = Color(0.55, 0.65, 0.78, 0.32)
+
+[node name="CharactersButton" type="Button" parent="LeftColumn/MenuList"]
+layout_mode = 2
+text = "CHARACTERS"
+alignment = 0
+disabled = true
+theme_override_font_sizes/font_size = 17
+theme_override_colors/font_color = Color(0.93, 0.96, 1, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
+theme_override_colors/font_pressed_color = Color(1, 1, 1, 1)
+theme_override_colors/font_disabled_color = Color(0.55, 0.62, 0.72, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_normal")
+
+[node name="CharactersSep" type="ColorRect" parent="LeftColumn/MenuList"]
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+color = Color(0.55, 0.65, 0.78, 0.32)
+
+[node name="ExitButton" type="Button" parent="LeftColumn/MenuList"]
+layout_mode = 2
+text = "EXIT"
+alignment = 0
+theme_override_font_sizes/font_size = 17
+theme_override_colors/font_color = Color(0.93, 0.96, 1, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
+theme_override_colors/font_pressed_color = Color(1, 1, 1, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_hover")
+
+[node name="BottomSep" type="ColorRect" parent="LeftColumn/MenuList"]
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+color = Color(0.55, 0.65, 0.78, 0.32)
+
+[node name="BuildLabel" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -36.0
+offset_right = 240.0
+offset_bottom = -16.0
+text = "BUILD 0.0.0"
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.6, 0.7, 0.82, 0.55)
+
+[node name="SettingsOverlay" type="Control" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Dim" type="Panel" parent="SettingsOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_overlay_dim")
+
+[node name="Panel" type="PanelContainer" parent="SettingsOverlay"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -260.0
+offset_top = -210.0
+offset_right = 260.0
+offset_bottom = 210.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="V" type="VBoxContainer" parent="SettingsOverlay/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Header" type="Label" parent="SettingsOverlay/Panel/V"]
+layout_mode = 2
+text = "SETTINGS"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 26
+theme_override_colors/font_color = Color(0.62, 0.88, 1, 1)
+
+[node name="MusicRow" type="VBoxContainer" parent="SettingsOverlay/Panel/V"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="MusicLabel" type="Label" parent="SettingsOverlay/Panel/V/MusicRow"]
+layout_mode = 2
+text = "Music"
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.78, 0.88, 0.97, 1)
+
+[node name="MusicHBox" type="HBoxContainer" parent="SettingsOverlay/Panel/V/MusicRow"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="MusicSlider" type="HSlider" parent="SettingsOverlay/Panel/V/MusicRow/MusicHBox"]
+custom_minimum_size = Vector2(320, 22)
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 1.0
+step = 0.01
+value = 0.8
+
+[node name="MusicValue" type="Label" parent="SettingsOverlay/Panel/V/MusicRow/MusicHBox"]
+custom_minimum_size = Vector2(48, 0)
+layout_mode = 2
+text = "80%"
+horizontal_alignment = 2
+theme_override_colors/font_color = Color(0.78, 0.88, 0.97, 1)
+
+[node name="SfxRow" type="VBoxContainer" parent="SettingsOverlay/Panel/V"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="SfxLabel" type="Label" parent="SettingsOverlay/Panel/V/SfxRow"]
+layout_mode = 2
+text = "Sound Effects"
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.78, 0.88, 0.97, 1)
+
+[node name="SfxHBox" type="HBoxContainer" parent="SettingsOverlay/Panel/V/SfxRow"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="SfxSlider" type="HSlider" parent="SettingsOverlay/Panel/V/SfxRow/SfxHBox"]
+custom_minimum_size = Vector2(320, 22)
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 1.0
+step = 0.01
+value = 0.9
+
+[node name="SfxValue" type="Label" parent="SettingsOverlay/Panel/V/SfxRow/SfxHBox"]
+custom_minimum_size = Vector2(48, 0)
+layout_mode = 2
+text = "90%"
+horizontal_alignment = 2
+theme_override_colors/font_color = Color(0.78, 0.88, 0.97, 1)
+
+[node name="DifficultyRow" type="VBoxContainer" parent="SettingsOverlay/Panel/V"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="DifficultyLabel" type="Label" parent="SettingsOverlay/Panel/V/DifficultyRow"]
+layout_mode = 2
+text = "Difficulty"
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.78, 0.88, 0.97, 1)
+
+[node name="DifficultyOption" type="OptionButton" parent="SettingsOverlay/Panel/V/DifficultyRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+
+[node name="Spacer" type="Control" parent="SettingsOverlay/Panel/V"]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
+
+[node name="BackButton" type="Button" parent="SettingsOverlay/Panel/V"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 44)
+text = "Back"
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(0.9, 0.97, 1, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_pill_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_pill_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_pill_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_pill_hover")

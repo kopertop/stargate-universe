@@ -4,6 +4,18 @@
     "type": "command",
     "command": "bash .claude/statusline.sh"
   },
+  "extraKnownMarketplaces": {
+    "gamestack": {
+      "source": {
+        "source": "github",
+        "repo": "rondorkerin/gamestack"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "gamestack@gamestack": true,
+    "godot@gamestack": true
+  },
   "permissions": {
     "allow": [
       "Bash(git status*)",
@@ -74,6 +86,11 @@
             "type": "command",
             "command": "bash .claude/hooks/validate-assets.sh",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/validate-skill-change.sh",
+            "timeout": 5
           }
         ]
       }
@@ -85,6 +102,18 @@
           {
             "type": "command",
             "command": "bash .claude/hooks/pre-compact.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/post-compact.sh",
             "timeout": 10
           }
         ]
@@ -109,6 +138,18 @@
           {
             "type": "command",
             "command": "bash .claude/hooks/log-agent.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/log-agent-stop.sh",
             "timeout": 5
           }
         ]

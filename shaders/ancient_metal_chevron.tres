@@ -1,0 +1,24 @@
+[gd_resource type="ShaderMaterial" load_steps=4 format=3 uid="uid://b8anmtlchev01"]
+
+[ext_resource type="Shader" path="res://shaders/ancient_metal.gdshader" id="1_amshader"]
+[ext_resource type="Texture2D" path="res://textures/ancient-metal/detail_normal.tres" id="2_amdetn"]
+[ext_resource type="Texture2D" path="res://textures/ancient-metal/detail_rough.tres" id="3_amdetr"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_amshader")
+shader_parameter/albedo_tint = Color(0.22, 0.2, 0.22, 1.0)
+shader_parameter/metallic = 0.95
+shader_parameter/roughness_base = 0.28
+shader_parameter/panel_scale = 0.4
+shader_parameter/seam_width = 0.07
+shader_parameter/seam_depth = 0.6
+shader_parameter/wear_amount = 0.3
+shader_parameter/detail_scale = 2.2
+shader_parameter/detail_normal_strength = 0.5
+shader_parameter/triplanar_sharpness = 6.0
+shader_parameter/emission_color = Color(0.85, 0.45, 0.15, 1.0)
+shader_parameter/emission_energy = 0.18
+shader_parameter/seam_emission = 0.6
+shader_parameter/detail_normal = ExtResource("2_amdetn")
+shader_parameter/detail_rough = ExtResource("3_amdetr")

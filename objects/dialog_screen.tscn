@@ -1,0 +1,149 @@
+[gd_scene load_steps=10 format=3 uid="uid://b1dlgscreen01"]
+
+[ext_resource type="Script" path="res://scripts/dialog_screen.gd" id="1_dlgscript"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_dlg_speaker"]
+font_size = 26
+font_color = Color(0.18, 0.1, 0.05, 1)
+outline_size = 2
+outline_color = Color(0.95, 0.88, 0.7, 0.8)
+
+[sub_resource type="LabelSettings" id="LabelSettings_dlg_line"]
+font_size = 18
+font_color = Color(0.2, 0.12, 0.06, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_sub_speaker"]
+font_size = 19
+font_color = Color(1, 0.84, 0.42, 1)
+outline_size = 7
+outline_color = Color(0, 0, 0, 0.85)
+
+[sub_resource type="LabelSettings" id="LabelSettings_sub_line"]
+font_size = 22
+font_color = Color(0.95, 0.95, 0.97, 1)
+outline_size = 8
+outline_color = Color(0, 0, 0, 0.85)
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_window"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn"]
+bg_color = Color(0, 0, 0, 0.32)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+content_margin_left = 12.0
+content_margin_top = 6.0
+content_margin_right = 12.0
+content_margin_bottom = 6.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_focus"]
+bg_color = Color(0, 0, 0, 0.5)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+content_margin_left = 12.0
+content_margin_top = 6.0
+content_margin_right = 12.0
+content_margin_bottom = 6.0
+
+[sub_resource type="Theme" id="Theme_choices"]
+default_font_size = 21
+Button/colors/font_color = Color(0.93, 0.93, 0.95, 1)
+Button/colors/font_focus_color = Color(1, 0.84, 0.42, 1)
+Button/colors/font_hover_color = Color(1, 0.84, 0.42, 1)
+Button/colors/font_pressed_color = Color(1, 0.92, 0.6, 1)
+Button/colors/font_outline_color = Color(0, 0, 0, 0.85)
+Button/constants/outline_size = 7
+Button/styles/normal = SubResource("StyleBoxFlat_btn")
+Button/styles/hover = SubResource("StyleBoxFlat_btn_focus")
+Button/styles/pressed = SubResource("StyleBoxFlat_btn_focus")
+Button/styles/focus = SubResource("StyleBoxFlat_btn_focus")
+
+[node name="DialogScreen" type="Control"]
+process_mode = 3
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("1_dlgscript")
+
+[node name="Window" type="PanelContainer" parent="."]
+anchor_left = 0.56
+anchor_top = 0.26
+anchor_right = 0.985
+anchor_bottom = 0.86
+theme_override_styles/panel = SubResource("StyleBoxEmpty_window")
+mouse_filter = 2
+
+[node name="Margin" type="MarginContainer" parent="Window"]
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+mouse_filter = 2
+
+[node name="VBox" type="VBoxContainer" parent="Window/Margin"]
+alignment = 1
+theme_override_constants/separation = 12
+mouse_filter = 2
+
+[node name="Header" type="HBoxContainer" parent="Window/Margin/VBox"]
+visible = false
+theme_override_constants/separation = 14
+
+[node name="PortraitFrame" type="PanelContainer" parent="Window/Margin/VBox/Header"]
+custom_minimum_size = Vector2(96, 128)
+
+[node name="Portrait" type="TextureRect" parent="Window/Margin/VBox/Header/PortraitFrame"]
+expand_mode = 1
+stretch_mode = 6
+
+[node name="SpeakerName" type="Label" parent="Window/Margin/VBox/Header"]
+size_flags_horizontal = 3
+size_flags_vertical = 5
+text = "Speaker"
+label_settings = SubResource("LabelSettings_dlg_speaker")
+vertical_alignment = 1
+
+[node name="BodyPanel" type="PanelContainer" parent="Window/Margin/VBox"]
+visible = false
+size_flags_vertical = 3
+
+[node name="BodyScroll" type="ScrollContainer" parent="Window/Margin/VBox/BodyPanel"]
+horizontal_scroll_mode = 0
+
+[node name="Line" type="Label" parent="Window/Margin/VBox/BodyPanel/BodyScroll"]
+custom_minimum_size = Vector2(404, 0)
+size_flags_horizontal = 3
+text = "Dialog line goes here."
+autowrap_mode = 3
+label_settings = SubResource("LabelSettings_dlg_line")
+
+[node name="ChoicesVBox" type="VBoxContainer" parent="Window/Margin/VBox"]
+theme_override_constants/separation = 10
+theme = SubResource("Theme_choices")
+
+[node name="Subtitle" type="VBoxContainer" parent="."]
+anchor_left = 0.16
+anchor_top = 1.0
+anchor_right = 0.84
+anchor_bottom = 1.0
+offset_top = -168.0
+offset_bottom = -56.0
+alignment = 2
+theme_override_constants/separation = 4
+mouse_filter = 2
+
+[node name="SubSpeaker" type="Label" parent="Subtitle"]
+text = ""
+label_settings = SubResource("LabelSettings_sub_speaker")
+horizontal_alignment = 1
+mouse_filter = 2
+
+[node name="SubLine" type="Label" parent="Subtitle"]
+text = ""
+label_settings = SubResource("LabelSettings_sub_line")
+horizontal_alignment = 1
+autowrap_mode = 3
+mouse_filter = 2

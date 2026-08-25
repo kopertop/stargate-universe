@@ -1,0 +1,22 @@
+{
+	"_comment": "E1 cold-open VO (manifest §18, wired in scripts/gate_room.gd::_play_prologue_cinematic / _play_rush_handoff). Text matches the captions EXACTLY. out_dir matches PROLOGUE_VO_DIR so files land where the game loads them. Crew lines split across marine/jack so the bed isn't one cloned voice. Emotion presets in emotions.py; add \"emo_text\" to any line to override.",
+	"out_dir": "sounds/dialog/prologue",
+	"lines": [
+		{ "id": "open-scott-evac",     "voice": "scott",  "emotion": "urgent",   "text": "Slow down the evac — we're coming in too high!" },
+		{ "id": "open-greer-clear",    "voice": "greer",  "emotion": "urgent",   "text": "Clear! Keep 'em moving!" },
+		{ "id": "open-scott-side",     "voice": "scott",  "emotion": "urgent",   "text": "There's no time to explain — off to the side!" },
+		{ "id": "open-tj-fingers",     "voice": "tj",     "emotion": "reassure", "text": "Can you move your fingers?" },
+		{ "id": "open-wounded-broken", "voice": "marine", "emotion": "pained",   "text": "I think it's broken." },
+		{ "id": "open-tj-sling",       "voice": "tj",     "emotion": "reassure", "text": "Okay — hold your arm there, we'll get it in a sling." },
+		{ "id": "open-crowd-where",    "voice": "jack",   "emotion": "confused", "text": "Where are we?" },
+		{ "id": "open-greer-move",     "voice": "greer",  "emotion": "panic",    "text": "Move, move, move!" },
+		{ "id": "open-crowd-what",     "voice": "marine", "emotion": "confused", "text": "What's going on?" },
+
+		{ "id": "open-crew-whatwasthat", "voice": "jack",  "emotion": "wonder",  "text": "What the hell was that?" },
+		{ "id": "open-scott-norush",     "voice": "scott", "emotion": "worried", "text": "I haven't seen Rush. I don't know if he made it through." },
+		{ "id": "open-scott-rush",       "voice": "scott", "emotion": "calling", "text": "Rush! … Rush!" },
+		{ "id": "open-scott-findhim",    "voice": "scott", "emotion": "worried", "text": "Help me find him." },
+		{ "id": "open-scott-eli-now",    "voice": "scott", "emotion": "shout",   "text": "Eli! NOW!" },
+		{ "id": "open-eli-coming",       "voice": "eli",   "emotion": "frantic", "text": "Okay! I'm coming!" }
+	]
+}

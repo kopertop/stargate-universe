@@ -1,0 +1,83 @@
+[gd_scene load_steps=13 format=3 uid="uid://cgr00mr00mr00"]
+
+[ext_resource type="Environment" uid="uid://cgrenv00enva" path="res://scenes/gate-room-environment.tres" id="1_env"]
+[ext_resource type="Script" path="res://scripts/camera_xray.gd" id="camera_xray"]
+[ext_resource type="AudioStream" uid="uid://ckjurjhul37up" path="res://sounds/stargate_chevron_incom.mp3" id="9_chevron"]
+[ext_resource type="AudioStream" uid="uid://u3d3x5f2gvcs" path="res://sounds/gate_kawoosh.wav" id="10_kawoosh"]
+[ext_resource type="AudioStream" uid="uid://b8p7xexy23akr" path="res://sounds/gate_active_hum.wav" id="11_hum"]
+[ext_resource type="Script" path="res://scripts/gate_room.gd" id="2_room"]
+[ext_resource type="PackedScene" uid="uid://dl2ed4gkybggf" path="res://objects/player.tscn" id="3_player"]
+[ext_resource type="Script" uid="uid://bcg2kkbsnttec" path="res://scripts/view.gd" id="4_view"]
+[ext_resource type="PackedScene" uid="uid://b1hudsgu000" path="res://objects/hud.tscn" id="5_hud"]
+[ext_resource type="AudioStream" uid="uid://bxhb7ygtvbt1k" path="res://sounds/break.ogg" id="6_breaksfx"]
+[ext_resource type="Script" path="res://scripts/ambient_hum.gd" id="7_ambient"]
+[ext_resource type="PackedScene" uid="uid://b0doorinteractable" path="res://objects/door.tscn" id="8_door"]
+
+[node name="GateRoom" type="Node3D"]
+script = ExtResource("2_room")
+
+[node name="Environment" type="WorldEnvironment" parent="."]
+environment = ExtResource("1_env")
+
+[node name="World" type="Node3D" parent="."]
+
+[node name="FromGate" type="Marker3D" parent="."]
+
+[node name="FromCorridor" type="Marker3D" parent="."]
+
+[node name="FromStargateCorridorEastConnector" type="Marker3D" parent="."]
+
+[node name="ExitDoor" parent="." groups=["interactable"] instance=ExtResource("8_door")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -16)
+target_room_id = "stargate_corridor_east_connector"
+source_room_id = "gate_room"
+target_spawn = "FromGateRoom"
+plaque_label = "East Corridor"
+open_prompt = "Step into the corridor"
+transition_prompt = "Step into the corridor"
+
+[node name="Player" parent="." node_paths=PackedStringArray("view") groups=["player"] instance=ExtResource("3_player")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.20, 10.5)
+view = NodePath("../View")
+
+[node name="View" type="Node3D" parent="." node_paths=PackedStringArray("target")]
+transform = Transform3D(0.866025, -0.25, 0.433013, 0, 0.866025, 0.5, -0.5, -0.433013, 0.75, 0, 0, 0)
+script = ExtResource("4_view")
+target = NodePath("../Player")
+
+[node name="CameraXRay" type="Node3D" parent="View"]
+script = ExtResource("camera_xray")
+
+[node name="SpringArm" type="SpringArm3D" parent="View"]
+collision_mask = 2
+spring_length = 7.0
+margin = 0.2
+
+[node name="Camera" type="Camera3D" parent="View/SpringArm"]
+current = true
+fov = 62.0
+
+[node name="AmbientHum" type="AudioStreamPlayer" parent="."]
+volume_db = -16.0
+script = ExtResource("7_ambient")
+
+[node name="GateActiveLoop" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("9_chevron")
+volume_db = -8.0
+
+[node name="GateShutdown" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("6_breaksfx")
+volume_db = -4.0
+
+[node name="GateKawoosh" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("10_kawoosh")
+volume_db = -3.0
+
+[node name="GateHum" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("11_hum")
+volume_db = -14.0
+
+[node name="HUDLayer" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="HUD" parent="HUDLayer" instance=ExtResource("5_hud")]

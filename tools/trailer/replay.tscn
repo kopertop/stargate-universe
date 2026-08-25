@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://b1trailerreplay0"]
+
+[ext_resource type="Script" path="res://tools/trailer/replay_bootstrap.gd" id="1_replay"]
+
+[node name="TrailerReplayBootstrap" type="Node"]
+script = ExtResource("1_replay")

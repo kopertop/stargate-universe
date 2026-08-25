@@ -1,0 +1,344 @@
+class_name DialogScreen
+extends Control
+
+# Fable-style conversation screen (user design goal 2026-06-11). Spawned by
+# hud.gd when GameState.dialog_started fires. The world stays visible:
+#   • a pause-immune OTS camera (DialogCinema) shifts to whoever is SPEAKING,
+#     and frames ELI whenever a real choice (>= 2 options) is offered;
+#   • the spoken line reads as a bottom-centre subtitle;
+#   • choices float as a minimal gold-highlighted text list on the right —
+#     no parchment panel.
+# The legacy Window/Header/BodyPanel nodes remain (hidden) so tests that
+# reach `Window/Margin/VBox/ChoicesVBox` keep working; the tree still pauses
+# while the conversation is open (participant MODELS keep animating via
+# PROCESS_MODE_ALWAYS, managed by DialogCinema).
+#
+# Number keys 1-9 trigger choices; Esc closes.
+#
+# TTS integration (P3): each spoken line is voiced via TTSClient when the
+# LuxTTS sidecar is running. Per-character voice profiles resolve from
+# data/characters.json. Dialogue tree nodes may carry optional `emotion`
+# and `ancient` keys for emotional inflection and Ancient-language voice
+# mode. If the sidecar is down or TTS is disabled, the subtitle text alone
+# is shown (text-only fallback).
+#
+# Dialog tree shape (passed to start()):
+#   tree: Array[Dictionary] — each node:
+#     { "speaker": String, "text": String, "action": String?,
+#       "emotion": String?,   # optional: neutral, urgent, calm, angry, etc.
+#       "ancient": bool?,     # optional: true = Ancient-language voice mode
+#       "choices": Array[Dictionary] of
+#         { "text": String, "next": int|"exit", "action": String? } }
+#   `next = "exit"` ends the conversation. `next = <int>` jumps to that index.
+#   An optional `action` on a NODE fires when the node is shown; an optional
+#   `action` on a CHOICE fires when that choice is picked. Both emit
+#   GameState.dialog_action (the negotiation trade payoff rides the choice form).
+
+signal closed()
+
+@onready var _speaker_label: Label = $Window/Margin/VBox/Header/SpeakerName
+@onready var _line_label: Label = $Window/Margin/VBox/BodyPanel/BodyScroll/Line
+@onready var _choices_box: VBoxContainer = $Window/Margin/VBox/ChoicesVBox
+@onready var _portrait: TextureRect = $Window/Margin/VBox/Header/PortraitFrame/Portrait
+@onready var _sub_speaker: Label = $Subtitle/SubSpeaker
+@onready var _sub_line: Label = $Subtitle/SubLine
+# Lie detection overlay label (shown when InvestigationSystem detects a lie
+# during an interrogation dialog node). Hidden by default; only visible when
+# the Kino is deployed and the current node carries is_lie: true.
+@onready var _lie_indicator_label: Label = get_node_or_null("Subtitle/LieIndicator")
+
+var _target: Node3D = null
+var _tree: Array = []
+var _current_index: int = 0
+# True while a node rendered with "hold": true is waiting for GameState.dialog_release.
+# Choice buttons + number keys are inert until the release fires (staged
+# choreography must land before the player can advance).
+var _held: bool = false
+# Fable presentation: OTS speaker camera + face-each-other staging. Null in
+# instant_mode, for radio/self dialogs, or when no player body exists.
+var _cinema: Node = null
+# Portrait + character-registry loading lives in PortraitLoader (shared with the
+# HUD unit frame) so the .import-sidestep PNG decoder is implemented once.
+const PortraitLoaderScript := preload("res://scripts/portrait_loader.gd")
+const DialogCinemaScript := preload("res://scripts/dialog_cinema.gd")
+const TTSClientScript := preload("res://scripts/tts_client.gd")
+
+# TTS client for voiced dialogue. Created in _ready; nullable so headless
+# tests and scenes without TTS still work.
+var _tts: Node = null
+# Whether the current line's voice is still loading (prevents overlapping
+# requests when advancing quickly through the tree).
+var _voice_loading: bool = false
+
+func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	# Create TTS client as a child. It runs in PROCESS_MODE_ALWAYS so voice
+	# playback continues while the tree is paused during dialogue.
+	_tts = TTSClientScript.new()
+	_tts.name = "TTSClient"
+	_tts.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(_tts)
+	_tts.line_ready.connect(_on_tts_line_ready)
+	_tts.line_failed.connect(_on_tts_line_failed)
+	# Accessibility: apply subtitle settings and listen for changes.
+	_apply_subtitle_settings()
+	var acc: Node = get_node_or_null("/root/AccessibilitySettings")
+	if acc != null:
+		acc.subtitle_size_changed.connect(_apply_subtitle_settings)
+		acc.subtitle_color_changed.connect(_apply_subtitle_settings)
+		acc.speaker_labels_changed.connect(_apply_subtitle_settings)
+		acc.subtitle_background_changed.connect(_apply_subtitle_settings)
+
+
+# Apply accessibility subtitle settings to the subtitle labels.
+func _apply_subtitle_settings() -> void:
+	var acc: Node = get_node_or_null("/root/AccessibilitySettings")
+	if acc == null:
+		return
+	var font_size: int = acc.subtitle_font_size_value()
+	var color: Color = acc.subtitle_color_value()
+	# Apply to subtitle labels.
+	if _sub_line != null:
+		_sub_line.add_theme_font_size_override("font_size", font_size)
+		_sub_line.add_theme_color_override("font_color", color)
+	if _sub_speaker != null:
+		_sub_speaker.visible = acc.speaker_labels
+		_sub_speaker.add_theme_font_size_override("font_size", font_size)
+		_sub_speaker.add_theme_color_override("font_color", color)
+	# Toggle subtitle background panel visibility.
+	var sub_bg: Node = get_node_or_null("Subtitle/SubBackground")
+	if sub_bg != null:
+		sub_bg.visible = acc.subtitle_background
+
+func start(target: Node3D, tree: Array) -> void:
+	_target = target
+	_tree = tree
+	_current_index = 0
+	get_tree().paused = true
+	_maybe_begin_cinema()
+	_render_node()
+
+# Conversation camera + staging — live play with a real NPC target only.
+# Radio/self dialogs (target IS the player) keep the gameplay framing, and
+# instant_mode (headless suites) never installs presentation.
+func _maybe_begin_cinema() -> void:
+	var sr: Node = get_node_or_null("/root/SceneRouter")
+	if sr != null and sr.get("instant_mode"):
+		return
+	if _target == null or not is_instance_valid(_target):
+		return
+	if _target.is_in_group("player"):
+		return
+	var player: Node3D = get_tree().get_first_node_in_group("player") as Node3D
+	if player == null or player == _target:
+		return
+	_cinema = DialogCinemaScript.new()
+	_cinema.name = "DialogCinema"
+	var scene: Node = get_tree().current_scene
+	if scene != null:
+		scene.add_child(_cinema)
+	else:
+		add_child(_cinema)
+	_cinema.call("begin", _target, player)
+
+func _render_node() -> void:
+	if _current_index < 0 or _current_index >= _tree.size():
+		close()
+		return
+	var node: Dictionary = _tree[_current_index]
+	var speaker: String = String(node.get("speaker", ""))
+	_speaker_label.text = speaker
+	_portrait.texture = _portrait_for(speaker)
+	_line_label.text = String(node.get("text", ""))
+	# Fable presentation: the spoken line reads as a bottom-centre subtitle.
+	_sub_speaker.text = speaker
+	_sub_line.text = "\"%s\"" % String(node.get("text", ""))
+	# Investigation lie detection: if the InvestigationSystem autoload is
+	# present and the current dialog node carries is_lie metadata, display
+	# the lie indicator text below the subtitle. This is a data-driven
+	# overlay — the dialog tree from data/investigation.json includes
+	# is_lie and lie_indicator fields on suspect dialogue nodes.
+	_update_lie_indicator(node)
+	# TTS: voice the current line. The subtitle is already displayed; voice
+	# plays on top when available. If TTS is down, the subtitle alone suffices.
+	_speak_current(node, speaker)
+	# Data-driven side effects: a node may carry an "action" id that fires when
+	# it's shown (e.g. the FTL-drop blur on Brody's line). Listeners hook
+	# GameState.dialog_action.
+	# A held node disables its choices until GameState.dialog_release. Set the flag
+	# BEFORE emitting the action so the cue listener (which may emit dialog_release
+	# synchronously in instant_mode) can release it immediately.
+	_held = node.get("hold", false) == true
+	if _held and not GameState.dialog_release.is_connected(_release_hold):
+		GameState.dialog_release.connect(_release_hold, CONNECT_ONE_SHOT)
+	var action: String = String(node.get("action", ""))
+	if action != "":
+		GameState.dialog_action.emit(action)
+	for c in _choices_box.get_children():
+		_choices_box.remove_child(c)
+		c.queue_free()
+	var choices: Array = node.get("choices", [])
+	if choices.is_empty():
+		choices = [{"text": "Goodbye.", "next": "exit"}]
+	# The camera stays LOCKED on whoever is speaking and the player's options
+	# float beside them immediately — no cut to Eli, no reading delay
+	# (user direction: "I just want my dialog options to appear over Rush").
+	if _cinema != null and is_instance_valid(_cinema):
+		_cinema.call("frame_node", speaker)
+	_lay_out_choices(choices)
+
+# Update the lie detection indicator for the current dialog node.
+# If the InvestigationSystem autoload exists and the node has is_lie: true,
+# the indicator text is shown below the subtitle. When no Kino is deployed,
+# a "no Kino" notice is shown instead. Truthful nodes hide the indicator.
+func _update_lie_indicator(node: Dictionary) -> void:
+	if _lie_indicator_label == null:
+		return
+	var inv: Node = get_node_or_null("/root/InvestigationSystem")
+	if inv == null:
+		_lie_indicator_label.visible = false
+		return
+	# Only process if this node has lie detection metadata.
+	if not node.has("is_lie"):
+		_lie_indicator_label.visible = false
+		return
+	var result: String = inv.call("process_dialogue_node", String(node.get("speaker", "")), _current_index)
+	if result == "":
+		_lie_indicator_label.visible = false
+	else:
+		_lie_indicator_label.text = result
+		_lie_indicator_label.visible = true
+
+
+# Request TTS synthesis for the current dialogue node. Handles per-character
+# voice resolution, emotion overrides, and Ancient-language mode. If the
+# sidecar is unreachable, line_failed fires and the subtitle alone is shown.
+func _speak_current(node: Dictionary, speaker: String) -> void:
+	if _tts == null or not is_instance_valid(_tts):
+		return
+	var text: String = String(node.get("text", ""))
+	if text == "":
+		return
+	# Stop any voice currently playing before requesting a new one.
+	_tts.call("stop")
+	_voice_loading = true
+	var emotion: String = String(node.get("emotion", ""))
+	var ancient: bool = node.get("ancient", false) == true
+	_tts.call("say_line", speaker, text, emotion, ancient)
+
+# TTS succeeded — play the stream on the Voice bus. The subtitle is already
+# visible, so voice plays on top of the text.
+func _on_tts_line_ready(stream: AudioStreamWAV) -> void:
+	_voice_loading = false
+	if _tts != null and is_instance_valid(_tts):
+		_tts.call("play_stream", stream)
+
+# TTS failed — the sidecar is down, the voice is missing, or TTS is disabled.
+# The subtitle text is already visible; no action needed. Just clear the
+# loading flag so the next line can try again (the sidecar may come up later).
+func _on_tts_line_failed(_reason: String) -> void:
+	_voice_loading = false
+	# Silent fallback: subtitle text alone is the full presentation.
+
+# Resolve a speaker display name to the portrait Texture2D defined in
+# data/characters.json. Delegates to PortraitLoader (shared with the HUD unit
+# frame) which handles the .import-sidestep PNG decode + caching.
+func _portrait_for(speaker: String) -> Texture2D:
+	return PortraitLoaderScript.portrait_for(speaker)
+
+# Vertical list of floating text options, top-to-bottom (Fable look: plain
+# outlined text, gold + arrow on the focused one). Slot 0 = key 1, etc.
+func _lay_out_choices(choices: Array) -> void:
+	for i in range(choices.size()):
+		var choice: Dictionary = choices[i]
+		var btn: Button = Button.new()
+		var base_text: String = String(choice.get("text", ""))
+		btn.set_meta("base_text", base_text)
+		btn.text = "     " + base_text
+		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		btn.focus_mode = Control.FOCUS_ALL
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var nxt: Variant = choice.get("next", "exit")
+		var act: String = String(choice.get("action", ""))
+		btn.pressed.connect(_on_choice_pressed.bind(nxt, act))
+		btn.disabled = _held   # inert until the held node is released
+		# Hover = focus so mouse and keyboard share one highlight, and the
+		# gold arrow marks whichever option is live.
+		btn.focus_entered.connect(_mark_focused.bind(btn, true))
+		btn.focus_exited.connect(_mark_focused.bind(btn, false))
+		btn.mouse_entered.connect(btn.grab_focus)
+		Audio.attach_ui_hover(btn)
+		_choices_box.add_child(btn)
+	if not _held and _choices_box.get_child_count() > 0:
+		(_choices_box.get_child(0) as Control).grab_focus()
+
+
+func _mark_focused(btn: Button, focused: bool) -> void:
+	var base_text: String = String(btn.get_meta("base_text", btn.text))
+	btn.text = ("➤  " if focused else "     ") + base_text
+
+
+# Release a held node: re-enable the choice buttons and focus the first one.
+func _release_hold() -> void:
+	_held = false
+	for c in _choices_box.get_children():
+		if c is Button:
+			(c as Button).disabled = false
+	if _choices_box.get_child_count() > 0:
+		(_choices_box.get_child(0) as Control).grab_focus()
+
+func _on_choice_pressed(next_value: Variant, action: String = "") -> void:
+	# A choice may carry its own data-driven side effect (e.g. a negotiation
+	# "trade:<resource>:<amount>" payoff, issue #90). Fire it before advancing so
+	# listeners (npc.gd::_on_dialog_action) react while the conversation is open.
+	# This mirrors the node-level action in _render_node — choices and nodes share
+	# the GameState.dialog_action channel.
+	if action != "":
+		GameState.dialog_action.emit(action)
+	# Stop any voice still playing when advancing.
+	if _tts != null and is_instance_valid(_tts):
+		_tts.call("stop")
+	if next_value is String and String(next_value) == "exit":
+		close()
+		return
+	if typeof(next_value) == TYPE_INT or typeof(next_value) == TYPE_FLOAT:
+		var idx: int = int(next_value)
+		if idx >= 0 and idx < _tree.size():
+			_current_index = idx
+			_render_node()
+			return
+	close()
+
+func close() -> void:
+	# Stop any voice playback before closing.
+	if _tts != null and is_instance_valid(_tts):
+		_tts.call("stop")
+	if _cinema != null and is_instance_valid(_cinema):
+		_cinema.call("end")
+		_cinema.queue_free()
+	_cinema = null
+	get_tree().paused = false
+	closed.emit()
+	# Surface the close globally so non-NPC triggers (kino_pickup, etc.) can
+	# await dialog completion without needing a handle to this instance.
+	GameState.dialog_closed.emit()
+	queue_free()
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not (event is InputEventKey):
+		return
+	var key: InputEventKey = event
+	if not key.pressed or key.echo:
+		return
+	if key.keycode == KEY_ESCAPE:
+		close()
+		get_viewport().set_input_as_handled()
+		return
+	if key.keycode >= KEY_1 and key.keycode <= KEY_9:
+		if _held:
+			get_viewport().set_input_as_handled()
+			return
+		var idx: int = key.keycode - KEY_1
+		if idx < _choices_box.get_child_count():
+			(_choices_box.get_child(idx) as Button).emit_signal("pressed")
+			get_viewport().set_input_as_handled()

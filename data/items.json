@@ -1,0 +1,157 @@
+[
+  {
+    "id": "kino_remote",
+    "name": "Kino Remote",
+    "category": "tool",
+    "icon": "res://sprites/ui/items/kino_remote.png",
+    "description": "Handheld Ancient controller for the Kino reconnaissance orbs. Opens the ship map, ship systems, and the Kino fleet view.",
+    "stackable": false,
+    "show_in_inventory": true
+  },
+  {
+    "id": "kino_orb",
+    "name": "Kino",
+    "category": "tool",
+    "icon": "res://sprites/ui/items/kino_orb.png",
+    "description": "A floating Ancient camera drone. Launch it from the Kino Remote to scout ahead — through the Stargate or down a corridor.",
+    "stackable": true,
+    "show_in_inventory": true
+  },
+  {
+    "id": "rations",
+    "name": "Rations",
+    "category": "resource",
+    "icon": "res://sprites/ui/items/rations.png",
+    "description": "Vacuum-sealed crew meals salvaged from a supply crate. Keeps the crew fed.",
+    "stackable": true,
+    "show_in_inventory": true
+  },
+  {
+    "id": "lime",
+    "name": "Lime",
+    "category": "resource",
+    "icon": "res://sprites/ui/items/lime.png",
+    "description": "Calcium compound mined off-world. Feeds the CO2 scrubber cartridge bed — the ship's air depends on it.",
+    "stackable": true,
+    "show_in_inventory": true
+  },
+  {
+    "id": "water",
+    "name": "Water",
+    "category": "resource",
+    "icon": "res://sprites/ui/items/water.png",
+    "description": "Potable water reclaimed from off-world sources. The crew and the ship's systems both run dry without it.",
+    "stackable": true,
+    "show_in_inventory": true
+  },
+  {
+    "id": "food",
+    "name": "Food",
+    "category": "resource",
+    "icon": "res://sprites/ui/items/food.png",
+    "description": "Edible stores foraged or grown to keep the crew fed beyond the dwindling ration supply.",
+    "stackable": true,
+    "show_in_inventory": true
+  },
+  {
+    "id": "parts",
+    "name": "Ship Parts",
+    "category": "resource",
+    "icon": "res://sprites/ui/items/parts.png",
+    "description": "Salvaged components and raw stock used to repair Destiny's failing systems.",
+    "stackable": true,
+    "show_in_inventory": true
+  },
+  {
+    "id": "small_fuse",
+    "name": "Small Fuse",
+    "category": "story_item",
+    "icon": "res://sprites/ui/items/small_fuse.png",
+    "description": "A small replacement fuse looted from a Shuttle Dock crate. The jammed door panel's blown fuse looks about this size.",
+    "stackable": true,
+    "show_in_inventory": true
+  },
+  {
+    "id": "large_fuse",
+    "name": "Large Fuse",
+    "category": "story_item",
+    "icon": "res://sprites/ui/items/large_fuse.png",
+    "description": "A heavy-duty fuse looted from a Shuttle Dock crate. Too big for the jammed door panel — pocketed for later.",
+    "stackable": true,
+    "show_in_inventory": true
+  },
+  {
+    "id": "bus_fuse",
+    "name": "Bus Fuse",
+    "category": "story_item",
+    "icon": "res://sprites/ui/items/large_fuse.png",
+    "description": "A main-bus fuse for Destiny's elevator power circuit. Two of these plus the large fuse restore the elevator.",
+    "stackable": true,
+    "show_in_inventory": true
+  },
+  {
+    "id": "marine_helmet",
+    "name": "Marine Helmet",
+    "category": "equipment",
+    "slot": "head",
+    "model": "res://models/equipment/marine_helmet.glb",
+    "socket": "Head",
+    "attach_offset": [0.0, 0.0, 0.0],
+    "icon": "res://sprites/ui/items/marine_helmet.png",
+    "description": "Standard-issue ballistic helmet recovered from the Icarus expedition kit. Offers head protection off-world.",
+    "stackable": false,
+    "show_in_inventory": true
+  },
+  {
+    "id": "recon_cap",
+    "name": "Recon Cap",
+    "category": "equipment",
+    "slot": "head",
+    "model": "res://models/equipment/recon_cap.glb",
+    "socket": "Head",
+    "attach_offset": [0.0, 0.0, 0.0],
+    "icon": "res://sprites/ui/items/recon_cap.png",
+    "description": "Lightweight soft cap for low-threat reconnaissance. Trades protection for a clear field of view.",
+    "stackable": false,
+    "show_in_inventory": true
+  },
+  {
+    "id": "tac_vest",
+    "name": "Tactical Vest",
+    "category": "equipment",
+    "slot": "torso",
+    "model": "res://models/equipment/tac_vest.glb",
+    "socket": "Spine",
+    "attach_offset": [0.0, 0.0, 0.0],
+    "icon": "res://sprites/ui/items/tac_vest.png",
+    "description": "Load-bearing tactical vest. Worn over the fatigues for carrying gear and light armor plating.",
+    "stackable": false,
+    "show_in_inventory": true
+  },
+  {
+    "id": "field_backpack",
+    "name": "Field Backpack",
+    "category": "equipment",
+    "slot": "back",
+    "model": "res://models/equipment/field_backpack.glb",
+    "socket": "Spine",
+    "attach_offset": [0.0, 0.0, 0.0],
+    "icon": "res://sprites/ui/items/field_backpack.png",
+    "description": "Expedition rucksack for off-world excursions. Increases what the crew can haul back through the gate.",
+    "stackable": false,
+    "show_in_inventory": true
+  },
+  {
+    "id": "combat_boots",
+    "name": "Combat Boots",
+    "category": "equipment",
+    "slot": "legs",
+    "model": "res://models/equipment/combat_boots.glb",
+    "socket": "Hips",
+    "attach_offset": [0.0, 0.0, 0.0],
+    "icon": "res://sprites/ui/items/combat_boots.png",
+    "description": "Reinforced field boots and trousers. Standard footwear for surface missions.",
+    "stackable": false,
+    "show_in_inventory": true
+  }
+]

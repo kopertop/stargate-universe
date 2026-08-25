@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://rushconfront01"]
+
+[ext_resource type="Script" path="res://tools/showcase/rush_confrontation.gd" id="1_rushconf"]
+
+[node name="RushConfrontation" type="Node"]
+script = ExtResource("1_rushconf")

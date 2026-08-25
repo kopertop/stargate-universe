@@ -1,0 +1,9 @@
+[gd_scene load_steps=2 format=3 uid="uid://c0e27836xgmhi"]
+
+[ext_resource type="PackedScene" uid="uid://cuah83ykx8q3" path="res://models/characters/eli.glb" id="1_eli"]
+
+[node name="character" type="Node3D"]
+transform = Transform3D(1.6, 0, 0, 0, 1.6, 0, 0, 0, 1.6, 0, 0, 0)
+
+[node name="Model" parent="." instance=ExtResource("1_eli")]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 0)

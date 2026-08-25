@@ -1,0 +1,23 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Shader" path="res://shaders/stargate_portal.gdshader" id="1_shader"]
+
+[sub_resource type="QuadMesh" id="PortalQuad"]
+size = Vector2(1, 1)
+
+[sub_resource type="ShaderMaterial" id="PortalMaterial"]
+render_priority = 0
+shader = ExtResource("1_shader")
+
+[node name="PortalPreview" type="Node3D"]
+
+[node name="World" type="Node3D" parent="."]
+
+[node name="PortalQuad" type="MeshInstance3D" parent="World"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+mesh = SubResource("PortalQuad")
+surface_material_override/0 = SubResource("PortalMaterial")
+
+[node name="Camera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.866025, 0.5, 0, -0.5, 0.866025, 0, 0.6, 2.4)
+fov = 62.0

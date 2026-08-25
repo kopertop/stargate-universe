@@ -1,0 +1,37 @@
+[gd_resource type="Environment" load_steps=2 format=3 uid="uid://cgrenvinterior00"]
+
+[resource]
+background_mode = 1
+background_color = Color(0.05, 0.06, 0.08, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.52, 0.52, 0.54, 1)
+ambient_light_energy = 1.2
+ambient_light_sky_contribution = 0.0
+tonemap_mode = 2
+tonemap_exposure = 0.95
+ssao_enabled = true
+ssao_radius = 0.5
+ssao_intensity = 0.6
+ssao_power = 4.0
+ssil_enabled = true
+ssil_radius = 1.5
+ssil_intensity = 0.4
+fog_enabled = true
+fog_light_color = Color(0.55, 0.57, 0.62, 1)
+fog_density = 0.008
+volumetric_fog_enabled = true
+volumetric_fog_density = 0.015
+volumetric_fog_albedo = Color(0.8, 0.82, 0.85, 1)
+volumetric_fog_emission = Color(0, 0, 0, 1)
+volumetric_fog_length = 64.0
+volumetric_fog_temporal_reprojection_enabled = true
+glow_enabled = true
+glow_levels/2 = 0.3
+glow_levels/3 = 0.4
+glow_levels/4 = 0.2
+glow_intensity = 0.5
+glow_bloom = 0.04
+adjustment_enabled = true
+adjustment_brightness = 1.0
+adjustment_contrast = 1.12
+adjustment_saturation = 1.05

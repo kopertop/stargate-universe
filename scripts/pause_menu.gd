@@ -24,9 +24,11 @@ var _panel: PanelContainer
 var _btn_resume: Button
 var _btn_save: Button
 var _btn_kino: Button
+var _btn_accessibility: Button
 var _btn_title: Button
 var _btn_restart: Button
 var _status: Label
+var _accessibility_overlay: Control
 
 var _open: bool = false
 var _initialized: bool = false
@@ -103,6 +105,7 @@ func _init_ui() -> void:
 	_btn_resume  = _build_button(vbox, "Resume",         _on_resume_pressed)
 	_btn_save    = _build_button(vbox, "Save Now",       _on_save_pressed)
 	_btn_kino    = _build_button(vbox, "Open Kino Map",  _on_kino_pressed)
+	_btn_accessibility = _build_button(vbox, "Accessibility", _on_accessibility_pressed)
 	_btn_title   = _build_button(vbox, "Save and Quit",  _on_title_pressed)
 	_btn_restart = _build_button(vbox, "Restart Episode", _on_restart_pressed)
 
@@ -307,3 +310,24 @@ func _on_restart_pressed() -> void:
 	SaveManager.start_new_game()
 	_close()
 	SceneRouter.change_to("res://scenes/gate_room.tscn", "FromGate")
+
+
+func _on_accessibility_pressed() -> void:
+	# Build the accessibility overlay lazily (same pattern as the load browser
+	# in title.gd). It lives on the same CanvasLayer as the pause menu so
+	# clicks outside are swallowed and it closes on Esc.
+	if _accessibility_overlay == null:
+		var AccessibilityOverlayScript := preload("res://scripts/accessibility_overlay.gd")
+		_accessibility_overlay = AccessibilityOverlayScript.new()
+		_accessibility_overlay.name = "AccessibilityOverlay"
+		_layer.add_child(_accessibility_overlay)
+		_accessibility_overlay.closed.connect(_on_accessibility_closed)
+	# Hide the pause panel while the accessibility overlay is up.
+	_panel.visible = false
+	_accessibility_overlay.open()
+
+
+func _on_accessibility_closed() -> void:
+	# Restore the pause panel when the accessibility overlay closes.
+	_panel.visible = true
+	_btn_accessibility.grab_focus()

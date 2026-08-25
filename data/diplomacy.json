@@ -1,0 +1,421 @@
+{
+	"_comment": "Diplomacy system data for Episode 18 'Alliances'. Tracks reputation with alien factions, trade offers (resources for tech), negotiation dialogue trees, alien language puzzle fragments, and alliance states. Diplomacy actions integrate with GameState.dialog_action just like the crew relationship system.",
+
+	"factions": {
+		"nakai": {
+			"display_name": "Nakai",
+			"description": "Blue-skinned warrior race. Honor-bound, hierarchical. Respect strength and directness.",
+			"reputation_start": 0,
+			"reputation_min": -100,
+			"reputation_max": 100,
+			"home_world": "Nakai Prime",
+			"tech_offers": ["shield_tech", "plasma_cannon"],
+			"resource_needs": ["naquadah", "trinium"],
+			"personality": "honorable",
+			"language_id": "nakai_glyphs"
+		},
+		"ursini": {
+			"display_name": "Ursini",
+			"description": "Avian nomads. Trade-focused, shrewd negotiators. Value knowledge and technology above all.",
+			"reputation_start": 10,
+			"reputation_min": -100,
+			"reputation_max": 100,
+			"home_world": "Ursini Caravan Fleet",
+			"tech_offers": ["ftl_navigation", "energy_crystals"],
+			"resource_needs": ["water", "food_rations", "medical_supplies"],
+			"personality": "mercantile",
+			"language_id": "ursini_chirps"
+		},
+		"drifters": {
+			"display_name": "Drifters",
+			"description": "Mysterious scavengers in derelict ships. secretive, paranoid. Only trust those who prove themselves through action.",
+			"reputation_start": -20,
+			"reputation_min": -100,
+			"reputation_max": 100,
+			"home_world": "Drifter Flotilla",
+			"tech_offers": ["ancient_database_fragment", "stealth_coating"],
+			"resource_needs": ["power_cells", "scrap_metal"],
+			"personality": "paranoid",
+			"language_id": "drifter_code"
+		},
+		"builders": {
+			"display_name": "The Builders",
+			"description": "Ancient android custodians of a seed ship. Logical, emotionless. Respond only to demonstrated technical competence.",
+			"reputation_start": 0,
+			"reputation_min": -100,
+			"reputation_max": 100,
+			"home_world": "Seed Ship Genesis",
+			"tech_offers": ["life_support_upgrade", "hull_repair_nanites"],
+			"resource_needs": ["energy_crystals", "rare_elements"],
+			"personality": "logical",
+			"language_id": "builder_protocol"
+		}
+	},
+
+	"reputation_levels": {
+		"war": { "min": -100, "max": -50, "display": "War", "description": "Open hostilities. Combat is the only option." },
+		"hostile": { "min": -49, "max": -20, "display": "Hostile", "description": "Deeply distrustful. Trade is refused." },
+		"wary": { "min": -19, "max": 10, "display": "Wary", "description": "Cautious contact. Limited trade possible." },
+		"neutral": { "min": 11, "max": 40, "display": "Neutral", "description": "Open to negotiation. Standard trade rates." },
+		"friendly": { "min": 41, "max": 70, "display": "Friendly", "description": "Favorable trade. Will share non-critical tech." },
+		"allied": { "min": 71, "max": 100, "display": "Allied", "description": "Full alliance. Tech sharing, mutual defense." }
+	},
+
+	"trade_offers": {
+		"nakai_shield_for_naquadah": {
+			"faction": "nakai",
+			"give": { "resource": "naquadah", "amount": 5 },
+			"receive": { "tech": "shield_tech", "amount": 1 },
+			"min_reputation": 11,
+			"reputation_change": 5,
+			"description": "Trade 5 naquadah for Nakai shield technology."
+		},
+		"nakai_plasma_for_trinium": {
+			"faction": "nakai",
+			"give": { "resource": "trinium", "amount": 3 },
+			"receive": { "tech": "plasma_cannon", "amount": 1 },
+			"min_reputation": 41,
+			"reputation_change": 5,
+			"description": "Trade 3 trinium for a Nakai plasma cannon."
+		},
+		"ursini_ftl_for_water": {
+			"faction": "ursini",
+			"give": { "resource": "water", "amount": 10 },
+			"receive": { "tech": "ftl_navigation", "amount": 1 },
+			"min_reputation": 11,
+			"reputation_change": 3,
+			"description": "Trade 10 water for Ursini FTL navigation data."
+		},
+		"ursini_crystals_for_rations": {
+			"faction": "ursini",
+			"give": { "resource": "food_rations", "amount": 8 },
+			"receive": { "tech": "energy_crystals", "amount": 2 },
+			"min_reputation": 11,
+			"reputation_change": 3,
+			"description": "Trade 8 food rations for 2 energy crystals."
+		},
+		"ursini_ftl_for_medical": {
+			"faction": "ursini",
+			"give": { "resource": "medical_supplies", "amount": 5 },
+			"receive": { "tech": "ftl_navigation", "amount": 1 },
+			"min_reputation": 41,
+			"reputation_change": 5,
+			"description": "Trade 5 medical supplies for Ursini FTL navigation data (friendly rate)."
+		},
+		"drifters_database_for_cells": {
+			"faction": "drifters",
+			"give": { "resource": "power_cells", "amount": 4 },
+			"receive": { "tech": "ancient_database_fragment", "amount": 1 },
+			"min_reputation": 11,
+			"reputation_change": 8,
+			"description": "Trade 4 power cells for an Ancient database fragment."
+		},
+		"drifters_stealth_for_scrap": {
+			"faction": "drifters",
+			"give": { "resource": "scrap_metal", "amount": 10 },
+			"receive": { "tech": "stealth_coating", "amount": 1 },
+			"min_reputation": 41,
+			"reputation_change": 8,
+			"description": "Trade 10 scrap metal for Drifter stealth coating."
+		},
+		"builders_lifesupport_for_crystals": {
+			"faction": "builders",
+			"give": { "resource": "energy_crystals", "amount": 3 },
+			"receive": { "tech": "life_support_upgrade", "amount": 1 },
+			"min_reputation": 11,
+			"reputation_change": 5,
+			"description": "Trade 3 energy crystals for a Builder life support upgrade."
+		},
+		"builders_nanites_for_elements": {
+			"faction": "builders",
+			"give": { "resource": "rare_elements", "amount": 5 },
+			"receive": { "tech": "hull_repair_nanites", "amount": 1 },
+			"min_reputation": 41,
+			"reputation_change": 5,
+			"description": "Trade 5 rare elements for Builder hull repair nanites."
+		}
+	},
+
+	"negotiations": {
+		"nakai_first_contact": {
+			"faction": "nakai",
+			"min_reputation": -19,
+			"approaches": {
+				"direct": {
+					"label": "Speak plainly and directly.",
+					"reputation_change": 10,
+					"success_chance": 0.8,
+					"result": "open_trade",
+					"description": "The Nakai respect directness. They agree to open trade negotiations."
+				},
+				"diplomatic": {
+					"label": "Use formal diplomatic protocol.",
+					"reputation_change": 5,
+					"success_chance": 0.5,
+					"result": "open_trade",
+					"description": "The Nakai find formal diplomacy unnecessarily verbose but agree reluctantly."
+				},
+				"aggressive": {
+					"label": "Assert dominance.",
+					"reputation_change": -15,
+					"success_chance": 0.2,
+					"result": "hostile_response",
+					"description": "The Nakai see aggression as a challenge to their honor. Relations sour."
+				}
+			}
+		},
+		"ursini_trade_deal": {
+			"faction": "ursini",
+			"min_reputation": 11,
+			"approaches": {
+				"generous": {
+					"label": "Offer favorable terms — let them name the price.",
+					"reputation_change": 12,
+					"success_chance": 0.9,
+					"result": "trade_success",
+					"description": "The Ursini appreciate the gesture and offer a favorable deal."
+				},
+				"fair": {
+					"label": "Negotiate a fair exchange.",
+					"reputation_change": 5,
+					"success_chance": 0.7,
+					"result": "trade_success",
+					"description": "After some haggling, the Ursini agree to a standard trade."
+				},
+				"hardline": {
+					"label": "Drive a hard bargain.",
+					"reputation_change": -5,
+					"success_chance": 0.4,
+					"result": "trade_rejected",
+					"description": "The Ursini find your terms insulting. They walk away from the table."
+				}
+			}
+		},
+		"drifters_trust_mission": {
+			"faction": "drifters",
+			"min_reputation": -19,
+			"approaches": {
+				"helpful": {
+					"label": "Offer to repair their ship systems.",
+					"reputation_change": 15,
+					"success_chance": 0.7,
+					"result": "trust_gained",
+					"description": "The Drifters are suspicious but grudgingly accept your help. Trust increases."
+				},
+				"neutral": {
+					"label": "Propose a straightforward information exchange.",
+					"reputation_change": 3,
+					"success_chance": 0.5,
+					"result": "limited_contact",
+					"description": "The Drifters share minimal information but agree to limited contact."
+				},
+				"pushy": {
+					"label": "Demand access to their database.",
+					"reputation_change": -20,
+					"success_chance": 0.1,
+					"result": "rebuffed",
+					"description": "The Drifters sever communication. Your demands confirmed their worst suspicions."
+				}
+			}
+		},
+		"builders_technical_dialogue": {
+			"faction": "builders",
+			"min_reputation": 11,
+			"approaches": {
+				"competent": {
+					"label": "Demonstrate understanding of Ancient systems.",
+					"reputation_change": 10,
+					"success_chance": 0.85,
+					"result": "tech_shared",
+					"description": "The Builders acknowledge your technical competence and agree to share knowledge."
+				},
+				"learning": {
+					"label": "Ask questions and show willingness to learn.",
+					"reputation_change": 5,
+					"success_chance": 0.6,
+					"result": "tech_shared",
+					"description": "The Builders appreciate intellectual curiosity and provide basic technical data."
+				},
+				"ignorant": {
+					"label": "Ask them to fix everything for you.",
+					"reputation_change": -10,
+					"success_chance": 0.2,
+					"result": "dismissed",
+					"description": "The Builders find your lack of initiative inefficient. They disengage."
+				}
+			}
+		}
+	},
+
+	"language_puzzles": {
+		"nakai_glyphs": {
+			"faction": "nakai",
+			"fragments": [
+				{ "id": "nakai_01", "glyph": " honor ", "translation": "honor", "hint": "The central concept of Nakai society." },
+				{ "id": "nakai_02", "glyph": " strength ", "translation": "strength", "hint": "What the Nakai respect above all." },
+				{ "id": "nakai_03", "glyph": " alliance ", "translation": "alliance", "hint": "A formal bond between warriors." },
+				{ "id": "nakai_04", "glyph": " enemy ", "translation": "enemy", "hint": "One who has lost honor." }
+			],
+			"completion_threshold": 3,
+			"reputation_reward": 15,
+			"description": "Decode the Nakai honor glyphs to unlock deeper negotiation options."
+		},
+		"ursini_chirps": {
+			"faction": "ursini",
+			"fragments": [
+				{ "id": "ursini_01", "glyph": " trade ", "translation": "trade", "hint": "The Ursini's primary mode of interaction." },
+				{ "id": "ursini_02", "glyph": " knowledge ", "translation": "knowledge", "hint": "What the Ursini value most." },
+				{ "id": "ursini_03", "glyph": " caravan ", "translation": "caravan", "hint": "The Ursini's nomadic fleet." },
+				{ "id": "ursini_04", "glyph": " profit ", "translation": "profit", "hint": "The goal of every Ursini negotiation." }
+			],
+			"completion_threshold": 3,
+			"reputation_reward": 15,
+			"description": "Learn the Ursini chirp-language to improve trade terms."
+		},
+		"drifter_code": {
+			"faction": "drifters",
+			"fragments": [
+				{ "id": "drifter_01", "glyph": " secrecy ", "translation": "secrecy", "hint": "The Drifters' survival strategy." },
+				{ "id": "drifter_02", "glyph": " salvage ", "translation": "salvage", "hint": "How the Drifters survive in the void." },
+				{ "id": "drifter_03", "glyph": " trust ", "translation": "trust", "hint": "What the Drifters rarely give." },
+				{ "id": "drifter_04", "glyph": " freedom ", "translation": "freedom", "hint": "Why the Drifters roam." }
+			],
+			"completion_threshold": 3,
+			"reputation_reward": 20,
+			"description": "Crack the Drifter cipher to gain their trust."
+		},
+		"builder_protocol": {
+			"faction": "builders",
+			"fragments": [
+				{ "id": "builder_01", "glyph": " logic ", "translation": "logic", "hint": "The foundation of Builder communication." },
+				{ "id": "builder_02", "glyph": " function ", "translation": "function", "hint": "Every Builder statement has one." },
+				{ "id": "builder_03", "glyph": " maintenance ", "translation": "maintenance", "hint": "The Builders' eternal purpose." },
+				{ "id": "builder_04", "glyph": " protocol ", "translation": "protocol", "hint": "The structure governing all Builder interactions." }
+			],
+			"completion_threshold": 3,
+			"reputation_reward": 15,
+			"description": "Understand the Builder protocol language to unlock tech sharing."
+		}
+	},
+
+	"alliances": {
+		"nakai_alliance": {
+			"factions": ["nakai"],
+			"required_reputation": 71,
+			"required_language": "nakai_glyphs",
+			"benefits": ["mutual_defense", "shield_tech_sharing", "combat_support"],
+			"description": "Formal alliance with the Nakai. They will fight alongside Destiny's crew."
+		},
+		"ursini_alliance": {
+			"factions": ["ursini"],
+			"required_reputation": 71,
+			"required_language": "ursini_chirps",
+			"benefits": ["ftl_data_sharing", "trade_priority", "resource_network"],
+			"description": "Trade alliance with the Ursini. Exclusive access to their navigation database."
+		},
+		"drifters_alliance": {
+			"factions": ["drifters"],
+			"required_reputation": 71,
+			"required_language": "drifter_code",
+			"benefits": ["stealth_technology", "salvage_rights", "intelligence_network"],
+			"description": "Intelligence alliance with the Drifters. They share salvage and reconnaissance data."
+		},
+		"builders_alliance": {
+			"factions": ["builders"],
+			"required_reputation": 71,
+			"required_language": "builder_protocol",
+			"benefits": ["ship_repair", "life_support_optimization", "ancient_knowledge"],
+			"description": "Technical alliance with the Builders. They maintain and upgrade Destiny's systems."
+		},
+		"grand_alliance": {
+			"factions": ["nakai", "ursini", "builders"],
+			"required_reputation": 71,
+			"required_language": "",
+			"benefits": ["full_tech_exchange", "mutual_defense_pact", "resource_sharing_network"],
+			"description": "A grand alliance uniting the Nakai, Ursini, and Builders against common threats."
+		}
+	},
+
+	"diplomacy_actions": {
+		"diplo_nakai_respect_show": {
+			"nakai": { "reputation": 10 }
+		},
+		"diplo_nakai_insult": {
+			"nakai": { "reputation": -20 }
+		},
+		"diplo_ursini_gift": {
+			"ursini": { "reputation": 8 }
+		},
+		"diplo_ursini_cheat": {
+			"ursini": { "reputation": -15 }
+		},
+		"diplo_drifters_help_repair": {
+			"drifters": { "reputation": 12 }
+		},
+		"diplo_drifters_threaten": {
+			"drifters": { "reputation": -25 }
+		},
+		"diplo_builders_show_competence": {
+			"builders": { "reputation": 10 }
+		},
+		"diplo_builders_waste_time": {
+			"builders": { "reputation": -8 }
+		},
+		"diplo_nakai_save_mission": {
+			"nakai": { "reputation": 20 }
+		},
+		"diplo_ursini_save_mission": {
+			"ursini": { "reputation": 20 }
+		},
+		"diplo_drifters_save_mission": {
+			"drifters": { "reputation": 20 }
+		},
+		"diplo_builders_save_mission": {
+			"builders": { "reputation": 20 }
+		},
+		"diplo_war_declared_nakai": {
+			"nakai": { "reputation": -50 }
+		},
+		"diplo_war_declared_ursini": {
+			"ursini": { "reputation": -50 }
+		},
+		"diplo_war_declared_drifters": {
+			"drifters": { "reputation": -50 }
+		},
+		"diplo_war_declared_builders": {
+			"builders": { "reputation": -50 }
+		}
+	},
+
+	"combat_fallback": {
+		"_comment": "When diplomacy fails and reputation drops to 'war' level, combat is the only option. These define the combat encounter parameters for each faction.",
+		"nakai": {
+			"enemy_type": "nakai_warrior",
+			"min_reputation": -50,
+			"reward_on_victory": { "reputation": 10, "loot": "nakai_weapon" },
+			"penalty_on_defeat": { "reputation": -20 },
+			"description": "The Nakai challenge you to single combat. Victory earns their grudging respect."
+		},
+		"ursini": {
+			"enemy_type": "ursini_mercenary",
+			"min_reputation": -50,
+			"reward_on_victory": { "reputation": 5, "loot": "ursini_gadget" },
+			"penalty_on_defeat": { "reputation": -15 },
+			"description": "The Ursini hire mercenaries to protect their interests. Defeat them to force renegotiation."
+		},
+		"drifters": {
+			"enemy_type": "drifter_saboteur",
+			"min_reputation": -50,
+			"reward_on_victory": { "reputation": 8, "loot": "drifter_tech" },
+			"penalty_on_defeat": { "reputation": -25 },
+			"description": "The Drifters resort to sabotage. Stop them to earn a measure of respect."
+		},
+		"builders": {
+			"enemy_type": "builder_drone",
+			"min_reputation": -50,
+			"reward_on_victory": { "reputation": 5, "loot": "builder_component" },
+			"penalty_on_defeat": { "reputation": -10 },
+			"description": "The Builders deploy defense drones. Disable them to prove your technical superiority."
+		}
+	}
+}

@@ -1,6 +1,6 @@
 extends SceneTree
 
-# Smoke test for the composable-music MusicDirector (scripts/music_director.gd).
+# Smoke test for the composable-music Audio (scripts/music_director.gd).
 #
 # Run with:
 #   godot --headless --quit-after 900 -s res://tests/smoke/music_director.gd
@@ -20,7 +20,7 @@ extends SceneTree
 #   • Every BAKED sounds/music/loops/*.ogg loads non-null (catches the missing-.import
 #     trap — a stem file with no sidecar load()s to null in-game).
 #
-# Uses live autoloads (MusicDirector + GameState + SceneRouter). Drives methods directly
+# Uses live autoloads (Audio + GameState + SceneRouter). Drives methods directly
 # rather than via signals (deferred hooks don't fire in -s mode before _initialize).
 
 const LOOPS_DIR: String = "res://sounds/music/loops"
@@ -32,11 +32,11 @@ var _passes: int = 0
 func _initialize() -> void:
 	print("=== music_director smoke test ===")
 
-	var md: Node = root.get_node_or_null("MusicDirector")
+	var md: Node = root.get_node_or_null("Audio")
 	var gs: Node = root.get_node_or_null("GameState")
 	var router: Node = root.get_node_or_null("SceneRouter")
 
-	_expect(md != null, "MusicDirector autoload present")
+	_expect(md != null, "Audio autoload present")
 	_expect(gs != null, "GameState autoload present")
 	_expect(router != null, "SceneRouter autoload present")
 	if md == null or gs == null or router == null:

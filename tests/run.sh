@@ -10,7 +10,7 @@
 #   6. questlog     — data-driven QuestLog autoload (predicate + event advance,
 #                     save round-trip, old-format migration)
 #
-# Usage: tests/run.sh [lint|scene|flow|quest|playthrough|resume|autopilot|questlog|inventory|atmosphere|kino-doors|kino-autoexplore|gamepad|footfall|npc-chat|shaders|ancient-text|discovery-toast|door-plaque|crate|unit-frame|quest-tracker|hud-wow|gate-two-way|equip-mount|equip-assets|char-panel|equip-integration|planet-gen|planet-resources|planet-integration|biome-desert|biome-jungle|biome-toxic|biome-urban|biome-alien-tech|knockout|ftl-loop|music|save|save-integration|elevator-power|bridge-loop|consumption|repair-robot|setdressing|e1-opening|cold-open|away-split|char-gen|vrm|modular|mint-character|mint-loco-combat|mixamo-player|mixamo-host|all]
+# Usage: tests/run.sh [lint|scene|flow|quest|playthrough|resume|autopilot|questlog|inventory|atmosphere|kino-doors|kino-autoexplore|gamepad|footfall|npc-chat|shaders|ancient-text|discovery-toast|door-plaque|crate|shared-mat|unit-frame|quest-tracker|hud-wow|gate-two-way|equip-mount|equip-assets|char-panel|equip-integration|planet-gen|planet-resources|planet-integration|biome-desert|biome-jungle|biome-toxic|biome-urban|biome-alien-tech|knockout|ftl-loop|music|timer|save|save-integration|elevator-power|power-grid|ship-damage|triage|eva-system|audio-zones|bridge-loop|consumption|repair-robot|setdressing|e1-opening|cold-open|away-split|char-gen|vrm|modular|mint-character|mint-loco-combat|mixamo-player|mixamo-host|tts-dialogue|achievements|accessibility|incursion|e2-power|e2-quest|e4-darkness|shuttle|sabotage|consequences|all]
 #                                                                          (default: all)
 #
 # Pre-commit hook: .githooks/pre-commit invokes the lint subset via
@@ -53,9 +53,11 @@ RAN_ANCIENTTEXT=0
 RAN_DISCTOAST=0
 RAN_DOORPLAQUE=0
 RAN_CRATE=0
+RAN_SHAREDMAT=0
 RAN_UNITFRAME=0
 RAN_QUESTTRACKER=0
 RAN_HUDWOW=0
+RAN_HUDWOWCOH=0
 RAN_HUDSCALE=0
 RAN_HUDCHAT=0
 RAN_GATETWOWAY=0
@@ -76,11 +78,18 @@ RAN_SCRUBBERS=0
 RAN_PROCSHIP=0
 RAN_FTLLOOP=0
 RAN_MUSIC=0
+RAN_TIMER=0
 RAN_FOOTFALL=0
 RAN_ELEVPOWER=0
 RAN_BRIDGELOOP=0
 RAN_CONSUMPTION=0
 RAN_REPAIR=0
+RAN_POWERGRID=0
+RAN_AUDIOZONES=0
+RAN_SHIPDAMAGE=0
+RAN_TRIAGE=0
+RAN_EVA=0
+RAN_INCURSION=0
 RC_FOOTFALL=0
 RC_SCENE=0
 RC_FLOW=0
@@ -133,10 +142,17 @@ RC_SCRUBBERS=0
 RC_PROCSHIP=0
 RC_FTLLOOP=0
 RC_MUSIC=0
+RC_TIMER=0
 RC_ELEVPOWER=0
 RC_BRIDGELOOP=0
 RC_CONSUMPTION=0
 RC_REPAIR=0
+RC_POWERGRID=0
+RC_AUDIOZONES=0
+RC_SHIPDAMAGE=0
+RC_TRIAGE=0
+RC_EVA=0
+RC_INCURSION=0
 RAN_SETDRESS=0
 RC_SETDRESS=0
 RAN_E1OPEN=0
@@ -161,6 +177,24 @@ RAN_MIXAMO=0
 RC_MIXAMO=0
 RAN_MIXAMO_HOST=0
 RC_MIXAMO_HOST=0
+RAN_TTSDIALOGUE=0
+RC_TTSDIALOGUE=0
+RAN_ACHIEVEMENTS=0
+RC_ACHIEVEMENTS=0
+RAN_ACCESSIBILITY=0
+RC_ACCESSIBILITY=0
+RAN_E2POWER=0
+RC_E2POWER=0
+RAN_E2QUEST=0
+RC_E2QUEST=0
+RAN_E4DARKNESS=0
+RC_E4DARKNESS=0
+RAN_SHUTTLE=0
+RC_SHUTTLE=0
+RAN_SABOTAGE=0
+RC_SABOTAGE=0
+RAN_CONSEQUENCES=0
+RC_CONSEQUENCES=0
 
 # Run a SceneTree-extending script (synchronous, no autoloads).
 #
@@ -332,6 +366,12 @@ if [[ "$MODE" == "crate" || "$MODE" == "all" ]]; then
 	RAN_CRATE=1
 fi
 
+if [[ "$MODE" == "shared-mat" || "$MODE" == "all" ]]; then
+	run_script_test "shared_materials" "res://tests/smoke/shared_materials.gd"
+	RC_SHAREDMAT=$?
+	RAN_SHAREDMAT=1
+fi
+
 if [[ "$MODE" == "unit-frame" || "$MODE" == "all" ]]; then
 	run_script_test "unit_frame" "res://tests/smoke/unit_frame.gd"
 	RC_UNITFRAME=$?
@@ -348,6 +388,9 @@ if [[ "$MODE" == "hud-wow" || "$MODE" == "all" ]]; then
 	run_script_test "hud_wow" "res://tests/smoke/hud_wow.gd"
 	RC_HUDWOW=$?
 	RAN_HUDWOW=1
+	run_script_test "hud_wow_cohesion" "res://tests/smoke/hud_wow_cohesion.gd"
+	RC_HUDWOWCOH=$?
+	RAN_HUDWOWCOH=1
 fi
 
 if [[ "$MODE" == "hud-scale" || "$MODE" == "all" ]]; then
@@ -475,10 +518,52 @@ if [[ "$MODE" == "music" || "$MODE" == "all" ]]; then
 	RAN_MUSIC=1
 fi
 
+if [[ "$MODE" == "timer" || "$MODE" == "all" ]]; then
+	"$GODOT_BIN" --headless --quit-after 600 -s "res://tests/smoke/timer_system.gd" 2>&1
+	RC_TIMER=$?
+	RAN_TIMER=1
+fi
+
 if [[ "$MODE" == "elevator-power" || "$MODE" == "all" ]]; then
 	run_script_test "elevator_power" "res://tests/smoke/elevator_power.gd"
 	RC_ELEVPOWER=$?
 	RAN_ELEVPOWER=1
+fi
+
+if [[ "$MODE" == "power-grid" || "$MODE" == "all" ]]; then
+	run_script_test "power_grid" "res://tests/smoke/power_grid.gd"
+	RC_POWERGRID=$?
+	RAN_POWERGRID=1
+fi
+
+if [[ "$MODE" == "audio-zones" || "$MODE" == "all" ]]; then
+	"$GODOT_BIN" --headless --quit-after 600 -s "res://tests/smoke/audio_zones.gd" 2>&1
+	RC_AUDIOZONES=$?
+	RAN_AUDIOZONES=1
+fi
+
+if [[ "$MODE" == "ship-damage" || "$MODE" == "all" ]]; then
+	run_script_test "ship_damage" "res://tests/smoke/ship_damage.gd"
+	RC_SHIPDAMAGE=$?
+	RAN_SHIPDAMAGE=1
+fi
+
+if [[ "$MODE" == "triage" || "$MODE" == "all" ]]; then
+	run_script_test "triage_system" "res://tests/smoke/triage_system.gd"
+	RC_TRIAGE=$?
+	RAN_TRIAGE=1
+fi
+
+if [[ "$MODE" == "eva-system" || "$MODE" == "all" ]]; then
+	run_script_test "eva_system" "res://tests/smoke/eva_system.gd"
+	RC_EVA=$?
+	RAN_EVA=1
+fi
+
+if [[ "$MODE" == "incursion" || "$MODE" == "all" ]]; then
+	run_script_test "incursion_system" "res://tests/smoke/incursion_system.gd"
+	RC_INCURSION=$?
+	RAN_INCURSION=1
 fi
 
 if [[ "$MODE" == "npc-chat" || "$MODE" == "all" ]]; then
@@ -604,6 +689,60 @@ if [[ "$MODE" == "mixamo-player" || "$MODE" == "all" ]]; then
 	RAN_MIXAMO=1
 fi
 
+if [[ "$MODE" == "tts-dialogue" || "$MODE" == "all" ]]; then
+	run_script_test "tts_dialogue" "res://tests/smoke/tts_dialogue.gd"
+	RC_TTSDIALOGUE=$?
+	RAN_TTSDIALOGUE=1
+fi
+
+if [[ "$MODE" == "achievements" || "$MODE" == "all" ]]; then
+	run_script_test "achievements" "res://tests/smoke/achievements.gd"
+	RC_ACHIEVEMENTS=$?
+	RAN_ACHIEVEMENTS=1
+fi
+
+if [[ "$MODE" == "accessibility" || "$MODE" == "all" ]]; then
+	run_script_test "accessibility" "res://tests/smoke/accessibility.gd"
+	RC_ACCESSIBILITY=$?
+	RAN_ACCESSIBILITY=1
+fi
+
+if [[ "$MODE" == "e2-power" || "$MODE" == "e2" || "$MODE" == "all" ]]; then
+	run_script_test "e2_power_puzzle" "res://tests/smoke/e2_power_puzzle.gd"
+	RC_E2POWER=$?
+	RAN_E2POWER=1
+fi
+
+if [[ "$MODE" == "e2-quest" || "$MODE" == "e2" || "$MODE" == "all" ]]; then
+	run_script_test "e2_quest" "res://tests/smoke/e2_quest.gd"
+	RC_E2QUEST=$?
+	RAN_E2QUEST=1
+fi
+
+if [[ "$MODE" == "e4-darkness" || "$MODE" == "e4" || "$MODE" == "all" ]]; then
+	run_script_test "e4_darkness" "res://tests/smoke/e4_darkness.gd"
+	RC_E4DARKNESS=$?
+	RAN_E4DARKNESS=1
+fi
+
+if [[ "$MODE" == "shuttle" || "$MODE" == "all" ]]; then
+	run_script_test "shuttle_system" "res://tests/smoke/shuttle_system.gd"
+	RC_SHUTTLE=$?
+	RAN_SHUTTLE=1
+fi
+
+if [[ "$MODE" == "sabotage" || "$MODE" == "all" ]]; then
+	run_script_test "sabotage_system" "res://tests/smoke/sabotage_system.gd"
+	RC_SABOTAGE=$?
+	RAN_SABOTAGE=1
+fi
+
+if [[ "$MODE" == "consequences" || "$MODE" == "all" ]]; then
+	run_script_test "consequences_system" "res://tests/smoke/consequences_system.gd"
+	RC_CONSEQUENCES=$?
+	RAN_CONSEQUENCES=1
+fi
+
 # Kino map visual captures — produces 4 PNGs under screenshots/result/ that
 # can be eyeballed against the concept image (design/concept-art/sgu-map.png).
 # Not part of `all` because it requires a headed Godot; opt-in via `visual`.
@@ -658,9 +797,11 @@ echo "==============================="
 [[ $RAN_DISCTOAST -eq 1 ]] && echo "discovery_toast:     $([[ $RC_DISCTOAST -eq 0 ]] && echo PASS || echo "FAIL ($RC_DISCTOAST)")" || echo "discovery_toast:     SKIPPED"
 [[ $RAN_DOORPLAQUE -eq 1 ]] && echo "door_plaque:         $([[ $RC_DOORPLAQUE -eq 0 ]] && echo PASS || echo "FAIL ($RC_DOORPLAQUE)")" || echo "door_plaque:         SKIPPED"
 [[ $RAN_CRATE -eq 1 ]] && echo "shuttle_crate:       $([[ $RC_CRATE -eq 0 ]] && echo PASS || echo "FAIL ($RC_CRATE)")" || echo "shuttle_crate:       SKIPPED"
+[[ $RAN_SHAREDMAT -eq 1 ]] && echo "shared_materials:    $([[ $RC_SHAREDMAT -eq 0 ]] && echo PASS || echo "FAIL ($RC_SHAREDMAT)")" || echo "shared_materials:    SKIPPED"
 [[ $RAN_UNITFRAME -eq 1 ]] && echo "unit_frame:          $([[ $RC_UNITFRAME -eq 0 ]] && echo PASS || echo "FAIL ($RC_UNITFRAME)")" || echo "unit_frame:          SKIPPED"
 [[ $RAN_QUESTTRACKER -eq 1 ]] && echo "quest_tracker:       $([[ $RC_QUESTTRACKER -eq 0 ]] && echo PASS || echo "FAIL ($RC_QUESTTRACKER)")" || echo "quest_tracker:       SKIPPED"
 [[ $RAN_HUDWOW -eq 1 ]] && echo "hud_wow:             $([[ $RC_HUDWOW -eq 0 ]] && echo PASS || echo "FAIL ($RC_HUDWOW)")" || echo "hud_wow:             SKIPPED"
+[[ $RAN_HUDWOWCOH -eq 1 ]] && echo "hud_wow_cohesion:    $([[ $RC_HUDWOWCOH -eq 0 ]] && echo PASS || echo "FAIL ($RC_HUDWOWCOH)")" || echo "hud_wow_cohesion:    SKIPPED"
 [[ $RAN_HUDSCALE -eq 1 ]] && echo "hud_scale:           $([[ $RC_HUDSCALE -eq 0 ]] && echo PASS || echo "FAIL ($RC_HUDSCALE)")" || echo "hud_scale:           SKIPPED"
 [[ $RAN_HUDCHAT -eq 1 ]] && echo "hud_chat:            $([[ $RC_HUDCHAT -eq 0 ]] && echo PASS || echo "FAIL ($RC_HUDCHAT)")" || echo "hud_chat:            SKIPPED"
 [[ $RAN_GATETWOWAY -eq 1 ]] && echo "gate_two_way:        $([[ $RC_GATETWOWAY -eq 0 ]] && echo PASS || echo "FAIL ($RC_GATETWOWAY)")" || echo "gate_two_way:        SKIPPED"
@@ -681,7 +822,14 @@ echo "==============================="
 [[ $RAN_PROCSHIP -eq 1 ]] && echo "test_procedural_ship: $([[ $RC_PROCSHIP -eq 0 ]] && echo PASS || echo "FAIL ($RC_PROCSHIP)")" || echo "test_procedural_ship: SKIPPED"
 [[ $RAN_FTLLOOP -eq 1 ]] && echo "ftl_loop:            $([[ $RC_FTLLOOP -eq 0 ]] && echo PASS || echo "FAIL ($RC_FTLLOOP)")" || echo "ftl_loop:            SKIPPED"
 [[ $RAN_MUSIC -eq 1 ]] && echo "music_director:      $([[ $RC_MUSIC -eq 0 ]] && echo PASS || echo "FAIL ($RC_MUSIC)")" || echo "music_director:      SKIPPED"
+[[ $RAN_TIMER -eq 1 ]] && echo "timer_system:        $([[ $RC_TIMER -eq 0 ]] && echo PASS || echo "FAIL ($RC_TIMER)")" || echo "timer_system:        SKIPPED"
 [[ $RAN_ELEVPOWER -eq 1 ]] && echo "elevator_power:      $([[ $RC_ELEVPOWER -eq 0 ]] && echo PASS || echo "FAIL ($RC_ELEVPOWER)")" || echo "elevator_power:      SKIPPED"
+[[ $RAN_POWERGRID -eq 1 ]] && echo "power_grid:          $([[ $RC_POWERGRID -eq 0 ]] && echo PASS || echo "FAIL ($RC_POWERGRID)")" || echo "power_grid:          SKIPPED"
+[[ $RAN_AUDIOZONES -eq 1 ]] && echo "audio_zones:         $([[ $RC_AUDIOZONES -eq 0 ]] && echo PASS || echo "FAIL ($RC_AUDIOZONES)")" || echo "audio_zones:         SKIPPED"
+[[ $RAN_SHIPDAMAGE -eq 1 ]] && echo "ship_damage:         $([[ $RC_SHIPDAMAGE -eq 0 ]] && echo PASS || echo "FAIL ($RC_SHIPDAMAGE)")" || echo "ship_damage:         SKIPPED"
+[[ $RAN_TRIAGE -eq 1 ]] && echo "triage_system:       $([[ $RC_TRIAGE -eq 0 ]] && echo PASS || echo "FAIL ($RC_TRIAGE)")" || echo "triage_system:       SKIPPED"
+[[ $RAN_EVA -eq 1 ]] && echo "eva_system:          $([[ $RC_EVA -eq 0 ]] && echo PASS || echo "FAIL ($RC_EVA)")" || echo "eva_system:          SKIPPED"
+[[ $RAN_INCURSION -eq 1 ]] && echo "incursion_system:    $([[ $RC_INCURSION -eq 0 ]] && echo PASS || echo "FAIL ($RC_INCURSION)")" || echo "incursion_system:    SKIPPED"
 [[ $RAN_BRIDGELOOP -eq 1 ]] && echo "bridge_loop_config:  $([[ $RC_BRIDGELOOP -eq 0 ]] && echo PASS || echo "FAIL ($RC_BRIDGELOOP)")" || echo "bridge_loop_config:  SKIPPED"
 [[ $RAN_CONSUMPTION -eq 1 ]] && echo "consumption:         $([[ $RC_CONSUMPTION -eq 0 ]] && echo PASS || echo "FAIL ($RC_CONSUMPTION)")" || echo "consumption:         SKIPPED"
 [[ $RAN_REPAIR -eq 1 ]] && echo "repair_robot:        $([[ $RC_REPAIR -eq 0 ]] && echo PASS || echo "FAIL ($RC_REPAIR)")" || echo "repair_robot:        SKIPPED"
@@ -697,6 +845,15 @@ echo "==============================="
 [[ $RAN_MINTLOCO -eq 1 ]] && echo "mint_player_bridge:  $([[ $RC_MINTPLAYER -eq 0 ]] && echo PASS || echo "FAIL ($RC_MINTPLAYER)")" || echo "mint_player_bridge:  SKIPPED"
 [[ $RAN_MIXAMO_HOST -eq 1 ]] && echo "mixamo_host_catalog: $([[ $RC_MIXAMO_HOST -eq 0 ]] && echo PASS || echo "FAIL ($RC_MIXAMO_HOST)")" || echo "mixamo_host_catalog: SKIPPED"
 [[ $RAN_MIXAMO -eq 1 ]] && echo "mixamo_player_bridge: $([[ $RC_MIXAMO -eq 0 ]] && echo PASS || echo "FAIL ($RC_MIXAMO)")" || echo "mixamo_player_bridge: SKIPPED"
+[[ $RAN_TTSDIALOGUE -eq 1 ]] && echo "tts_dialogue:        $([[ $RC_TTSDIALOGUE -eq 0 ]] && echo PASS || echo "FAIL ($RC_TTSDIALOGUE)")" || echo "tts_dialogue:        SKIPPED"
+[[ $RAN_ACHIEVEMENTS -eq 1 ]] && echo "achievements:        $([[ $RC_ACHIEVEMENTS -eq 0 ]] && echo PASS || echo "FAIL ($RC_ACHIEVEMENTS)")" || echo "achievements:        SKIPPED"
+[[ $RAN_ACCESSIBILITY -eq 1 ]] && echo "accessibility:       $([[ $RC_ACCESSIBILITY -eq 0 ]] && echo PASS || echo "FAIL ($RC_ACCESSIBILITY)")" || echo "accessibility:       SKIPPED"
+[[ $RAN_E2POWER -eq 1 ]] && echo "e2_power_puzzle:     $([[ $RC_E2POWER -eq 0 ]] && echo PASS || echo "FAIL ($RC_E2POWER)")" || echo "e2_power_puzzle:     SKIPPED"
+[[ $RAN_E2QUEST -eq 1 ]] && echo "e2_quest:            $([[ $RC_E2QUEST -eq 0 ]] && echo PASS || echo "FAIL ($RC_E2QUEST)")" || echo "e2_quest:            SKIPPED"
+[[ $RAN_E4DARKNESS -eq 1 ]] && echo "e4_darkness:         $([[ $RC_E4DARKNESS -eq 0 ]] && echo PASS || echo "FAIL ($RC_E4DARKNESS)")" || echo "e4_darkness:         SKIPPED"
+[[ $RAN_SHUTTLE -eq 1 ]] && echo "shuttle_system:      $([[ $RC_SHUTTLE -eq 0 ]] && echo PASS || echo "FAIL ($RC_SHUTTLE)")" || echo "shuttle_system:      SKIPPED"
+[[ $RAN_SABOTAGE -eq 1 ]] && echo "sabotage_system:     $([[ $RC_SABOTAGE -eq 0 ]] && echo PASS || echo "FAIL ($RC_SABOTAGE)")" || echo "sabotage_system:     SKIPPED"
+[[ $RAN_CONSEQUENCES -eq 1 ]] && echo "consequences_system: $([[ $RC_CONSEQUENCES -eq 0 ]] && echo PASS || echo "FAIL ($RC_CONSEQUENCES)")" || echo "consequences_system: SKIPPED"
 [[ $RAN_SAVE -eq 1 ]] && echo "save_store:          $([[ $RC_SAVE_UNIT -eq 0 ]] && echo PASS || echo "FAIL ($RC_SAVE_UNIT)")" || echo "save_store:          SKIPPED"
 [[ $RAN_SAVE -eq 1 ]] && echo "save_slot_resume:    $([[ $RC_SAVE_RESUME -eq 0 ]] && echo PASS || echo "FAIL ($RC_SAVE_RESUME)")" || echo "save_slot_resume:    SKIPPED"
 [[ $RAN_SAVE -eq 1 ]] && echo "save_profile_orch:   $([[ $RC_SAVE_ORCH -eq 0 ]] && echo PASS || echo "FAIL ($RC_SAVE_ORCH)")" || echo "save_profile_orch:   SKIPPED"
@@ -704,7 +861,7 @@ echo "==============================="
 [[ $RAN_SAVE -eq 1 ]] && echo "save_ingame_ui:      $([[ $RC_SAVE_INGAME -eq 0 ]] && echo PASS || echo "FAIL ($RC_SAVE_INGAME)")" || echo "save_ingame_ui:      SKIPPED"
 [[ $RAN_SAVE_INTEGRATION -eq 1 ]] && echo "save_integration:    $([[ $RC_SAVE_INTEGRATION -eq 0 ]] && echo PASS || echo "FAIL ($RC_SAVE_INTEGRATION)")" || echo "save_integration:    SKIPPED"
 
-if [[ ( $RAN_LINT -eq 1 && $RC_LINT -ne 0 ) || ( $RAN_LINT -eq 1 && $RC_FORKS -ne 0 ) || ( $RAN_LINT -eq 1 && $RC_MINTIDLE -ne 0 ) || ( $RAN_MINTLOCO -eq 1 && $RC_MINTIDLE -ne 0 ) || ( $RAN_SCENE -eq 1 && $RC_SCENE -ne 0 ) || ( $RAN_FLOW -eq 1 && $RC_FLOW -ne 0 ) || ( $RAN_QUEST -eq 1 && $RC_QUEST -ne 0 ) || ( $RAN_PLAY -eq 1 && $RC_PLAY -ne 0 ) || ( $RAN_RESUME -eq 1 && $RC_RESUME -ne 0 ) || ( $RAN_AUTOPILOT -eq 1 && $RC_AUTOPILOT -ne 0 ) || ( $RAN_QUESTLOG -eq 1 && $RC_QUESTLOG -ne 0 ) || ( $RAN_INV -eq 1 && $RC_INV -ne 0 ) || ( $RAN_ATMO -eq 1 && $RC_ATMO -ne 0 ) || ( $RAN_KINODOORS -eq 1 && $RC_KINODOORS -ne 0 ) || ( $RAN_KINOEXPLORE -eq 1 && $RC_KINOEXPLORE -ne 0 ) || ( $RAN_KINODISC -eq 1 && $RC_KINODISC -ne 0 ) || ( $RAN_GAMEPAD -eq 1 && $RC_GAMEPAD -ne 0 ) || ( $RAN_FOOTFALL -eq 1 && $RC_FOOTFALL -ne 0 ) || ( $RAN_NPCCHAT -eq 1 && $RC_NPCCHAT -ne 0 ) || ( $RAN_SHADER -eq 1 && $RC_SHADER -ne 0 ) || ( $RAN_ANCIENTTEXT -eq 1 && $RC_ANCIENTTEXT -ne 0 ) || ( $RAN_DISCTOAST -eq 1 && $RC_DISCTOAST -ne 0 ) || ( $RAN_DOORPLAQUE -eq 1 && $RC_DOORPLAQUE -ne 0 ) || ( $RAN_CRATE -eq 1 && $RC_CRATE -ne 0 ) || ( $RAN_UNITFRAME -eq 1 && $RC_UNITFRAME -ne 0 ) || ( $RAN_QUESTTRACKER -eq 1 && $RC_QUESTTRACKER -ne 0 ) || ( $RAN_HUDWOW -eq 1 && $RC_HUDWOW -ne 0 ) || ( $RAN_HUDSCALE -eq 1 && $RC_HUDSCALE -ne 0 ) || ( $RAN_HUDCHAT -eq 1 && $RC_HUDCHAT -ne 0 ) || ( $RAN_GATETWOWAY -eq 1 && $RC_GATETWOWAY -ne 0 ) || ( $RAN_EQUIPMOUNT -eq 1 && $RC_EQUIPMOUNT -ne 0 ) || ( $RAN_EQUIPASSETS -eq 1 && $RC_EQUIPASSETS -ne 0 ) || ( $RAN_CHARPANEL -eq 1 && $RC_CHARPANEL -ne 0 ) || ( $RAN_EQUIPINT -eq 1 && $RC_EQUIPINT -ne 0 ) || ( $RAN_PLANETGEN -eq 1 && $RC_PLANETGEN -ne 0 ) || ( $RAN_PLANETRES -eq 1 && $RC_PLANETRES -ne 0 ) || ( $RAN_PLANETINT -eq 1 && $RC_PLANETINT -ne 0 ) || ( $RAN_BIOMEDESERT -eq 1 && $RC_BIOMEDESERT -ne 0 ) || ( $RAN_BIOMEJUNGLE -eq 1 && $RC_BIOMEJUNGLE -ne 0 ) || ( $RAN_BIOMETOXIC -eq 1 && $RC_BIOMETOXIC -ne 0 ) || ( $RAN_BIOMEURBAN -eq 1 && $RC_BIOMEURBAN -ne 0 ) || ( $RAN_KNOCKOUT -eq 1 && $RC_KNOCKOUT -ne 0 ) || ( $RAN_SCRUBBERS -eq 1 && $RC_SCRUBBERS -ne 0 ) || ( $RAN_PROCSHIP -eq 1 && $RC_PROCSHIP -ne 0 ) || ( $RAN_FTLLOOP -eq 1 && $RC_FTLLOOP -ne 0 ) || ( $RAN_MUSIC -eq 1 && $RC_MUSIC -ne 0 ) || ( $RAN_ELEVPOWER -eq 1 && $RC_ELEVPOWER -ne 0 ) || ( $RAN_BRIDGELOOP -eq 1 && $RC_BRIDGELOOP -ne 0 ) || ( $RAN_CONSUMPTION -eq 1 && $RC_CONSUMPTION -ne 0 ) || ( $RAN_REPAIR -eq 1 && $RC_REPAIR -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_UNIT -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_RESUME -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_ORCH -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_BROWSER -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_INGAME -ne 0 ) || ( $RAN_SAVE_INTEGRATION -eq 1 && $RC_SAVE_INTEGRATION -ne 0 ) || ( $RAN_E1OPEN -eq 1 && $RC_E1OPEN -ne 0 ) || ( $RAN_COLDOPEN -eq 1 && $RC_COLDOPEN -ne 0 ) || ( $RAN_AWAYSPLIT -eq 1 && $RC_AWAYSPLIT -ne 0 ) || ( $RAN_CHARGEN -eq 1 && $RC_CHARGEN -ne 0 ) || ( $RAN_VRM -eq 1 && $RC_VRM -ne 0 ) || ( $RAN_MODULAR -eq 1 && $RC_MODULAR -ne 0 ) || ( $RAN_MINTCHAR -eq 1 && $RC_MINTCHAR -ne 0 ) || ( $RAN_MINTLOCO -eq 1 && $RC_MINTLOCO -ne 0 ) || ( $RAN_MINTLOCO -eq 1 && $RC_MINTPLAYER -ne 0 ) || ( $RAN_MIXAMO_HOST -eq 1 && $RC_MIXAMO_HOST -ne 0 ) || ( $RAN_MIXAMO -eq 1 && $RC_MIXAMO -ne 0 ) ]]; then
+if [[ ( $RAN_LINT -eq 1 && $RC_LINT -ne 0 ) || ( $RAN_LINT -eq 1 && $RC_FORKS -ne 0 ) || ( $RAN_LINT -eq 1 && $RC_MINTIDLE -ne 0 ) || ( $RAN_MINTLOCO -eq 1 && $RC_MINTIDLE -ne 0 ) || ( $RAN_SCENE -eq 1 && $RC_SCENE -ne 0 ) || ( $RAN_FLOW -eq 1 && $RC_FLOW -ne 0 ) || ( $RAN_QUEST -eq 1 && $RC_QUEST -ne 0 ) || ( $RAN_PLAY -eq 1 && $RC_PLAY -ne 0 ) || ( $RAN_RESUME -eq 1 && $RC_RESUME -ne 0 ) || ( $RAN_AUTOPILOT -eq 1 && $RC_AUTOPILOT -ne 0 ) || ( $RAN_QUESTLOG -eq 1 && $RC_QUESTLOG -ne 0 ) || ( $RAN_INV -eq 1 && $RC_INV -ne 0 ) || ( $RAN_ATMO -eq 1 && $RC_ATMO -ne 0 ) || ( $RAN_KINODOORS -eq 1 && $RC_KINODOORS -ne 0 ) || ( $RAN_KINOEXPLORE -eq 1 && $RC_KINOEXPLORE -ne 0 ) || ( $RAN_KINODISC -eq 1 && $RC_KINODISC -ne 0 ) || ( $RAN_GAMEPAD -eq 1 && $RC_GAMEPAD -ne 0 ) || ( $RAN_FOOTFALL -eq 1 && $RC_FOOTFALL -ne 0 ) || ( $RAN_NPCCHAT -eq 1 && $RC_NPCCHAT -ne 0 ) || ( $RAN_SHADER -eq 1 && $RC_SHADER -ne 0 ) || ( $RAN_ANCIENTTEXT -eq 1 && $RC_ANCIENTTEXT -ne 0 ) || ( $RAN_DISCTOAST -eq 1 && $RC_DISCTOAST -ne 0 ) || ( $RAN_DOORPLAQUE -eq 1 && $RC_DOORPLAQUE -ne 0 ) || ( $RAN_CRATE -eq 1 && $RC_CRATE -ne 0 ) || ( $RAN_UNITFRAME -eq 1 && $RC_UNITFRAME -ne 0 ) || ( $RAN_QUESTTRACKER -eq 1 && $RC_QUESTTRACKER -ne 0 ) || ( $RAN_HUDWOW -eq 1 && $RC_HUDWOW -ne 0 ) || ( $RAN_HUDWOWCOH -eq 1 && $RC_HUDWOWCOH -ne 0 ) || ( $RAN_HUDSCALE -eq 1 && $RC_HUDSCALE -ne 0 ) || ( $RAN_HUDCHAT -eq 1 && $RC_HUDCHAT -ne 0 ) || ( $RAN_GATETWOWAY -eq 1 && $RC_GATETWOWAY -ne 0 ) || ( $RAN_EQUIPMOUNT -eq 1 && $RC_EQUIPMOUNT -ne 0 ) || ( $RAN_EQUIPASSETS -eq 1 && $RC_EQUIPASSETS -ne 0 ) || ( $RAN_CHARPANEL -eq 1 && $RC_CHARPANEL -ne 0 ) || ( $RAN_EQUIPINT -eq 1 && $RC_EQUIPINT -ne 0 ) || ( $RAN_PLANETGEN -eq 1 && $RC_PLANETGEN -ne 0 ) || ( $RAN_PLANETRES -eq 1 && $RC_PLANETRES -ne 0 ) || ( $RAN_PLANETINT -eq 1 && $RC_PLANETINT -ne 0 ) || ( $RAN_BIOMEDESERT -eq 1 && $RC_BIOMEDESERT -ne 0 ) || ( $RAN_BIOMEJUNGLE -eq 1 && $RC_BIOMEJUNGLE -ne 0 ) || ( $RAN_BIOMETOXIC -eq 1 && $RC_BIOMETOXIC -ne 0 ) || ( $RAN_BIOMEURBAN -eq 1 && $RC_BIOMEURBAN -ne 0 ) || ( $RAN_KNOCKOUT -eq 1 && $RC_KNOCKOUT -ne 0 ) || ( $RAN_SCRUBBERS -eq 1 && $RC_SCRUBBERS -ne 0 ) || ( $RAN_PROCSHIP -eq 1 && $RC_PROCSHIP -ne 0 ) || ( $RAN_FTLLOOP -eq 1 && $RC_FTLLOOP -ne 0 ) || ( $RAN_MUSIC -eq 1 && $RC_MUSIC -ne 0 ) || ( $RAN_TIMER -eq 1 && $RC_TIMER -ne 0 ) || ( $RAN_ELEVPOWER -eq 1 && $RC_ELEVPOWER -ne 0 ) || ( $RAN_POWERGRID -eq 1 && $RC_POWERGRID -ne 0 ) || ( $RAN_AUDIOZONES -eq 1 && $RC_AUDIOZONES -ne 0 ) || ( $RAN_SHIPDAMAGE -eq 1 && $RC_SHIPDAMAGE -ne 0 ) || ( $RAN_TRIAGE -eq 1 && $RC_TRIAGE -ne 0 ) || ( $RAN_EVA -eq 1 && $RC_EVA -ne 0 ) || ( $RAN_INCURSION -eq 1 && $RC_INCURSION -ne 0 ) || ( $RAN_BRIDGELOOP -eq 1 && $RC_BRIDGELOOP -ne 0 ) || ( $RAN_CONSUMPTION -eq 1 && $RC_CONSUMPTION -ne 0 ) || ( $RAN_REPAIR -eq 1 && $RC_REPAIR -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_UNIT -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_RESUME -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_ORCH -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_BROWSER -ne 0 ) || ( $RAN_SAVE -eq 1 && $RC_SAVE_INGAME -ne 0 ) || ( $RAN_SAVE_INTEGRATION -eq 1 && $RC_SAVE_INTEGRATION -ne 0 ) || ( $RAN_E1OPEN -eq 1 && $RC_E1OPEN -ne 0 ) || ( $RAN_COLDOPEN -eq 1 && $RC_COLDOPEN -ne 0 ) || ( $RAN_AWAYSPLIT -eq 1 && $RC_AWAYSPLIT -ne 0 ) || ( $RAN_CHARGEN -eq 1 && $RC_CHARGEN -ne 0 ) || ( $RAN_VRM -eq 1 && $RC_VRM -ne 0 ) || ( $RAN_MODULAR -eq 1 && $RC_MODULAR -ne 0 ) || ( $RAN_MINTCHAR -eq 1 && $RC_MINTCHAR -ne 0 ) || ( $RAN_MINTLOCO -eq 1 && $RC_MINTLOCO -ne 0 ) || ( $RAN_MINTLOCO -eq 1 && $RC_MINTPLAYER -ne 0 ) || ( $RAN_MIXAMO_HOST -eq 1 && $RC_MIXAMO_HOST -ne 0 ) || ( $RAN_MIXAMO -eq 1 && $RC_MIXAMO -ne 0 ) || ( $RAN_TTSDIALOGUE -eq 1 && $RC_TTSDIALOGUE -ne 0 ) || ( $RAN_ACHIEVEMENTS -eq 1 && $RC_ACHIEVEMENTS -ne 0 ) || ( $RAN_ACCESSIBILITY -eq 1 && $RC_ACCESSIBILITY -ne 0 ) || ( $RAN_E2POWER -eq 1 && $RC_E2POWER -ne 0 ) || ( $RAN_E2QUEST -eq 1 && $RC_E2QUEST -ne 0 ) || ( $RAN_E4DARKNESS -eq 1 && $RC_E4DARKNESS -ne 0 ) || ( $RAN_SHUTTLE -eq 1 && $RC_SHUTTLE -ne 0 ) || ( $RAN_SABOTAGE -eq 1 && $RC_SABOTAGE -ne 0 ) || ( $RAN_CONSEQUENCES -eq 1 && $RC_CONSEQUENCES -ne 0 ) ]]; then
 	exit 1
 fi
 exit 0

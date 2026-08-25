@@ -1,0 +1,23 @@
+[
+  {
+    "puzzle_id": "gate_room_power",
+    "brief": "The power conduits need to be rerouted to activate the gate.",
+    "detailed": "Check the power console in the gate room. The conduits are labeled — try matching them to the gate symbols above.",
+    "full_solution": "Press the console buttons in this order: 3, 1, 4, 2. The gate will activate once all conduits are aligned.",
+    "progress_flags": ["gate_power_rerouted"]
+  },
+  {
+    "puzzle_id": "oxygen_scrubber",
+    "brief": "The oxygen scrubbers need to be restarted.",
+    "detailed": "Find the life support console. Each scrubber must be activated in sequence — start with the one closest to the door.",
+    "full_solution": "Activate scrubbers in order: North, East, South, West. The console shows their positions on a map.",
+    "progress_flags": ["oxygen_scrubbers_active"]
+  },
+  {
+    "puzzle_id": "bridge_console",
+    "brief": "The bridge console needs the correct destination code.",
+    "detailed": "Rush mentioned the address symbols. Check your quest log for the symbol sequence.",
+    "full_solution": "Enter the symbols: 3-7-5-2-8. Confirm by pressing the central dial.",
+    "progress_flags": ["destination_locked"]
+  }
+]

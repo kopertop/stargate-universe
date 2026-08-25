@@ -138,8 +138,12 @@ func _ready() -> void:
 	if ShipAlertScript.is_alert_active():
 		ShipAlertScript.apply_to_scene(self)
 		_alert_applied = true
+	elif ShipAlertScript.is_caution_active():
+		ShipAlertScript.set_caution(self)
 	GameState.discover_room(room_id, String(_room_data.get("name", room_id)))
 	GameState.set_current_room(room_id)
+	# Enter the ambient audio zone for this room type.
+	AudioZones.enter_ship_zone(String(_room_data.get("type", "")))
 	# Leaving the infirmary after a recovery beat clears the knockout flag so the
 	# next infirmary visit shows the normal post-crisis ward (issue #92).
 	if room_id != "infirmary" and GameState.recovering_in_infirmary:
@@ -418,99 +422,85 @@ func _start_kino_arrival() -> void:
 		drone.call_deferred("start_ship_autopilot")
 
 
+# Data-driven interactable spawner config. Maps authored room_id to an ordered
+# array of spawner entries loaded from data/room_spawners.json. Each entry:
+#   method     — name of the _spawn_* func on this script (string)
+#   args       — optional array of literal args (int, float, String, bool)
+#   condition  — optional GDScript expression using GS=GameState, PS=ProceduralShip
+#   result_id  — optional tag; captures the method's return value for later entries
+#   depends_on — "@result_id.property" syntax references a prior return value in args
+# Generated rooms (no authored match) fall through to _spawn_generated_room_interactables.
+const SPAWNERS_PATH: String = "res://data/room_spawners.json"
+static var _spawners_config: Dictionary = {}
+
 func _spawn_interactables() -> void:
-	match room_id:
-		"quarters_room_1":
-			_spawn_quarters_bed()
-		"eli_quarters":
-			# Eli's room — Eli IS the player. Houses the Kino Remote pickup on
-			# the desk and his bed for the FIND_REST → SLEEP quest beat.
-			_spawn_eli_kino_pickup()
-			_spawn_quarters_bed("My bed. Time to crash.")
-			# Kino dispenser appears once Phase E begins (Brody's "no MALP" beat
-			# sends Eli back here for a Kino to scout the planet).
-			if GameState.reported_to_gate:
-				_spawn_kino_dispenser()
-		"east_corridor":
-			# Sgt Greer holds the east corridor; the actual breach lives in the
-			# far-south Damaged Section now.
-			_spawn_sgt_greer()
-		"breached_section_south":
-			# Shuttle Dock: jammed door venting atmo from the damaged shuttle to
-			# the west, a dead door panel beside it, and 3 lootable crates (one
-			# holds the actuator). The Phase C seal mini-quest lives here.
-			_spawn_shuttle_dock()
-		"control_interface_room":
-			# Rush works his console ONLY until the standoff: after "Well.
-			# That's that, then." he leaves the room for good (user direction)
-			# and isn't seen again until the scrubber beat in the south
-			# corridor. Post-crisis returns hit _trigger_rush_absent_beat.
-			if not GameState.air_crisis_started and not GameState.met_rush:
-				_spawn_dr_rush()
-			# Floor 2 access-code terminal: always present in the control room
-			# (a data terminal the player can examine). Disabled once collected.
-			_spawn_floor_code_terminal(2)
-		# TODO(#132): engineering_bay removed from authored floor 0; Engineering
-		# now lives as a generated special on floors 2+. Elevator restore via the
-		# power console is deferred to the fuse-based mechanic in issue #132.
-		# GameState.unlock_elevator() remains callable for e1_flow unit tests.
-		"aft_storage_hall":
-			# D4: Aft Storage Hall seeds Floor-1 parts for the player.
-			# Multiple salvage panels + crates help meet the Floor-3 unlock cost (15).
-			_spawn_salvage_panel(0)
-			_spawn_salvage_panel(1)
-		"south_corridor":
-			# The CO2 scrubber wall panel always exists (it's a fixture), but the
-			# corridor stays EMPTY of people until the player seals the Shuttle
-			# Dock breach below — nobody's down here while it's still venting.
-			# After the seal: Chloe is about, and during the Phase D window
-			# (breach sealed, scrubber not yet diagnosed) Rush + Park work the
-			# panel. Once diagnosed they don't respawn (they've moved on).
-			var scrubber: StaticBody3D = _spawn_co2_scrubber()
-			if not GameState.breaches_sealed.is_empty():
-				_spawn_chloe()
-				if GameState.air_crisis_started and not GameState.scrubber_diagnosed:
-					_spawn_scrubber_crew(scrubber.position)
-		"north_corridor":
-			_spawn_soldier()
-			# Optional maintenance scrubber (issue: ship-wide scrubbers). West end
-			# of the long corridor, clear of the mid-wall spur/approach doors.
-			_spawn_co2_scrubber("north_corridor", -350.0)
-		"north_spur":
-			# Repair console for the Sealed Shuttle Bay (issue #131). Only visible
-			# while the bay is still sealed/repairing — clears after repair completes.
-			if ProceduralShip.is_room_sealed("sealed_section_north"):
-				_spawn_repair_console("sealed_section_north")
-		"east_corridor_far":
-			# New maintenance spur off the east corridor — houses a scrubber.
-			_spawn_co2_scrubber("east_far", 0.0)
-		"hydroponics":
-			# The upper-deck hydroponics bay (its door plaque already reads
-			# "Hydroponics — CO2 Scrubber").
-			_spawn_co2_scrubber("hydroponics", 0.0)
-		"infirmary":
-			# A downed player wakes here for the no-death recovery beat (issue
-			# #92): TJ at the bedside with a cause-tagged line. Otherwise, post-
-			# crisis James has moved Young here to recover; pre-crisis the pair
-			# are still in the gate-room arrival tableau (empty ward).
-			if GameState.recovering_in_infirmary:
-				_spawn_recovery_ward()
-			elif GameState.air_crisis_started:
-				_spawn_infirmary_ward()
-		"elevator_north", "elevator_room_floor_1":
-			# Elevator rooms: wall-mounted floor-selection panel (Phase B).
-			_spawn_elevator_panel()
-			# Floor-2 access code lives in control_interface_room (base room)
-			# but the terminal marker for floor 2 belongs here so the player can
-			# find the panel before they know where the code is. The actual
-			# terminal is spawned in control_interface_room via the generated
-			# floor dispatch below.
-			pass
-		_:
-			# Generated room dispatch. Runs AFTER all authored room ids have
-			# been matched (the _ branch only fires when no authored id matched).
-			if ProceduralShip.is_generated(room_id):
-				_spawn_generated_room_interactables()
+	if _spawners_config.is_empty():
+		var f: FileAccess = FileAccess.open(SPAWNERS_PATH, FileAccess.READ)
+		if f == null:
+			push_error("room.gd: cannot read %s" % SPAWNERS_PATH)
+			return
+		_spawners_config = JSON.parse_string(f.get_as_text())
+		f.close()
+
+	var rooms: Dictionary = _spawners_config.get("rooms", {})
+	if rooms.has(room_id):
+		var entries: Array = rooms[room_id]
+		var results: Dictionary = {}
+		for entry in entries:
+			var method: String = String(entry.get("method", ""))
+			if method == "":
+				continue
+			# Evaluate condition if present.
+			var cond_expr: String = String(entry.get("condition", ""))
+			if cond_expr != "" and not _eval_spawner_condition(cond_expr):
+				continue
+			# Resolve args — literal values and @result_id.property references.
+			var args: Array = entry.get("args", [])
+			var resolved_args: Array = _resolve_spawner_args(args, results)
+			# Call the method.
+			var ret: Variant = callv(method, resolved_args)
+			# Capture return value if tagged.
+			var rid: String = String(entry.get("result_id", ""))
+			if rid != "":
+				results[rid] = ret
+	else:
+		# Generated room dispatch. Runs when no authored room_id matched.
+		if ProceduralShip.is_generated(room_id):
+			_spawn_generated_room_interactables()
+
+# Evaluate a condition expression from the spawner config. GS=GameState, PS=ProceduralShip.
+func _eval_spawner_condition(expr_text: String) -> bool:
+	var expr := Expression.new()
+	var err: int = expr.parse(expr_text, ["GS", "PS"])
+	if err != OK:
+		push_error("room.gd: failed to parse spawner condition '%s': %s" % [expr_text, expr.get_error_text()])
+		return false
+	var result: Variant = expr.execute([GameState, ProceduralShip])
+	if expr.has_execute_failed():
+		push_error("room.gd: failed to evaluate spawner condition '%s': %s" % [expr_text, expr.get_error_text()])
+		return false
+	return bool(result)
+
+# Resolve spawner args. Literal values pass through. Strings starting with
+# '@' are references to prior return values: '@scrubber.position' reads
+# results["scrubber"].position.
+func _resolve_spawner_args(args: Array, results: Dictionary) -> Array:
+	var out: Array = []
+	for arg in args:
+		if arg is String and arg.begins_with("@"):
+			var parts: PackedStringArray = arg.substr(1).split(".", true, 2)
+			var rid: String = parts[0]
+			if not results.has(rid):
+				push_error("room.gd: spawner arg references unknown result_id '%s'" % rid)
+				continue
+			var obj: Object = results[rid]
+			if parts.size() == 1:
+				out.append(obj)
+			else:
+				out.append(obj.get(parts[1]))
+		else:
+			out.append(arg)
+	return out
 
 
 # Bed against the -Z wall, matching the position used by RoomBuilder._accent_quarters.
@@ -721,21 +711,14 @@ func _close_jammed_door(leaf: Node3D) -> void:
 
 
 # Inline StandardMaterial3D helpers for the procedural shuttle-dock props.
+# Delegate to SharedMaterials so identical colour/metallic/roughness combos
+# across props share a single material instance.
 func _flat_mat(col: Color, metallic: float, roughness: float) -> StandardMaterial3D:
-	var m: StandardMaterial3D = StandardMaterial3D.new()
-	m.albedo_color = col
-	m.metallic = metallic
-	m.roughness = roughness
-	return m
+	return SharedMaterials.get_flat(col, metallic, roughness)
 
 
 func _emis_mat(col: Color, energy: float) -> StandardMaterial3D:
-	var m: StandardMaterial3D = StandardMaterial3D.new()
-	m.albedo_color = col
-	m.emission_enabled = true
-	m.emission = col
-	m.emission_energy_multiplier = energy
-	return m
+	return SharedMaterials.get_emis(col, energy)
 
 
 # Engineering Bay power console — wall-mounted breaker switch on the -X wall.
@@ -757,10 +740,7 @@ func _spawn_power_console() -> void:
 	console.add_child(cs)
 	add_child(console)
 
-	var housing_mat: StandardMaterial3D = StandardMaterial3D.new()
-	housing_mat.albedo_color = Color(0.20, 0.20, 0.22)
-	housing_mat.metallic = 0.55
-	housing_mat.roughness = 0.42
+	var housing_mat: StandardMaterial3D = SharedMaterials.get_flat(Color(0.20, 0.20, 0.22), 0.55, 0.42)
 	var housing_mi: MeshInstance3D = MeshInstance3D.new()
 	var housing_box: BoxMesh = BoxMesh.new()
 	housing_box.size = Vector3(0.06, 0.75, 0.65)
@@ -769,12 +749,8 @@ func _spawn_power_console() -> void:
 	housing_mi.position = console.position
 	add_child(housing_mi)
 
-	var btn_mat: StandardMaterial3D = StandardMaterial3D.new()
 	var btn_color: Color = Color(0.35, 1.0, 0.55) if restored else Color(1.0, 0.30, 0.10)
-	btn_mat.albedo_color = btn_color
-	btn_mat.emission_enabled = true
-	btn_mat.emission = btn_color
-	btn_mat.emission_energy_multiplier = 3.2
+	var btn_mat: StandardMaterial3D = SharedMaterials.get_emis(btn_color, 3.2)
 	var btn_mi: MeshInstance3D = MeshInstance3D.new()
 	var btn_box: BoxMesh = BoxMesh.new()
 	btn_box.size = Vector3(0.04, 0.32, 0.32)
@@ -1073,12 +1049,7 @@ func _light_rush_console() -> void:
 		return
 	# Wake the screen: bright tech-blue glow instead of the idle dim panel.
 	var on_color: Color = Color(0.10, 0.30, 0.55)
-	var on_mat: StandardMaterial3D = StandardMaterial3D.new()
-	on_mat.albedo_color = on_color
-	on_mat.emission_enabled = true
-	on_mat.emission = on_color
-	on_mat.emission_energy_multiplier = 1.6
-	on_mat.roughness = 0.25
+	var on_mat: StandardMaterial3D = SharedMaterials.get_emis(on_color, 1.6, 0.0, 0.25)
 	plate.material_override = on_mat
 	if plate.get_node_or_null("AncientReadout") != null:
 		return
@@ -1095,11 +1066,8 @@ func _light_rush_console() -> void:
 	tm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	tm.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	var text_color: Color = Color(0.55, 0.85, 1.0)
-	var text_mat: StandardMaterial3D = StandardMaterial3D.new()
-	text_mat.albedo_color = text_color
-	text_mat.emission_enabled = true
-	text_mat.emission = text_color
-	text_mat.emission_energy_multiplier = 2.6
+	# no_depth_test is overridden below — needs a mutable copy.
+	var text_mat: StandardMaterial3D = SharedMaterials.get_emis_mutable(text_color, 2.6)
 	# DEPTH-TESTED: no_depth_test (the gate-console default) draws the glyphs
 	# THROUGH anyone standing at the console (user screenshot — text floating
 	# over Rush's back). The 12 mm lift off the plate already prevents
@@ -1871,7 +1839,27 @@ func _spawn_npc(
 	# Models face +Z as exported; rotate so they face -Z (parent forward).
 	model_holder.rotation.y = PI
 	body.add_child(model_holder)
-	if CharacterFactoryRef.profile_for(character_name).has("mod"):
+	# VRM-first pipeline: if the profile has a VRM file that exists, use the
+	# full VRoid body (expressions, visemes, spring bones). Falls through to
+	# the modular/mini pipeline if the .vrm file isn't present yet.
+	var profile: Dictionary = CharacterFactoryRef.profile_for(character_name)
+	var vrm_path: String = String(profile.get("vrm", ""))
+	if vrm_path != "" and ResourceLoader.exists(vrm_path):
+		var VrmCharacterScript: Script = preload("res://scripts/vrm_character.gd")
+		var vrm: Node3D = VrmCharacterScript.create(vrm_path, character_name)
+		if vrm != null:
+			model_holder.add_child(vrm)
+			# Apply personality-driven expression profile
+			var MgrScript: Script = preload("res://scripts/vrm_character_manager.gd")
+			var expr_profile: Dictionary = MgrScript.EXPRESSION_PROFILES.get(character_name, {})
+			if not expr_profile.is_empty():
+				var personality: String = String(expr_profile.get("personality", "neutral"))
+				if personality != "neutral":
+					vrm.call("set_emotion", personality, 0.6)
+			# Attach sidearm for military crew in ship context
+			if CharacterFactoryRef.is_military(character_name):
+				vrm.call("attach_gear", "sidearm", false)
+	elif profile.has("mod"):
 		# PRIMARY pipeline: Quaternius ModularCharacter at real-world scale,
 		# dressed for ship context (duty tint + sidearm for military).
 		var mc: Node3D = CharacterFactoryRef.build_modular(character_name)
@@ -2280,6 +2268,15 @@ func _refresh_alert_state() -> void:
 	elif _alert_applied and not should_alert:
 		ShipAlertScript.clear_scene(self)
 		_alert_applied = false
+		# After clearing alert, check if caution state applies (scrubber damaged)
+		if ShipAlertScript.is_caution_active():
+			ShipAlertScript.set_caution(self)
+
+
+# Drive the alert pulse flicker. Only does work while alert is active —
+# process_alert_pulse early-returns when alert_state != "alert".
+func _process(delta: float) -> void:
+	ShipAlertScript.process_alert_pulse(self, delta)
 
 
 # Position the floating diamond either above the in-room anchor for the

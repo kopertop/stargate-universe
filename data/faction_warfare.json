@@ -1,0 +1,432 @@
+{
+	"_comment": "Faction warfare and mutiny system data for E12 Divided. Ship sections, faction goals, mutiny events, moral choices, and Rush's secret agenda. Loaded by faction_system.gd and mutiny_system.gd.",
+
+	"sections": {
+		"gate_room": {
+			"display_name": "Gate Room",
+			"description": "Central hub. Controls the Stargate — the only way on or off Destiny.",
+			"critical": true,
+			"default_controller": "military"
+		},
+		"control_interface_room": {
+			"display_name": "Control Interface Room",
+			"description": "Main bridge consoles. Ship navigation, life support, power distribution.",
+			"critical": true,
+			"default_controller": "military"
+		},
+		"engineering": {
+			"display_name": "Engineering Bay",
+			"description": "FTL drive, power junctions, life support machinery.",
+			"critical": true,
+			"default_controller": "science"
+		},
+		"observation_deck": {
+			"display_name": "Observation Deck",
+			"description": "Long-range sensors, communication stones, viewing lounge.",
+			"critical": false,
+			"default_controller": "science"
+		},
+		"eli_quarters": {
+			"display_name": "Crew Quarters",
+			"description": "Living section. Where the civilians sleep and eat.",
+			"critical": false,
+			"default_controller": "civilian"
+		},
+		"med_bay": {
+			"display_name": "Medical Bay",
+			"description": "TJ's domain. Medical supplies, triage, injury recovery.",
+			"critical": true,
+			"default_controller": "military"
+		},
+		"mess_hall": {
+			"display_name": "Mess Hall",
+			"description": "Food, water, and social hub. Everyone passes through here.",
+			"critical": false,
+			"default_controller": "civilian"
+		},
+		"aft_storage_hall": {
+			"display_name": "Aft Storage",
+			"description": "Cargo, spare parts, the junction room. Resource bottleneck.",
+			"critical": false,
+			"default_controller": "science"
+		},
+		"south_corridor": {
+			"display_name": "South Corridor",
+			"description": "Primary access corridor between the gate room and engineering.",
+			"critical": false,
+			"default_controller": "military"
+		},
+		"north_corridor": {
+			"display_name": "North Corridor",
+			"description": "Secondary corridor connecting quarters to the observation deck.",
+			"critical": false,
+			"default_controller": "civilian"
+		}
+	},
+
+	"faction_goals": {
+		"military": {
+			"primary": "Maintain order and chain of command. Keep the ship's critical systems under military control.",
+			"secondary": "Protect the crew. Establish defensive positions. Ensure readiness for hostile encounters.",
+			"success_condition": "Controls gate_room, control_interface_room, and med_bay.",
+			"failure_condition": "Loses control of gate_room for more than 2 phases."
+		},
+		"science": {
+			"primary": "Unlock Destiny's secrets. Rush believes the ship's mission takes priority over military command.",
+			"secondary": "Control engineering and the observation deck. Study Ancient technology without interference.",
+			"success_condition": "Controls engineering and observation_deck, and Rush's trust >= 50.",
+			"failure_condition": "Rush arrested or removed from duty."
+		},
+		"civilian": {
+			"primary": "Survival and democracy. Civilians deserve a voice in how the ship is run.",
+			"secondary": "Control the living sections. Organize protests, negotiate, and resist military overreach.",
+			"success_condition": "Civilian council formed with at least 3 sections under civilian control.",
+			"failure_condition": "Civilian morale drops below hostile for 3+ crew members."
+		},
+		"lucian_alliance": {
+			"primary": "Exploit the chaos. Seize opportunities when the crew is divided.",
+			"secondary": "Gain trust, gather intelligence, and position for a power grab.",
+			"success_condition": "Any other faction fails and Lucian Alliance controls at least 2 sections.",
+			"failure_condition": "Varro and Simeon both reach hostile relationship level."
+		}
+	},
+
+	"mutiny_events": {
+		"food_shortage": {
+			"phase": 1,
+			"title": "Food Shortage",
+			"description": "Rations are running low. The civilians are hungry and angry. Camille demands a vote on ration distribution.",
+			"trigger": "auto",
+			"faction_affected": "civilian",
+			"morale_impact": { "civilian": -15, "military": -5 },
+			"choices": [
+				{
+					"id": "ration_military_priority",
+					"label": "Military priority rations",
+					"description": "Soldiers eat first. They need the energy to defend the ship.",
+					"effects": {
+						"relationships": {
+							"Colonel Young": { "trust": 5, "respect": 10 },
+							"Sgt Greer": { "trust": 8, "respect": 5 },
+							"Camille": { "trust": -15, "respect": -10 },
+							"Chloe Armstrong": { "trust": -10, "respect": -5 }
+						},
+						"morale": { "military": 5, "civilian": -20 },
+						"sections": {}
+					}
+				},
+				{
+					"id": "ration_equal_split",
+					"label": "Equal distribution",
+					"description": "Everyone gets the same. Fair, but soldiers may not have enough energy for combat.",
+					"effects": {
+						"relationships": {
+							"Camille": { "trust": 10, "respect": 10 },
+							"Chloe Armstrong": { "trust": 8, "respect": 5 },
+							"Sgt Greer": { "trust": -5, "respect": -5 },
+							"Colonel Young": { "trust": -3, "respect": -5 }
+						},
+						"morale": { "military": -10, "civilian": 10 },
+						"sections": {}
+					}
+				},
+				{
+					"id": "ration_science_priority",
+					"label": "Science gets extra",
+					"description": "Rush argues the scientists need calories to solve the life support problems.",
+					"effects": {
+						"relationships": {
+							"Dr Rush": { "trust": 10, "respect": 8 },
+							"Dr Park": { "trust": 5, "respect": 5 },
+							"Sgt Greer": { "trust": -10, "respect": -8 },
+							"Camille": { "trust": -5, "respect": -5 }
+						},
+						"morale": { "science": 10, "military": -10, "civilian": -5 },
+						"sections": {}
+					}
+				}
+			]
+		},
+		"rush_secret_project": {
+			"phase": 2,
+			"title": "Rush's Secret Project",
+			"description": "Eli discovers Rush has been using the control interface room after hours to access the ship's master code. He's trying to unlock the bridge — a section only the captain should authorize.",
+			"trigger": "auto",
+			"faction_affected": "science",
+			"morale_impact": { "military": -10, "science": -5 },
+			"choices": [
+				{
+					"id": "report_rush",
+					"label": "Report Rush to Young",
+					"description": "Tell Colonel Young about Rush's secret access. This is a breach of trust and chain of command.",
+					"effects": {
+						"relationships": {
+							"Colonel Young": { "trust": 15, "respect": 10 },
+							"Dr Rush": { "trust": -25, "respect": -20 },
+							"Dr Park": { "trust": -5, "respect": -5 },
+							"Volker": { "trust": -3, "respect": -3 }
+						},
+						"morale": { "military": 10, "science": -15 },
+						"sections": { "control_interface_room": "military" },
+						"flag": "rush_reported"
+					}
+				},
+				{
+					"id": "confront_rush_private",
+					"label": "Confront Rush privately",
+					"description": "Talk to Rush alone. Give him a chance to explain before going to Young.",
+					"effects": {
+						"relationships": {
+							"Dr Rush": { "trust": 10, "respect": 5 },
+							"Colonel Young": { "trust": -5, "respect": -5 }
+						},
+						"morale": { "science": 5, "military": -5 },
+						"sections": {},
+						"flag": "rush_confronted"
+					}
+				},
+				{
+					"id": "help_rush",
+					"label": "Help Rush unlock the bridge",
+					"description": "Rush says the bridge holds the key to getting home. Trust him.",
+					"effects": {
+						"relationships": {
+							"Dr Rush": { "trust": 20, "respect": 15 },
+							"Colonel Young": { "trust": -15, "respect": -15 },
+							"Sgt Greer": { "trust": -10, "respect": -10 }
+						},
+						"morale": { "science": 10, "military": -20 },
+						"sections": { "control_interface_room": "science" },
+						"flag": "rush_helped"
+					}
+				}
+			]
+		},
+		"civilian_protest": {
+			"phase": 3,
+			"title": "Civilian Protest",
+			"description": "Camille leads a group of civilians to occupy the mess hall. They refuse to leave until Young agrees to democratic elections. The military is surrounding the mess hall.",
+			"trigger": "auto",
+			"faction_affected": "civilian",
+			"morale_impact": { "civilian": -10, "military": -5 },
+			"choices": [
+				{
+					"id": "side_with_military",
+					"label": "Support Young — clear the protest",
+					"description": "Order must be maintained. The military removes the protesters by force if necessary.",
+					"effects": {
+						"relationships": {
+							"Colonel Young": { "trust": 10, "respect": 10 },
+							"Sgt Greer": { "trust": 8, "respect": 5 },
+							"Camille": { "trust": -20, "respect": -15 },
+							"Chloe Armstrong": { "trust": -15, "respect": -10 }
+						},
+						"morale": { "military": 10, "civilian": -25 },
+						"sections": { "mess_hall": "military" },
+						"flag": "protest_cleared"
+					}
+				},
+				{
+					"id": "negotiate_protest",
+					"label": "Negotiate a compromise",
+					"description": "Mediate between Young and Camille. Propose a civilian advisory council with real authority.",
+					"effects": {
+						"relationships": {
+							"Camille": { "trust": 15, "respect": 15 },
+							"Colonel Young": { "trust": 5, "respect": 5 },
+							"Chloe Armstrong": { "trust": 10, "respect": 5 },
+							"Sgt Greer": { "trust": -3, "respect": -3 }
+						},
+						"morale": { "civilian": 15, "military": -5 },
+						"sections": { "mess_hall": "civilian" },
+						"flag": "council_formed"
+					}
+				},
+				{
+					"id": "join_protest",
+					"label": "Join the protest",
+					"description": "Eli stands with the civilians. The military has gone too far.",
+					"effects": {
+						"relationships": {
+							"Camille": { "trust": 20, "respect": 20 },
+							"Chloe Armstrong": { "trust": 15, "respect": 10 },
+							"Colonel Young": { "trust": -20, "respect": -15 },
+							"Sgt Greer": { "trust": -15, "respect": -10 },
+							"Lt Scott": { "trust": -10, "respect": -5 }
+						},
+						"morale": { "civilian": 20, "military": -15 },
+						"sections": { "mess_hall": "civilian", "eli_quarters": "civilian" },
+						"flag": "eli_joined_protest"
+					}
+				}
+			]
+		},
+		"lucian_infiltration": {
+			"phase": 4,
+			"title": "Lucian Alliance Infiltration",
+			"description": "Varro approaches Eli with intelligence: Simeon has been secretly mapping the ship's weak points. Varro offers to help neutralize Simeon — but he wants access to the armory in return.",
+			"trigger": "auto",
+			"faction_affected": "lucian_alliance",
+			"morale_impact": { "military": -5, "lucian_alliance": 5 },
+			"choices": [
+				{
+					"id": "trust_varro",
+					"label": "Trust Varro — give armory access",
+					"description": "Varro has been loyal so far. Let him handle Simeon.",
+					"effects": {
+						"relationships": {
+							"Varro": { "trust": 15, "respect": 10 },
+							"Simeon": { "trust": -20, "respect": -15 },
+							"Colonel Young": { "trust": -10, "respect": -5 },
+							"Sgt Greer": { "trust": -8, "respect": -5 }
+						},
+						"morale": { "lucian_alliance": 10, "military": -10 },
+						"sections": { "aft_storage_hall": "lucian_alliance" },
+						"flag": "varro_trusted"
+					}
+				},
+				{
+					"id": "arrest_simeon",
+					"label": "Arrest Simeon — military operation",
+					"description": "Tell Young about Simeon's mapping. Let the military handle it.",
+					"effects": {
+						"relationships": {
+							"Colonel Young": { "trust": 10, "respect": 10 },
+							"Sgt Greer": { "trust": 10, "respect": 5 },
+							"Varro": { "trust": -10, "respect": -5 },
+							"Simeon": { "trust": -25, "respect": -20 }
+						},
+						"morale": { "military": 10, "lucian_alliance": -15 },
+						"sections": {},
+						"flag": "simeon_arrested"
+					}
+				},
+				{
+					"id": "confront_simeon_directly",
+					"label": "Confront Simeon yourself",
+					"description": "Eli tries to talk Simeon down. Dangerous, but avoids a military escalation.",
+					"effects": {
+						"relationships": {
+							"Simeon": { "trust": -5, "respect": 5 },
+							"Varro": { "trust": 5, "respect": 5 },
+							"Colonel Young": { "trust": -5, "respect": 0 }
+						},
+						"morale": { "lucian_alliance": -5, "military": -5 },
+						"sections": {},
+						"flag": "simeon_confronted"
+					}
+				}
+			]
+		},
+		"final_standoff": {
+			"phase": 5,
+			"title": "The Final Standoff",
+			"description": "The ship is divided. Rush has locked himself in the control interface room. Young is preparing to breach. Eli stands in the middle — his choice will determine who controls Destiny.",
+			"trigger": "auto",
+			"faction_affected": "all",
+			"morale_impact": { "military": -10, "science": -10, "civilian": -10 },
+			"choices": [
+				{
+					"id": "side_military_end",
+					"label": "Side with Young — restore military command",
+					"description": "The chain of command exists for a reason. Young should be in control.",
+					"effects": {
+						"relationships": {
+							"Colonel Young": { "trust": 20, "respect": 15 },
+							"Lt Scott": { "trust": 10, "respect": 5 },
+							"Sgt Greer": { "trust": 15, "respect": 10 },
+							"Dr Rush": { "trust": -30, "respect": -25 },
+							"Camille": { "trust": -10, "respect": -5 }
+						},
+						"morale": { "military": 20, "science": -20, "civilian": -10 },
+						"sections": { "control_interface_room": "military", "engineering": "military" },
+						"flag": "military_victory"
+					}
+				},
+				{
+					"id": "side_science_end",
+					"label": "Side with Rush — unlock the bridge",
+					"description": "Rush is right. The ship's mission is bigger than who sits in the captain's chair.",
+					"effects": {
+						"relationships": {
+							"Dr Rush": { "trust": 25, "respect": 20 },
+							"Dr Park": { "trust": 10, "respect": 5 },
+							"Colonel Young": { "trust": -25, "respect": -20 },
+							"Sgt Greer": { "trust": -20, "respect": -15 }
+						},
+						"morale": { "science": 20, "military": -25, "civilian": -5 },
+						"sections": { "control_interface_room": "science", "gate_room": "science" },
+						"flag": "science_victory"
+					}
+				},
+				{
+					"id": "side_civilian_end",
+					"label": "Broker a coalition government",
+					"description": "Neither side should have absolute power. Propose a council with military, science, and civilian representation.",
+					"effects": {
+						"relationships": {
+							"Camille": { "trust": 20, "respect": 20 },
+							"Colonel Young": { "trust": 5, "respect": 5 },
+							"Dr Rush": { "trust": -5, "respect": 0 },
+							"Chloe Armstrong": { "trust": 15, "respect": 10 }
+						},
+						"morale": { "civilian": 20, "military": 5, "science": 5 },
+						"sections": { "control_interface_room": "civilian", "gate_room": "civilian" },
+						"flag": "coalition_government"
+					}
+				}
+			]
+		}
+	},
+
+	"rush_agenda": {
+		"description": "Rush's secret agenda: he believes Destiny's true mission is more important than the crew's survival. He has been secretly working to unlock the bridge and gain control of the ship's navigation. His ultimate goal is to steer Destiny toward its original Ancient mission objective, regardless of what the crew wants.",
+		"stages": [
+			{
+				"id": "rush_stage_1_gathering",
+				"name": "Information Gathering",
+				"description": "Rush quietly accesses ship systems, mapping the bridge lockout codes.",
+				"complete_when": "rush_secret_project_resolved"
+			},
+			{
+				"id": "rush_stage_2_leverage",
+				"name": "Building Leverage",
+				"description": "Rush uses the crew division to position himself as indispensable. He needs control of engineering and the control interface room.",
+				"complete_when": "rush_controls_engineering_or_control"
+			},
+			{
+				"id": "rush_stage_3_bridge",
+				"name": "Bridge Unlock",
+				"description": "With enough control, Rush attempts to unlock the bridge and take command of Destiny's navigation.",
+				"complete_when": "rush_has_bridge_access"
+			},
+			{
+				"id": "rush_stage_4_reveal",
+				"name": "The Reveal",
+				"description": "Rush reveals the ship's true mission to the crew — or Eli exposes him first.",
+				"complete_when": "rush_agenda_revealed"
+			}
+		],
+		"outcomes": {
+			"rush_reported": "Rush is arrested. The military maintains control but loses access to the ship's deeper secrets.",
+			"rush_confronted": "Rush agrees to share his findings with Eli. They form a fragile alliance.",
+			"rush_helped": "Rush gains control of the bridge. He reveals Destiny's mission but the crew is deeply divided.",
+			"rush_agenda_revealed_military": "Young gains control and puts Rush in the brig. The mission remains a mystery.",
+			"rush_agenda_revealed_science": "Rush takes command of the bridge and sets course for the mission objective.",
+			"rush_agenda_revealed_coalition": "The coalition agrees to pursue the mission together, with Rush as science advisor."
+		}
+	},
+
+	"negotiation": {
+		"_comment": "Negotiation parameters for the dialogue system. Each faction has negotiation strength based on their relationship with Eli and the sections they control.",
+		"base_difficulty": 50,
+		"faction_modifiers": {
+			"military": { "leverage": "combat_capability", "modifier": 0 },
+			"science": { "leverage": "technical_knowledge", "modifier": 5 },
+			"civilian": { "leverage": "numbers", "modifier": -5 },
+			"lucian_alliance": { "leverage": "deception", "modifier": 10 }
+		},
+		"relationship_bonus_per_level": 5,
+		"section_control_bonus": 3
+	}
+}

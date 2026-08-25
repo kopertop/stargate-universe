@@ -1,0 +1,4 @@
+review gd-qa-1: NO/!JSON
+review gd-qa-2: NO/!JSON
+review gd-qa-3: NO/!JSON
+VERDICT=REJECT (panel too thin: 0 valid)

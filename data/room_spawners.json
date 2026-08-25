@@ -1,0 +1,55 @@
+{
+	"_comment": "Data-driven interactable spawner config. Maps room_id to an ordered array of spawner entries. Fields: method (required, name of _spawn_* func on room.gd), args (optional array of literals), condition (optional GDScript expression using GS=GameState, PS=ProceduralShip), result_id (optional tag to capture return value for later entries), depends_on (optional, '@result_id.property' syntax to reference a prior return value in args). Authored rooms only; generated rooms fall through to _spawn_generated_room_interactables().",
+	"rooms": {
+		"quarters_room_1": [
+			{"method": "_spawn_quarters_bed"}
+		],
+		"eli_quarters": [
+			{"method": "_spawn_eli_kino_pickup"},
+			{"method": "_spawn_quarters_bed", "args": ["My bed. Time to crash."]},
+			{"method": "_spawn_kino_dispenser", "condition": "GS.reported_to_gate"}
+		],
+		"east_corridor": [
+			{"method": "_spawn_sgt_greer"}
+		],
+		"breached_section_south": [
+			{"method": "_spawn_shuttle_dock"}
+		],
+		"control_interface_room": [
+			{"method": "_spawn_dr_rush", "condition": "not GS.air_crisis_started and not GS.met_rush"},
+			{"method": "_spawn_floor_code_terminal", "args": [2]}
+		],
+		"aft_storage_hall": [
+			{"method": "_spawn_salvage_panel", "args": [0]},
+			{"method": "_spawn_salvage_panel", "args": [1]}
+		],
+		"south_corridor": [
+			{"method": "_spawn_co2_scrubber", "result_id": "scrubber"},
+			{"method": "_spawn_chloe", "condition": "not GS.breaches_sealed.is_empty()"},
+			{"method": "_spawn_scrubber_crew", "args": ["@scrubber.position"], "condition": "not GS.breaches_sealed.is_empty() and GS.air_crisis_started and not GS.scrubber_diagnosed"}
+		],
+		"north_corridor": [
+			{"method": "_spawn_soldier"},
+			{"method": "_spawn_co2_scrubber", "args": ["north_corridor", -350.0]}
+		],
+		"north_spur": [
+			{"method": "_spawn_repair_console", "args": ["sealed_section_north"], "condition": "PS.is_room_sealed(\"sealed_section_north\")"}
+		],
+		"east_corridor_far": [
+			{"method": "_spawn_co2_scrubber", "args": ["east_far", 0.0]}
+		],
+		"hydroponics": [
+			{"method": "_spawn_co2_scrubber", "args": ["hydroponics", 0.0]}
+		],
+		"infirmary": [
+			{"method": "_spawn_recovery_ward", "condition": "GS.recovering_in_infirmary"},
+			{"method": "_spawn_infirmary_ward", "condition": "not GS.recovering_in_infirmary and GS.air_crisis_started"}
+		],
+		"elevator_north": [
+			{"method": "_spawn_elevator_panel"}
+		],
+		"elevator_room_floor_1": [
+			{"method": "_spawn_elevator_panel"}
+		]
+	}
+}

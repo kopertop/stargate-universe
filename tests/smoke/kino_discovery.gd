@@ -185,7 +185,7 @@ func _test_kino_positions_live_then_fallback(gs: Node) -> void:
 
 
 func _test_filter_flags_round_trip(gs: Node) -> void:
-	print("\n--- compass_show_* filters persist through serialize/deserialize ---")
+	print("\n--- compass_show_* filters proxy through Settings ---")
 	gs.call("reset")
 	# Defaults are all-on.
 	_expect(gs.get("compass_show_lime") == true and gs.get("compass_show_gate") == true,
@@ -193,17 +193,18 @@ func _test_filter_flags_round_trip(gs: Node) -> void:
 	gs.set("compass_show_lime", false)
 	gs.set("compass_show_pois", false)
 	gs.set("compass_show_companions", false)
+	# Compass flags live on Settings (persisted via settings.cfg), not in save.json.
+	# Verify the proxy reads back the written values.
+	_expect(gs.get("compass_show_lime") == false, "proxy reads compass_show_lime=false")
+	_expect(gs.get("compass_show_pois") == false, "proxy reads compass_show_pois=false")
+	_expect(gs.get("compass_show_kinos") == true, "proxy reads untouched compass_show_kinos=true")
+	# serialize() no longer includes compass flags (they're in Settings, not save.json).
 	var snap: Dictionary = gs.call("serialize")
-	_expect(snap.get("compass_show_lime") == false, "serialize captures compass_show_lime=false")
-	_expect(snap.get("compass_show_pois") == false, "serialize captures compass_show_pois=false")
-	_expect(snap.get("compass_show_kinos") == true, "serialize captures the untouched compass_show_kinos=true")
+	_expect(not snap.has("compass_show_lime"), "serialize excludes compass flags (Settings owns them)")
 	gs.call("reset")
 	_expect(gs.get("compass_show_pois") == true, "reset restored the default before reload")
-	gs.call("deserialize", snap, 1)
-	_expect(gs.get("compass_show_lime") == false, "deserialize restores compass_show_lime=false")
-	_expect(gs.get("compass_show_pois") == false, "deserialize restores compass_show_pois=false")
-	_expect(gs.get("compass_show_companions") == false, "deserialize restores compass_show_companions=false")
-	_expect(gs.get("compass_show_kinos") == true, "deserialize restores compass_show_kinos=true")
+	# After reset, the Settings defaults are restored (all ON).
+	_expect(gs.get("compass_show_lime") == true, "reset restored compass_show_lime to default")
 	gs.call("reset")
 
 

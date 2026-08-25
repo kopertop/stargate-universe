@@ -68,6 +68,23 @@ const MANIFEST: Dictionary = {
 	"knockback": {"lib": "UAL2_Standard", "clip": "Hit_Knockback", "loop": false},
 	"consume": {"lib": "UAL2_Standard", "clip": "Consume", "loop": false},
 	"walk_carry": {"lib": "UAL2_Standard", "clip": "Walk_Carry", "loop": true},
+	# ---- P3 Traversal animations (issue #P3-traversal) ----
+	# Crawl (vents): UAL1 swim clips double as prone crawling — the character
+	# is horizontal, arms reaching forward, legs kicking. Perfect for vent
+	# tunnels. in_place strips the swim drift so the body stays at its node.
+	"crawl_idle": {"lib": "UAL1_Standard", "clip": "Swim_Idle", "loop": true, "in_place": true},
+	"crawl_walk": {"lib": "UAL1_Standard", "clip": "Swim_Fwd", "loop": true, "in_place": true},
+	# Climb (ladders): UAL2 ClimbUp is a pull-over-a-ledge cycle. Looping it
+	# reads as rhythmic ladder climbing. Climb idle is a static hold (we use
+	# idle since there's no dedicated ladder-pause clip).
+	"climb": {"lib": "UAL2_Standard", "clip": "ClimbUp_1m_RM", "loop": true, "in_place": true},
+	"climb_idle": {"lib": "UAL1_Standard", "clip": "Idle", "loop": true},
+	# Squeeze (narrow passages): UAL2 slide clips — the character drops low
+	# and slides through. Slide_Start is the entry (one-shot), Slide is the
+	# looped squeeze, Slide_Exit stands back up (one-shot).
+	"squeeze_start": {"lib": "UAL2_Standard", "clip": "Slide_Start", "loop": false, "in_place": true},
+	"squeeze": {"lib": "UAL2_Standard", "clip": "Slide", "loop": true, "in_place": true},
+	"squeeze_exit": {"lib": "UAL2_Standard", "clip": "Slide_Exit", "loop": false, "in_place": true},
 }
 
 

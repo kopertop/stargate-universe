@@ -337,10 +337,27 @@ func serialize() -> Dictionary:
 
 func deserialize(data: Dictionary, _version: int) -> void:
 	_ensure_loaded()
+	# Legacy migration: old saves store item state as top-level fields
+	# (kino_acquired, small_fuse_found, large_fuse_found, kino_orbs, resources)
+	# instead of an "items" block. Seed _items from those fields so old saves
+	# still load correctly.
+	if not data.has("items"):
+		if data.get("kino_acquired", false) == true:
+			set_count("kino_remote", 1)
+		if data.get("small_fuse_found", false) == true:
+			set_count("small_fuse", 1)
+		if data.get("large_fuse_found", false) == true:
+			set_count("large_fuse", 1)
+		if data.has("kino_orbs"):
+			set_count("kino_orb", int(data.get("kino_orbs", 0)))
+		var res: Variant = data.get("resources", {})
+		if res is Dictionary:
+			for key in (res as Dictionary).keys():
+				set_count(String(key), int((res as Dictionary)[key]))
 	# Only own the state when our block is present. Old saves have no
-	# "inventory" block — GameState.deserialize has already seeded _items from
-	# the legacy fields by the time we run, so leave that seed intact.
+	# "inventory" block — the legacy seed above handles those.
 	if not data.has("items") and not data.has("equipped"):
+		changed.emit()
 		return
 	if data.has("items"):
 		_items.clear()

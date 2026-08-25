@@ -12,14 +12,14 @@ Cloudflare Pages is wired via `wrangler.toml` and `functions/`.
 
 **Already set up:**
 - Vite 7 + `bun run build`
-- `sw.js`: TODO — no service-worker yet
-- Manifest: TODO — no `manifest.webmanifest` yet
+  - `public/sw.js` — minimal service worker present (CACHE_VERSION=v2), precaches build output + crew assets
+  - `public/manifest.webmanifest` — present with app name, icons, display: fullscreen, orientation: landscape
+  - `<link rel="manifest" href="/manifest.webmanifest">` already wired in `index.html`
+  - Icons at 192/512 shipped under `public/icons/`
 
-**To make it installable:**
-1. Add `public/manifest.webmanifest` with app name, icons, display: "fullscreen", orientation: "landscape"
-2. Wire a minimal `public/sw.js` that precaches the build output + crew VRMs + audio catalog
-3. Add `<link rel="manifest" href="/manifest.webmanifest">` to `index.html`
-4. Ship icons at 192/512/1024 (use the existing promo art)
+**Outstanding polish:**
+1. Bump `CACHE_VERSION` in `sw.js` on each release
+2. Validate icon paths in the manifest match actual files under `public/icons/`
 
 Install experience: Chrome → ⋮ → "Install Stargate Universe". On install, the game opens
 windowless in a dedicated PWA frame — no browser chrome, no address bar.

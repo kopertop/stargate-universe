@@ -284,8 +284,8 @@ func equipped_items() -> Dictionary:
 #     "effects": { "atmosphere_protection": true, "carry_capacity": 4 }
 # When absent (the cosmetic-first default for every shipped item), the seams
 # below report the no-effect baseline. The follow-up issue: (a) authors `effects`
-# on the relevant defs, (b) wires the call sites flagged with TODO(#75-followup)
-# below into the systems that consume them (planet atmosphere gate, inventory
+# on the relevant defs, (b) wires the call sites flagged with TODO below
+# into the systems that consume them (planet atmosphere gate, inventory
 # capacity). The accumulation rules here (any-true / additive-sum) are the
 # intended semantics; only the consumer wiring is deferred.
 
@@ -321,16 +321,16 @@ func equipped_effect_flag(field: String) -> bool:
 	return false
 
 
-# SEAM: head-slot helmet → off-world atmosphere protection (#75 future hook).
-# TODO(#75-followup): call from the planet atmosphere gate (planet.gd /
+# SEAM: head-slot helmet → off-world atmosphere protection (future hook).
+# TODO: call from the planet atmosphere gate (planet.gd /
 # atmo_readout.gd) so a protected crew member ignores a hostile-atmosphere
 # debuff. Reports false today (no shipped def carries the effect — cosmetic).
 func has_atmosphere_protection() -> bool:
 	return equipped_effect_flag("atmosphere_protection")
 
 
-# SEAM: back-slot pack → carry-capacity modifier (#75 future hook).
-# TODO(#75-followup): add this to the base pack size where carry limits are
+# SEAM: back-slot pack → carry-capacity modifier (future hook).
+# TODO: add this to the base pack size where carry limits are
 # enforced (the inventory cap is presently unbounded, so this is inert until
 # capacity is introduced). Reports 0 today (no shipped def carries the effect).
 func carry_capacity_modifier() -> int:

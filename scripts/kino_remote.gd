@@ -163,6 +163,7 @@ var _level_bar: VBoxContainer = null
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	set_process(false)  # Only tick during breach beat — see begin_breach_beat / _close.
 	# Build UI deferred so it lands on top of every scene's layers.
 	call_deferred("_init_ui")
 	GameState.current_room_changed.connect(_on_current_room_changed)
@@ -581,23 +582,25 @@ func _build_settings_page(parent: Control) -> void:
 	_label(page, "COMPASS MARKERS", 16, Color(0.55, 0.85, 1.0, 1.0))
 	_label(page, "  Choose what the direction compass displays.", 13, Color(0.82, 0.92, 1.0, 0.9))
 	page.add_child(HSeparator.new())
-	_settings_check(page, "Lime deposits", "compass_show_lime")
-	_settings_check(page, "Points of interest", "compass_show_pois")
-	_settings_check(page, "Kino drones", "compass_show_kinos")
-	_settings_check(page, "Companions / away-team", "compass_show_companions")
-	_settings_check(page, "Gate & objective", "compass_show_gate")
+	_settings_check(page, "Lime deposits", "compass_show_lime", Settings)
+	_settings_check(page, "Points of interest", "compass_show_pois", Settings)
+	_settings_check(page, "Kino drones", "compass_show_kinos", Settings)
+	_settings_check(page, "Companions / away-team", "compass_show_companions", Settings)
+	_settings_check(page, "Gate & objective", "compass_show_gate", Settings)
 
 
-func _settings_check(parent: Control, label: String, flag: String) -> void:
+func _settings_check(parent: Control, label: String, flag: String, source: Node = null) -> void:
+	if source == null:
+		source = GameState
 	var cb: CheckButton = CheckButton.new()
 	cb.text = label
-	cb.button_pressed = GameState.get(flag) == true
+	cb.button_pressed = source.get(flag) == true
 	cb.focus_mode = Control.FOCUS_NONE
 	cb.add_theme_color_override("font_color", Color.WHITE)
 	cb.add_theme_color_override("font_pressed_color", Color.WHITE)
 	cb.add_theme_color_override("font_hover_color", Color.WHITE)
 	cb.add_theme_font_size_override("font_size", 15)
-	cb.toggled.connect(func(on: bool) -> void: GameState.set(flag, on))
+	cb.toggled.connect(func(on: bool) -> void: source.set(flag, on))
 	Audio.attach_ui_hover(cb)
 	parent.add_child(cb)
 	_settings_checks[flag] = cb
@@ -607,7 +610,8 @@ func _refresh_settings() -> void:
 	for flag in _settings_checks:
 		var cb: CheckButton = _settings_checks[flag]
 		if is_instance_valid(cb):
-			cb.button_pressed = GameState.get(flag) == true
+			var source: Node = Settings if Settings.get(flag) != null else GameState
+			cb.button_pressed = source.get(flag) == true
 
 
 func _kino_action_button(text: String, primary: bool) -> Button:
@@ -740,6 +744,7 @@ func _close() -> void:
 	# klaxon looping after the panel closes.
 	if _breach_active:
 		_breach_active = false
+		set_process(false)
 		_stop_breach_klaxon()
 		_clear_breach_caption()
 	_persist_ui_state()
@@ -1195,6 +1200,7 @@ func _process(delta: float) -> void:
 # shut, revealing the real objective.
 func begin_breach_beat(trap_from: String, trap_to: String, jammed_room: String, flood_rooms: Array) -> void:
 	_breach_active = true
+	set_process(true)
 	_breach_phase = 0
 	_breach_time = 0.0
 	_breach_trap_from = trap_from

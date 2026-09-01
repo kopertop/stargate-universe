@@ -632,7 +632,7 @@ func _run_arrival() -> void:
 func _play_prologue_cinematic() -> void:
 	# Score the cold open: tense, urgent bed for the evac chaos. Shifts to wonder at the
 	# ship-shudder beat below, then _start_ambient() resolves to ship_calm afterward.
-	MusicDirector.set_mood("tension")
+	set_mood("tension")
 	_set_arrival_crew_visible(false)
 	# Hold Scott's auto-greet for the WHOLE cold open — and, per the synced-audio
 	# design, we DON'T turn it back on at the end: by the time the recording finishes
@@ -688,6 +688,13 @@ func _play_prologue_cinematic() -> void:
 	await _cwait(0.5)
 	await dial_and_open(true)
 
+	# §1.1b ICARUS RUMBLE + KLAXON — the base behind them is dying. Distant rumble and
+	# alarm bleed through the open wormhole while the gate is active. Both are stopped
+	# in _collapse_gate() (the gate shuts = the connection to Icarus is severed) and in
+	# _finalize_cold_open() (skip safety). Low volume so they sit under the VO + crowd.
+	_co_rumble = _co_start_loop(ICARUS_RUMBLE, -15.0)
+	_co_klaxon = _co_start_loop("res://sounds/klaxon.ogg", -18.0)
+
 	# Hold a beat on the dark establishing shot with the gate now ACTIVE — this is the
 	# exact SGU "Air" opening still (black room, amber walkway, bright gate far off).
 	await _cwait(1.6)
@@ -720,6 +727,8 @@ func _play_prologue_cinematic() -> void:
 	_grunt(scott)                                # the two crash in (grunts on the punch-through)
 	await _cwait(THROW_FLIGHT_TIME)            # let the two land first
 	_cut_to(scott, 3.2, 1.5, 1.6, 0.5)
+	# Radio crackle before Scott's first comms line — sells that he's on radio, not just shouting.
+	_co_one_shot(RADIO_CLICK_SFX, -6.0)
 	_cap_now("LT. SCOTT", "All right, get out of here. Get out of the way!", "open-scott-clearway")
 
 	# §1.3b PANDEMONIUM — NOW the continuous flood ramps as Scott marshals it. Tapers by
@@ -727,8 +736,23 @@ func _play_prologue_cinematic() -> void:
 	# that clears to the walls, not an endless clone-wall.
 	await _cwait(2.0)
 	_cut_wide(0.8)                               # WIDE: the flood + gate + room as one shot
+	# Crowd-panic ambient bed: the "many terrified people" layer that loops under the
+	# flood and ducks under the voiced lines. Stopped in _collapse_gate() (evac is over)
+	# and _finalize_cold_open() (skip safety). Sits below the VO in the mix.
+	_co_crowd_bed = _co_start_loop(CROWD_PANIC_BED, -12.0)
 	var flood_from: float = audio.get_playback_position() if (audio != null and is_instance_valid(audio)) else 9.0
 	_co_crowd_flood(audio, flood_from, 38.0, 0.9)
+	# Crowd confusion VO — overlapping, layered over the captioned lines (fire-and-forget,
+	# no caption). Alternates between the two clips at semi-regular intervals during the
+	# flood window for the chaotic "overlapping voices" read.
+	_cap_crowd("open-crowd-where")
+	_cap_crowd("open-crowd-what")
+	# Marshalling barks (layered, no caption) — Greer's "Clear!" and Marine "Clear!" fire
+	# alongside the existing Scott captions for depth.
+	_cap_crowd("open-greer-clear")
+	_cap_crowd("open-marine-clear")
+	# Radio crackle before Scott's second comms line.
+	_co_one_shot(RADIO_CLICK_SFX, -6.0)
 	_cap_now("LT. SCOTT", "This is Scott! Slow down the evac — we are comin' in too hot!", "open-scott-evac")
 	# §1.3c WRAY grabs at Scott. She comes through, scrambles UP to him, and the two
 	# KNEEL together amid the chaos as he turns to her and she asks where they are —
@@ -911,8 +935,8 @@ func _play_prologue_cinematic() -> void:
 	# §1.9 THE SHIMMER — the ship jumps to FTL (left-right shake + blur), then the button.
 	await _await_audio(audio, 118.0)
 	_ftl_jump()
-	MusicDirector.play_sting("impact_jump")           # musical hit on the FTL lurch
-	MusicDirector.set_mood("mystery")                 # evac panic gives way to awe
+	play_sting("impact_jump")           # musical hit on the FTL lurch
+	set_mood("mystery")                 # evac panic gives way to awe
 	Cinematic.flash(Color(0.6, 0.8, 1.0, 0.5), 0.6)   # a brief blue shimmer envelops everyone
 	_cut_wide(0.8)
 	_cap("SGT. GREER", "What in the hell was that?!", 120.0, "open-greer-whatwasthat")
@@ -1266,6 +1290,21 @@ var _skip_hint: Label = null   # cached "Hold to skip" HUD label (built lazily)
 # Dev/QA only: seconds into the cold open to auto-fire the skip (set via the
 # `coldopen_autoskip=<secs>` cmdline arg). 0 = disabled (normal play).
 var _autoskip_after: float = 0.0
+# Sound bed layers for the cold open (all stopped/freed in _finalize_cold_open so a
+# skip can't orphan them). Each is a looping AudioStreamPlayer started at its beat and
+# stopped when the narrative calls for it (crowd bed → gate collapse; Icarus rumble +
+# klaxon → gate collapse; shudder → one-shot, no loop). All no-op if the asset is
+# missing (same load-guard pattern as _grunt / _thud).
+var _co_crowd_bed: AudioStreamPlayer = null
+var _co_rumble: AudioStreamPlayer = null
+var _co_klaxon: AudioStreamPlayer = null
+# Asset paths for the new sound-bed layers (sourced/authoried separately; the code
+# wires them now so the cinematic is ready the moment the assets land). All use the
+# load()-as-AudioStream null-check pattern so a missing file degrades to silence.
+const CROWD_PANIC_BED: String = "res://sounds/dialog/prologue/crowd_panic_bed.ogg"
+const ICARUS_RUMBLE: String = "res://sounds/dialog/prologue/icarus_rumble.ogg"
+const SHIP_SHUDDER: String = "res://sounds/dialog/prologue/ship_shudder.ogg"
+const RADIO_CLICK_SFX: String = "res://sounds/radio_click.ogg"
 
 
 # Gated wait used by the cold-open coroutine in place of bare create_timer awaits, so a
@@ -1351,6 +1390,81 @@ func _cap_now(speaker: String, line: String, vo_id: String = "") -> void:
 	vo.stream = stream
 	vo.finished.connect(vo.queue_free)
 	vo.play()
+
+
+# Fire-and-forget crowd/ambient VO: plays the clip WITHOUT a caption (or a brief,
+# non-blocking one) and does NOT wait on the playhead or for caption advance. This is
+# the key new abstraction for the chaotic evac — overlapping crowd confusion and
+# marshalling barks that layer OVER the existing captioned lines, not replacing them.
+# Deterministic (the caller picks the timing), and guarded by _co_skip.
+func _cap_crowd(vo_id: String, caption: String = "") -> void:
+	if _co_skip:
+		return
+	if vo_id == "":
+		return
+	if caption != "":
+		# Brief non-blocking caption (does not drive the cinematic flow; the primary
+		# captioned lines still own the playhead-locked beats).
+		Cinematic.set_caption(caption)
+	var path: String = PROLOGUE_VO_DIR + vo_id + ".wav"
+	if not ResourceLoader.exists(path):
+		return
+	var stream: AudioStream = load(path) as AudioStream
+	if stream == null:
+		return
+	var vo: AudioStreamPlayer = AudioStreamPlayer.new()
+	vo.name = "ColdOpenCrowdVO"
+	vo.volume_db = -3.0   # sit just under the primary VO so it reads as background
+	add_child(vo)
+	vo.stream = stream
+	vo.finished.connect(vo.queue_free)
+	vo.play()
+
+
+# Play a one-shot SFX clip (e.g. ship shudder, radio click) and auto-free it. No-ops
+# cleanly if the asset is missing. Guarded by _co_skip.
+func _co_one_shot(path: String, vol_db: float = 0.0) -> void:
+	if _co_skip:
+		return
+	if not ResourceLoader.exists(path):
+		return
+	var stream: AudioStream = load(path) as AudioStream
+	if stream == null:
+		return
+	var p: AudioStreamPlayer = AudioStreamPlayer.new()
+	p.name = "ColdOpenSFX"
+	p.volume_db = vol_db
+	add_child(p)
+	p.stream = stream
+	p.finished.connect(p.queue_free)
+	p.play()
+
+
+# Start a looping ambient bed player. Returns the player (null if the asset is
+# missing). Guarded by _co_skip.
+func _co_start_loop(path: String, vol_db: float = -12.0) -> AudioStreamPlayer:
+	if _co_skip:
+		return null
+	if not ResourceLoader.exists(path):
+		return null
+	var stream: AudioStream = load(path) as AudioStream
+	if stream == null:
+		return null
+	if "loop" in stream:
+		stream.set("loop", true)
+	var p: AudioStreamPlayer = AudioStreamPlayer.new()
+	p.volume_db = vol_db
+	add_child(p)
+	p.stream = stream
+	p.play()
+	return p
+
+
+# Stop + free a looping bed player (skip-safety). Idempotent.
+func _co_stop_loop(p: AudioStreamPlayer) -> void:
+	if p != null and is_instance_valid(p):
+		p.stop()
+		p.queue_free()
 
 
 # Turn Scott to face the (dead) gate — he's calling back through the wormhole / for Rush.
@@ -1510,6 +1624,10 @@ func _thud() -> void:
 	if _thud_metal != null:
 		_thud_metal.pitch_scale = 0.78 + 0.18 * float(_thud_i % 4)   # deep, varied clang
 		_thud_metal.play()
+	# Crew effort grunt — the human panic layer the no-vocals ambience bed strips out.
+	# Triggered alongside every thud so each body-impact on the deck has a vocal layer
+	# (the _grunt pool no-ops cleanly until the grunt assets exist on disk).
+	_grunt()
 	_thud_i += 1
 
 
@@ -2971,7 +3089,7 @@ func _start_ambient() -> void:
 	# air-crisis quest steps — refresh() derives which from live world state).
 	if _ambient_sfx != null and not _ambient_sfx.playing:
 		_ambient_sfx.play()
-	MusicDirector.refresh()
+	refresh()
 
 # ----- Phase E gate beats ----------------------------------------------------
 
@@ -3195,7 +3313,22 @@ func _build_returned_crew_npc(display_name: String, kind: String, glb_path: Stri
 	model_holder.name = "Model"
 	model_holder.rotation.y = PI
 	body.add_child(model_holder)
-	if CharacterFactoryRef.profile_for(display_name).has("mod"):
+	# VRM-first: use the full VRoid body when a .vrm file exists for this character.
+	var _vrm_path: String = String(CharacterFactoryRef.profile_for(display_name).get("vrm", ""))
+	if _vrm_path != "" and ResourceLoader.exists(_vrm_path):
+		var VrmCharacterScript: Script = preload("res://scripts/vrm_character.gd")
+		var vrm: Node3D = VrmCharacterScript.create(_vrm_path, display_name)
+		if vrm != null:
+			model_holder.add_child(vrm)
+			var MgrScript: Script = preload("res://scripts/vrm_character_manager.gd")
+			var expr_profile: Dictionary = MgrScript.EXPRESSION_PROFILES.get(display_name, {})
+			if not expr_profile.is_empty():
+				var personality: String = String(expr_profile.get("personality", "neutral"))
+				if personality != "neutral":
+					vrm.call("set_emotion", personality, 0.6)
+			if CharacterFactoryRef.is_military(display_name):
+				vrm.call("attach_gear", "sidearm", false)
+	elif CharacterFactoryRef.profile_for(display_name).has("mod"):
 		var mc: Node3D = CharacterFactoryRef.build_modular(display_name)
 		model_holder.add_child(mc)
 		# Back aboard: ship dress code (duty tint + sidearm for military).
@@ -4625,4 +4758,37 @@ func _build_lighting_props() -> void:
 	door_spot.spot_angle = 38.0
 	door_spot.position = Vector3(0.0, ceiling_height - 0.6, -half_z + 1.2)
 	_world.add_child(door_spot)
+
+	# --- Volumetric FogVolume at the gate ring -------------------------------
+	# A localized fog cloud around the event horizon — atmospheric haze where
+	# the gate's glow scatters into, giving the ring real depth when viewed
+	# from across the room. Enabled by the gate-room-environment.tres
+	# volumetric_fog_enabled=true; this FogVolume adds localized density on
+	# top of the global low-density haze.
+	var gate_fog := FogVolume.new()
+	gate_fog.name = "GateFogVolume"
+	gate_fog.shape = RenderingServer.FOG_VOLUME_SHAPE_ELLIPSOID
+	gate_fog.size = Vector3(6.0, 5.0, 3.0)
+	gate_fog.position = Vector3(0.0, _gate_center_y(), GATE_Z)
+	var gate_fog_mat := FogMaterial.new()
+	gate_fog_mat.density = 0.15
+	gate_fog_mat.albedo = Color(0.3, 0.5, 0.9)
+	# FogMaterial has no emission_energy_multiplier (only StandardMaterial3D
+	# does), so bake the energy into the emission color directly.
+	gate_fog_mat.emission = Color(0.15, 0.35, 0.7) * 1.5
+	gate_fog.material = gate_fog_mat
+	_world.add_child(gate_fog)
+
+	# --- Ancient glow on ceiling strips --------------------------------------
+	# The cool-blue ceiling edge-glow strips (emissive _glow_mat) pulse
+	# subtly — the ship "breathing." Low amplitude so it reads as ambient
+	# life, not a strobe. The glow is dimmed during the dark-open sequence
+	# by _open_dark/_flicker_lights_up (which drive _glow_mat directly).
+	var glow := preload("res://scripts/ancient_glow.gd").new()
+	glow.pulse_amplitude = 0.08
+	glow.pulse_period = 4.0
+	glow.pulse_color = Color(0.42, 0.58, 0.95)
+	add_child(glow)
+	if _glow_mat != null:
+		glow.add_target(_glow_mat)
 	door_spot.look_at(Vector3(0.0, 0.0, -half_z + 0.2), Vector3.UP)

@@ -33,11 +33,13 @@ var _accum: Dictionary = {}       # id → float
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_PAUSABLE
+	set_process(false)  # Only tick during SHIP phase — see _reevaluate_process.
 	_load_rates()
 	# Register with SaveManager so accumulators survive save/load.
 	var sm: Node = _autoload("SaveManager")
 	if sm != null and sm.has_method("register_system"):
 		sm.call("register_system", "consumption", self)
+	call_deferred("_install_phase_hooks")
 
 
 # --- rate loading -------------------------------------------------------------
@@ -102,11 +104,17 @@ func tick(delta: float) -> void:
 	var gs: Node = _autoload("GameState")
 	if gs == null:
 		return
+	# Combined multiplier: power-grid penalty (>1.0) * emergency-rationing
+	# reduction (<1.0 when ConsequencesSystem says both food+water are
+	# critically low). Emergency rationing lets the ship limp longer.
+	var power_mult: float = _power_efficiency_multiplier()
+	var ration_mult: float = _emergency_rationing_multiplier()
+	var combined_mult: float = power_mult * ration_mult
 	for id in _accum.keys():
 		var amount: float = per_cycle_amount(id)
 		if amount <= 0.0:
 			continue
-		var rate_per_sec: float = amount / _cycle_seconds
+		var rate_per_sec: float = (amount / _cycle_seconds) * combined_mult
 		_accum[id] = float(_accum[id]) + rate_per_sec * delta
 		while float(_accum[id]) >= 1.0:
 			_accum[id] = float(_accum[id]) - 1.0
@@ -145,9 +153,36 @@ func _phase_active() -> bool:
 	return gs.get("episode_complete") == true
 
 
+# --- phase-gate hooks ----------------------------------------------------------
+
+# Wire to FtlLoop.phase_changed and GameState.episode_completed so
+# _reevaluate_process() fires on every relevant state transition.
+func _install_phase_hooks() -> void:
+	var loop: Node = _autoload("FtlLoop")
+	if loop != null and loop.has_signal("phase_changed"):
+		if not loop.is_connected("phase_changed", _reevaluate_process):
+			loop.connect("phase_changed", _reevaluate_process)
+	var gs: Node = _autoload("GameState")
+	if gs != null and gs.has_signal("episode_completed"):
+		if not gs.is_connected("episode_completed", _reevaluate_process):
+			gs.connect("episode_completed", _reevaluate_process)
+	# Evaluate once on init in case we're resuming mid-SHIP.
+	_reevaluate_process()
+
+
+# Toggle _process based on phase activity and instant_mode guard.
+func _reevaluate_process(_arg: Variant = null) -> void:
+	var router: Node = _autoload("SceneRouter")
+	if router != null and router.get("instant_mode") == true:
+		set_process(false)
+		return
+	set_process(_phase_active())
+
+
 # --- _process -----------------------------------------------------------------
 
 func _process(delta: float) -> void:
+	# set_process(false) gates this when inactive — the checks below are safety nets.
 	var router: Node = _autoload("SceneRouter")
 	if router != null and router.get("instant_mode") == true:
 		return
@@ -160,6 +195,7 @@ func _process(delta: float) -> void:
 
 func reset() -> void:
 	_accum.clear()
+	set_process(false)
 	# Re-seed zero accumulators for all tracked ids after a reset.
 	var gs: Node = _autoload("GameState")
 	if gs != null and gs.has_method("tracked_resource_ids"):
@@ -183,6 +219,53 @@ func deserialize(data: Dictionary, _version: int) -> void:
 		for id in gs.call("tracked_resource_ids"):
 			if not _accum.has(id):
 				_accum[id] = 0.0
+
+
+# --- power-grid integration ---------------------------------------------------
+
+# Returns a multiplier >= 1.0 representing how much harder consumption works
+# when ship power is degraded. 1.0 = all rooms POWERED (no penalty). Each
+# DEGRADED room adds POWER_DEGRADED_PENALTY; each OFFLINE room adds
+# POWER_OFFLINE_PENALTY. The multiplier scales per-cycle consumption so that
+# life support in a dark ship burns resources faster (pumps labour harder,
+# backup systems waste more).
+#
+# Ties to PowerGrid per the power-grid task contract: degraded rooms reduce
+# life-support efficiency, offline rooms force emergency rationing.
+const POWER_DEGRADED_PENALTY: float = 0.05   # +5% per degraded room
+const POWER_OFFLINE_PENALTY: float = 0.15   # +15% per offline room
+
+func _power_efficiency_multiplier() -> float:
+	var pg: Node = _autoload("PowerGrid")
+	if pg == null or not pg.has_method("get_all_room_states"):
+		return 1.0
+	var states: Dictionary = pg.call("get_all_room_states")
+	if states.is_empty():
+		return 1.0
+	# PowerState enum: POWERED=0, DEGRADED=1, OFFLINE=2
+	var degraded: int = 0
+	var offline: int = 0
+	for room_id in states.keys():
+		var s: int = int(states[room_id])
+		if s == 1:
+			degraded += 1
+		elif s == 2:
+			offline += 1
+	return 1.0 + (float(degraded) * POWER_DEGRADED_PENALTY) + (float(offline) * POWER_OFFLINE_PENALTY)
+
+
+# --- emergency-rationing integration -----------------------------------------
+
+# Returns a multiplier <= 1.0 representing how much consumption is reduced
+# when ConsequencesSystem declares emergency rationing (both food AND water
+# critically low). 1.0 = no rationing (normal consumption). When rationing is
+# active, returns ConsequencesSystem.consumption_multiplier() (< 1.0) so the
+# crew ekes out the remaining stores longer.
+func _emergency_rationing_multiplier() -> float:
+	var cs: Node = _autoload("ConsequencesSystem")
+	if cs == null or not cs.has_method("consumption_multiplier"):
+		return 1.0
+	return float(cs.call("consumption_multiplier"))
 
 
 # --- helpers ------------------------------------------------------------------

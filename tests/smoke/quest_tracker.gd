@@ -55,15 +55,29 @@ func _run_checks() -> void:
 	await process_frame
 
 	# --- structure --------------------------------------------------------
+	# Multi-quest tracker (#66, Phase 7): one VBox entry per active quest, each
+	# holding a Title + Objective label. The first entry's labels are the
+	# tracked quest's (the single-quest legacy contract).
 	var tracker: Node = _hud.get_node_or_null("QuestTracker")
 	_expect(tracker != null, "HUD builds the upper-right QuestTracker")
 	if tracker == null:
 		_finish()
 		return
-	var title_label: Label = tracker.get_node_or_null("Title") as Label
-	var objective_label: Label = tracker.get_node_or_null("Objective") as Label
-	_expect(title_label != null, "QuestTracker has a Title label")
-	_expect(objective_label != null, "QuestTracker has an Objective label")
+	# At least one entry should exist (the auto-started E1 quest).
+	var entries: Array = (tracker as Control).get_children()
+	_expect(not entries.is_empty(), "QuestTracker has at least one quest entry")
+	if entries.is_empty():
+		_finish()
+		return
+	var first_entry: VBoxContainer = entries[0] as VBoxContainer
+	_expect(first_entry != null, "first tracker entry is a VBoxContainer")
+	if first_entry == null:
+		_finish()
+		return
+	var title_label: Label = first_entry.get_node_or_null("Title") as Label
+	var objective_label: Label = first_entry.get_node_or_null("Objective") as Label
+	_expect(title_label != null, "first tracker entry has a Title label")
+	_expect(objective_label != null, "first tracker entry has an Objective label")
 	if title_label == null or objective_label == null:
 		_finish()
 		return

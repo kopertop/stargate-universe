@@ -34,6 +34,16 @@
 			"You cut it too close to the jump. They pulled you through just in time — barely.",
 			"That was way too close. Destiny doesn't wait. You're back now, that's what matters."
 		],
+		"dehydration": [
+			"You collapsed from dehydration. Your body ran out of water — that's serious. Drink. Now.",
+			"Your electrolytes are a mess. You were dry as a bone when they brought you in. Hydrate, and don't let it happen again.",
+			"No water, no you. You're on fluids and rest until your levels look human again."
+		],
+		"starvation": [
+			"Your body shut down — you starved. Food is not optional, Eli. Eat and rest, that's an order.",
+			"You ran on empty until your body quit on you. We've got nutrition into you — you'll be weak for a while yet.",
+			"Starvation is not a strategy. You're on a monitored diet until you can stand without shaking."
+		],
 		"generic": [
 			"You're awake. Good. You took a knock out there — nothing that won't mend.",
 			"Easy now. You're back aboard Destiny and you're going to be fine.",

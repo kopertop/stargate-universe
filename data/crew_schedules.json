@@ -1,0 +1,264 @@
+{
+	"day_length_seconds": 1200.0,
+	"crew": {
+		"Eli": {
+			"role": "civilian_specialist",
+			"home_room": "eli_quarters",
+			"shift_start": 0.30,
+			"schedule": [
+				{ "t": 0.00, "activity": "sleep", "room": "eli_quarters" },
+				{ "t": 0.25, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.30, "activity": "work", "room": "control_interface_room" },
+				{ "t": 0.55, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.60, "activity": "work", "room": "eli_quarters" },
+				{ "t": 0.85, "activity": "social", "room": "gate_room" },
+				{ "t": 0.92, "activity": "sleep", "room": "eli_quarters" }
+			],
+			"alert_station": "control_interface_room",
+			"alert_priority": 2
+		},
+		"Dr Rush": {
+			"role": "chief_scientist",
+			"home_room": "control_interface_room",
+			"shift_start": 0.0,
+			"schedule": [
+				{ "t": 0.00, "activity": "work", "room": "control_interface_room" },
+				{ "t": 0.20, "activity": "work", "room": "control_interface_room" },
+				{ "t": 0.35, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.40, "activity": "work", "room": "control_interface_room" },
+				{ "t": 0.65, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.70, "activity": "work", "room": "control_interface_room" },
+				{ "t": 0.95, "activity": "sleep", "room": "aft_quarters_b" }
+			],
+			"alert_station": "control_interface_room",
+			"alert_priority": 1
+		},
+		"Dr Park": {
+			"role": "scientist",
+			"home_room": "hydroponics",
+			"shift_start": 0.25,
+			"schedule": [
+				{ "t": 0.00, "activity": "sleep", "room": "aft_quarters_b" },
+				{ "t": 0.22, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.25, "activity": "work", "room": "hydroponics" },
+				{ "t": 0.50, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.55, "activity": "work", "room": "control_interface_room" },
+				{ "t": 0.80, "activity": "social", "room": "gate_room" },
+				{ "t": 0.90, "activity": "sleep", "room": "aft_quarters_b" }
+			],
+			"alert_station": "hydroponics",
+			"alert_priority": 3
+		},
+		"Dr James": {
+			"role": "medic",
+			"home_room": "infirmary",
+			"shift_start": 0.20,
+			"schedule": [
+				{ "t": 0.00, "activity": "sleep", "room": "aft_quarters_a" },
+				{ "t": 0.18, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.20, "activity": "work", "room": "infirmary" },
+				{ "t": 0.50, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.55, "activity": "work", "room": "infirmary" },
+				{ "t": 0.85, "activity": "social", "room": "gate_room" },
+				{ "t": 0.92, "activity": "sleep", "room": "aft_quarters_a" }
+			],
+			"alert_station": "infirmary",
+			"alert_priority": 1
+		},
+		"Chloe Armstrong": {
+			"role": "civilian_diplomat",
+			"home_room": "eli_quarters",
+			"shift_start": 0.30,
+			"schedule": [
+				{ "t": 0.00, "activity": "sleep", "room": "aft_quarters_b" },
+				{ "t": 0.25, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.30, "activity": "social", "room": "gate_room" },
+				{ "t": 0.50, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.55, "activity": "work", "room": "control_interface_room" },
+				{ "t": 0.80, "activity": "social", "room": "hydroponics" },
+				{ "t": 0.90, "activity": "sleep", "room": "aft_quarters_b" }
+			],
+			"alert_station": "gate_room",
+			"alert_priority": 4
+		},
+		"Lt Scott": {
+			"role": "military_officer",
+			"home_room": "gate_room",
+			"shift_start": 0.0,
+			"schedule": [
+				{ "t": 0.00, "activity": "work", "room": "gate_room" },
+				{ "t": 0.25, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.30, "activity": "work", "room": "gate_room" },
+				{ "t": 0.50, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.55, "activity": "work", "room": "control_interface_room" },
+				{ "t": 0.75, "activity": "work", "room": "gate_room" },
+				{ "t": 0.90, "activity": "sleep", "room": "aft_quarters_b" }
+			],
+			"alert_station": "gate_room",
+			"alert_priority": 1
+		},
+		"Sgt Greer": {
+			"role": "military_enlisted",
+			"home_room": "gate_room",
+			"shift_start": 0.10,
+			"schedule": [
+				{ "t": 0.00, "activity": "sleep", "room": "aft_quarters_b" },
+				{ "t": 0.08, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.10, "activity": "work", "room": "gate_room" },
+				{ "t": 0.35, "activity": "work", "room": "north_spur" },
+				{ "t": 0.50, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.55, "activity": "work", "room": "gate_room" },
+				{ "t": 0.80, "activity": "patrol", "room": "south_spur" },
+				{ "t": 0.90, "activity": "sleep", "room": "aft_quarters_b" }
+			],
+			"alert_station": "gate_room",
+			"alert_priority": 1
+		},
+		"Colonel Young": {
+			"role": "commanding_officer",
+			"home_room": "control_interface_room",
+			"shift_start": 0.0,
+			"schedule": [
+				{ "t": 0.00, "activity": "work", "room": "control_interface_room" },
+				{ "t": 0.20, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.25, "activity": "work", "room": "control_interface_room" },
+				{ "t": 0.50, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.55, "activity": "work", "room": "control_interface_room" },
+				{ "t": 0.80, "activity": "social", "room": "infirmary" },
+				{ "t": 0.88, "activity": "sleep", "room": "aft_quarters_a" }
+			],
+			"alert_station": "control_interface_room",
+			"alert_priority": 1
+		},
+		"Lt James": {
+			"role": "military_officer",
+			"home_room": "gate_room",
+			"shift_start": 0.15,
+			"schedule": [
+				{ "t": 0.00, "activity": "sleep", "room": "aft_quarters_a" },
+				{ "t": 0.12, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.15, "activity": "work", "room": "gate_room" },
+				{ "t": 0.40, "activity": "patrol", "room": "north_spur" },
+				{ "t": 0.50, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.55, "activity": "work", "room": "gate_room" },
+				{ "t": 0.80, "activity": "patrol", "room": "south_spur" },
+				{ "t": 0.90, "activity": "sleep", "room": "aft_quarters_a" }
+			],
+			"alert_station": "gate_room",
+			"alert_priority": 1
+		},
+		"TJ": {
+			"role": "head_medic",
+			"home_room": "infirmary",
+			"shift_start": 0.0,
+			"schedule": [
+				{ "t": 0.00, "activity": "work", "room": "infirmary" },
+				{ "t": 0.25, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.30, "activity": "work", "room": "infirmary" },
+				{ "t": 0.55, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.60, "activity": "work", "room": "infirmary" },
+				{ "t": 0.85, "activity": "social", "room": "gate_room" },
+				{ "t": 0.92, "activity": "sleep", "room": "aft_quarters_b" }
+			],
+			"alert_station": "infirmary",
+			"alert_priority": 1
+		},
+		"Camille": {
+			"role": "civilian_administrator",
+			"home_room": "eli_quarters",
+			"shift_start": 0.30,
+			"schedule": [
+				{ "t": 0.00, "activity": "sleep", "room": "aft_quarters_b" },
+				{ "t": 0.25, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.30, "activity": "work", "room": "eli_quarters" },
+				{ "t": 0.50, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.55, "activity": "social", "room": "gate_room" },
+				{ "t": 0.75, "activity": "work", "room": "eli_quarters" },
+				{ "t": 0.90, "activity": "sleep", "room": "aft_quarters_b" }
+			],
+			"alert_station": "eli_quarters",
+			"alert_priority": 4
+		},
+		"Volker": {
+			"role": "scientist",
+			"home_room": "control_interface_room",
+			"shift_start": 0.25,
+			"schedule": [
+				{ "t": 0.00, "activity": "sleep", "room": "aft_quarters_b" },
+				{ "t": 0.22, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.25, "activity": "work", "room": "control_interface_room" },
+				{ "t": 0.50, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.55, "activity": "work", "room": "hydroponics" },
+				{ "t": 0.80, "activity": "social", "room": "gate_room" },
+				{ "t": 0.90, "activity": "sleep", "room": "aft_quarters_b" }
+			],
+			"alert_station": "control_interface_room",
+			"alert_priority": 3
+		},
+		"Brody": {
+			"role": "engineer",
+			"home_room": "control_interface_room",
+			"shift_start": 0.20,
+			"schedule": [
+				{ "t": 0.00, "activity": "sleep", "room": "aft_quarters_b" },
+				{ "t": 0.18, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.20, "activity": "work", "room": "control_interface_room" },
+				{ "t": 0.45, "activity": "work", "room": "aft_storage_hall" },
+				{ "t": 0.50, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.55, "activity": "work", "room": "control_interface_room" },
+				{ "t": 0.85, "activity": "social", "room": "gate_room" },
+				{ "t": 0.92, "activity": "sleep", "room": "aft_quarters_b" }
+			],
+			"alert_station": "control_interface_room",
+			"alert_priority": 2
+		},
+		"Varro": {
+			"role": "lucian_alliance",
+			"home_room": "aft_quarters_b",
+			"shift_start": 0.30,
+			"schedule": [
+				{ "t": 0.00, "activity": "sleep", "room": "aft_quarters_b" },
+				{ "t": 0.25, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.30, "activity": "social", "room": "gate_room" },
+				{ "t": 0.50, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.55, "activity": "work", "room": "aft_storage_hall" },
+				{ "t": 0.80, "activity": "social", "room": "gate_room" },
+				{ "t": 0.90, "activity": "sleep", "room": "aft_quarters_b" }
+			],
+			"alert_station": "gate_room",
+			"alert_priority": 5
+		},
+		"Simeon": {
+			"role": "lucian_alliance",
+			"home_room": "aft_quarters_b",
+			"shift_start": 0.35,
+			"schedule": [
+				{ "t": 0.00, "activity": "sleep", "room": "aft_quarters_b" },
+				{ "t": 0.30, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.35, "activity": "work", "room": "aft_storage_hall" },
+				{ "t": 0.55, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.60, "activity": "work", "room": "aft_storage_hall" },
+				{ "t": 0.85, "activity": "social", "room": "gate_room" },
+				{ "t": 0.92, "activity": "sleep", "room": "aft_quarters_b" }
+			],
+			"alert_station": "aft_storage_hall",
+			"alert_priority": 5
+		},
+		"Ginn": {
+			"role": "serran_engineer",
+			"home_room": "control_interface_room",
+			"shift_start": 0.25,
+			"schedule": [
+				{ "t": 0.00, "activity": "sleep", "room": "aft_quarters_b" },
+				{ "t": 0.22, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.25, "activity": "work", "room": "control_interface_room" },
+				{ "t": 0.50, "activity": "eat", "room": "aft_quarters_a" },
+				{ "t": 0.55, "activity": "work", "room": "hydroponics" },
+				{ "t": 0.80, "activity": "social", "room": "gate_room" },
+				{ "t": 0.90, "activity": "sleep", "room": "aft_quarters_b" }
+			],
+			"alert_station": "control_interface_room",
+			"alert_priority": 3
+		}
+	}
+}

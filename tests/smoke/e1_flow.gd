@@ -10,7 +10,7 @@ extends SceneTree
 
 const EXPECTED_AUTOLOADS: Array[String] = [
 	"Audio", "TestCapture", "SaveManager", "GameClock", "GameState", "QuestLog",
-	"NPCState", "SceneRouter", "KinoRemote", "EpisodeWrap",
+	"NPCState", "SceneRouter", "KinoRemote", "EpisodeWrap", "Achievements",
 ]
 
 var _failures: Array[String] = []

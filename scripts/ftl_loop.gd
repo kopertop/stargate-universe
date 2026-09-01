@@ -37,6 +37,7 @@ var _armed: bool = false  # @collection-ok: one scalar arm flag, not an enumerat
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_PAUSABLE
+	set_process(false)  # Only tick during SHIP phase — see _begin_ship_phase / _begin_jump.
 	# Register with SaveManager (autoload-tolerant: tests that run without it skip gracefully).
 	var sm: Node = _autoload("SaveManager")
 	if sm != null and sm.has_method("register_system"):
@@ -82,6 +83,7 @@ func _on_planet_run_ended() -> void:
 
 func _begin_ship_phase() -> void:
 	phase = Phase.SHIP
+	set_process(true)
 	var base: float = _gs_ship_phase_base()
 	phase_remaining = _jitter(base)
 	var gs: Node = _autoload("GameState")
@@ -92,6 +94,7 @@ func _begin_ship_phase() -> void:
 
 func _begin_jump() -> void:
 	phase = Phase.JUMPING
+	set_process(false)  # No ticking during JUMPING / PLANET.
 	jump_count += 1
 	phase_changed.emit(phase)
 
@@ -157,6 +160,7 @@ func reset() -> void:
 	phase_remaining = 0.0
 	jump_count = 0
 	_armed = false
+	set_process(false)
 
 
 func serialize() -> Dictionary:
@@ -184,6 +188,8 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	if phase == Phase.PLANET and gs != null:
 		if gs.get("gate_window_active") != true:
 			_begin_ship_phase()
+	# Restore process state to match the deserialized phase.
+	set_process(phase == Phase.SHIP)
 
 
 # --- helpers ------------------------------------------------------------------

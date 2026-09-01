@@ -160,8 +160,11 @@ const TRACKER_OUTLINE: Color = SKIN_TEXT_OUTLINE
 const LOG_GAP_BELOW_TRACKER: float = 12.0
 const LOG_TOP_NO_TRACKER: float = 18.0
 var _tracker_root: Control = null
-var _tracker_title: Label = null
-var _tracker_objective: Label = null
+# Multi-quest tracker (#66, Phase 7): one entry per active quest, each holding
+# a gold title Label + an objective Label. Rebuilt on every refresh so the
+# panel tracks active_quests() dynamically. Kept as an Array of {title, objective}
+# Dicts so the cohesion test can assert the entry count.
+var _tracker_entries: Array = []
 
 # NOTE: the atmosphere readout is a KINO recon affordance — it lives on the
 # drone's overlay (kino_drone.gd::_build_atmo_readout) and is only visible while
@@ -278,6 +281,17 @@ func _ready() -> void:
 		settings.hud_scale_changed.connect(_on_hud_scale_changed)
 	get_viewport().size_changed.connect(_apply_hud_scale)
 	_apply_hud_scale()
+	# Achievement toast: listens to the Achievements autoload and shows a
+	# gold-bordered slide-in panel bottom-right when one unlocks.
+	_build_achievement_toast()
+	var ach: Node = get_node_or_null("/root/Achievements")
+	if ach != null and ach.has_signal("achievement_unlocked"):
+		ach.achievement_unlocked.connect(_on_achievement_unlocked)
+		# Flush any pending toasts from achievements unlocked during a save/load.
+		for aid in ach.call("pending_notifications"):
+			var d: Dictionary = ach.call("get_definition", aid)
+			_show_achievement_toast(String(d.get("title", aid)), String(d.get("description", "")))
+			ach.call("mark_notified", aid)
 	# Defer player lookup so the scene tree is settled.
 	call_deferred("_bind_player")
 
@@ -382,11 +396,22 @@ func _build_unit_frame() -> void:
 	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	# Portrait, framed by a thin accent border.
+	# Circular mask: the PortraitFrame is a square Panel whose corner radius is
+	# pushed to half its width so it renders as a circle, and the inner
+	# TextureRect is clipped to the frame's rounded rect (clip_children = CLIP
+	# in Godot 4) so the portrait texture is masked into a disc. This keeps the
+	# .tscn diff empty (code-built) and avoids a shader for the common case.
 	var portrait_frame: Panel = Panel.new()
 	portrait_frame.name = "PortraitFrame"
 	portrait_frame.custom_minimum_size = UNIT_PORTRAIT_SIZE
 	portrait_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	portrait_frame.add_theme_stylebox_override("panel", _make_wow_stylebox())
+	var pframe_style: StyleBoxFlat = _make_wow_stylebox()
+	# Half the portrait size → circular corner radius (Phase 1, #141).
+	pframe_style.set_corner_radius_all(int(UNIT_PORTRAIT_SIZE.x * 0.5))
+	portrait_frame.add_theme_stylebox_override("panel", pframe_style)
+	# Clip the portrait TextureRect to the frame's rounded rect so the image
+	# reads as a disc, not a square. CLIP_ONLY (no AND/OR) keeps it cheap.
+	portrait_frame.clip_contents = true
 
 	var portrait: TextureRect = TextureRect.new()
 	portrait.name = "Portrait"
@@ -401,6 +426,45 @@ func _build_unit_frame() -> void:
 	# Graceful blank if the PNG is missing — texture stays null.
 	portrait.texture = PortraitLoaderScript.portrait_for(UNIT_PORTRAIT_KEY)
 	portrait_frame.add_child(portrait)
+
+	# Role / class icon badge (Phase 1, #141). A small gold-ringed chip over
+	# the portrait's upper-right corner carrying a placeholder sci-fi role
+	# glyph for Eli ("engineer"). Wired to a constant so a future role system
+	# can re-tint without touching every badge. Reads as a TextureRect so the
+	# cohesion test can assert its type.
+	var role_icon: TextureRect = TextureRect.new()
+	role_icon.name = "RoleIcon"
+	role_icon.custom_minimum_size = Vector2(22.0, 22.0)
+	role_icon.size = Vector2(22.0, 22.0)
+	role_icon.position = Vector2(UNIT_PORTRAIT_SIZE.x - 20.0, -6.0)
+	role_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	role_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	role_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Placeholder glyph: a gold "⚙" rendered via a Label drawn into a
+	# viewport texture is heavy; instead use a simple Panel+Label chip so
+	# no external asset is required and the test can assert the node tree.
+	var role_chip: Panel = Panel.new()
+	role_chip.name = "RoleIconChip"
+	role_chip.set_anchors_preset(Control.PRESET_FULL_RECT)
+	role_chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var role_style: StyleBoxFlat = _make_wow_stylebox(SKIN_ACCENT_GOLD)
+	role_style.set_corner_radius_all(11)
+	role_style.bg_color = Color(0.06, 0.05, 0.04, 0.92)
+	role_chip.add_theme_stylebox_override("panel", role_style)
+	var role_glyph: Label = Label.new()
+	role_glyph.name = "RoleGlyph"
+	role_glyph.set_anchors_preset(Control.PRESET_FULL_RECT)
+	role_glyph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	role_glyph.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	role_glyph.text = "⚙"
+	role_glyph.add_theme_font_size_override("font_size", 13)
+	role_glyph.add_theme_color_override("font_color", SKIN_ACCENT_GOLD)
+	role_glyph.add_theme_color_override("font_outline_color", SKIN_TEXT_OUTLINE)
+	role_glyph.add_theme_constant_override("outline_size", 3)
+	role_glyph.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	role_chip.add_child(role_glyph)
+	role_icon.add_child(role_chip)
+	portrait_frame.add_child(role_icon)
 
 	# Level badge — a small gold-ringed pip over the portrait's lower-left corner,
 	# the way a WoW unit frame always carries a level number.
@@ -993,9 +1057,11 @@ func _on_action_slot_input(event: InputEvent, item_id: String) -> void:
 				_player.call("try_interact")
 	accept_event()
 
-# Upper-right quest tracker: a transparent VBox holding the accent quest title
-# over the active objective line. Anchored to the top-right edge, grows down.
-# Built empty + hidden; _refresh_quest_tracker fills it from QuestLog.
+# Upper-right multi-quest tracker (#66, Phase 7): one entry per active quest,
+# each a gold title over its objective line. Anchored top-right, grows down,
+# sitting under the minimap. Built empty + hidden; _refresh_quest_tracker fills
+# it from QuestLog.active_quests(). Rebuilt on every refresh so the panel
+# tracks the active-quest set dynamically (quests start, advance, complete).
 func _build_quest_tracker() -> void:
 	if _tracker_root != null and is_instance_valid(_tracker_root):
 		return
@@ -1009,69 +1075,85 @@ func _build_quest_tracker() -> void:
 	box.offset_left = -(TRACKER_WIDTH)
 	box.offset_right = TRACKER_POS_RIGHT
 	box.offset_top = TRACKER_POS_TOP
-	box.add_theme_constant_override("separation", 4)
+	box.add_theme_constant_override("separation", 8)
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.visible = false
-
-	var title: Label = Label.new()
-	title.name = "Title"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	title.add_theme_font_size_override("font_size", 17)
-	title.add_theme_color_override("font_color", TRACKER_TITLE_COLOR)
-	title.add_theme_color_override("font_outline_color", TRACKER_OUTLINE)
-	title.add_theme_constant_override("outline_size", 5)
-	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	box.add_child(title)
-
-	var objective: Label = Label.new()
-	objective.name = "Objective"
-	objective.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	objective.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	objective.custom_minimum_size = Vector2(TRACKER_WIDTH, 0.0)
-	objective.add_theme_font_size_override("font_size", 14)
-	objective.add_theme_color_override("font_color", TRACKER_OBJECTIVE_COLOR)
-	objective.add_theme_color_override("font_outline_color", TRACKER_OUTLINE)
-	objective.add_theme_constant_override("outline_size", 4)
-	objective.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	box.add_child(objective)
-
 	add_child(box)
 	_tracker_root = box
-	_tracker_title = title
-	_tracker_objective = objective
-	# The objective wraps to a variable number of lines, so the tracker's height
-	# isn't known until layout settles. Re-stack the log feed whenever the
-	# tracker resizes (incl. the deferred first layout) so they never overlap.
+	# The tracker's height isn't known until layout settles (variable number of
+	# entries + wrapped objectives). Re-stack the log feed whenever the tracker
+	# resizes (incl. the deferred first layout) so they never overlap.
 	box.resized.connect(_apply_log_feed_position)
 
 
-# Pull the tracked quest's title + active objective from QuestLog and render
-# them. Hides the whole panel when nothing is tracked / there's no objective,
-# keeping the empty state clean. Also repositions the recent-log feed below the
-# tracker so they don't overlap in the top-right corner.
+# Pull every active quest from QuestLog and render one entry per quest: gold
+# title + objective line (prefixed with an empty checkbox glyph, WoW-style).
+# Hides the whole panel when no quests are active, keeping the empty state
+# clean. Also repositions the recent-log feed below the tracker so they don't
+# overlap in the top-right corner. (#66, Phase 7)
 func _refresh_quest_tracker() -> void:
 	if _tracker_root == null or not is_instance_valid(_tracker_root):
 		return
+	# Clear old entries.
+	for child in _tracker_root.get_children():
+		child.queue_free()
+	_tracker_entries.clear()
 	var ql: Node = get_node_or_null("/root/QuestLog")
-	var quest_title: String = ""
-	var objective_text: String = ""
-	if ql != null:
-		if ql.has_method("title"):
-			quest_title = String(ql.call("title"))
-		if ql.has_method("objective"):
-			objective_text = String(ql.call("objective"))
-	# Empty/again state: nothing tracked → hide the panel and restore the log
-	# feed to its standalone top position.
-	if quest_title == "" and objective_text == "":
+	if ql == null or not ql.has_method("active_quests"):
 		_tracker_root.visible = false
 		_reposition_log_feed()
 		return
-	_tracker_title.text = quest_title
-	# Active objective line, prefixed with an empty checkbox glyph (WoW-style).
-	_tracker_objective.text = "☐ %s" % objective_text if objective_text != "" else ""
-	_tracker_root.visible = true
+	var active: Array[String] = ql.call("active_quests")
+	if active.is_empty():
+		_tracker_root.visible = false
+		_reposition_log_feed()
+		return
+	for qid in active:
+		var quest_title: String = String(ql.call("title", qid))
+		var objective_text: String = String(ql.call("objective", qid))
+		# Skip quests with no title + no objective (defensive — keeps the
+		# empty state clean even if a quest is started before its steps load).
+		if quest_title == "" and objective_text == "":
+			continue
+		var entry: VBoxContainer = VBoxContainer.new()
+		entry.add_theme_constant_override("separation", 2)
+		entry.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+		var title: Label = Label.new()
+		title.name = "Title"
+		title.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		title.add_theme_font_size_override("font_size", 17)
+		title.add_theme_color_override("font_color", TRACKER_TITLE_COLOR)
+		title.add_theme_color_override("font_outline_color", TRACKER_OUTLINE)
+		title.add_theme_constant_override("outline_size", 5)
+		title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		title.text = quest_title
+		entry.add_child(title)
+
+		var objective: Label = Label.new()
+		objective.name = "Objective"
+		objective.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		objective.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		objective.custom_minimum_size = Vector2(TRACKER_WIDTH, 0.0)
+		objective.add_theme_font_size_override("font_size", 14)
+		objective.add_theme_color_override("font_color", TRACKER_OBJECTIVE_COLOR)
+		objective.add_theme_color_override("font_outline_color", TRACKER_OUTLINE)
+		objective.add_theme_constant_override("outline_size", 4)
+		objective.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		objective.text = "☐ %s" % objective_text if objective_text != "" else ""
+		entry.add_child(objective)
+
+		_tracker_root.add_child(entry)
+		_tracker_entries.append({"quest_id": qid, "title": title, "objective": objective})
+	_tracker_root.visible = not _tracker_entries.is_empty()
 	_reposition_log_feed()
+
+
+# Count of quest entries currently rendered in the tracker. Exposed for the
+# cohesion test to assert the multi-quest render count.
+func tracker_entry_count() -> int:
+	return _tracker_entries.size()
 
 
 # Stack the recent-log feed under the quest tracker so they share the corner
@@ -1282,3 +1364,140 @@ func _update_chat_tab_styles() -> void:
 	if _combat_tab_btn != null:
 		_combat_tab_btn.add_theme_color_override("font_color",
 			SKIN_ACCENT_GOLD if _chat_active == "combat" else SKIN_ACCENT_DIM)
+
+
+# ===========================================================================
+# Achievement notification toast
+# ===========================================================================
+# A gold-bordered panel that slides in from the bottom-right when an
+# achievement unlocks, holds for ACHIEVEMENT_TOAST_HOLD_SECS, then slides
+# back out. Up to ACHIEVEMENT_TOAST_QUEUE_MAX pending toasts queue and show
+# sequentially. Uses the shared WoW-skin palette so it matches the rest of
+# the HUD. Built programmatically so hud.tscn stays untouched.
+
+const ACHIEVEMENT_TOAST_HOLD_SECS: float = 4.0
+const ACHIEVEMENT_TOAST_SLIDE_SECS: float = 0.4
+const ACHIEVEMENT_TOAST_QUEUE_MAX: int = 5
+const ACHIEVEMENT_TOAST_WIDTH: float = 320.0
+const ACHIEVEMENT_TOAST_HEIGHT: float = 80.0
+const ACHIEVEMENT_ICON: String = "★"
+
+var _achievement_root: Control = null
+var _achievement_title_label: Label = null
+var _achievement_desc_label: Label = null
+var _achievement_tween: Tween = null
+# Queue of (title, desc) pairs waiting to be shown.
+var _achievement_queue: Array[Dictionary] = []
+# True while the toast is currently visible (holding or sliding).
+var _achievement_toast_active: bool = false
+
+
+func _build_achievement_toast() -> void:
+	var panel: Panel = Panel.new()
+	panel.name = "AchievementToast"
+	panel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	panel.offset_left = -ACHIEVEMENT_TOAST_WIDTH - 20.0
+	panel.offset_top = -ACHIEVEMENT_TOAST_HEIGHT - 20.0
+	panel.offset_right = -20.0
+	panel.offset_bottom = -20.0
+	panel.custom_minimum_size = Vector2(ACHIEVEMENT_TOAST_WIDTH, ACHIEVEMENT_TOAST_HEIGHT)
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.z_index = 95
+	# Start hidden off-screen (translated right so it slides in from the right edge).
+	panel.modulate.a = 0.0
+	panel.visible = false
+
+	# Gold border, translucent dark fill — matches the WoW skin.
+	panel.add_theme_stylebox_override("panel", _make_wow_stylebox(
+		SKIN_ACCENT_GOLD, SKIN_BORDER_WIDTH, SKIN_PANEL_BG))
+
+	# Layout: icon on the left, title + description stacked on the right.
+	var hbox: HBoxContainer = HBoxContainer.new()
+	hbox.set_anchors_preset(Control.PRESET_FULL_RECT)
+	hbox.offset_left = 10.0
+	hbox.offset_top = 8.0
+	hbox.offset_right = -10.0
+	hbox.offset_bottom = -8.0
+	hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hbox.add_theme_constant_override("separation", 10)
+	panel.add_child(hbox)
+
+	var icon: Label = Label.new()
+	icon.text = ACHIEVEMENT_ICON
+	icon.add_theme_font_size_override("font_size", 28)
+	icon.add_theme_color_override("font_color", SKIN_ACCENT_GOLD)
+	icon.vertical_alignment = Control.VERTICAL_ALIGNMENT_CENTER
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hbox.add_child(icon)
+
+	var vbox: VBoxContainer = VBoxContainer.new()
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hbox.add_child(vbox)
+
+	var header: Label = Label.new()
+	header.text = "ACHIEVEMENT UNLOCKED"
+	header.add_theme_font_size_override("font_size", 9)
+	header.add_theme_color_override("font_color", SKIN_ACCENT_GOLD)
+	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_child(header)
+
+	_achievement_title_label = Label.new()
+	_achievement_title_label.add_theme_font_size_override("font_size", 14)
+	_achievement_title_label.add_theme_color_override("font_color", SKIN_TEXT_PRIMARY)
+	_achievement_title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_child(_achievement_title_label)
+
+	_achievement_desc_label = Label.new()
+	_achievement_desc_label.add_theme_font_size_override("font_size", 11)
+	_achievement_desc_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7, 0.9))
+	_achievement_desc_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_achievement_desc_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	vbox.add_child(_achievement_desc_label)
+
+	add_child(panel)
+	_achievement_root = panel
+
+
+func _on_achievement_unlocked(_id: String, title: String, description: String) -> void:
+	_show_achievement_toast(title, description)
+	# Mark as notified so a save/load cycle doesn't re-toast.
+	var ach: Node = get_node_or_null("/root/Achievements")
+	if ach != null:
+		ach.call("mark_notified", _id)
+
+
+func _show_achievement_toast(title: String, description: String) -> void:
+	if _achievement_root == null:
+		return
+	if _achievement_toast_active:
+		if _achievement_queue.size() < ACHIEVEMENT_TOAST_QUEUE_MAX:
+			_achievement_queue.append({"title": title, "desc": description})
+		return
+	_achievement_toast_active = true
+	_achievement_title_label.text = title
+	_achievement_desc_label.text = description
+	_achievement_root.visible = true
+
+	# Slide in: alpha 0→1 and offset from right to position.
+	if _achievement_tween != null and _achievement_tween.is_valid():
+		_achievement_tween.kill()
+	_achievement_tween = create_tween()
+	_achievement_root.modulate.a = 0.0
+	_achievement_tween.set_parallel(true)
+	_achievement_tween.tween_property(_achievement_root, "modulate:a", 1.0, ACHIEVEMENT_TOAST_SLIDE_SECS)
+	_achievement_tween.set_parallel(false)
+	# Hold, then slide out.
+	_achievement_tween.tween_interval(ACHIEVEMENT_TOAST_HOLD_SECS)
+	_achievement_tween.set_parallel(true)
+	_achievement_tween.tween_property(_achievement_root, "modulate:a", 0.0, ACHIEVEMENT_TOAST_SLIDE_SECS)
+	_achievement_tween.set_parallel(false)
+	_achievement_tween.tween_callback(_on_achievement_toast_done)
+
+
+func _on_achievement_toast_done() -> void:
+	_achievement_root.visible = false
+	_achievement_toast_active = false
+	if not _achievement_queue.is_empty():
+		var next: Dictionary = _achievement_queue.pop_front()
+		_show_achievement_toast(String(next.get("title", "")), String(next.get("desc", "")))

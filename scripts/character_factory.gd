@@ -196,30 +196,52 @@ const PROFILES: Dictionary = {
 				"parts": {"Arms": ""},
 				"tints": {"Body": Color(0.72, 0.13, 0.12), "Legs": Color(0.23, 0.27, 0.36), "Feet": Color(0.32, 0.31, 0.30)},
 			}}},
-	"Dr Rush": {"model": "rush", "ship": "civvies", "mission": "fatigues", "military": false,
+	"Dr Rush": {"model": "rush", "vrm": "res://models/vrm/rush.vrm", "ship": "civvies", "mission": "fatigues", "military": false,
 		"mod": {"gender": "Male", "hair": "Hair_Beard", "hair_color": Color(0.30, 0.24, 0.18)}},
-	"Dr Park": {"model": "park", "ship": "civvies", "mission": "fatigues", "military": false,
+	"Dr Park": {"model": "park", "vrm": "res://models/vrm/park.vrm", "ship": "civvies", "mission": "fatigues", "military": false,
 		"mod": {"gender": "Female", "hair": "Hair_Buns", "hair_color": Color(0.08, 0.07, 0.07)}},
 	# TJ (Lt/Dr James, Tamara Johansen) is a BLONDE woman — long blonde hair, not the
 	# near-black buzz she shipped with. The pack has no curly mesh, so Hair_Long is the
 	# closest available; hair_color is a warm blonde. Both James entries share the look.
-	"Dr James": {"model": "james", "ship": "civvies", "mission": "fatigues", "military": false,
+	"Dr James": {"model": "james", "vrm": "res://models/vrm/james.vrm", "ship": "civvies", "mission": "fatigues", "military": false,
 		"mod": {"gender": "Female", "hair": "Hair_Long", "hair_color": Color(0.83, 0.69, 0.40)}},
-	"Chloe Armstrong": {"model": "chloe", "ship": "civvies", "mission": "fatigues", "military": false,
+	"Chloe Armstrong": {"model": "chloe", "vrm": "res://models/vrm/chloe.vrm", "ship": "civvies", "mission": "fatigues", "military": false,
 		"mod": {"gender": "Female", "hair": "Hair_Long", "hair_color": Color(0.45, 0.32, 0.16)}},
 	"Lt Scott": {"model": "scott", "vrm": "res://models/vrm/scott.vrm", "ship": "duty_black", "mission": "combat", "military": true,
 		"mod": {"gender": "Male", "hair": "Hair_Buzzed", "hair_color": Color(0.24, 0.16, 0.09)}},
 	# Greer's skin/hair recolors bake into every outfit (the old away-team
 	# hack tinted Scott's whole body brown; this is the parameterized version).
 	"Sgt Greer": {
-		"model": "greer", "ship": "duty_black", "mission": "combat", "military": true,
+		"model": "greer", "vrm": "res://models/vrm/greer.vrm", "ship": "duty_black", "mission": "combat", "military": true,
 		"skin": Color(0.46, 0.28, 0.18), "hair": Color(0.10, 0.09, 0.08),
 		"mod": {"gender": "Male", "hair": "Hair_Buzzed", "skin_tint": Color(0.40, 0.24, 0.16), "hair_color": Color(0.05, 0.05, 0.05)},
 	},
-	"Colonel Young": {"model": "young", "ship": "duty_black", "mission": "combat", "military": true,
+	"Colonel Young": {"model": "young", "vrm": "res://models/vrm/young.vrm", "ship": "duty_black", "mission": "combat", "military": true,
 		"mod": {"gender": "Male", "hair": "Hair_Buzzed", "hair_color": Color(0.35, 0.30, 0.26)}},
-	"Lt James": {"model": "lt_james", "ship": "duty_black", "mission": "combat", "military": true,
+	"Lt James": {"model": "lt_james", "vrm": "res://models/vrm/lt_james.vrm", "ship": "duty_black", "mission": "combat", "military": true,
 		"mod": {"gender": "Female", "hair": "Hair_Long", "hair_color": Color(0.83, 0.69, 0.40)}},
+	# --- Extended roster (P3: VRM character models for all 15+ crew) ---
+	# TJ (Tamara Johansen) — medic; shares the James body type, separate VRM for unique face.
+	"TJ": {"model": "james", "vrm": "res://models/vrm/tj.vrm", "ship": "civvies", "mission": "fatigues", "military": false,
+		"mod": {"gender": "Female", "hair": "Hair_Long", "hair_color": Color(0.83, 0.69, 0.40)}},
+	# Camile Wray — IOA representative; civilian, professional attire.
+	"Camille": {"model": "chloe", "vrm": "res://models/vrm/camille.vrm", "ship": "civvies", "mission": "fatigues", "military": false,
+		"mod": {"gender": "Female", "hair": "Hair_Buns", "hair_color": Color(0.15, 0.10, 0.08)}},
+	# Dale Volker — scientist; civilian, nervous disposition.
+	"Volker": {"model": "rush", "vrm": "res://models/vrm/volker.vrm", "ship": "civvies", "mission": "fatigues", "military": false,
+		"mod": {"gender": "Male", "hair": "Hair_SimpleParted", "hair_color": Color(0.28, 0.22, 0.14)}},
+	# Adam Brody — scientist/engineer; civilian, methodical.
+	"Brody": {"model": "rush", "vrm": "res://models/vrm/brody.vrm", "ship": "civvies", "mission": "fatigues", "military": false,
+		"mod": {"gender": "Male", "hair": "Hair_Beard", "hair_color": Color(0.20, 0.18, 0.16)}},
+	# Varro — Lucian Alliance operative; military bearing but not Earth military.
+	"Varro": {"model": "scott", "vrm": "res://models/vrm/varro.vrm", "ship": "civvies", "mission": "combat", "military": false,
+		"mod": {"gender": "Male", "hair": "Hair_SimpleParted", "hair_color": Color(0.12, 0.08, 0.06)}},
+	# Simeon — Lucian Alliance operative; aggressive, dangerous.
+	"Simeon": {"model": "scott", "vrm": "res://models/vrm/simeon.vrm", "ship": "civvies", "mission": "combat", "military": false,
+		"mod": {"gender": "Male", "hair": "Hair_Buzzed", "hair_color": Color(0.08, 0.06, 0.04)}},
+	# Ginn — Serran engineer; civilian, gentle disposition.
+	"Ginn": {"model": "chloe", "vrm": "res://models/vrm/ginn.vrm", "ship": "civvies", "mission": "fatigues", "military": false,
+		"mod": {"gender": "Female", "hair": "Hair_Long", "hair_color": Color(0.30, 0.22, 0.14)}},
 }
 
 # Modular outfit loadouts per mini-outfit id: which Quaternius outfit family
@@ -293,6 +315,8 @@ static func _generic_mod(character_name: String, military: bool) -> Dictionary:
 const ALIASES: Dictionary = {
 	"Greer": "Sgt Greer", "Scott": "Lt Scott", "Young": "Colonel Young",
 	"Rush": "Dr Rush", "Park": "Dr Park", "Chloe": "Chloe Armstrong",
+	"Tamara": "TJ", "Johansen": "TJ", "Wray": "Camille",
+	"James": "Dr James", "Armstrong": "Chloe Armstrong",
 }
 
 

@@ -71,6 +71,37 @@ func _build_body(display_name: String, glb_path: String, tint: Color = Color.WHI
 	_model.name = "Model"
 	_model.rotation.y = PI   # models export +Z forward; flip to -Z
 	add_child(_model)
+	# VRM-first: use the full VRoid body when a .vrm file exists for this character.
+	var vrm_path: String = String(CharacterFactoryRef.profile_for(display_name).get("vrm", ""))
+	if vrm_path != "" and ResourceLoader.exists(vrm_path):
+		var VrmCharacterScript: Script = preload("res://scripts/vrm_character.gd")
+		var vrm: Node3D = VrmCharacterScript.create(vrm_path, display_name)
+		if vrm != null:
+			_model.add_child(vrm)
+			_anim = _find_anim(vrm)
+			# Apply personality expression profile
+			var MgrScript: Script = preload("res://scripts/vrm_character_manager.gd")
+			var expr_profile: Dictionary = MgrScript.EXPRESSION_PROFILES.get(display_name, {})
+			if not expr_profile.is_empty():
+				var personality: String = String(expr_profile.get("personality", "neutral"))
+				if personality != "neutral":
+					vrm.call("set_emotion", personality, 0.6)
+			# Mission gear for military (rifle + sidearm)
+			if CharacterFactoryRef.is_military(display_name):
+				vrm.call("attach_gear", "sidearm", false)
+				vrm.call("attach_gear", "rifle", false)
+			_play_clip("idle")
+			var tag: Label3D = Label3D.new()
+			tag.text = display_name
+			tag.pixel_size = 0.0042
+			tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			tag.outline_size = 6
+			tag.shaded = false
+			tag.modulate = Color(0.78, 0.92, 1.0, 1.0)
+			tag.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
+			tag.position = Vector3(0.0, 2.0, 0.0)
+			add_child(tag)
+			return
 	if CharacterFactoryRef.profile_for(display_name).has("mod"):
 		# PRIMARY pipeline: ModularCharacter dressed for the mission (field
 		# colors; rifle slung + sidearm for military).

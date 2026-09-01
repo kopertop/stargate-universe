@@ -24,6 +24,8 @@ extends Interactable
 @export var target_spawn: String = ""
 @export var locked: bool = false
 @export var lock_message: String = "LOCKED — power is offline."
+@export var power_locked: bool = true  # if true, door auto-locks when its room loses power
+var _power_locked: bool = false       # runtime: currently locked due to power loss
 @export var open_prompt: String = "Open"
 @export var transition_prompt: String = "Enter"
 @export var requires_kino: bool = false
@@ -76,9 +78,31 @@ func _ready() -> void:
 	# Kino. Only meaningful for room-id transition doors (the obfuscated ones).
 	if target_room_id != "" and not _plaque_labels.is_empty():
 		GameState.room_deciphered.connect(_on_room_deciphered)
+	# Power-grid integration: auto-lock doors in OFFLINE rooms and listen
+	# for power state changes so they unlock when power is restored.
+	_check_power_lock()
+	var pg: Node = _autoload("PowerGrid")
+	if pg != null and source_room_id != "" and power_locked:
+		if pg.has_signal("power_state_changed"):
+			pg.power_state_changed.connect(_on_power_state_changed)
+
+func _on_power_state_changed(room_id: String, _state: int) -> void:
+	if room_id == source_room_id:
+		_check_power_lock()
+
+func _check_power_lock() -> void:
+	if not power_locked or source_room_id == "":
+		return
+	var pg: Node = _autoload("PowerGrid")
+	if pg == null or not pg.has_method("is_room_powered"):
+		return
+	var powered: bool = bool(pg.call("is_room_powered", source_room_id))
+	_power_locked = not powered
+	_refresh_prompt()
+	_refresh_status_light()
 
 func _refresh_prompt() -> void:
-	if locked:
+	if locked or _power_locked:
 		prompt = lock_message
 	elif requires_kino and not Inventory.has("kino_remote"):
 		prompt = requires_kino_message
@@ -96,9 +120,11 @@ func _refresh_prompt() -> void:
 		prompt = open_prompt
 
 func _on_interact(by: Node) -> void:
-	if locked:
+	if locked or _power_locked:
+		AudioZones.play_door_locked()
 		return
 	if requires_kino and not Inventory.has("kino_remote"):
+		AudioZones.play_door_locked()
 		return
 	if _is_transition_door():
 		_transition(by)
@@ -113,6 +139,10 @@ func _toggle() -> void:
 	_is_open = not _is_open
 	_refresh_prompt()
 	_refresh_status_light()
+	if _is_open:
+		AudioZones.play_door_open()
+	else:
+		AudioZones.play_door_close()
 	if _tween != null and _tween.is_valid():
 		_tween.kill()
 	_tween = create_tween()
@@ -148,6 +178,7 @@ func _transition(by: Node) -> void:
 	if not _is_open:
 		_is_open = true
 		_refresh_status_light()
+		AudioZones.play_door_open()
 		if _tween != null and _tween.is_valid():
 			_tween.kill()
 		_tween = create_tween()
@@ -419,8 +450,8 @@ func _refresh_status_light() -> void:
 	if _status_mat == null:
 		return
 	var c: Color
-	if locked:
-		c = Color(1.0, 0.20, 0.10, 1.0)    # red — locked
+	if locked or _power_locked:
+		c = Color(1.0, 0.20, 0.10, 1.0)    # red — locked (manual or power loss)
 	elif _is_open:
 		c = Color(0.30, 1.0, 0.55, 1.0)    # green — passable
 	elif _is_transition_door():
@@ -447,3 +478,10 @@ func _attach_visual_box(parent: Node3D, pos: Vector3, size: Vector3, mat: Standa
 	mi.material_override = mat
 	mi.position = pos
 	parent.add_child(mi)
+
+
+func _autoload(name: String) -> Node:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	if tree == null or tree.root == null:
+		return null
+	return tree.root.get_node_or_null(name)

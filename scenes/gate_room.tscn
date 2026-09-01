@@ -1,6 +1,7 @@
-[gd_scene load_steps=12 format=3 uid="uid://cgr00mr00mr00"]
+[gd_scene load_steps=13 format=3 uid="uid://cgr00mr00mr00"]
 
 [ext_resource type="Environment" uid="uid://cgrenv00enva" path="res://scenes/gate-room-environment.tres" id="1_env"]
+[ext_resource type="Script" path="res://scripts/camera_xray.gd" id="camera_xray"]
 [ext_resource type="AudioStream" uid="uid://ckjurjhul37up" path="res://sounds/stargate_chevron_incom.mp3" id="9_chevron"]
 [ext_resource type="AudioStream" uid="uid://u3d3x5f2gvcs" path="res://sounds/gate_kawoosh.wav" id="10_kawoosh"]
 [ext_resource type="AudioStream" uid="uid://b8p7xexy23akr" path="res://sounds/gate_active_hum.wav" id="11_hum"]
@@ -43,6 +44,9 @@ view = NodePath("../View")
 transform = Transform3D(0.866025, -0.25, 0.433013, 0, 0.866025, 0.5, -0.5, -0.433013, 0.75, 0, 0, 0)
 script = ExtResource("4_view")
 target = NodePath("../Player")
+
+[node name="CameraXRay" type="Node3D" parent="View"]
+script = ExtResource("camera_xray")
 
 [node name="SpringArm" type="SpringArm3D" parent="View"]
 collision_mask = 2

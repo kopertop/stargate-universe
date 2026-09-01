@@ -28,10 +28,11 @@ func _run() -> void:
 		save_mgr.call("configure_test_paths", "mixamo_combat_demo_movie")
 
 	if not (
-		ResourceLoader.exists("res://models/mixamo_openbot/Swat_rifle_combat.glb")
+		ResourceLoader.exists("res://models/mixamo_openbot/YBot_rifle_combat.glb")
+		or ResourceLoader.exists("res://models/mixamo_openbot/Swat_rifle_combat.glb")
 		or ResourceLoader.exists("res://models/mixamo_openbot/Swat_rifle_idle.glb")
 	):
-		push_error("mixamo_combat_demo_movie: Swat combat pack missing — rebuild locally")
+		push_error("mixamo_combat_demo_movie: Mixamo combat pack missing — rebuild locally")
 		quit(1)
 		return
 

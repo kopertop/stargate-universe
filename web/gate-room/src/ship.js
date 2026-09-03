@@ -56,12 +56,12 @@ export const createShip = (scene, colliders) => {
 	};
 	for (const r of SHIP_ROOMS) {
 		const cx = (r.x0 + r.x1) / 2, cz = (r.z0 + r.z1) / 2, w = r.x1 - r.x0, d = r.z1 - r.z0;
-		const floor = box(w, 0.1, d, floorMat, cx, -0.05, cz, false); floor.receiveShadow = true;
+		const floor = box(w + 0.8, 0.1, d + 0.8, floorMat, cx, -0.05, cz, false); floor.receiveShadow = true; // overlaps wall thickness so doorways have no floor gap
 		box(w, 0.1, d, ceilMat, cx, H + 0.05, cz, false);
 		wall('x', r.x0, r.z0, r.z1, +1); wall('x', r.x1, r.z0, r.z1, -1); wall('z', r.z0, r.x0, r.x1, +1); wall('z', r.z1, r.x0, r.x1, -1);
 		// ceiling light strip (amber when powered) + emergency red
 		const strip = box(Math.min(w, 3), 0.08, Math.min(d, 3) * 0.3, amber, cx, H - 0.06, cz, false);
-		const l = new THREE.PointLight(0xffc890, 0, 14, 1.6); l.position.set(cx, H - 0.5, cz); group.add(l);
+		const l = new THREE.PointLight(0xffc890, 0, 14, 1.6); l.position.set(cx, H - 0.5, cz); l.userData.on = Math.min(26, 5 + w * d * 0.28); group.add(l); // scale by floor area so corridors don't blow out
 		const em = new THREE.PointLight(0xff3020, 6, 9, 2); em.position.set(cx, H - 0.6, cz); group.add(em);
 		lights.push({ l, em, strip });
 		anchors[`${r.id}:RoomCenter`] = new THREE.Vector3(cx, 0, cz);
@@ -133,7 +133,7 @@ export const createShip = (scene, colliders) => {
 	const state = { group, anchors, doors, occludable, powered: false };
 	state.setPower = (on) => {
 		state.powered = on;
-		for (const { l, em, strip } of lights) { l.intensity = on ? 28 : 0; em.intensity = on ? 0 : 6; strip.material.emissiveIntensity = on ? 1.6 : 0; }
+		for (const { l, em, strip } of lights) { l.intensity = on ? l.userData.on : 0; em.intensity = on ? 0 : 6; strip.material.emissiveIntensity = on ? 1.6 : 0; }
 		relayLamp.material.color.set(on ? 0x40ff80 : 0xff3020); relayLamp.material.emissive.set(on ? 0x20ff60 : 0xff2010);
 		screen.material.emissiveIntensity = on ? 1.4 : 0;
 		for (const d of doors) if (!d.jammed) { d.locked = !on; d.lamp.material.color.set(on ? 0x40ff80 : 0xff3020); d.lamp.material.emissive.set(on ? 0x20ff60 : 0xff2010); }

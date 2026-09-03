@@ -172,22 +172,22 @@ const startChapter = (id) => {
 // ---------------------------------------------------------------- interactables (Destiny)
 const S = destiny.ship;
 const stepIs = (id) => quest.step()?.id === id;
-interact.register({ id: 'relay', position: A['gate_room:PowerRelay'], prompt: () => (!S.powered ? 'Restore power' : null), action: () => withAnim('interact', () => { S.setPower(true); quest.setFlag('power_restored'); ui.subtitle('Eli', 'Power relay engaged... lights are coming up. Doors should unlock.'); oneShot(shutdownBuf, 0.5, 1.6); }) });
-interact.register({ id: 'console', position: A['control_interface_room:ControlConsole'], prompt: () => (S.powered && !quest.has('life_support_diagnosed') ? 'Access control terminal' : null), action: () => withAnim('interact', () => { quest.setFlag('life_support_diagnosed'); ui.subtitle('Eli', 'Hull breach — port shuttle dock. And life support is flagged red across the board.'); ui.openRemote('ship'); }, { at: 0.6 }) });
-interact.register({ id: 'lever', position: A['breached_section:SealLever'], prompt: () => (quest.has('life_support_diagnosed') && !quest.has('any_breach_sealed') ? 'Pull emergency seal' : null), action: () => withAnim('interact', () => { S.sealBreach(); quest.setFlag('any_breach_sealed'); oneShot(shutdownBuf, 0.9, 0.8); ui.subtitle('Rush', 'Pressure is holding. Good. Now go make yourself useful somewhere else.'); }) });
-interact.register({ id: 'kino', position: A['eli_quarters:KinoPedestal'], prompt: () => (!quest.has('kino_acquired') ? 'Take the Kino and its remote' : null), action: () => withAnim('pickup', () => { S.takeKino(); addItem('kino_remote'); addItem('kino_orb', 2); quest.setFlag('kino_acquired'); }, { at: 0.55 }) });
-interact.register({ id: 'locker', position: A['eli_quarters:Locker'], prompt: () => (!quest.has('locker_opened') ? 'Open locker' : null), action: () => withAnim('open', () => { quest.setFlag('locker_opened'); addItem('tac_vest'); ui.toast('Found: Tactical Vest (+20 health) — equip it from Character', 5); }, { at: 0.6 }) });
-interact.register({ id: 'scrubber', position: A['life_support:Scrubber'], prompt: () => (quest.has('kino_acquired') && !quest.has('scrubber_diagnosed') ? 'Inspect CO2 scrubber' : (stepIs('repair_scrubber') || stepIs('repair_water')) && count('refined_lime') > 0 ? `Load refined ${planet?.resource?.name?.toLowerCase() ?? 'lime'}` : null),
+interact.register({ world: 'destiny', id: 'relay', position: A['gate_room:PowerRelay'], prompt: () => (!S.powered ? 'Restore power' : null), action: () => withAnim('interact', () => { S.setPower(true); quest.setFlag('power_restored'); ui.subtitle('Eli', 'Power relay engaged... lights are coming up. Doors should unlock.'); oneShot(shutdownBuf, 0.5, 1.6); }) });
+interact.register({ world: 'destiny', id: 'console', position: A['control_interface_room:ControlConsole'], prompt: () => (S.powered && !quest.has('life_support_diagnosed') ? 'Access control terminal' : null), action: () => withAnim('interact', () => { quest.setFlag('life_support_diagnosed'); ui.subtitle('Eli', 'Hull breach — port shuttle dock. And life support is flagged red across the board.'); ui.openRemote('ship'); }, { at: 0.6 }) });
+interact.register({ world: 'destiny', id: 'lever', position: A['breached_section:SealLever'], prompt: () => (quest.has('life_support_diagnosed') && !quest.has('any_breach_sealed') ? 'Pull emergency seal' : null), action: () => withAnim('interact', () => { S.sealBreach(); quest.setFlag('any_breach_sealed'); oneShot(shutdownBuf, 0.9, 0.8); ui.subtitle('Rush', 'Pressure is holding. Good. Now go make yourself useful somewhere else.'); }) });
+interact.register({ world: 'destiny', id: 'kino', position: A['eli_quarters:KinoPedestal'], prompt: () => (!quest.has('kino_acquired') ? 'Take the Kino and its remote' : null), action: () => withAnim('pickup', () => { S.takeKino(); addItem('kino_remote'); addItem('kino_orb', 2); quest.setFlag('kino_acquired'); }, { at: 0.55 }) });
+interact.register({ world: 'destiny', id: 'locker', position: A['eli_quarters:Locker'], prompt: () => (!quest.has('locker_opened') ? 'Open locker' : null), action: () => withAnim('open', () => { quest.setFlag('locker_opened'); addItem('tac_vest'); ui.toast('Found: Tactical Vest (+20 health) — equip it from Character', 5); }, { at: 0.6 }) });
+interact.register({ world: 'destiny', id: 'scrubber', position: A['life_support:Scrubber'], prompt: () => (quest.has('kino_acquired') && !quest.has('scrubber_diagnosed') ? 'Inspect CO2 scrubber' : (stepIs('repair_scrubber') || stepIs('repair_water')) && count('refined_lime') > 0 ? `Load refined ${planet?.resource?.name?.toLowerCase() ?? 'lime'}` : null),
 	action: () => {
 		if (!quest.has('scrubber_diagnosed')) { withAnim('interact', () => { quest.setFlag('scrubber_diagnosed'); ui.subtitle('Rush', 'The scrubber bed is spent — the lime is inert. We need more, and there is none on this ship.'); }); return; }
 		withAnim('repair', () => { removeItem('refined_lime', count('refined_lime')); S.repairScrubber(); quest.setFlag('scrubber_repaired'); ui.subtitle('Eli', 'Scrubber is cycling. CO2 is dropping. We can breathe.'); oneShot(shutdownBuf, 0.5, 1.8); }, { at: 0.8, timeScale: 1.4 });
 	} });
-interact.register({ id: 'crate', position: A['gate_room:SupplyCrate'], prompt: () => (stepIs('gear_up') ? 'Take shovel and field backpack' : null), action: () => withAnim('open', () => { addItem('shovel'); addItem('field_backpack'); equip('shovel'); equip('field_backpack'); quest.setFlag('geared_up'); ui.toast('Equipped: Field Shovel, Field Backpack (+6 carry)', 5); }, { at: 0.6 }) });
+interact.register({ world: 'destiny', id: 'crate', position: A['gate_room:SupplyCrate'], prompt: () => (stepIs('gear_up') ? 'Take shovel and field backpack' : null), action: () => withAnim('open', () => { addItem('shovel'); addItem('field_backpack'); equip('shovel'); equip('field_backpack'); quest.setFlag('geared_up'); ui.toast('Equipped: Field Shovel, Field Backpack (+6 carry)', 5); }, { at: 0.6 }) });
 let brodyBusy = 0;
-interact.register({ id: 'brody', position: brody.root, radius: 2.6, prompt: () => { const r = planet?.resource; if (!r) return null; if (stepIs('give_brody') && count(r.id) >= r.required) return `Give ${r.name.toLowerCase()} to Brody`; if (brodyBusy > 0) return null; return 'Talk to Brody'; },
+interact.register({ world: 'destiny', id: 'brody', position: brody.root, radius: 2.6, prompt: () => { const r = planet?.resource; if (!r) return null; if (stepIs('give_brody') && count(r.id) >= r.required) return `Give ${r.name.toLowerCase()} to Brody`; if (brodyBusy > 0) return null; return 'Talk to Brody'; },
 	action: () => { const r = planet.resource; if (stepIs('give_brody') && count(r.id) >= r.required) { const n = count(r.id); withAnim('pickup', () => removeItem(r.id, n), { at: 0.5 }); brodyBusy = 4; ui.subtitle('Brody', `Give me a minute with this ${r.name.toLowerCase()}...`, { dur: 4 }); brody.playAction('repair', { timeScale: 1.3 }); setTimeout(() => { addItem('refined_lime', n); quest.setFlag('lime_refined'); }, 4000); } else { npcTalk(brody); player.playAction('nod'); ui.subtitle('Brody', 'If you find anything we can burn, breathe, or drink — bring it to me.'); } } });
-interact.register({ id: 'rush', position: rush.root, radius: 2.6, prompt: () => 'Talk to Rush', action: () => { npcTalk(rush, 4); player.playAction('nod'); if (stepIs('talk_rush')) { quest.setFlag('water_briefed'); ui.subtitle('Rush', 'Reserves are at eleven percent. The next drop is a frozen world. Bring back ice — as much as you can carry.'); } else ui.subtitle('Rush', 'I am busy, Eli.'); } });
-interact.register({ id: 'scott', position: scott.root, radius: 2.6, prompt: () => 'Talk to Scott', action: () => { npcTalk(scott); player.playAction('nod'); ui.subtitle('Scott', quest.has('power_restored') ? 'Good work on the power. Keep moving.' : 'See if you can find a way to get those doors open.'); } });
+interact.register({ world: 'destiny', id: 'rush', position: rush.root, radius: 2.6, prompt: () => 'Talk to Rush', action: () => { npcTalk(rush, 4); player.playAction('nod'); if (stepIs('talk_rush')) { quest.setFlag('water_briefed'); ui.subtitle('Rush', 'Reserves are at eleven percent. The next drop is a frozen world. Bring back ice — as much as you can carry.'); } else ui.subtitle('Rush', 'I am busy, Eli.'); } });
+interact.register({ world: 'destiny', id: 'scott', position: scott.root, radius: 2.6, prompt: () => 'Talk to Scott', action: () => { npcTalk(scott); player.playAction('nod'); ui.subtitle('Scott', quest.has('power_restored') ? 'Good work on the power. Keep moving.' : 'See if you can find a way to get those doors open.'); } });
 
 // shovel prop (procedural) mounted in the right hand while digging
 const shovel = new THREE.Group();
@@ -209,7 +209,7 @@ const registerPlanetInteractables = () => {
 	const r = planet.resource; if (!r) return;
 	for (const n of planet.nodes) {
 		const pos = new THREE.Vector3(n.x, planet.floorAt(n.x, n.z), n.z);
-		interact.register({ id: n.id, position: pos, radius: 2.6, hold: () => 2.2 / Math.max(0.2, stats().mineSpeed),
+		interact.register({ world: 'planet', id: n.id, position: pos, radius: 2.6, hold: () => 2.2 / Math.max(0.2, stats().mineSpeed),
 			prompt: () => (world !== planet || n.done ? null : !stats().canMine ? 'Needs a shovel' : carried() >= stats().carry ? 'Backpack full' : `${r.verb} (${n.remaining} left)`),
 			action: () => { addItem(r.id); n.remaining--; kickSand(true); footstep('sand', true); if (n.remaining <= 0) { n.done = true; n.mesh.material = n.mesh.material.clone(); n.mesh.material.color.multiplyScalar(0.6); } if (count(r.id) >= r.required) quest.setFlag('has_required_resource'); } });
 		planetRegs.push(n.id);
@@ -361,6 +361,17 @@ window.__dbg = { input, player, camera, quest, rpg, get world() { return world; 
 startChapter('e1_air');
 document.getElementById('loading')?.remove();
 ui.showChapter(quest.chapter.title, quest.chapter.subtitle, 'Begin', () => { listener.context.resume(); destiny.scene.add(beacon); arriveAt(destiny); });
+// ?autoplay → hands-free demo driver (recordings / smoke runs); start it with window.__auto.run()
+if (location.search.includes('autoplay')) { const { createAutoplay } = await import('./autoplay.js'); window.__auto = createAutoplay(window.__dbg); }
+// ?record → in-page recorder (WebGL + text HUD) → local save endpoint; control with window.__rec.start()/stop(name)
+let recorder = null;
+if (location.search.includes('record')) {
+	const { createRecorder } = await import('./recorder.js');
+	recorder = createRecorder(renderer.domElement, () => { const s = quest.step(); const p = document.getElementById('prompt'), sub = document.getElementById('sub'); return {
+		chapter: quest.chapter?.title ?? '', label: s?.label ?? '', zone: document.getElementById('zone').textContent, level: rpg.level, hp: Math.round(rpg.hp), xp: rpg.xp, carry: `${carried()}/${stats().carry}`,
+		prompt: p.classList.contains('hidden') ? '' : p.textContent.replace(/\s+/g, ' ').trim(), subtitle: sub.classList.contains('hidden') ? '' : sub.textContent.trim() }; });
+	window.__rec = recorder;
+}
 
 const fpsEl = document.getElementById('fps');
 const clock = new THREE.Clock(); let acc = 0, frames = 0;
@@ -380,7 +391,7 @@ renderer.setAnimationLoop(() => {
 		else {
 			player.update(dt, input, cam.yaw, world.colliders, floorUnder());
 			gateTravelCheck(); camUpdate(dt); tickRooms();
-			ui.setPrompt(interact.update(dt, player.root.position, input.interact, input.interactHeld)); tickDigAnim();
+			ui.setPrompt(interact.update(dt, player.root.position, input.interact, input.interactHeld, world.name)); tickDigAnim();
 			player.carrying = carried() >= 3;
 			if (view === 'follow') updateOcclusion();
 			tickFootsteps(dt);
@@ -402,5 +413,6 @@ renderer.setAnimationLoop(() => {
 		if (quest.step()?.counter) ui.refreshTracker();
 	}
 	renderer.render(travel?.phase === 'wormhole' ? wormhole.scene : kino.active ? kinoWorld.scene : world.scene, camera);
+	recorder?.tick();
 	acc += rawDt; frames++; if (acc > 0.5) { fpsEl.textContent = `${Math.round(frames / acc)} fps`; acc = 0; frames = 0; }
 });

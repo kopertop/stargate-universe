@@ -9,9 +9,10 @@ const posOf = (d) => (d.position.isObject3D ? d.position.getWorldPosition(tmp) :
 export let current = null;
 export let holding = false;
 /** Call every frame. Returns { prompt, progress } for the HUD, or null. */
-export const update = (dt, playerPos, pressed, held) => {
+export const update = (dt, playerPos, pressed, held, worldName = null) => {
 	let best = null, bestD = Infinity;
 	for (const d of list) {
+		if (d.world && worldName && d.world !== worldName) continue; // interactables live in one world
 		const p = d.prompt(); if (!p) continue;
 		const dist = posOf(d).distanceTo(playerPos);
 		if (dist < d.radius && dist < bestD) { best = d; bestD = dist; }

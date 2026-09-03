@@ -15,9 +15,19 @@ git log --oneline origin/develop..HEAD                 # exactly OUR commits (8 
 git diff --name-only origin/develop..HEAD | rg -v '^web/'   # confirm scope
 ```
 
-**Fix.** `git rebase --onto origin/main origin/develop` moved only our commits onto main; zero
-conflicts. Then `git push --force-with-lease`. (A `git merge origin/main` would have forced resolving
-files we never edited.)
+**Fix (no history rewrite — force pushes are off the table on shared branches).** Merge `origin/main`
+into the branch and resolve every conflict by taking main's side, then make *all* non-feature paths equal
+main so the PR diff is only your work:
+```bash
+git merge origin/main                                   # conflicts in files you never edited
+for f in $(git diff --name-only --diff-filter=U); do git checkout --theirs -- "$f"; git add "$f"; done
+git diff --name-only origin/main -- . ':(exclude)web' | while read f; do   # develop-only leftovers
+  git cat-file -e "origin/main:$f" 2>/dev/null && git checkout origin/main -- "$f" || git rm -q --cached "$f"; done
+git commit && git push                                  # plain fast-forward push
+git diff --name-only origin/main | rg -v '^web/'        # must print nothing
+```
+A rebase onto main would also produce a clean diff, but it rewrites published history and needs a force
+push, which the project rejects.
 
-**Rule.** Before opening a PR, check `git merge-base --is-ancestor origin/<base> HEAD`; if the branch
-descends from an integration branch instead of the PR base, rebase onto the base first.
+**Rule.** Cut feature branches from the PR base (`main`), not from `develop`. Check with
+`git merge-base --is-ancestor origin/<base> HEAD` before the first push; fixing it later means a merge commit.

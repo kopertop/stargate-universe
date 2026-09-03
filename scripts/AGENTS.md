@@ -6,11 +6,7 @@ extension. Most have an adjacent `.uid` sidecar (Godot 4.6 resource UID).
 ## Index by system
 
 ### Autoloads (in `project.godot`)
-- `audio.gd` — Unified sound manager (SFX + music director).
-  - SFX: 12-player queue on "SFX" bus for UI hover, one-shot effects, ambient.
-  - Music: Adaptive background music director via `set_mood()`, `play_sting()`, `refresh()`.
-  - All music operations are @no-save — derives mood from GameState / FtlLoop signals,
-    holds no persistent state so nothing to serialize.
+- `audio.gd` — Sound bank dispatcher.
 - `game_state.gd` — Persistent game state: world-state flags, resources,
   save/load, `current_room_id` signal. Quest step + objective text is
   delegated to `quest_log.gd` (back-compat shims keep `quest_step` /

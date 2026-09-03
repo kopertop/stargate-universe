@@ -108,15 +108,14 @@ func _ready() -> void:
 	# here rather than in the .tscn to keep the scene minimal (same approach as
 	# the Load button). Inserted just above the Back button.
 	_build_controller_button()
-	_build_accessibility_button()
 
 	# Continue shows as disabled/greyed when there's no save to resume.
 	# Load Game mirrors it — both are meaningless with no slots on disk.
 	_btn_continue.disabled = not GameState.has_save()
 	if _btn_load != null:
 		_btn_load.disabled = _btn_continue.disabled
-	# Characters → Mint Character Lab (Eli + mint-native roster). Always available.
-	_btn_characters.disabled = false
+	# Characters lab was Mint-native; hosts retired — Mixamo is the play path.
+	_btn_characters.disabled = true
 
 	if not _btn_continue.disabled:
 		_btn_continue.grab_focus()
@@ -610,51 +609,15 @@ func _on_configure_controller_pressed() -> void:
 	GamepadConfigDialog.open_wizard(device, guid)
 
 
-# Code-owned "Accessibility" button in the Settings overlay. Opens the
-# full accessibility options panel (colorblind, subtitles, aim assist,
-# hints, auto-retry, input remapping). Same pattern as the controller button.
-var _accessibility_overlay: Control
-
-func _build_accessibility_button() -> void:
-	var settings_vbox: Node = _back_btn.get_parent()
-	if settings_vbox == null:
-		return
-	var btn: Button = Button.new()
-	btn.name = "AccessibilityButton"
-	btn.text = "Accessibility"
-	btn.pressed.connect(_on_accessibility_pressed)
-	Audio.attach_ui_hover(btn)
-	settings_vbox.add_child(btn)
-	# Sit it directly above Back (same slot as controller, but after it).
-	settings_vbox.move_child(btn, _back_btn.get_index())
-
-
-func _on_accessibility_pressed() -> void:
-	if _accessibility_overlay == null:
-		var AccessibilityOverlayScript := preload("res://scripts/accessibility_overlay.gd")
-		_accessibility_overlay = AccessibilityOverlayScript.new()
-		_accessibility_overlay.name = "AccessibilityOverlay"
-		add_child(_accessibility_overlay)
-		_accessibility_overlay.closed.connect(_on_accessibility_closed)
-	_settings_overlay.visible = false
-	_accessibility_overlay.open()
-
-
-func _on_accessibility_closed() -> void:
-	_settings_overlay.visible = true
-	_back_btn.grab_focus()
-
-
 func _on_settings_pressed() -> void:
 	_settings_overlay.visible = true
 	_back_btn.grab_focus()
 
 
 func _on_characters_pressed() -> void:
-	# Mint-native crew lab (Eli first). Pause/autosave treat empty path as title —
-	# set a marker so we aren't mistaken for in-world gameplay.
-	GameState.current_scene_path = "res://scenes/mint_character_lab.tscn"
-	get_tree().change_scene_to_file("res://scenes/mint_character_lab.tscn")
+	# Mint Character Lab retired with models/mint/<slug>/ hosts.
+	GameState.add_log("Character lab unavailable — Mixamo hosts are the play path.")
+	return
 
 
 func _on_back_pressed() -> void:

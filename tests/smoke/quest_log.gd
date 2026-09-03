@@ -151,19 +151,6 @@ func _initialize() -> void:
 	_expect(String(ql.active_step_id("e1_air")) == "find_kino",
 		"old-format migration: re-derives active step from world-state flags")
 
-	# --- 7. active_quests() multi-quest enumeration (#66, Phase 7) ---------
-	# active_quests() returns all started, non-complete quest ids. e1_air is
-	# the auto-started quest, so it must appear; completing it must drop it.
-	gs.reset()
-	var active_ids: Array[String] = ql.call("active_quests") as Array[String]
-	_expect(active_ids.has("e1_air"),
-		"active_quests() includes the auto-started e1_air quest")
-	# Walk e1_air to completion, then assert it drops out of active_quests().
-	_walk_predicate_sequence(gs, ql)
-	var completed_active: Array[String] = ql.call("active_quests") as Array[String]
-	_expect(not completed_active.has("e1_air"),
-		"active_quests() drops e1_air once it is complete")
-
 	# Final reset so subsequent runs don't inherit phase state.
 	gs.reset()
 

@@ -4,9 +4,6 @@ A Godot 4.6 sci-fi RPG set in the Stargate Universe TV series.
 
 ## Status
 
-This branch (`reset-stack`) is a complete engine pivot from the previous browser-based stack
-(Three.js / WebGPU / ggez / Crashcat / VRM). The previous stack is preserved on `main`.
-
 Bootstrapped from [KenneyNL/Starter-Kit-3D-Platformer](https://github.com/KenneyNL/Starter-Kit-3D-Platformer)
 (CC0).
 

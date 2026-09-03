@@ -233,15 +233,15 @@ func _draw_markers(ppos: Vector3) -> void:
 # Lime-surface markers: return gate, away-team companions, discovered (un-mined)
 # deposits, and Kinos deployed in this scene.
 func _draw_planet_markers(ppos: Vector3) -> void:
-	if Settings.compass_show_gate:
+	if GameState.compass_show_gate:
 		var gate: Node3D = _find_gate("to_ship")
 		if gate != null:
 			_draw_pip(gate.global_position, GATE_COL, "Gate", ppos)
-	if Settings.compass_show_companions:
+	if GameState.compass_show_companions:
 		for c in get_tree().get_nodes_in_group("companion"):
 			if c is Node3D:
 				_draw_pip((c as Node3D).global_position, COMP_COL, "", ppos)
-	if Settings.compass_show_lime:
+	if GameState.compass_show_lime:
 		for n in get_tree().get_nodes_in_group("lime_node"):
 			if not (n is Node3D):
 				continue
@@ -262,7 +262,7 @@ func _draw_planet_markers(ppos: Vector3) -> void:
 # Lime is drawn by its own loop above (its mining/depletion rules differ), so the
 # "poi" group here excludes lime.
 func _draw_pois(ppos: Vector3) -> void:
-	if not Settings.compass_show_pois:
+	if not GameState.compass_show_pois:
 		return
 	for n in get_tree().get_nodes_in_group("poi"):
 		if not (n is Node3D):
@@ -280,7 +280,7 @@ func _draw_pois(ppos: Vector3) -> void:
 # the in-world quest_waypoint node), deployed Kinos, and the outbound gate when
 # we're in the gate room.
 func _draw_ship_markers(ppos: Vector3) -> void:
-	if Settings.compass_show_gate:
+	if GameState.compass_show_gate:
 		var wp: Node = get_tree().get_first_node_in_group("quest_waypoint")
 		if wp is Node3D:
 			_draw_pip((wp as Node3D).global_position, GATE_COL, "Objective", ppos)
@@ -296,7 +296,7 @@ func _draw_ship_markers(ppos: Vector3) -> void:
 # stored deploy positions only when no live node is instanced this scene (e.g.
 # after the player left and re-entered, so the parked drone wasn't rebuilt).
 func _draw_kinos(ppos: Vector3) -> void:
-	if not Settings.compass_show_kinos:
+	if not GameState.compass_show_kinos:
 		return
 	for pos in _kino_positions():
 		_draw_pip(pos, KINO_COL, "K", ppos)

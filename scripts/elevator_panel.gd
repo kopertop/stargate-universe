@@ -112,7 +112,6 @@ func _on_interact(_by: Node) -> void:
 		# In headless/instant_mode, no UI to show — the panel is inert unless
 		# a test calls unlock_floor / travel directly.
 		return
-	AudioZones.play_console_beep()
 	if _open:
 		_close_panel()
 	else:
@@ -365,7 +364,6 @@ func _on_elevator_power_changed(_powered: bool) -> void:
 
 func _travel_to_floor(fn: int) -> void:
 	_close_panel()
-	AudioZones.play_elevator_hum()
 	var landing_id: String = ProceduralShip.floor_entry_room(fn)
 	GameState.next_room_id = landing_id
 	var router: Node = get_node_or_null("/root/SceneRouter")

@@ -24,8 +24,6 @@ extends Interactable
 @export var target_spawn: String = ""
 @export var locked: bool = false
 @export var lock_message: String = "LOCKED — power is offline."
-@export var power_locked: bool = true  # if true, door auto-locks when its room loses power
-var _power_locked: bool = false       # runtime: currently locked due to power loss
 @export var open_prompt: String = "Open"
 @export var transition_prompt: String = "Enter"
 @export var requires_kino: bool = false
@@ -58,6 +56,11 @@ var _right_leaf: Node3D
 var _status_mat: StandardMaterial3D
 var _tween: Tween
 
+# Power-grid lock. Separate from the @export `locked` flag so quest-locked
+# and soft-locked doors keep their own state. A door is passable only
+# when the export flag, the soft-lock, AND this flag are all false.
+var _power_locked: bool = false
+
 # Plaque Label3D nodes (mirrored on both sides) + the resolved destination name
 # they decode to. Held so GameState.room_deciphered can animate them in place.
 var _plaque_labels: Array[Label3D] = []
@@ -78,32 +81,54 @@ func _ready() -> void:
 	# Kino. Only meaningful for room-id transition doors (the obfuscated ones).
 	if target_room_id != "" and not _plaque_labels.is_empty():
 		GameState.room_deciphered.connect(_on_room_deciphered)
-	# Power-grid integration: auto-lock doors in OFFLINE rooms and listen
-	# for power state changes so they unlock when power is restored.
-	_check_power_lock()
-	var pg: Node = _autoload("PowerGrid")
-	if pg != null and source_room_id != "" and power_locked:
-		if pg.has_signal("power_state_changed"):
-			pg.power_state_changed.connect(_on_power_state_changed)
+	if GameState.has_signal("soft_locks_changed") and not GameState.soft_locks_changed.is_connected(_on_soft_locks_changed):
+		GameState.soft_locks_changed.connect(_on_soft_locks_changed)
+	var inv: Node = get_node_or_null("/root/Inventory")
+	if inv != null and inv.has_signal("wield_changed") and not inv.wield_changed.is_connected(_on_wield_changed_for_prompt):
+		inv.wield_changed.connect(_on_wield_changed_for_prompt)
+	# PowerGrid: doors to OFFLINE rooms lock. Connect the signal so doors
+	# react to power state changes at runtime. PowerGrid may be null in
+	# headless test mode — guard against that.
+	_connect_power_grid()
 
-func _on_power_state_changed(room_id: String, _state: int) -> void:
-	if room_id == source_room_id:
-		_check_power_lock()
 
-func _check_power_lock() -> void:
-	if not power_locked or source_room_id == "":
-		return
-	var pg: Node = _autoload("PowerGrid")
-	if pg == null or not pg.has_method("is_room_powered"):
-		return
-	var powered: bool = bool(pg.call("is_room_powered", source_room_id))
-	_power_locked = not powered
+func _on_wield_changed_for_prompt(_index: int, _item_id: String) -> void:
+	_refresh_prompt()
+
+
+func _on_soft_locks_changed() -> void:
 	_refresh_prompt()
 	_refresh_status_light()
 
+
+func _is_soft_locked() -> bool:
+	if source_room_id == "" or target_room_id == "":
+		return false
+	return GameState.is_soft_locked(source_room_id, target_room_id)
+
+
+func _is_effectively_locked() -> bool:
+	return locked or _is_soft_locked() or _power_locked
+
+
 func _refresh_prompt() -> void:
-	if locked or _power_locked:
-		prompt = lock_message
+	if _is_effectively_locked():
+		if _is_soft_locked() and not locked and not _power_locked:
+			# Soft-lock: door itself is the hotwire target (panel is a backup).
+			var tool: String = _active_interface_tool()
+			match tool:
+				"tablet":
+					prompt = "Hack access panel"
+				"kino_remote":
+					prompt = "Force-open panel"
+				"":
+					prompt = "LOCKED — need access tablet (hotbar 1)"
+				_:
+					prompt = "Select access tablet (hotbar 1)"
+		elif _power_locked and not locked:
+			prompt = _power_lock_message()
+		else:
+			prompt = lock_message
 	elif requires_kino and not Inventory.has("kino_remote"):
 		prompt = requires_kino_message
 	elif _is_transition_door():
@@ -119,17 +144,67 @@ func _refresh_prompt() -> void:
 	else:
 		prompt = open_prompt
 
+
+func _active_interface_tool() -> String:
+	var inv: Node = get_node_or_null("/root/Inventory")
+	if inv == null:
+		return ""
+	var active: String = String(inv.call("active_wield_id"))
+	if inv.call("is_interface_tool", active):
+		return active
+	if inv.call("has", "kino_remote") or inv.call("has", "tablet"):
+		return "unowned"
+	return ""
+
+
 func _on_interact(by: Node) -> void:
+	if _is_soft_locked():
+		_try_soft_lock_unlock(by)
+		return
 	if locked or _power_locked:
-		AudioZones.play_door_locked()
 		return
 	if requires_kino and not Inventory.has("kino_remote"):
-		AudioZones.play_door_locked()
 		return
 	if _is_transition_door():
 		_transition(by)
 	else:
 		_toggle()
+
+
+func _try_soft_lock_unlock(by: Node) -> void:
+	var tool: String = _active_interface_tool()
+	if tool != "tablet" and tool != "kino_remote":
+		if tool == "unowned":
+			GameState.add_log("Select your access tablet on hotbar slot 1, then use the door.")
+		else:
+			GameState.add_log("I need my tablet to open this panel.")
+		_refresh_prompt()
+		return
+	var force: bool = tool == "kino_remote"
+	var verb: String = "Force-opening" if force else "Hotwiring"
+	GameState.add_log("%s the bulkhead panel…" % verb)
+	if by.has_method("begin_tool_use"):
+		by.call("begin_tool_use", "repair", 0.0)
+	var mg: Node = get_node_or_null("/root/HotwireMinigame")
+	var ok: bool = false
+	if mg != null and mg.has_method("play"):
+		ok = bool(await mg.call("play", force))
+	else:
+		ok = true
+	if is_instance_valid(by) and by.has_method("end_tool_use"):
+		by.call("end_tool_use")
+	if not ok:
+		GameState.add_log("Access attempt cancelled.")
+		_refresh_prompt()
+		return
+	if not _is_soft_locked():
+		return
+	GameState.clear_soft_lock(source_room_id, target_room_id)
+	unlock()
+	if force:
+		GameState.add_log("Force-open complete. Bulkhead responds.")
+	else:
+		GameState.add_log("Hotwire complete. Bulkhead responds.")
 
 
 func _is_transition_door() -> bool:
@@ -139,10 +214,6 @@ func _toggle() -> void:
 	_is_open = not _is_open
 	_refresh_prompt()
 	_refresh_status_light()
-	if _is_open:
-		AudioZones.play_door_open()
-	else:
-		AudioZones.play_door_close()
 	if _tween != null and _tween.is_valid():
 		_tween.kill()
 	_tween = create_tween()
@@ -178,7 +249,6 @@ func _transition(by: Node) -> void:
 	if not _is_open:
 		_is_open = true
 		_refresh_status_light()
-		AudioZones.play_door_open()
 		if _tween != null and _tween.is_valid():
 			_tween.kill()
 		_tween = create_tween()
@@ -228,6 +298,62 @@ func unlock() -> void:
 	locked = false
 	_refresh_prompt()
 	_refresh_status_light()
+
+
+# ----- PowerGrid integration -------------------------------------------------
+
+# Resolve the PowerGrid autoload. Returns null in headless test mode or
+# when the Systems wrapper has not created the child yet.
+func _get_power_grid() -> Node:
+	return WrapperPaths.resolve("PowerGrid")
+
+# The room whose power state gates this door. Prefer the target room
+# (the destination) so the player cannot walk into an unpowered section.
+# Fall back to the source room for toggle-only doors (no target).
+# Return "" when neither is set — the door has no power dependency.
+func _power_check_room() -> String:
+	if target_room_id != "":
+		return target_room_id
+	return source_room_id
+
+# Build the lock message shown when the power lock is active. Names the
+# offline room so the player knows where the outage is.
+func _power_lock_message() -> String:
+	var room: String = _power_check_room()
+	if room == "":
+		room = "this section"
+	return "LOCKED — power is offline in %s." % room
+
+# Connect to PowerGrid.power_state_changed and do the initial power check.
+# Safe to call when PowerGrid is null (headless tests) — the door stays
+# unlocked in that case.
+func _connect_power_grid() -> void:
+	var pg: Node = _get_power_grid()
+	if pg == null:
+		return
+	_update_power_lock(_power_check_room())
+	if pg.has_signal("power_state_changed"):
+		if not pg.power_state_changed.is_connected(_on_power_state_changed):
+			pg.power_state_changed.connect(_on_power_state_changed)
+
+# Update _power_locked for the given room and refresh visuals.
+func _update_power_lock(room_id: String) -> void:
+	if room_id == "":
+		return
+	var pg: Node = _get_power_grid()
+	if pg == null:
+		return
+	var was_locked: bool = _power_locked
+	_power_locked = not pg.is_room_powered(room_id)
+	if was_locked != _power_locked:
+		_refresh_prompt()
+		_refresh_status_light()
+
+# Signal callback: PowerGrid.power_state_changed(room_id, state).
+# Only act when the changed room is the one this door cares about.
+func _on_power_state_changed(room_id: String, _state: int) -> void:
+	if room_id == _power_check_room():
+		_update_power_lock(room_id)
 
 # ----- visual build ----------------------------------------------------------
 
@@ -450,8 +576,8 @@ func _refresh_status_light() -> void:
 	if _status_mat == null:
 		return
 	var c: Color
-	if locked or _power_locked:
-		c = Color(1.0, 0.20, 0.10, 1.0)    # red — locked (manual or power loss)
+	if _is_effectively_locked():
+		c = Color(1.0, 0.20, 0.10, 1.0)    # red — locked
 	elif _is_open:
 		c = Color(0.30, 1.0, 0.55, 1.0)    # green — passable
 	elif _is_transition_door():
@@ -478,10 +604,3 @@ func _attach_visual_box(parent: Node3D, pos: Vector3, size: Vector3, mat: Standa
 	mi.material_override = mat
 	mi.position = pos
 	parent.add_child(mi)
-
-
-func _autoload(name: String) -> Node:
-	var tree: SceneTree = Engine.get_main_loop() as SceneTree
-	if tree == null or tree.root == null:
-		return null
-	return tree.root.get_node_or_null(name)

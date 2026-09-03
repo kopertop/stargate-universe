@@ -273,21 +273,6 @@ func is_complete(quest_id: String) -> bool:
 	return step.get("terminal", false) == true
 
 
-# All started, non-complete quest ids — the multi-quest tracker (#66) iterates
-# this to render N quests under the minimap. Follows the one-registry pattern
-# (collection-fork lint): a single pass over `_progress`, no per-quest bools.
-# Order is insertion order of `_progress` (auto_start order), which is stable
-# across save/load because deserialize() preserves the saved quest order.
-func active_quests() -> Array[String]:
-	_ensure_initialized()
-	var out: Array[String] = []
-	for qid in _progress.keys():
-		var prog: Dictionary = _progress[qid]
-		if prog.get("started", false) == true and not is_complete(String(qid)):
-			out.append(String(qid))
-	return out
-
-
 # --- Internals ---------------------------------------------------------------
 
 func _resolve_quest_id(quest_id: String) -> String:
@@ -418,22 +403,6 @@ func _evaluate_predicate(key: String) -> bool:
 				if ps.call("is_floor_unlocked", fn):
 					return true
 			return false
-		"engineering_found":
-			return gs.get("engineering_found") == true
-		"junction_located":
-			return gs.get("junction_located") == true
-		"junction_repaired":
-			return gs.get("junction_repaired") == true
-		"power_routed":
-			return gs.get("power_routed") == true
-		"nebula_trap_detected":
-			return gs.get("nebula_trap_detected") == true
-		"power_conservation_started":
-			return gs.get("power_conservation_started") == true
-		"planet_resources_collected":
-			return gs.get("planet_resources_collected") == true
-		"nebula_escape_complete":
-			return gs.get("nebula_escape_complete") == true
 		_:
 			push_warning("QuestLog: unknown predicate '%s'" % key)
 			return false

@@ -7,19 +7,13 @@ extends Node
 # grid sheds load by deprioritizing non-critical rooms before critical ones.
 # Each room ends up in one of three states: POWERED, DEGRADED, OFFLINE.
 #
-# Conduit system: each room has a power conduit that can be damaged by hull
-# breaches, combat, or FTL stress. A damaged conduit forces the room OFFLINE
-# until a repair panel restores it via repair_conduit(). This is distinct from
-# section damage (physical hull breach) — conduit damage is electrical.
-#
 # Integration:
 #   - GameState.set_power_percent(value) + power_changed signal (HUD/Kino map)
-#   - door.gd: doors in OFFLINE rooms lock automatically (power_locked)
+#   - door.gd: doors in OFFLINE rooms lock automatically
 #   - elevator_panel.gd: elevators check PowerGrid for power state
 #   - ConsumptionManager: degraded rooms reduce life support efficiency
 #
-# Save contract: generator output, damaged sections, damaged conduits,
-# per-room overrides.
+# Save contract: generator output, damaged sections, per-room overrides.
 
 # ── Power state enum ─────────────────────────────────────────────────────────
 
@@ -27,7 +21,6 @@ enum PowerState { POWERED, DEGRADED, OFFLINE }
 
 signal power_state_changed(room_id: String, state: int)
 signal grid_status_changed(available: float, demand: float)
-signal conduit_state_changed(room_id: String, damaged: bool)
 
 const POWER_GRID_PATH: String = "res://data/power_grid.json"
 
@@ -40,7 +33,6 @@ var _load_shed_order: Array[String] = []
 var _room_states: Dictionary = {}   # room_id → PowerState
 var _room_overrides: Dictionary = {}  # room_id → PowerState (designer/script forced)
 var _damaged_sections: Dictionary = {}  # room_id → true (section offline, not load-shed)
-var _damaged_conduits: Dictionary = {}   # room_id → true (conduit broken, room OFFLINE until repaired)
 var _loaded: bool = false
 
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
@@ -94,7 +86,7 @@ func _distribute() -> void:
 	var pending: Array[Dictionary] = []  # [{id, demand, priority, critical}]
 	for room_id in _rooms.keys():
 		var rid: String = String(room_id)
-		if _damaged_sections.has(rid) or _damaged_conduits.has(rid):
+		if _damaged_sections.has(rid):
 			_set_room_state(rid, PowerState.OFFLINE)
 			continue
 		if _room_overrides.has(rid):
@@ -163,7 +155,7 @@ func get_total_capacity() -> float:
 func get_total_demand() -> float:
 	var total: float = 0.0
 	for room_id in _rooms.keys():
-		if _damaged_sections.has(String(room_id)) or _damaged_conduits.has(String(room_id)):
+		if _damaged_sections.has(String(room_id)):
 			continue
 		var row: Dictionary = _rooms[String(room_id)] as Dictionary
 		total += float(row.get("demand", 0.0))
@@ -192,7 +184,6 @@ func set_generator_output(output: float) -> void:
 func repair_generator() -> void:
 	_generator_output = _total_capacity
 	_damaged_sections.clear()
-	repair_all_conduits()
 	_distribute()
 	_publish_to_game_state()
 
@@ -224,45 +215,6 @@ func set_section_repaired(room_id: String) -> void:
 	_damaged_sections.erase(room_id)
 	_distribute()
 
-# ── Conduit / repair-panel system ─────────────────────────────────────────────
-# Conduits are the power routing paths between the generator and each room.
-# A damaged conduit forces the room OFFLINE until a repair panel restores it.
-# This is distinct from _damaged_sections (physical hull damage) — conduit
-# damage is electrical, repaired via repair panels at engineering consoles.
-
-func damage_conduit(room_id: String) -> void:
-	if _damaged_conduits.has(room_id):
-		return
-	_damaged_conduits[room_id] = true
-	conduit_state_changed.emit(room_id, true)
-	_distribute()
-
-func repair_conduit(room_id: String) -> void:
-	if not _damaged_conduits.has(room_id):
-		return
-	_damaged_conduits.erase(room_id)
-	conduit_state_changed.emit(room_id, false)
-	_distribute()
-
-func is_conduit_damaged(room_id: String) -> bool:
-	return _damaged_conduits.has(room_id)
-
-func get_damaged_conduits() -> Array[String]:
-	var out: Array[String] = []
-	for k in _damaged_conduits.keys():
-		out.append(String(k))
-	return out
-
-# Repair ALL damaged conduits at once (used by repair_generator for full
-# system restore). Also clears section damage.
-func repair_all_conduits() -> void:
-	var repaired: Array[String] = []
-	for room_id in _damaged_conduits.keys():
-		repaired.append(String(room_id))
-	_damaged_conduits.clear()
-	for room_id in repaired:
-		conduit_state_changed.emit(room_id, false)
-
 func get_damaged_sections() -> Array[String]:
 	var out: Array[String] = []
 	for k in _damaged_sections.keys():
@@ -290,7 +242,6 @@ func serialize() -> Dictionary:
 	return {
 		"generator_output": _generator_output,
 		"damaged_sections": _damaged_sections.keys().duplicate(),
-		"damaged_conduits": _damaged_conduits.keys().duplicate(),
 		"room_overrides": _room_overrides.duplicate(),
 	}
 
@@ -301,11 +252,6 @@ func deserialize(data: Dictionary, _version: int) -> void:
 	if saved_damage is Array:
 		for entry in saved_damage as Array:
 			_damaged_sections[String(entry)] = true
-	_damaged_conduits.clear()
-	var saved_conduits: Variant = data.get("damaged_conduits", [])
-	if saved_conduits is Array:
-		for entry in saved_conduits as Array:
-			_damaged_conduits[String(entry)] = true
 	_room_overrides.clear()
 	var saved_overrides: Variant = data.get("room_overrides", {})
 	if saved_overrides is Dictionary:
@@ -317,7 +263,6 @@ func deserialize(data: Dictionary, _version: int) -> void:
 func reset() -> void:
 	_generator_output = _total_capacity
 	_damaged_sections.clear()
-	_damaged_conduits.clear()
 	_room_overrides.clear()
 	_distribute()
 	_publish_to_game_state()
@@ -330,7 +275,4 @@ func _register_with_save_manager() -> void:
 		sm.call("register_system", "power_grid", self)
 
 func _autoload(name: String) -> Node:
-	var tree: SceneTree = Engine.get_main_loop() as SceneTree
-	if tree == null or tree.root == null:
-		return null
-	return tree.root.get_node_or_null(name)
+	return WrapperPaths.resolve(name)

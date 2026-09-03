@@ -20,7 +20,6 @@ extends Object
 # even on a fresh checkout where class_name registration lags in headless
 # `-s` runs (same convention as room.gd / gate_room.gd).
 const ControlConsoleScript: Script = preload("res://scripts/control_console.gd")
-const AncientGlowScript: Script = preload("res://scripts/ancient_glow.gd")
 
 
 # ============================================================================
@@ -517,34 +516,6 @@ static func _accent_corridor(world: Node3D, width: float, depth: float, height: 
 
 	_corridor_place(world, conduit_mat, axis_z, 0.0, height - 0.18, 0.0, 0.22, 0.22, strip_len)
 
-	# --- Ancient glow: pulsing sconces --------------------------------------
-	# The corridor's sconce + strip emissive materials pulse subtly so the
-	# ship feels alive. Low amplitude, slow period — a "breathing" rhythm.
-	# Flicker mode for damaged atmospherics (disabled by default; enable per
-	# room if the ship's state warrants it).
-	var glow := AncientGlowScript.new()
-	glow.pulse_amplitude = 0.10
-	glow.pulse_period = 2.5
-	glow.pulse_color = palette["accent"]
-	world.add_child(glow)
-	glow.acquire_targets(world)
-
-	# --- Volumetric fog for long corridors ----------------------------------
-	# Long corridors get a localized FogVolume at ceiling level so looking
-	# down the axis reads as atmospheric depth haze, not a flat tunnel.
-	# Short corridors (<20 m) skip it — the global volumetric fog handles
-	# those fine.
-	if long_len >= 20.0:
-		var fog := FogVolume.new()
-		fog.shape = RenderingServer.FOG_VOLUME_SHAPE_BOX
-		fog.size = Vector3(short_len, height * 0.6, long_len)
-		fog.position = Vector3(0.0, height * 0.4, 0.0)
-		var fog_mat := FogMaterial.new()
-		fog_mat.density = 0.08
-		fog_mat.albedo = (palette["accent"] as Color).lerp(Color(0.7, 0.7, 0.75), 0.7)
-		fog.material = fog_mat
-		world.add_child(fog)
-
 	# --- Floor walkway stripe -----------------------------------------------
 	# Pair of dim emissive strips inset from the floor edges, framing a
 	# pedestrian lane down the corridor's center. Only worth adding when the
@@ -785,18 +756,6 @@ static func _accent_control_pillar(world: Node3D, height: float, accent: Color) 
 	p_cs.position = Vector3(0.0, height * 0.5, 0.0)
 	pillar_body.add_child(p_cs)
 	world.add_child(pillar_body)
-
-	# --- Ancient glow: pulsing conduit bands --------------------------------
-	# The pillar's three emissive conduit bands pulse in sync — "power
-	# flowing up the column." Slightly higher amplitude than corridor sconces
-	# because the pillar is the room's focal point.
-	var glow := AncientGlowScript.new()
-	glow.pulse_amplitude = 0.15
-	glow.pulse_period = 3.0
-	glow.pulse_color = accent
-	glow.synchronized = true
-	world.add_child(glow)
-	glow.add_target(conduit_mat)
 
 
 # Attach the SHARED Ancient-tech console mesh as a child of `parent`. Caller

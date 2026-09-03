@@ -19,7 +19,9 @@ extends SceneTree
 # Uses the live autoloads (GameState + Inventory) like quest_log.gd / e1_flow.gd.
 
 const EXPECTED_CATALOG_IDS: Array[String] = [
+	"tablet",
 	"kino_remote",
+	"sidearm",
 	"kino_orb",
 	"rations",
 	"lime",
@@ -54,15 +56,22 @@ func _initialize() -> void:
 	for expected in EXPECTED_CATALOG_IDS:
 		_expect(ids.has(expected), "catalog contains '%s'" % expected)
 
-	# --- 2. fresh state holds only the seeded tracked resources ------------
-	# reset() seeds the tracked-resource opening stock (water/food/parts/lime —
-	# issue #86); nothing else (no story items, no kino) should be present.
+	# --- 2. fresh state holds tracked resources + starter tools ------------
+	# reset() seeds tracked-resource opening stock (water/food/parts/lime —
+	# issue #86) plus tablet/sidearm (weapons-tools). Nothing else.
 	var fresh_ids: Array = _entry_ids(inv)
 	var tracked_ids: Array = gs.call("tracked_resource_ids")
+	var starter_ids: Array = ["tablet"]
 	for fid in fresh_ids:
-		_expect(tracked_ids.has(fid), "fresh inventory only carries tracked resources (stray: %s)" % fid)
+		_expect(
+			tracked_ids.has(fid) or starter_ids.has(fid),
+			"fresh inventory only carries tracked/starter items (stray: %s)" % fid
+		)
 	_expect(int(inv.call("count", "water")) > 0, "water seeded with opening stock after reset")
 	_expect(int(inv.call("count", "small_fuse")) == 0, "small_fuse count starts at 0")
+	_expect(bool(inv.call("has", "tablet")), "tablet seeded on reset")
+	_expect(not bool(inv.call("has", "sidearm")), "sidearm not seeded on reset")
+	_expect(String(inv.call("hotbar_item", 0)) == "tablet", "hotbar slot 0 is tablet")
 
 	# --- 3. picking up items surfaces them (THE BUG REGRESSION) ------------
 	gs.call("find_small_fuse")
@@ -115,16 +124,18 @@ func _initialize() -> void:
 
 	# --- 7. reset + save round-trip ----------------------------------------
 	gs.call("reset")
-	# reset() clears prior items (fuses, kino, rations) back to the seeded
-	# tracked-resource baseline — no story/tool items survive.
+	# reset() clears looted story items back to tracked resources + starter tools
+	# (tablet only). No fuses/rations/kino/sidearm survive.
 	var post_reset_ids: Array = _entry_ids(inv)
 	var tracked_after: Array = gs.call("tracked_resource_ids")
-	var only_tracked: bool = true
+	var starter_after: Array = ["tablet"]
+	var only_baseline: bool = true
 	for rid in post_reset_ids:
-		if not tracked_after.has(rid):
-			only_tracked = false
-	_expect(only_tracked, "GameState.reset() clears non-tracked items from the store")
+		if not tracked_after.has(rid) and not starter_after.has(rid):
+			only_baseline = false
+	_expect(only_baseline, "GameState.reset() clears non-baseline items from the store")
 	_expect(not _entry_ids(inv).has("small_fuse"), "reset() drops looted story items")
+	_expect(bool(inv.call("has", "tablet")), "reset() re-seeds tablet")
 	# Clear the seeded baseline too so the save round-trip below starts clean.
 	inv.call("reset")
 	inv.call("add_item", "lime", 2, "test")

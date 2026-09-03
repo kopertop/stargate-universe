@@ -29,12 +29,6 @@ const TEXT_OUTLINE: Color = Color(0.0, 0.0, 0.0, 0.9)
 const CORNER_RADIUS: int = 4
 const BORDER_WIDTH: int = 2
 
-# Role / class icon badge accent (Phase 1 — small icon over the portrait).
-# Sci-fi engineer role placeholder for Eli; wired to a constant so a future
-# role system can re-tint without touching every badge.
-const ROLE_ICON_COLOR: Color = Color(1.0, 0.84, 0.42, 1.0)
-const ROLE_ICON_BG: Color = Color(0.06, 0.05, 0.04, 0.92)
-
 # Below this fraction of max HP the health bar turns red and pulses.
 const HEALTH_CRITICAL_FRAC: float = 0.3
 

@@ -493,140 +493,6 @@ func most_recent(profile_id := "") -> String:
 	return _store.most_recent_checkpoint(profile_id)
 
 
-# =========================================================================
-# PROFILE SLOTS (issue #83 — Save Profiles + Permanent Checkpoints)
-# =========================================================================
-#
-# Four fixed-id permanent slots layered on the profile/checkpoint store. Each
-# slot is a manual-kind checkpoint with a STABLE id (slot_01..slot_04) so
-# re-saving overwrites the same checkpoint (idempotent) and each survives as a
-# permanent bookmark the load menu lists. slot_01 doubles as the quick-save /
-# quick-load target.
-#
-# The slot ids are intentionally fixed (not timestamped) so the player-facing
-# "Save / Load to Slot N" UI maps 1:1 onto a single on-disk checkpoint per
-# slot — distinct from the unlimited timestamped manual checkpoints the
-# in-game "Save" action writes.
-
-const PROFILE_SLOTS: Array[String] = ["slot_01", "slot_02", "slot_03", "slot_04"]
-const QUICK_SLOT: String = "slot_01"
-
-# Validate a slot id is one of the four profile slots.
-func is_valid_profile_slot(slot_id: String) -> bool:
-	return PROFILE_SLOTS.has(slot_id)
-
-# Write a permanent checkpoint into the named profile slot. Returns false on
-# an invalid slot id or if no snapshot could be captured. Idempotent: a second
-# write to the same slot overwrites the prior checkpoint in place.
-func save_to_slot(slot_id: String, label := "") -> bool:
-	if not is_valid_profile_slot(slot_id):
-		push_error("SaveManager: invalid profile slot '%s'" % slot_id)
-		return false
-	var pid: String = _ensure_active_profile()
-	if pid == "":
-		return false
-	var data: Dictionary = _build_snapshot()
-	if data.is_empty():
-		return false
-	var meta: Dictionary = _build_meta(slot_id, data)
-	meta["kind"] = SaveStore.KIND_MANUAL
-	if label == "":
-		label = "Slot %s" % slot_id.substr(-2)
-	meta["label"] = label
-	if not _store.write_checkpoint(pid, slot_id, data, meta):
-		return false
-	_touch_active_checkpoint(slot_id)
-	save_written.emit()
-	return true
-
-# Resume from a named profile slot. Returns false if the slot is invalid,
-# empty, or the checkpoint can't be read. Does NOT trigger a scene change
-# when `hydrate_only` is true — instead restores every registered system in
-# place and returns the snapshot (used by headless tests + the load menu
-# preview). The live path (hydrate_only = false) goes through the full
-# _resume_from_snapshot scene transition.
-func load_from_slot(slot_id: String, hydrate_only := false) -> bool:
-	if not is_valid_profile_slot(slot_id):
-		push_error("SaveManager: invalid profile slot '%s'" % slot_id)
-		return false
-	var pid: String = _active_profile_id
-	if pid == "":
-		pid = _ensure_active_profile()
-	if pid == "":
-		return false
-	if not _store.has_checkpoint(pid, slot_id):
-		return false
-	if hydrate_only:
-		var data: Dictionary = _store.read_checkpoint(pid, slot_id)
-		if data.is_empty():
-			return false
-		_hydrate_systems(data)
-		return true
-	return load_and_resume_checkpoint(pid, slot_id)
-
-# Quick save → slot_01. Convenience wrapper matching the F5 quicksave surface
-# but targeting the stable profile slot so the load menu lists it as Slot 01.
-func quick_save() -> bool:
-	return save_to_slot(QUICK_SLOT, "Quick Save")
-
-# Quick load → slot_01. Convenience wrapper for the F9-resume path.
-func quick_load() -> bool:
-	return load_from_slot(QUICK_SLOT)
-
-# True if the named profile slot has a checkpoint written to it.
-func has_slot_save(slot_id: String) -> bool:
-	if not is_valid_profile_slot(slot_id):
-		return false
-	if _active_profile_id == "":
-		return false
-	return _store.has_checkpoint(_active_profile_id, slot_id)
-
-# Metadata for every profile slot (occupied or not), for the save/load UI.
-# Each entry: { slot_id, occupied, label, timestamp, ... }.
-func list_profile_slots() -> Array[Dictionary]:
-	var out: Array[Dictionary] = []
-	for slot_id in PROFILE_SLOTS:
-		var entry: Dictionary = {
-			"slot_id": slot_id,
-			"occupied": has_slot_save(slot_id),
-		}
-		if _active_profile_id != "" and _store.has_checkpoint(_active_profile_id, slot_id):
-			var meta: Dictionary = _store.read_checkpoint_meta(_active_profile_id, slot_id)
-			if not meta.is_empty():
-				entry.merge(meta, true)
-		out.append(entry)
-	return out
-
-# Auto-save on a checkpoint trigger (issue #83). Called by Checkpoint nodes
-# when the player enters their area. Writes a permanent checkpoint into the
-# given slot (defaults to slot_01) so the player can resume from the last
-# checkpoint they reached. Returns the slot id on success, "" on failure.
-func autosave_checkpoint(slot_id := QUICK_SLOT) -> String:
-	if save_to_slot(slot_id, "Checkpoint"):
-		return slot_id
-	return ""
-
-# Restore every registered system from a snapshot WITHOUT staging a player
-# spawn or triggering a scene transition. Used by load_from_slot(hydrate_only)
-# and the load-menu preview so headless tests can verify a round-trip without
-# the scene-change side effect.
-func _hydrate_systems(data: Dictionary) -> void:
-	_loading = true
-	var version: int = int(data.get("version", 1))
-	var systems_block: Dictionary
-	if data.has("systems") and data["systems"] is Dictionary:
-		systems_block = data["systems"]
-	else:
-		systems_block = {"game_state": data}
-	for id in _systems.keys():
-		var sys: Object = _systems[id]
-		var sys_data: Variant = systems_block.get(id, {})
-		if sys_data is Dictionary:
-			sys.call("deserialize", sys_data, version)
-	_loading = false
-	save_loaded.emit()
-
-
 func _newest_profile_with_checkpoint() -> String:
 	var best_pid: String = ""
 	var best_ts: int = -1
@@ -802,6 +668,20 @@ func start_new_game(profile_name := "") -> void:
 		var sys: Object = _systems[id]
 		if sys.has_method("reset"):
 			sys.call("reset")
+	# GameState.reset seeds the access tablet AFTER wiping Inventory — but Inventory
+	# is its own registered system, so a later Inventory.reset() in this loop
+	# would clobber that seed. Re-seed opening tools + soft-locks AFTER every
+	# system has wiped (weapons-tools New Game empty-hotbar bug).
+	# Use the SceneTree root (not get_node("/root/...")) so -s smoke tests work.
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var gs: Node = tree.root.get_node_or_null("GameState") if tree != null and tree.root != null else null
+	if gs != null:
+		if gs.has_method("seed_default_resources"):
+			gs.call("seed_default_resources")
+		if gs.has_method("seed_starter_tools"):
+			gs.call("seed_starter_tools")
+		if gs.has_method("seed_opening_soft_locks"):
+			gs.call("seed_opening_soft_locks")
 	# A fresh playthrough gets a fresh profile so its autosave ring + permanent
 	# checkpoints never mingle with a prior run's. New Game passes the
 	# player-chosen display name; an empty name falls back to "Default".

@@ -25,7 +25,7 @@ var _active_jobs: Dictionary = {}  # room_id -> true
 
 
 func _ready() -> void:
-	set_process(false)  # Only tick when jobs are active — see dispatch / _on_ps_repair_completed.
+	set_process(true)
 	# Forward ProceduralShip.repair_completed so callers can connect to either.
 	var ps: Node = get_node_or_null("/root/ProceduralShip")
 	if ps != null:
@@ -35,7 +35,6 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	if _active_jobs.is_empty():
-		set_process(false)
 		return
 	var ps: Node = get_node_or_null("/root/ProceduralShip")
 	if ps == null:
@@ -65,8 +64,6 @@ func _process(delta: float) -> void:
 			finished.append(room_id)
 	for room_id: String in finished:
 		_active_jobs.erase(room_id)
-	if _active_jobs.is_empty():
-		set_process(false)
 
 
 # Dispatch the repair robot to a room.
@@ -99,12 +96,9 @@ func dispatch(room_id: String) -> bool:
 
 	# Normal play: register as active job; _process ticks will drain parts over time.
 	_active_jobs[room_id] = true
-	set_process(true)
 	return true
 
 
 func _on_ps_repair_completed(room_id: String) -> void:
 	_active_jobs.erase(room_id)
-	if _active_jobs.is_empty():
-		set_process(false)
 	repair_completed.emit(room_id)

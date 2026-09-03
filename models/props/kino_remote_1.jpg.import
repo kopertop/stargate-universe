@@ -3,9 +3,9 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://botbr3ygg1c1j"
-path.etc2="res://.godot/imported/kino_remote_1.jpg-0f3b7c776a60122df808552d56b02775.etc2.ctex"
+path.s3tc="res://.godot/imported/kino_remote_1.jpg-0f3b7c776a60122df808552d56b02775.s3tc.ctex"
 metadata={
-"imported_formats": ["etc2_astc"],
+"imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +15,7 @@ generator_parameters={
 [deps]
 
 source_file="res://models/props/kino_remote_1.jpg"
-dest_files=["res://.godot/imported/kino_remote_1.jpg-0f3b7c776a60122df808552d56b02775.etc2.ctex"]
+dest_files=["res://.godot/imported/kino_remote_1.jpg-0f3b7c776a60122df808552d56b02775.s3tc.ctex"]
 
 [params]
 

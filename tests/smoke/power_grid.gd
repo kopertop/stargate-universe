@@ -30,7 +30,7 @@ func _initialize() -> void:
 
 
 func _run_checks() -> void:
-	var pg: Node = root.get_node_or_null("PowerGrid")
+	var pg: Node = WrapperPaths.resolve("PowerGrid")
 	_expect(pg != null, "PowerGrid autoload is attached")
 	if pg == null:
 		_report()
@@ -148,7 +148,7 @@ func _run_checks() -> void:
 		_expect(pg.is_room_powered("gate_room"), "is_room_powered returns true for DEGRADED room (not OFFLINE)")
 
 	# --- ConsumptionManager power efficiency multiplier -----------------------
-	var cm: Node = root.get_node_or_null("ConsumptionManager")
+	var cm: Node = WrapperPaths.resolve("ConsumptionManager")
 	_expect(cm != null, "ConsumptionManager autoload is attached")
 	if cm != null:
 		# At degraded state, the multiplier should be > 1.0.
@@ -174,49 +174,12 @@ func _run_checks() -> void:
 		for room_id in states.keys():
 			pg.set_room_override(String(room_id), -1)
 
-	# --- Conduit / repair-panel system ----------------------------------------
-	# Damaging a conduit forces the room OFFLINE independent of load-shed.
-	pg.repair_generator()
-	_expect(not pg.is_conduit_damaged("infirmary"), "infirmary conduit is intact initially")
-	pg.damage_conduit("infirmary")
-	_expect(pg.is_conduit_damaged("infirmary"), "infirmary conduit is damaged after damage_conduit")
-	var conduit_state: int = int(pg.get_room_power_state("infirmary"))
-	_expect(conduit_state == OFFLINE, "infirmary is OFFLINE after conduit damage (state=%d)" % conduit_state)
-	_expect(not pg.is_room_powered("infirmary"), "infirmary is_room_powered == false with damaged conduit")
-	# Other rooms should be unaffected.
-	_expect(pg.is_room_powered("gate_room"), "gate_room still powered when infirmary conduit damaged")
-	# get_damaged_conduits returns the list.
-	var damaged_conduits: Array[String] = pg.get_damaged_conduits()
-	_expect(damaged_conduits.has("infirmary"), "get_damaged_conduits includes infirmary")
-	# Repair the conduit.
-	pg.repair_conduit("infirmary")
-	_expect(not pg.is_conduit_damaged("infirmary"), "infirmary conduit is intact after repair_conduit")
-	var repaired_conduit_state: int = int(pg.get_room_power_state("infirmary"))
-	_expect(repaired_conduit_state == POWERED, "infirmary is POWERED after conduit repair (state=%d)" % repaired_conduit_state)
-	# Conduit signal fires on state change.
-	var conduit_signals: Array = []
-	pg.conduit_state_changed.connect(func(rid, damaged): conduit_signals.append([rid, damaged]))
-	pg.damage_conduit("hydroponics")
-	_expect(not conduit_signals.is_empty(), "conduit_state_changed signal emitted on damage")
-	_expect(conduit_signals[0][1] == true, "conduit signal reports damaged=true")
-	conduit_signals.clear()
-	pg.repair_conduit("hydroponics")
-	_expect(not conduit_signals.is_empty(), "conduit_state_changed signal emitted on repair")
-	_expect(conduit_signals[0][1] == false, "conduit signal reports damaged=false")
-	# Idempotent: damaging an already-damaged conduit is a no-op (no re-signal).
-	conduit_signals.clear()
-	pg.damage_conduit("hydroponics")
-	pg.damage_conduit("hydroponics")
-	_expect(conduit_signals.size() == 1, "damage_conduit is idempotent (one signal for double-damage)")
-	pg.repair_conduit("hydroponics")
-
 	# --- Save round-trip ------------------------------------------------------
 	pg.repair_generator()
 	pg.set_generator_output(75.0)
 	var serialized: Dictionary = pg.serialize()
 	_expect(serialized.has("generator_output"), "serialize has 'generator_output'")
 	_expect(serialized.has("damaged_sections"), "serialize has 'damaged_sections'")
-	_expect(serialized.has("damaged_conduits"), "serialize has 'damaged_conduits'")
 	_expect(serialized.has("room_overrides"), "serialize has 'room_overrides'")
 
 	# Deserialize and verify generator_output persisted.
@@ -224,18 +187,6 @@ func _run_checks() -> void:
 	pg.deserialize(serialized, 1)
 	var restored_output: float = pg.get_available_power()
 	_expect(restored_output == 75.0, "generator_output restored to 75.0 after deserialize (got %f)" % restored_output)
-
-	# --- Conduit persistence round-trip ---------------------------------------
-	pg.reset()
-	pg.damage_conduit("gate_room")
-	pg.set_section_damaged("hydroponics")
-	var conduit_serialized: Dictionary = pg.serialize()
-	_expect((conduit_serialized["damaged_conduits"] as Array).has("gate_room"), "conduit damage serialized")
-	pg.reset()
-	pg.deserialize(conduit_serialized, 1)
-	_expect(pg.is_conduit_damaged("gate_room"), "gate_room conduit damage survived reset+deserialize")
-	_expect(pg.is_room_powered("gate_room") == false, "gate_room is OFFLINE after conduit persistence restore")
-	_expect(not pg.is_room_powered("hydroponics"), "hydroponics section damage survived reset+deserialize")
 
 	# --- Reset clears everything ----------------------------------------------
 	pg.reset()

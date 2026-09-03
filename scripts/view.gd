@@ -65,7 +65,6 @@ var _follow_height_live: float = -1.0
 
 @onready var camera: Camera3D = $SpringArm/Camera
 @onready var spring: SpringArm3D = $SpringArm
-var xray: CameraXRay = null
 
 func _ready() -> void:
 	# Preserve the scene's tuned pitch/distance; only nudge yaw to sit behind the target.
@@ -82,20 +81,6 @@ func _ready() -> void:
 	GameState.dialog_started.connect(_on_dialog_started)
 	GameState.dialog_closed.connect(_on_dialog_closed)
 	GameState.kino_closed.connect(_on_dialog_closed)
-
-	# X-ray occlusion fade (issue #139): created dynamically so scenes don't
-	# need to carry the node. Headless / instant_mode skips it entirely so
-	# smoke tests stay deterministic.
-	var sr: Node = get_tree().root.get_node_or_null("SceneRouter")
-	var instant: bool = sr != null and bool(sr.get("instant_mode"))
-	if not instant:
-		xray = CameraXRay.new()
-		xray.name = "CameraXRay"
-		add_child(xray)
-		xray.setup(camera)
-		# Track the player (the view's @export target) as the primary subject.
-		if target != null:
-			xray.track_subject(target)
 
 
 func set_combat_look(enabled: bool) -> void:

@@ -3,16 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://jtlom4cyowfk"
-path.etc2="res://.godot/imported/a_panel_plain.png-0a67925bb99afb184c2e585ee7a5d263.etc2.ctex"
+path.s3tc="res://.godot/imported/a_panel_plain.png-0a67925bb99afb184c2e585ee7a5d263.s3tc.ctex"
 metadata={
-"imported_formats": ["etc2_astc"],
+"imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://textures/split/a_panel_plain.png"
-dest_files=["res://.godot/imported/a_panel_plain.png-0a67925bb99afb184c2e585ee7a5d263.etc2.ctex"]
+dest_files=["res://.godot/imported/a_panel_plain.png-0a67925bb99afb184c2e585ee7a5d263.s3tc.ctex"]
 
 [params]
 

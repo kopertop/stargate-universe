@@ -93,7 +93,11 @@ export const createGateRoom = (renderer) => {
 	group.add(box(0.4, height, length, wallMat, -width / 2 - 0.2, height / 2, zMid, colliders));
 	group.add(box(0.4, height, length, wallMat, width / 2 + 0.2, height / 2, zMid, colliders));
 	group.add(box(width + 1, height, 0.4, wallMat, 0, height / 2, zBack - 0.2, colliders));
-	group.add(box(width + 1, height, 0.4, wallMat, 0, height / 2, zFront + 0.2, colliders));
+	// front wall with a door gap (door itself lives in ship.js)
+	const DW = 2.4, DH = 3.2, sideW = (width + 1 - DW) / 2;
+	group.add(box(sideW, height, 0.4, wallMat, -(DW / 2 + sideW / 2), height / 2, zFront + 0.2, colliders));
+	group.add(box(sideW, height, 0.4, wallMat, DW / 2 + sideW / 2, height / 2, zFront + 0.2, colliders));
+	group.add(box(DW, height - DH, 0.4, wallMat, 0, DH + (height - DH) / 2, zFront + 0.2, colliders));
 	const ceiling = box(width + 1, 0.4, length, ceilMat, 0, height + 0.2, zMid, null, { noCollide: true, shadow: false });
 	group.add(ceiling); group.userData.ceiling = ceiling;
 

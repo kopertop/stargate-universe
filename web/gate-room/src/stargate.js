@@ -168,21 +168,22 @@ export const createStargate = () => {
 	g.userData.active = false;
 	// Dialing sequence: ring spins, each chevron locks with a flash, kawoosh erupts, horizon forms.
 	// onEvent(name, index) → 'chevron' | 'kawoosh' | 'active' (caller plays sounds).
-	let dial = null;
-	g.userData.dial = (onEvent) => { dial = { t: 0, locked: 0, spin: 0, onEvent }; };
+	let dial = null, litCount = chevrons;
+	// Planet addresses use 7 symbols (7 chevrons lock); 8 for another galaxy, 9 for Destiny's own address.
+	g.userData.dial = (onEvent, { chevronCount = 7 } = {}) => { dial = { t: 0, locked: 0, spin: 0, onEvent, count: Math.min(chevrons, chevronCount) }; };
 	// Incoming wormhole: chevrons already locked, jump straight to the kawoosh.
-	g.userData.incoming = (onEvent) => { dial = { t: KAWOOSH_AT - 0.05, locked: chevrons, spin: 0, onEvent }; for (const m of glowMats) m.emissiveIntensity = 1.4; };
+	g.userData.incoming = (onEvent, { chevronCount = 7 } = {}) => { const count = Math.min(chevrons, chevronCount); dial = { t: kawooshAt(count) - 0.05, locked: count, spin: 0, onEvent, count }; for (let i = 0; i < count; i++) glowMats[i].emissiveIntensity = 1.4; };
 	let closing = 0; // >0 while the horizon collapses
 	g.userData.shutdown = () => { if (!g.userData.active) return; g.userData.active = false; closing = 0.45; };
 	g.userData.reset = () => { dial = null; closing = 0; horizon.scale.set(1, 1, 1); g.userData.active = false; horizon.visible = false; plumePivot.visible = false; spill.intensity = 0; horizonMat.uniforms.uRipple.value = 0; };
-	const CHEV_INTERVAL = 0.55, KAWOOSH_AT = 0.4 + CHEV_INTERVAL * chevrons + 0.35;
+	const CHEV_INTERVAL = 0.55, kawooshAt = (count) => 0.4 + CHEV_INTERVAL * count + 0.35;
 	g.userData.colliders = []; // filled by caller after placement (ring halves)
 	g.userData.tick = (t, dt) => {
 		horizonMat.uniforms.uTime.value = t;
 		if (horizonMat.uniforms.uRipple.value > 0) horizonMat.uniforms.uRippleT.value += dt;
 		// chevron glow decay back to steady state
 		for (let i = 0; i < glowMats.length; i++) {
-			const m = glowMats[i]; const steady = (dial && i < dial.locked) || g.userData.active ? 1.4 : 0.0;
+			const m = glowMats[i]; const steady = (dial && i < dial.locked) || (g.userData.active && i < litCount) ? 1.4 : 0.0;
 			m.emissiveIntensity += (steady - m.emissiveIntensity) * Math.min(1, dt * 6);
 		}
 		if (g.userData.active) spill.intensity = 55 + Math.sin(t * 2.3) * 6 + Math.sin(t * 7.1) * 3;
@@ -195,12 +196,12 @@ export const createStargate = () => {
 		if (!dial) return;
 		dial.t += dt;
 		// ring spin: accelerate, hold, brake to a stop at the last chevron
-		const spinEnd = 0.4 + CHEV_INTERVAL * chevrons;
+		const spinEnd = 0.4 + CHEV_INTERVAL * dial.count;
 		const spinK = dial.t < spinEnd ? THREE.MathUtils.smoothstep(dial.t, 0, 0.9) * (1 - THREE.MathUtils.smoothstep(dial.t, spinEnd - 0.6, spinEnd)) : 0;
 		ringGroup.rotation.z += spinK * 1.6 * dt;
 		// chevron locks
 		const due = Math.floor((dial.t - 0.4) / CHEV_INTERVAL) + 1;
-		while (dial.locked < Math.min(chevrons, Math.max(0, due))) {
+		while (dial.locked < Math.min(dial.count, Math.max(0, due))) {
 			const i = dial.locked++;
 			glowMats[i].emissiveIntensity = 4.5;
 			chevronPivots[i].userData.kick = 1;
@@ -208,7 +209,7 @@ export const createStargate = () => {
 		}
 		for (const p of chevronPivots) if (p.userData.kick > 0) { p.userData.kick = Math.max(0, p.userData.kick - dt * 5); p.position.setFromCylindricalCoords(0.12 * Math.sin(p.userData.kick * Math.PI), p.rotation.z + Math.PI / 2, 0); }
 		// kawoosh
-		const kt = dial.t - KAWOOSH_AT;
+		const kt = dial.t - kawooshAt(dial.count);
 		if (kt >= 0 && !dial.kawooshed) { dial.kawooshed = true; plumePivot.visible = true; horizon.visible = true; dial.onEvent?.('kawoosh'); }
 		if (dial.kawooshed) {
 			let sc, fade = 1;
@@ -218,7 +219,7 @@ export const createStargate = () => {
 			plumePivot.scale.set(0.8 + 0.2 * sc, 0.8 + 0.2 * sc, Math.max(0.01, sc)); // radial nearly full, length drives eruption/retract
 			plumeMat.uniforms.uTime.value = t; plumeMat.uniforms.uFade.value = fade * Math.min(1, sc * 3);
 			spill.intensity = 40 + 320 * Math.max(0, sc);
-			if (kt > 1.2) { plumePivot.visible = false; g.userData.active = true; dial.onEvent?.('active'); dial = null; }
+			if (kt > 1.2) { plumePivot.visible = false; g.userData.active = true; litCount = dial.count; dial.onEvent?.('active'); dial = null; }
 		}
 	};
 	g.userData.ripple = (localX, localY) => {

@@ -1,0 +1,66 @@
+{
+	"$schema_note": "Same step schema as ../../data/quests.json (id, label, objective, target{room,anchor}, complete_when) plus: xp, on_enter triggers, and a per-chapter planet biome. Chapters are declarative: the engine only flips flags; worlds spawn what the chapter lists.",
+	"chapters": [
+		{
+			"id": "e1_air",
+			"title": "Episode 1: Air",
+			"subtitle": "The crew of Destiny is running out of breathable air.",
+			"planet": {
+				"id": "air_lime_world", "name": "Lime World",
+				"biome": { "sky_low": "#d9b98a", "sky_high": "#7399d8", "ground": "#b48a5a", "fog": "#c9b28a", "sun": "#ffe6c4", "rock": "#7a6a56" },
+				"atmosphere": { "breathable": true, "composition": "O2/N2 — breathable", "temperature_c": 48, "radiation": "LOW", "toxins": "NONE" },
+				"resource": { "id": "lime", "name": "Lime", "color": "#6d4b2e", "count": 7, "required": 5, "verb": "Dig lime" }
+			},
+			"steps": [
+				{ "id": "arrive", "label": "Arrive on Destiny", "objective": "You've come through the Stargate onto an Ancient ship. Every door is sealed.", "target": { "room": "gate_room", "anchor": "" }, "complete_when": "arrived", "xp": 20,
+					"on_enter": [ { "type": "subtitle", "who": "Scott", "text": "Everyone stay calm. Eli — those doors aren't opening. Find us some power." } ] },
+				{ "id": "restore_power", "label": "Restore power", "objective": "Find the power relay in the Gate Room and bring the ship online.", "target": { "room": "gate_room", "anchor": "PowerRelay" }, "complete_when": "power_restored", "xp": 60 },
+				{ "id": "reach_control", "label": "Get to the Control Room", "objective": "Doors are unlocked. Follow the corridor to the Control Interface Room.", "target": { "room": "control_interface_room", "anchor": "RoomCenter" }, "complete_when": "control_room_visited", "xp": 40,
+					"on_enter": [ { "type": "subtitle", "who": "Rush", "text": "Eli. Control room. Now — before someone touches something." } ] },
+				{ "id": "diagnose", "label": "Access a control terminal", "objective": "Use the console to check the ship's status.", "target": { "room": "control_interface_room", "anchor": "ControlConsole" }, "complete_when": "life_support_diagnosed", "xp": 60 },
+				{ "id": "seal_breach", "label": "Seal the damaged section", "objective": "The port shuttle dock is venting to space. Seal it off with the emergency lever.", "target": { "room": "breached_section", "anchor": "SealLever" }, "complete_when": "any_breach_sealed", "xp": 90,
+					"on_enter": [ { "type": "subtitle", "who": "Rush", "text": "Hull breach, port side. Seal that door or we lose the deck." } ] },
+				{ "id": "explore", "label": "Explore the ship", "objective": "The breach is sealed. Look around — there's a room with a strange device.", "target": { "room": "eli_quarters", "anchor": "RoomCenter" }, "complete_when": "eli_quarters_visited", "xp": 40 },
+				{ "id": "find_kino", "label": "Inspect the strange device", "objective": "A floating ball sits on a pedestal beside a handheld remote. Take them.", "target": { "room": "eli_quarters", "anchor": "KinoPedestal" }, "complete_when": "kino_acquired", "xp": 100,
+					"on_exit": [ { "type": "toast", "text": "Kino Remote acquired — press TAB (gamepad: Start) for Quest, Character, Inventory, Talents, Ship, Gate and Kino Control." } ] },
+				{ "id": "find_scrubber", "label": "Get down to life support", "objective": "Rush is on the radio. Find him at the open life-support panel.", "target": { "room": "life_support", "anchor": "Scrubber" }, "complete_when": "scrubber_diagnosed", "xp": 60,
+					"on_enter": [ { "type": "radio", "who": "Rush", "text": "Get down here, Eli. Life support. Bring that remote." } ] },
+				{ "id": "ftl_drop", "label": "Return to the Gate Room", "objective": "The CO2 scrubbers are dead — the lime bed is exhausted. Head back toward the gate.", "target": { "room": "gate_room", "anchor": "RoomCenter" }, "complete_when": "ftl_dropped", "xp": 40,
+					"on_exit": [ { "type": "ftl_drop" }, { "type": "subtitle", "who": "Brody", "text": "We've dropped out of FTL — and the gate is dialing itself." }, { "type": "dial" } ] },
+				{ "id": "scout_kino", "label": "Send a Kino through the gate", "objective": "Open the Kino Remote (TAB) → Kino Control → Launch. Fly it through and read the atmosphere.", "target": { "room": "gate_room", "anchor": "GateFront" }, "complete_when": "kino_scout_done", "xp": 120 },
+				{ "id": "gear_up", "label": "Gear up", "objective": "Breathable. Grab a shovel and a field backpack from the supply crate.", "target": { "room": "gate_room", "anchor": "SupplyCrate" }, "complete_when": "geared_up", "xp": 60 },
+				{ "id": "travel", "label": "Step through the Stargate", "objective": "Walk into the event horizon.", "target": { "room": "gate_room", "anchor": "GateFront" }, "complete_when": "on_planet", "xp": 60 },
+				{ "id": "mine", "label": "Dig up lime", "objective": "Find the dark sand patches and dig with the shovel.", "counter": { "item": "lime", "required": 5 }, "target": { "room": "planet", "anchor": "NearestResource" }, "complete_when": "has_required_resource", "xp": 150,
+					"on_enter": [ { "type": "subtitle", "who": "Eli", "text": "Darker sand. That's the lime. Five bags should do it." } ] },
+				{ "id": "dial_home", "label": "Dial Destiny", "objective": "Open the Kino Remote → Gate and dial Destiny, then walk through.", "target": { "room": "planet", "anchor": "GateFront" }, "complete_when": "returned_from_planet", "xp": 80 },
+				{ "id": "give_brody", "label": "Give the lime to Brody", "objective": "Brody can refine it for the scrubbers.", "target": { "room": "gate_room", "anchor": "Brody" }, "complete_when": "lime_refined", "xp": 80,
+					"on_exit": [ { "type": "subtitle", "who": "Brody", "text": "Give me a minute with this... there. Refined. Get it into the scrubber." } ] },
+				{ "id": "repair_scrubber", "label": "Repair the CO2 scrubber", "objective": "Load the refined lime into the scrubber in life support.", "target": { "room": "life_support", "anchor": "Scrubber" }, "complete_when": "scrubber_repaired", "xp": 200 },
+				{ "id": "complete", "label": "Episode complete", "objective": "The scrubbers are running. We can breathe — for now.", "target": { "room": "", "anchor": "" }, "complete_when": null, "terminal": true }
+			]
+		},
+		{
+			"id": "e2_water",
+			"title": "Episode 2: Water",
+			"subtitle": "Destiny's reserves are almost gone. The next FTL drop is our only chance.",
+			"planet": {
+				"id": "ice_world", "name": "Ice World",
+				"biome": { "sky_low": "#c9dcea", "sky_high": "#3f5f8f", "ground": "#d8e4ee", "fog": "#c3d4e2", "sun": "#eaf2ff", "rock": "#6f7f8f" },
+				"atmosphere": { "breathable": true, "composition": "O2/N2 — thin, breathable", "temperature_c": -42, "radiation": "LOW", "toxins": "NONE" },
+				"resource": { "id": "ice", "name": "Ice", "color": "#8fb8d8", "count": 8, "required": 6, "verb": "Cut ice" }
+			},
+			"steps": [
+				{ "id": "talk_rush", "label": "Talk to Rush", "objective": "Rush has the numbers on the water. Meet him in the Control Room.", "target": { "room": "control_interface_room", "anchor": "Rush" }, "complete_when": "water_briefed", "xp": 40 },
+				{ "id": "ftl_drop", "label": "Return to the Gate Room", "objective": "Destiny is dropping out of FTL near a frozen world.", "target": { "room": "gate_room", "anchor": "RoomCenter" }, "complete_when": "ftl_dropped", "xp": 40,
+					"on_exit": [ { "type": "ftl_drop" }, { "type": "dial" } ] },
+				{ "id": "scout_kino", "label": "Scout with a Kino", "objective": "Kino Remote → Kino Control → Launch. Check the atmosphere before anyone goes through.", "target": { "room": "gate_room", "anchor": "GateFront" }, "complete_when": "kino_scout_done", "xp": 120 },
+				{ "id": "travel", "label": "Step through the Stargate", "objective": "Bring the shovel — the ice is under the surface.", "target": { "room": "gate_room", "anchor": "GateFront" }, "complete_when": "on_planet", "xp": 60 },
+				{ "id": "mine", "label": "Cut ice", "objective": "Find the blue-white patches and cut ice blocks.", "counter": { "item": "ice", "required": 6 }, "target": { "room": "planet", "anchor": "NearestResource" }, "complete_when": "has_required_resource", "xp": 150 },
+				{ "id": "dial_home", "label": "Dial Destiny", "objective": "Kino Remote → Gate → Destiny.", "target": { "room": "planet", "anchor": "GateFront" }, "complete_when": "returned_from_planet", "xp": 80 },
+				{ "id": "give_brody", "label": "Give the ice to Brody", "objective": "He'll get it into the reclamation tanks.", "target": { "room": "gate_room", "anchor": "Brody" }, "complete_when": "lime_refined", "xp": 80 },
+				{ "id": "repair_water", "label": "Restart water reclamation", "objective": "Load the tanks at the life-support panel.", "target": { "room": "life_support", "anchor": "Scrubber" }, "complete_when": "scrubber_repaired", "xp": 200 },
+				{ "id": "complete", "label": "Episode complete", "objective": "Water is flowing again.", "target": { "room": "", "anchor": "" }, "complete_when": null, "terminal": true }
+			]
+		}
+	]
+}

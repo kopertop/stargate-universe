@@ -7,18 +7,22 @@ export const input = {
 	cycleView: false,  // edge-triggered
 	redial: false,     // edge-triggered
 	debug: false,      // edge-triggered (B)
+	interact: false,   // edge-triggered (E / pad X)
+	interactHeld: false,
+	remote: false,     // edge-triggered (Tab / pad Start)
+	launchKino: false, // edge-triggered (K / pad Y)
 	lockEnabled: true,
 	keys: new Set(),
 	mouseDelta: { x: 0, y: 0 },
 };
 
-const pending = { jump: false, cycleView: false, redial: false, debug: false };
+const pending = { jump: false, cycleView: false, redial: false, debug: false, interact: false, remote: false, launchKino: false };
 let padPrev = {};
 const dead = (v, d = 0.15) => (Math.abs(v) < d ? 0 : (v - Math.sign(v) * d) / (1 - d));
 
 export const initInput = (canvas) => {
 	window.addEventListener('keydown', (e) => {
-		if (!e.repeat) { if (e.code === 'Space') pending.jump = true; if (e.code === 'KeyV') pending.cycleView = true; if (e.code === 'KeyR') pending.redial = true; if (e.code === 'KeyB') pending.debug = true; }
+		if (!e.repeat) { if (e.code === 'Space') pending.jump = true; if (e.code === 'KeyV') pending.cycleView = true; if (e.code === 'KeyR') pending.redial = true; if (e.code === 'KeyB') pending.debug = true; if (e.code === 'KeyE') pending.interact = true; if (e.code === 'Tab' || e.code === 'Escape') pending.remote = true; if (e.code === 'KeyK') pending.launchKino = true; }
 		input.keys.add(e.code); if (e.code === 'Tab' || e.code === 'Space') e.preventDefault();
 	});
 	window.addEventListener('keyup', (e) => input.keys.delete(e.code));
@@ -33,7 +37,7 @@ export const initInput = (canvas) => {
 };
 
 export const poll = (dt) => {
-	const k = input.keys;
+	const k = input.keys; input.interactHeld = false;
 	let x = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
 	let y = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0);
 	let run = k.has('ShiftLeft') || k.has('ShiftRight');
@@ -49,13 +53,15 @@ export const poll = (dt) => {
 		ly += dead(pad.axes[3]) * 2.0 * dt;
 		run ||= (pad.buttons[7]?.value ?? 0) > 0.4 || pad.buttons[10]?.pressed;
 		const edge = (b, key) => { const now = !!pad.buttons[b]?.pressed; if (now && !padPrev[b]) pending[key] = true; padPrev[b] = now; };
-		edge(0, 'jump'); edge(3, 'cycleView'); edge(2, 'redial');
+		edge(0, 'jump'); edge(2, 'interact'); edge(3, 'launchKino'); edge(9, 'remote'); edge(8, 'cycleView');
+		if (pad.buttons[2]?.pressed) input.interactHeld = true;
 	}
 	const len = Math.hypot(x, y);
 	if (len > 1) { x /= len; y /= len; }
 	input.move.x = x; input.move.y = y;
 	input.look.x = lx; input.look.y = ly;
 	input.run = run;
-	input.jump = pending.jump; input.cycleView = pending.cycleView; input.redial = pending.redial; input.debug = pending.debug;
-	pending.jump = pending.cycleView = pending.redial = pending.debug = false;
+	input.interactHeld = k.has('KeyE') || input.interactHeld;
+	input.jump = pending.jump; input.cycleView = pending.cycleView; input.redial = pending.redial; input.debug = pending.debug; input.interact = pending.interact; input.remote = pending.remote; input.launchKino = pending.launchKino;
+	pending.jump = pending.cycleView = pending.redial = pending.debug = pending.interact = pending.remote = pending.launchKino = false;
 };

@@ -2,10 +2,13 @@
 import * as THREE from 'three';
 import { createStargate, GATE } from './stargate.js';
 
-export const createDestination = () => {
+const DEFAULT_BIOME = { sky_low: '#d9b98a', sky_high: '#7399d8', ground: '#b48a5a', fog: '#c9b28a', sun: '#ffe6c4', rock: '#7a6a56' };
+/** @param planetDef chapter planet def: { id, name, biome, atmosphere, resource: { id, name, color, count, required, verb } } */
+export const createDestination = (planetDef = {}) => {
+	const biome = { ...DEFAULT_BIOME, ...(planetDef.biome ?? {}) };
 	const scene = new THREE.Scene();
-	scene.background = new THREE.Color(0xc9b28a);
-	scene.fog = new THREE.FogExp2(0xc9b28a, 0.012);
+	scene.background = new THREE.Color(biome.fog);
+	scene.fog = new THREE.FogExp2(biome.fog, 0.012);
 	const colliders = [], occludable = [];
 	const GZ = 0; // gate at origin facing +Z; player exits toward +Z
 	// ONE terrain function drives both the ground mesh and collision (floorAt). Flat within 14 m of the gate.
@@ -17,14 +20,15 @@ export const createDestination = () => {
 	// sky dome (gradient)
 	const sky = new THREE.Mesh(new THREE.SphereGeometry(180, 24, 12), new THREE.ShaderMaterial({
 		side: THREE.BackSide, depthWrite: false,
+		uniforms: { uLow: { value: new THREE.Color(biome.sky_low) }, uHigh: { value: new THREE.Color(biome.sky_high) } },
 		vertexShader: `varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
-		fragmentShader: `varying vec3 vP; void main(){ float h = clamp(vP.y / 180.0, 0.0, 1.0); gl_FragColor = vec4(mix(vec3(0.85,0.72,0.55), vec3(0.45,0.62,0.85), pow(h, 0.6)), 1.0); }`,
+		fragmentShader: `varying vec3 vP; uniform vec3 uLow, uHigh; void main(){ float h = clamp(vP.y / 180.0, 0.0, 1.0); gl_FragColor = vec4(mix(uLow, uHigh, pow(h, 0.6)), 1.0); }`,
 	}));
 	scene.add(sky);
 
 	// ground
 	const gc = document.createElement('canvas'); gc.width = gc.height = 512; const g = gc.getContext('2d');
-	g.fillStyle = '#b48a5a'; g.fillRect(0, 0, 512, 512);
+	g.fillStyle = biome.ground; g.fillRect(0, 0, 512, 512);
 	for (let i = 0; i < 4000; i++) { g.fillStyle = `rgba(${60 + Math.random() * 60},${40 + Math.random() * 40},${20 + Math.random() * 20},${Math.random() * 0.35})`; g.fillRect(Math.random() * 512, Math.random() * 512, 1 + Math.random() * 3, 1 + Math.random() * 3); }
 	const gt = new THREE.CanvasTexture(gc); gt.colorSpace = THREE.SRGBColorSpace; gt.wrapS = gt.wrapT = THREE.RepeatWrapping; gt.repeat.set(40, 40); gt.anisotropy = 8;
 	const SIZE = 400, SEG = 96, CELL = SIZE / SEG;
@@ -56,7 +60,7 @@ export const createDestination = () => {
 		colliders.push(new THREE.Box3().setFromObject(o)); occludable.push(o);
 	}
 	// rocks
-	const rockMat = new THREE.MeshStandardMaterial({ color: 0x7a6a56, roughness: 1, flatShading: true });
+	const rockMat = new THREE.MeshStandardMaterial({ color: biome.rock, roughness: 1, flatShading: true });
 	for (let i = 0; i < 40; i++) {
 		const a = Math.random() * Math.PI * 2, d = 14 + Math.random() * 60;
 		const s = 0.6 + Math.random() * 2.4;
@@ -68,6 +72,20 @@ export const createDestination = () => {
 		colliders.push({ circle: true, x: rx, z: rz, r: s * 0.85 }); occludable.push(r);
 	}
 
+	// resource nodes: darker patches in the ground (lime / ice), placed on a ring 22–60 m out, following the terrain
+	const nodes = [];
+	const res = planetDef.resource;
+	if (res) {
+		const nodeMat = new THREE.MeshStandardMaterial({ color: res.color, roughness: 1 });
+		for (let i = 0; i < res.count; i++) {
+			const a = (i / res.count) * Math.PI * 2 + Math.random() * 0.5, dist = 22 + Math.random() * 38;
+			const nx = Math.cos(a) * dist, nz = GZ + Math.sin(a) * dist;
+			const patch = new THREE.Mesh(new THREE.CircleGeometry(1.6 + Math.random() * 0.8, 24), nodeMat);
+			patch.rotation.x = -Math.PI / 2; patch.position.set(nx, meshHeight(nx, nz) + 0.03, nz); patch.receiveShadow = true; scene.add(patch);
+			nodes.push({ id: `${res.id}_${i}`, x: nx, z: nz, mesh: patch, remaining: 2, done: false });
+		}
+	}
+
 	// gate
 	const gate = createStargate();
 	gate.position.set(0, GATE.rInner + 0.3 - 0.15, GZ); scene.add(gate);
@@ -75,12 +93,13 @@ export const createDestination = () => {
 	gate.traverse((o) => { if (o.isMesh && o.name !== 'eventHorizon') occludable.push(o); });
 
 	// lighting: low sun
-	const sun = new THREE.DirectionalLight(0xffe6c4, 3.2); sun.position.set(-30, 25, 20); sun.castShadow = true;
+	const sun = new THREE.DirectionalLight(biome.sun, 3.2); sun.position.set(-30, 25, 20); sun.castShadow = true;
 	sun.shadow.mapSize.set(2048, 2048); sun.shadow.camera.left = sun.shadow.camera.bottom = -30; sun.shadow.camera.right = sun.shadow.camera.top = 30; sun.shadow.camera.far = 120; sun.shadow.bias = -0.0005;
 	scene.add(sun, new THREE.HemisphereLight(0x9fb8d8, 0x8a6a48, 1.2));
 
 	return {
-		name: 'planet', scene, colliders, gate, occludable,
+		name: 'planet', scene, colliders, gate, occludable, nodes, resource: res, def: planetDef,
+		anchors: { 'planet:GateFront': new THREE.Vector3(0, 0.3, GZ + 3) },
 		spawn: new THREE.Vector3(0, 0, GZ + 1.2), spawnYaw: 0, // facing +Z (away from the gate)
 		exitDir: 1, // player walks +Z out of this gate
 		clampCamera: (p) => { p.y = Math.max(p.y, meshHeight(p.x, p.z) + 0.4); },

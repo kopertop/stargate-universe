@@ -94,6 +94,33 @@ const makeNoise = (freq, type = 'lowpass') => {
 const sfxRumble = makeNoise(140);
 const sfxWhoosh = makeNoise(900, 'bandpass');
 const playOnce = (a) => { if (a.isPlaying) a.stop(); a.play(); };
+// Gate shutdown "whoomp": no sample in repo → synthesized descending tone sweep + low noise tail (ponytail: swap for a wav)
+const shutdownBuffer = () => {
+	const ctx = listener.context, sr = ctx.sampleRate, dur = 1.5, len = Math.floor(sr * dur);
+	const buf = ctx.createBuffer(1, len, sr), out = buf.getChannelData(0); let ph = 0, lp = 0;
+	for (let i = 0; i < len; i++) {
+		const t = i / sr, k = t / dur;
+		const f = 220 * Math.pow(0.16, k);                      // 220 Hz → ~35 Hz
+		ph += (2 * Math.PI * f) / sr;
+		const tone = Math.sin(ph) * (0.6 + 0.4 * Math.sin(ph * 2.0)) * Math.pow(1 - k, 1.3);
+		lp = lp * 0.93 + (Math.random() * 2 - 1) * 0.07;         // low rumble noise
+		const noise = lp * 3.0 * Math.pow(1 - k, 2.2) * Math.min(1, t * 12);
+		const swell = Math.min(1, t * 25);                       // avoid a click
+		out[i] = (tone * 0.8 + noise) * swell * 0.9;
+	}
+	return buf;
+};
+const attachShutdownAudio = (w) => { const a = new THREE.PositionalAudio(listener); a.setBuffer(shutdownBuffer()); a.setVolume(0.9); a.setRefDistance(6); a.setMaxDistance(60); w.gate.add(a); w.sfx.shutdown = a; };
+attachShutdownAudio(destiny); attachShutdownAudio(planet);
+// Hum fade-out (hard stop sounded like a cut): lerp volume to 0 over ~0.7 s, then stop and restore the default volume.
+const humFades = new Set();
+const fadeHum = (w) => { if (w.sfx.hum.isPlaying) humFades.add(w); };
+const tickHumFades = (dt) => {
+	for (const w of humFades) {
+		const h = w.sfx.hum, v = h.getVolume() - dt * 0.9;
+		if (v <= 0) { h.stop(); h.setVolume(0.6); humFades.delete(w); } else h.setVolume(v);
+	}
+};
 // Footfalls: synthesized per surface (sand = soft low-passed puff, deck = short bright tap). ponytail: swap for samples later.
 const footBuffer = (surface) => {
 	const ctx = listener.context, sr = ctx.sampleRate, len = Math.floor(sr * (surface === 'sand' ? 0.14 : 0.07));
@@ -336,6 +363,8 @@ const updateTravel = (dt, t) => {
 			const g = travel.to.gate.position, d = travel.to.exitDir;
 			placePlayer(travel.to, new THREE.Vector3(g.x, travel.to.floorAt(g.x, g.z + 0.35 * d), g.z + 0.35 * d), d > 0 ? 0 : Math.PI);
 			travel.to.gate.userData.ripple(0, PLAYER_CHEST - g.y);
+			// the far gate's kawoosh happened while we were in transit (inaudible at wormhole distance): play it as we emerge, hum + drone underneath
+			playOnce(travel.to.sfx.kawoosh); if (!travel.to.sfx.hum.isPlaying) { travel.to.sfx.hum.setVolume(0.6); travel.to.sfx.hum.play(); }
 			// camera in front of the far gate, watching the traveller step out
 			camera.position.set(g.x + 2.2 * d, 1.7, g.z + 6.5 * d); camera.up.set(0, 1, 0); camera.lookAt(g.x, 1.2, g.z);
 			cam.yaw = d > 0 ? Math.PI : 0; cam.pitch = 0.12;
@@ -344,7 +373,7 @@ const updateTravel = (dt, t) => {
 		flash.style.opacity = String(1 - THREE.MathUtils.smoothstep(travel.t, 0, 0.5));
 		player.update(dt, WALK_OUT, cam.yaw, world.colliders, floorUnder());
 		camera.up.set(0, 1, 0); camera.lookAt(player.root.position.x, 1.2, player.root.position.z);
-		if (travel.t >= 1.6) { travel = null; flash.style.opacity = '0'; world.gate.userData.shutdown(); world.sfx.hum.stop(); } // wormhole closes once we're through
+		if (travel.t >= 1.6) { travel = null; flash.style.opacity = '0'; world.gate.userData.shutdown(); fadeHum(world); playOnce(world.sfx.shutdown); } // wormhole closes once we're through
 	}
 };
 
@@ -355,7 +384,7 @@ addEventListener('resize', () => {
 	destiny.room.userData.reflector.getRenderTarget().setSize(Math.floor(innerWidth * 0.5), Math.floor(innerHeight * 0.5));
 });
 
-window.__dbg = { dustAlive: () => dLife.reduce((n, l) => n + (l > 0 ? 1 : 0), 0), rumblePlaying: () => sfxRumble.isPlaying, humPlaying: () => world.sfx.hum.isPlaying, terrainReport, setDebugTerrain, teleport: (x, z) => { player.root.position.set(x, world.floorAt(x, z), z); }, input, player, camera, get world() { return world; }, destiny, planet, setView, cam: () => cam, faded: () => faded, travel: () => travel };
+window.__dbg = { shutdownPlaying: () => world.sfx.shutdown.isPlaying, kawooshPlaying: () => world.sfx.kawoosh.isPlaying, dustAlive: () => dLife.reduce((n, l) => n + (l > 0 ? 1 : 0), 0), rumblePlaying: () => sfxRumble.isPlaying, humPlaying: () => world.sfx.hum.isPlaying, terrainReport, setDebugTerrain, teleport: (x, z) => { player.root.position.set(x, world.floorAt(x, z), z); }, input, player, camera, get world() { return world; }, destiny, planet, setView, cam: () => cam, faded: () => faded, travel: () => travel };
 
 const fpsEl = document.getElementById('fps');
 const clock = new THREE.Clock(); let acc = 0, frames = 0;
@@ -371,12 +400,13 @@ renderer.setAnimationLoop(() => {
 	if (view === 'follow' && !travel) updateOcclusion();
 	// Low rumble drone: rises while the ring spins, dips at the final chevron, then sits under the hum while the gate is active.
 	{
-		const active = world.gate.userData.active && !travel;
+		const active = world.gate.userData.active && (!travel || travel.phase === 'arrive');
 		const target = active ? 0.7 : dialing && rumbleOn ? Math.min(0.8, sfxRumble.getVolume() + dt * 0.6) : 0;
 		const v = sfxRumble.getVolume() + (target - sfxRumble.getVolume()) * Math.min(1, dt * 3);
 		sfxRumble.setVolume(v);
 		if (v > 0.01 && !sfxRumble.isPlaying) sfxRumble.play(); else if (v <= 0.01 && sfxRumble.isPlaying && !dialing) sfxRumble.stop();
 	}
+	tickHumFades(dt);
 	if (!travel) tickFootsteps(dt);
 	if (world === planet) tickDust(dt);
 	if (input.debug) setDebugTerrain(!debugTerrain);

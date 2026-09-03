@@ -12,8 +12,8 @@ const horizonShader = {
 		uRippleT: { value: 0 },          // seconds since impact
 		uRipplePos: { value: new THREE.Vector2() },
 		coreColor: { value: new THREE.Color(0.85, 0.97, 1.0) },
-		midColor: { value: new THREE.Color(0.12, 0.45, 0.92) },
-		edgeColor: { value: new THREE.Color(0.02, 0.12, 0.38) },
+		midColor: { value: new THREE.Color(0.10, 0.36, 0.86) },
+		edgeColor: { value: new THREE.Color(0.01, 0.06, 0.24) },
 	},
 	vertexShader: /* glsl */`
 		varying vec2 vUv;
@@ -62,9 +62,9 @@ export const createStargate = () => {
 	const { rOuter, rInner, chevrons } = GATE;
 	const ringW = rOuter - rInner;
 
-	const ringMat = metal(0x34332f, 0.5, 0.8);
-	const bandMat = metal(0x2b2a27, 0.7, 0.6);
-	const trimMat = metal(0x8a7a5c, 0.4, 0.9); // bronze highlights
+	const ringMat = metal(0x2a2f38, 0.45, 0.85); // blue-grey gunmetal
+	const bandMat = metal(0x1a1e25, 0.7, 0.6);
+	const trimMat = metal(0x7d8896, 0.35, 0.95); // steel highlights
 
 	// Outer body: flattened torus-like ring built from a cylinder shell (crisp faces like the reference)
 	const ringGroup = new THREE.Group(); ringGroup.name = 'ringGroup'; g.add(ringGroup);
@@ -95,8 +95,8 @@ export const createStargate = () => {
 	}
 
 	// Chevrons: bracket block + cyan V light (identity-defining detail from the reference)
-	const chevMat = metal(0x2c2b27, 0.45, 0.85);
-	const makeGlow = () => new THREE.MeshStandardMaterial({ color: 0x1fb8d8, emissive: 0x18a6c8, emissiveIntensity: 0.0, roughness: 0.3 });
+	const chevMat = metal(0x1f242c, 0.45, 0.85);
+	const makeGlow = () => new THREE.MeshStandardMaterial({ color: 0xd8ecff, emissive: 0xbfe0ff, emissiveIntensity: 0.0, roughness: 0.3 }); // white-blue chevrons (concept)
 	const glowMats = [];
 	const chevronPivots = [];
 	const vShape = new THREE.Shape();
@@ -161,7 +161,7 @@ export const createStargate = () => {
 	const plumePivot = new THREE.Group(); plumePivot.add(plume, plumeCore); plumePivot.scale.set(0, 0, 0); plumePivot.visible = false; g.add(plumePivot);
 
 	// Cyan spill light from the puddle
-	const spill = new THREE.PointLight(0x4fb8ff, 0, 22, 1.6);
+	const spill = new THREE.PointLight(0x7fc0ff, 0, 22, 1.6);
 	spill.position.set(0, 0, 1.6); g.add(spill);
 
 	g.userData.sockets = { horizon, spill, chevronPivots, ringGroup, plumePivot };

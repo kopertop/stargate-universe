@@ -18,19 +18,19 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'hi
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.25;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.95;
 document.body.appendChild(renderer.domElement);
 initInput(renderer.domElement);
 
 const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 400);
-const camFill = new THREE.PointLight(0xdfe8f0, 14, 12, 1.8); camera.add(camFill);
+const camFill = new THREE.PointLight(0xbfd4f0, 2.5, 10, 1.8); camera.add(camFill);
 const envTex = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
 
 // ---------------------------------------------------------------- worlds
 const buildDestiny = () => {
 	const scene = new THREE.Scene();
-	scene.background = new THREE.Color(0x07080c); scene.fog = new THREE.Fog(0x0a0c12, 30, 70);
-	scene.environment = envTex; scene.environmentIntensity = 0.35;
+	scene.background = new THREE.Color(0x04060a); scene.fog = new THREE.Fog(0x05070c, 26, 70);
+	scene.environment = envTex; scene.environmentIntensity = 0.15;
 	const { group: room, colliders } = createGateRoom(renderer); scene.add(room);
 	const gate = createStargate(); gate.position.set(0, GATE.rInner + ROOM.daisH - 0.15, ROOM.gateZ); scene.add(gate);
 	const gz = ROOM.gateZ;

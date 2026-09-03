@@ -1,6 +1,7 @@
 // Destiny interior beyond the gate room: corridor, control room, kino room, life support, breached shuttle dock.
 // Rooms are AABB shells with door gaps; doors slide open when powered + unlocked and the player is near.
 import * as THREE from 'three';
+import { ancientMaterial, ancientFloorMaterial, runwayLights, octagonFrame } from './ancient.js';
 
 const DOOR_W = 2.4, DOOR_H = 3.2, WALL_T = 0.3, H = 5.5;
 // World-space rooms (gate room is x ±7, z -16..14 from gate-room.js; its front door is at z = 14)
@@ -32,11 +33,11 @@ const panelTex = () => {
 export const createShip = (scene, colliders) => {
 	const group = new THREE.Group(); group.name = 'shipInterior'; scene.add(group);
 	const anchors = {}, interact = [], lights = [], occludable = [];
-	const wallMat = new THREE.MeshStandardMaterial({ map: panelTex(), roughness: 0.8, metalness: 0.2 }); wallMat.map.repeat.set(2, 1);
-	const floorMat = new THREE.MeshStandardMaterial({ color: 0x3b3128, roughness: 0.5, metalness: 0.3 });
-	const ceilMat = new THREE.MeshStandardMaterial({ color: 0x1e1c19, roughness: 0.9 });
-	const darkMat = new THREE.MeshStandardMaterial({ color: 0x24262b, roughness: 0.5, metalness: 0.6 });
-	const amber = new THREE.MeshStandardMaterial({ color: 0xffc070, emissive: 0xff9a30, emissiveIntensity: 0 });
+	const wallMat = ancientMaterial({ repeat: [2, 1.2], base: '#151a21', plates: 5 });
+	const floorMat = ancientFloorMaterial([2, 3]);
+	const ceilMat = ancientMaterial({ repeat: [2, 3], base: '#0b0e13', plates: 4, roughness: 0.75 });
+	const darkMat = ancientMaterial({ repeat: [1, 1], base: '#0f1319', plates: 3, roughness: 0.5, metalness: 0.8 });
+	const amber = new THREE.MeshStandardMaterial({ color: 0xcfe6ff, emissive: 0xa8ccff, emissiveIntensity: 0 }); // cold ceiling strips
 	const redMat = new THREE.MeshStandardMaterial({ color: 0xff3020, emissive: 0xff2010, emissiveIntensity: 2 });
 	const box = (w, h, d, mat, x, y, z, solid = true, ry = 0) => {
 		const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); m.rotation.y = ry; m.castShadow = m.receiveShadow = true; group.add(m);
@@ -56,16 +57,21 @@ export const createShip = (scene, colliders) => {
 	};
 	for (const r of SHIP_ROOMS) {
 		const cx = (r.x0 + r.x1) / 2, cz = (r.z0 + r.z1) / 2, w = r.x1 - r.x0, d = r.z1 - r.z0;
-		const floor = box(w + 0.8, 0.1, d + 0.8, floorMat, cx, -0.05, cz, false); floor.receiveShadow = true; // overlaps wall thickness so doorways have no floor gap
+		const floor = box(w, 0.1, d, floorMat, cx, -0.05, cz, false); floor.receiveShadow = true;
 		box(w, 0.1, d, ceilMat, cx, H + 0.05, cz, false);
 		wall('x', r.x0, r.z0, r.z1, +1); wall('x', r.x1, r.z0, r.z1, -1); wall('z', r.z0, r.x0, r.x1, +1); wall('z', r.z1, r.x0, r.x1, -1);
 		// ceiling light strip (amber when powered) + emergency red
 		const strip = box(Math.min(w, 3), 0.08, Math.min(d, 3) * 0.3, amber, cx, H - 0.06, cz, false);
-		const l = new THREE.PointLight(0xffc890, 0, 14, 1.6); l.position.set(cx, H - 0.5, cz); l.userData.on = Math.min(26, 5 + w * d * 0.28); group.add(l); // scale by floor area so corridors don't blow out
+		const l = new THREE.PointLight(0xbfd8ff, 0, 14, 1.6); l.visible = false; l.position.set(cx, H - 0.5, cz); l.userData.on = Math.min(7, 1.5 + w * d * 0.06); group.add(l); // scale by floor area so corridors don't blow out
 		const em = new THREE.PointLight(0xff3020, 6, 9, 2); em.position.set(cx, H - 0.6, cz); group.add(em);
 		lights.push({ l, em, strip });
 		anchors[`${r.id}:RoomCenter`] = new THREE.Vector3(cx, 0, cz);
+		// amber runway lights along the long axis edges (concept: corridor arrival shot)
+		if (d >= w) { runwayLights(group, { from: [r.x0 + 0.45, 0, r.z0 + 0.6], to: [r.x0 + 0.45, 0, r.z1 - 0.6], count: Math.max(3, Math.round(d / 1.8)), light: false }); runwayLights(group, { from: [r.x1 - 0.45, 0, r.z0 + 0.6], to: [r.x1 - 0.45, 0, r.z1 - 0.6], count: Math.max(3, Math.round(d / 1.8)), light: false }); }
+		else { runwayLights(group, { from: [r.x0 + 0.6, 0, r.z0 + 0.45], to: [r.x1 - 0.6, 0, r.z0 + 0.45], count: Math.max(3, Math.round(w / 1.8)), light: false }); runwayLights(group, { from: [r.x0 + 0.6, 0, r.z1 - 0.45], to: [r.x1 - 0.6, 0, r.z1 - 0.45], count: Math.max(3, Math.round(w / 1.8)), light: false }); }
+
 	}
+	for (const d of SHIP_DOORS) { const pos = d.axis === 'x' ? new THREE.Vector3(d.at, 0, d.center) : new THREE.Vector3(d.center, 0, d.at); box(d.axis === 'x' ? 1.0 : DOOR_W, 0.1, d.axis === 'x' ? DOOR_W : 1.0, floorMat, pos.x, -0.05, pos.z, false); /* door sill covers the wall-thickness gap */ octagonFrame(group, { w: DOOR_W + 0.2, h: DOOR_H + 0.1, mat: darkMat, position: pos, rotationY: d.axis === 'x' ? Math.PI / 2 : 0 }); }
 	anchors['gate_room:RoomCenter'] = new THREE.Vector3(0, 0, 4);
 	anchors['gate_room:GateFront'] = new THREE.Vector3(0, 0, -8);
 
@@ -95,7 +101,7 @@ export const createShip = (scene, colliders) => {
 
 	// --- control room console (cardinal console facing the door)
 	const console_ = box(2.6, 1.0, 1.0, darkMat, 0, 0.5, 35, true);
-	const screen = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.05, 0.8), new THREE.MeshStandardMaterial({ color: 0xffe0a0, emissive: 0xffc060, emissiveIntensity: 0 })); screen.position.set(0, 1.03, 35); screen.rotation.x = -0.3; group.add(screen);
+	const screen = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.05, 0.8), new THREE.MeshStandardMaterial({ color: 0x9fd8ff, emissive: 0x4fa8ff, emissiveIntensity: 0 })); screen.position.set(0, 1.03, 35); screen.rotation.x = -0.3; group.add(screen);
 	anchors['control_interface_room:ControlConsole'] = new THREE.Vector3(0, 0, 33.6);
 	for (const sx of [-1, 1]) box(1.2, 3.5, 1.2, darkMat, sx * 5.5, 1.75, 38.5, true); // pillars
 	anchors['control_interface_room:Rush'] = new THREE.Vector3(3, 0, 33);
@@ -133,9 +139,10 @@ export const createShip = (scene, colliders) => {
 	const state = { group, anchors, doors, occludable, powered: false };
 	state.setPower = (on) => {
 		state.powered = on;
-		for (const { l, em, strip } of lights) { l.intensity = on ? l.userData.on : 0; em.intensity = on ? 0 : 6; strip.material.emissiveIntensity = on ? 1.6 : 0; }
+		// hide (not just dim) inactive lights: three.js only compiles lights that are visible, and light count drives shader cost
+		for (const { l, em, strip } of lights) { l.intensity = l.userData.on; l.visible = on; em.visible = !on; strip.material.emissiveIntensity = on ? 1.2 : 0; }
 		relayLamp.material.color.set(on ? 0x40ff80 : 0xff3020); relayLamp.material.emissive.set(on ? 0x20ff60 : 0xff2010);
-		screen.material.emissiveIntensity = on ? 1.4 : 0;
+		screen.material.emissiveIntensity = on ? 1.6 : 0;
 		for (const d of doors) if (!d.jammed) { d.locked = !on; d.lamp.material.color.set(on ? 0x40ff80 : 0xff3020); d.lamp.material.emissive.set(on ? 0x20ff60 : 0xff2010); }
 	};
 	state.sealBreach = () => { const d = doors.find((x) => x.jammed); d.sealed = true; d.locked = true; d.lamp.material.color.set(0xffa020); d.lamp.material.emissive.set(0xff8000); handle.rotation.x = -0.6; breachLight.intensity = 0; };

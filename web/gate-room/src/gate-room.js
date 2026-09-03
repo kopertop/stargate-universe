@@ -4,6 +4,7 @@
 //   hall 14 wide × 30 long, 11 high. Gate stands at z=-11 on a raised dais.
 import * as THREE from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
+import { ancientMaterial, ancientFloorMaterial, runwayLights, octagonFrame, wallSlit } from './ancient.js';
 
 const box = (w, h, d, mat, x, y, z, colliders, opts = {}) => {
 	const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -69,25 +70,30 @@ export const createGateRoom = (renderer) => {
 	const zMid = gateZ + 4; // hall centre
 	const zBack = gateZ - 5, zFront = gateZ + length - 5;
 
-	const wallMat = new THREE.MeshStandardMaterial({ map: wallTexture(), roughness: 0.85, metalness: 0.05 });
-	wallMat.map.repeat.set(6, 1);
-	const stoneMat = new THREE.MeshStandardMaterial({ color: 0x5e5a4e, roughness: 0.9 });
-	const darkMat = new THREE.MeshStandardMaterial({ color: 0x1f2026, roughness: 0.6, metalness: 0.5 });
-	const ceilMat = new THREE.MeshStandardMaterial({ color: 0x22251f, roughness: 0.95 });
-	const cyan = new THREE.MeshStandardMaterial({ color: 0x5ff5ff, emissive: 0x2fd8ff, emissiveIntensity: 2.4 });
-	const amberScreen = new THREE.MeshStandardMaterial({ color: 0xfff1cf, emissive: 0xffe0a0, emissiveIntensity: 2.0 });
+	const wallMat = ancientMaterial({ repeat: [4, 1.6], base: '#171c24', plates: 6 }); // Ancient plates (concept: materials sheet)
+	const stoneMat = ancientMaterial({ repeat: [1, 3], base: '#1f242c', plates: 3, roughness: 0.6 });
+	const darkMat = ancientMaterial({ repeat: [1, 1], base: '#0f1319', plates: 3, roughness: 0.5, metalness: 0.8 });
+	const ceilMat = ancientMaterial({ repeat: [3, 6], base: '#0c0f14', plates: 5, roughness: 0.7 });
+	const cyan = new THREE.MeshStandardMaterial({ color: 0xcfe6ff, emissive: 0xa8ccff, emissiveIntensity: 2.2 }); // cold white-blue slits
+	const amberScreen = new THREE.MeshStandardMaterial({ color: 0x9fd8ff, emissive: 0x4fa8ff, emissiveIntensity: 1.6 }); // blue console screens
 
 	// --- Floor: reflector + tinted wood overlay (polished look from the reference)
 	const reflector = new Reflector(new THREE.PlaneGeometry(width, length), {
-		clipBias: 0.003, textureWidth: Math.floor(innerWidth * 0.5), textureHeight: Math.floor(innerHeight * 0.5), color: 0x3e3e3e,
+		clipBias: 0.003, textureWidth: Math.floor(innerWidth * 0.5), textureHeight: Math.floor(innerHeight * 0.5), color: 0x2e333b,
 	});
 	reflector.rotation.x = -Math.PI / 2; reflector.position.set(0, -0.002, zMid); group.add(reflector);
-	const floorMat = new THREE.MeshStandardMaterial({ map: floorTexture(), roughness: 0.35, metalness: 0.1, transparent: true, opacity: 0.9 });
+	const floorMat = ancientFloorMaterial([3.5, 7.5]); floorMat.transparent = true; floorMat.opacity = 0.86;
 	const floor = new THREE.Mesh(new THREE.PlaneGeometry(width, length), floorMat);
 	floor.rotation.x = -Math.PI / 2; floor.position.set(0, 0, zMid); floor.receiveShadow = true; group.add(floor);
 
 	// --- Dais under gate
-	group.add(box(8, daisH, 3.2, new THREE.MeshStandardMaterial({ color: 0x3b2e28, roughness: 0.6, metalness: 0.2 }), 0, daisH / 2, gateZ + 0.6, null, { noCollide: true }));
+	group.add(box(8, daisH, 3.2, darkMat, 0, daisH / 2, gateZ + 0.6, null, { noCollide: true }));
+	// railings flanking the approach to the dais (thin posts + rail), leaving the centre walkway open
+	const railMat = ancientMaterial({ repeat: [1, 1], base: '#23282f', plates: 2, roughness: 0.45, metalness: 0.9 });
+	for (const sx of [-1, 1]) {
+		group.add(box(3.4, 0.05, 0.05, railMat, sx * 3.0, 1.0, gateZ + 2.4, null, { noCollide: true, shadow: false }));
+		for (const dx of [-1.6, 0, 1.6]) group.add(box(0.06, 1.0, 0.06, railMat, sx * 3.0 + dx, 0.5, gateZ + 2.4, null, { noCollide: true, shadow: false }));
+	}
 
 	// --- Walls / ceiling
 	group.add(box(0.4, height, length, wallMat, -width / 2 - 0.2, height / 2, zMid, colliders));
@@ -98,21 +104,20 @@ export const createGateRoom = (renderer) => {
 	group.add(box(sideW, height, 0.4, wallMat, -(DW / 2 + sideW / 2), height / 2, zFront + 0.2, colliders));
 	group.add(box(sideW, height, 0.4, wallMat, DW / 2 + sideW / 2, height / 2, zFront + 0.2, colliders));
 	group.add(box(DW, height - DH, 0.4, wallMat, 0, DH + (height - DH) / 2, zFront + 0.2, colliders));
+	octagonFrame(group, { w: DW + 0.2, h: DH + 0.1, mat: darkMat, position: new THREE.Vector3(0, 0, zFront - 0.15) });
 	const ceiling = box(width + 1, 0.4, length, ceilMat, 0, height + 0.2, zMid, null, { noCollide: true, shadow: false });
 	group.add(ceiling); group.userData.ceiling = ceiling;
 
 	// --- Back wall windows (lattice, warm glow) flanking the gate
-	const lattice = latticeTexture(6, 7);
-	const winMat = new THREE.MeshStandardMaterial({ map: lattice, emissive: 0xffffff, emissiveMap: lattice, emissiveIntensity: 0.55, roughness: 1 });
-	for (const sx of [-1, 1]) {
-		const w = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 7.5), winMat);
-		w.position.set(sx * 4.9, 5.2, zBack + 0.03); group.add(w);
-			}
-	// side-wall high windows
-	for (const sx of [-1, 1]) for (const z of [gateZ + 4, gateZ + 12]) {
-		const w = new THREE.Mesh(new THREE.PlaneGeometry(4.5, 3.4), winMat);
-		w.position.set(sx * (width / 2 - 0.03), 7.6, z); w.rotation.y = -sx * Math.PI / 2; group.add(w);
-	}
+	// tall vertical light slits in the back wall and along the side walls (concept: gate-room-active)
+	for (const sx of [-1, 1]) for (const dx of [3.6, 4.6, 5.6]) wallSlit(group, { x: sx * dx, y: 5.6, z: zBack + 0.06, h: 4.2, intensity: 1.8 });
+	for (const sx of [-1, 1]) for (let i = 0; i < 5; i++) { const z = gateZ + 2 + i * 5; wallSlit(group, { x: sx * (width / 2 - 0.05), y: 6.2, z, h: 2.6, rotationY: Math.PI / 2, intensity: 1.6 }); wallSlit(group, { x: sx * (width / 2 - 0.05), y: 2.2, z, h: 1.2, rotationY: Math.PI / 2, color: 0xffb060, intensity: 1.2 }); }
+	const ringMat = ancientMaterial({ repeat: [6, 1], base: '#12161c', plates: 4, roughness: 0.5, metalness: 0.85 });
+	const ceilRing = new THREE.Mesh(new THREE.TorusGeometry(5.2, 0.35, 8, 48), ringMat); ceilRing.rotation.x = Math.PI / 2; ceilRing.position.set(0, height - 0.6, gateZ + 6); group.add(ceilRing);
+	for (let i = 0; i < 3; i++) { const a = (i / 3) * Math.PI * 2 + Math.PI / 2; const sp = new THREE.SpotLight(0xcfe0ff, 45, 18, 0.5, 0.6, 1.4); sp.position.set(Math.cos(a) * 4.2, height - 0.9, gateZ + 6 + Math.sin(a) * 4.2); sp.target.position.set(Math.cos(a) * 2.5, 0, gateZ + 6 + Math.sin(a) * 2.5); group.add(sp, sp.target); }
+	runwayLights(group, { from: [-2.4, 0, gateZ + 3.5], to: [-2.4, 0, zFront - 0.6], count: 10, light: false });
+	runwayLights(group, { from: [2.4, 0, gateZ + 3.5], to: [2.4, 0, zFront - 0.6], count: 10, light: false });
+	for (const z of [gateZ + 8, gateZ + 17]) { const l = new THREE.PointLight(0xffa040, 4, 8, 1.8); l.position.set(0, 0.4, z); group.add(l); }
 
 	// --- Angled stone buttresses (the leaning A-frame pillars around the gate)
 	const pillarGeo = new THREE.BoxGeometry(1.1, 12.5, 1.6);
@@ -144,7 +149,7 @@ export const createGateRoom = (renderer) => {
 		group.add(top);
 		const screen = box(0.9, 0.04, 1.6, amberScreen, x - sx * 0.05, 1.05, z, null, { noCollide: true, shadow: false, ry: sx * 0.35, rx: -sx * 0.25 });
 		group.add(screen);
-		const glow = new THREE.PointLight(0xffe2a8, 8, 6, 2); glow.position.set(x, 1.6, z); group.add(glow);
+		const glow = new THREE.PointLight(0x6fb8ff, 6, 6, 2); glow.position.set(x, 1.6, z); group.add(glow);
 	}
 
 	// --- Upper-left monitor alcove (from the reference's top-left)
@@ -152,16 +157,16 @@ export const createGateRoom = (renderer) => {
 	group.add(box(1.9, 1.3, 0.05, new THREE.MeshStandardMaterial({ color: 0x0c1a2a, emissive: 0x18426a, emissiveIntensity: 1.5 }), -width / 2 + 0.75, 8.6, gateZ + 15, null, { noCollide: true, shadow: false }));
 
 	// --- Lighting
-	const hemi = new THREE.HemisphereLight(0x9fc3dd, 0x5a3a26, 1.1); group.add(hemi);
-	const key = new THREE.DirectionalLight(0xfff0d8, 3.2);
+	const hemi = new THREE.HemisphereLight(0x5d7590, 0x0a0c10, 0.45); group.add(hemi);
+	const key = new THREE.DirectionalLight(0xbfd4f0, 1.4);
 	key.position.set(-6, 10, gateZ + 6); key.target.position.set(0, 0, gateZ + 6);
 	key.castShadow = true; key.shadow.mapSize.set(2048, 2048);
 	key.shadow.camera.left = -12; key.shadow.camera.right = 12; key.shadow.camera.top = 16; key.shadow.camera.bottom = -16;
 	key.shadow.camera.near = 1; key.shadow.camera.far = 40; key.shadow.bias = -0.0005;
 	group.add(key, key.target);
-	const backFill = new THREE.PointLight(0xffd9a0, 60, 24, 1.6);
-	group.add(new THREE.AmbientLight(0x6a7480, 0.45));
-	for (const sx of [-1, 1]) for (const z of [gateZ + 5, gateZ + 13]) { const l = new THREE.PointLight(0xffe6c0, 32, 20, 1.7); l.position.set(sx * 5.5, 8.5, z); group.add(l); } backFill.position.set(0, 7, zBack + 1.5); group.add(backFill);
+	const backFill = new THREE.PointLight(0x9fc4ff, 10, 24, 1.6);
+	group.add(new THREE.AmbientLight(0x30404f, 0.35));
+	for (const z of [gateZ + 5, gateZ + 13]) { const l = new THREE.PointLight(0xbfd8ff, 9, 22, 1.7); l.position.set(0, 8.5, z); group.add(l); } backFill.position.set(0, 7, zBack + 1.5); group.add(backFill);
 
 	group.userData.reflector = reflector;
 	return { group, colliders };

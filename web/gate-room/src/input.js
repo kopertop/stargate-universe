@@ -6,18 +6,19 @@ export const input = {
 	jump: false,       // edge-triggered (true for one poll)
 	cycleView: false,  // edge-triggered
 	redial: false,     // edge-triggered
+	debug: false,      // edge-triggered (B)
 	lockEnabled: true,
 	keys: new Set(),
 	mouseDelta: { x: 0, y: 0 },
 };
 
-const pending = { jump: false, cycleView: false, redial: false };
+const pending = { jump: false, cycleView: false, redial: false, debug: false };
 let padPrev = {};
 const dead = (v, d = 0.15) => (Math.abs(v) < d ? 0 : (v - Math.sign(v) * d) / (1 - d));
 
 export const initInput = (canvas) => {
 	window.addEventListener('keydown', (e) => {
-		if (!e.repeat) { if (e.code === 'Space') pending.jump = true; if (e.code === 'KeyV') pending.cycleView = true; if (e.code === 'KeyR') pending.redial = true; }
+		if (!e.repeat) { if (e.code === 'Space') pending.jump = true; if (e.code === 'KeyV') pending.cycleView = true; if (e.code === 'KeyR') pending.redial = true; if (e.code === 'KeyB') pending.debug = true; }
 		input.keys.add(e.code); if (e.code === 'Tab' || e.code === 'Space') e.preventDefault();
 	});
 	window.addEventListener('keyup', (e) => input.keys.delete(e.code));
@@ -55,6 +56,6 @@ export const poll = (dt) => {
 	input.move.x = x; input.move.y = y;
 	input.look.x = lx; input.look.y = ly;
 	input.run = run;
-	input.jump = pending.jump; input.cycleView = pending.cycleView; input.redial = pending.redial;
-	pending.jump = pending.cycleView = pending.redial = false;
+	input.jump = pending.jump; input.cycleView = pending.cycleView; input.redial = pending.redial; input.debug = pending.debug;
+	pending.jump = pending.cycleView = pending.redial = pending.debug = false;
 };

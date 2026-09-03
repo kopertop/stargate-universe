@@ -70,18 +70,25 @@ export const loadPlayer = async () => {
 		// jump / gravity (flat floor at y=0)
 		if (jump && grounded) { vy = PLAYER.jumpVel; grounded = false; actions.jump.reset().play(); }
 		if (!grounded) { vy -= PLAYER.gravity * dt; root.position.y += vy * dt; if (root.position.y <= floorY) { root.position.y = floorY; vy = 0; grounded = true; } }
-		else root.position.y += (floorY - root.position.y) * Math.min(1, dt * 20); // step up/down onto daises
+		else root.position.y = floorY; // grounded: feet exactly on the floor query (terrain-following, dais steps)
 		state.grounded = grounded;
 		// axis-separated slide against boxes (ponytail: XZ only, floor is flat)
 		const p = root.position; const r = PLAYER.radius;
 		for (const axis of ['x', 'z']) {
 			p[axis] += vel[axis] * dt;
 			for (const b of colliders) {
+				if (b.circle) continue;
 				if (p.x + r > b.min.x && p.x - r < b.max.x && p.z + r > b.min.z && p.z - r < b.max.z && b.min.y < 1.2) {
 					if (axis === 'x') p.x = vel.x > 0 ? b.min.x - r : b.max.x + r;
 					else p.z = vel.z > 0 ? b.min.z - r : b.max.z + r;
 				}
 			}
+		}
+		// circle colliders (rocks): push out along the contact normal
+		for (const c of colliders) {
+			if (!c.circle) continue;
+			const dx = p.x - c.x, dz = p.z - c.z, dist = Math.hypot(dx, dz), minD = c.r + r;
+			if (dist < minD && dist > 1e-4) { p.x = c.x + (dx / dist) * minD; p.z = c.z + (dz / dist) * minD; }
 		}
 
 		// animation blend by speed

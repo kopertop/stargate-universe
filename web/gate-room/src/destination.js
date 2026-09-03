@@ -27,11 +27,21 @@ export const createDestination = () => {
 	g.fillStyle = '#b48a5a'; g.fillRect(0, 0, 512, 512);
 	for (let i = 0; i < 4000; i++) { g.fillStyle = `rgba(${60 + Math.random() * 60},${40 + Math.random() * 40},${20 + Math.random() * 20},${Math.random() * 0.35})`; g.fillRect(Math.random() * 512, Math.random() * 512, 1 + Math.random() * 3, 1 + Math.random() * 3); }
 	const gt = new THREE.CanvasTexture(gc); gt.colorSpace = THREE.SRGBColorSpace; gt.wrapS = gt.wrapT = THREE.RepeatWrapping; gt.repeat.set(40, 40); gt.anisotropy = 8;
-	const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400, 64, 64), new THREE.MeshStandardMaterial({ map: gt, roughness: 1 }));
+	const SIZE = 400, SEG = 96, CELL = SIZE / SEG;
+	const ground = new THREE.Mesh(new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG), new THREE.MeshStandardMaterial({ map: gt, roughness: 1 }));
 	// gentle dunes away from the dais
 	const pos = ground.geometry.attributes.position;
-	// plane is rotated -90° about X, so local (x, y) → world (x, -y); terrainHeight is even in z so the sign is irrelevant
-	for (let i = 0; i < pos.count; i++) pos.setZ(i, terrainHeight(pos.getX(i), -pos.getY(i)));
+	// plane is rotated -90° about X, so local (x, y) → world (x, -y). Vertex index = iy * (SEG + 1) + ix with world z
+	// increasing along iy. Heights are kept in a grid so collision can interpolate the SAME triangles the GPU draws.
+	const H = new Float32Array(pos.count);
+	for (let i = 0; i < pos.count; i++) { H[i] = terrainHeight(pos.getX(i), -pos.getY(i)); pos.setZ(i, H[i]); }
+	/** Height of the rendered surface at world (x, z): bilinear on PlaneGeometry's (a,b,d)/(b,c,d) triangle split. */
+	const meshHeight = (x, z) => {
+		const fx = THREE.MathUtils.clamp((x + SIZE / 2) / CELL, 0, SEG - 1e-6), fz = THREE.MathUtils.clamp((z - GZ + SIZE / 2) / CELL, 0, SEG - 1e-6);
+		const ix = Math.floor(fx), iy = Math.floor(fz), u = fx - ix, v = fz - iy, W = SEG + 1;
+		const ha = H[iy * W + ix], hb = H[(iy + 1) * W + ix], hc = H[(iy + 1) * W + ix + 1], hd = H[iy * W + ix + 1];
+		return u + v <= 1 ? ha + (hb - ha) * v + (hd - ha) * u : hc + (hb - hc) * (1 - u) + (hd - hc) * (1 - v);
+	};
 	ground.geometry.computeVertexNormals();
 	ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
 
@@ -42,7 +52,7 @@ export const createDestination = () => {
 	// obelisks flanking the approach (colliders)
 	for (const sx of [-1, 1]) for (const z of [8, 14]) {
 		const o = new THREE.Mesh(new THREE.BoxGeometry(0.8, 3.5 + Math.random(), 0.8), stone);
-		o.position.set(sx * 3.8, 1.75 + terrainHeight(sx * 3.8, GZ + z), GZ + z); o.castShadow = o.receiveShadow = true; scene.add(o);
+		o.position.set(sx * 3.8, 1.75 + meshHeight(sx * 3.8, GZ + z), GZ + z); o.castShadow = o.receiveShadow = true; scene.add(o);
 		colliders.push(new THREE.Box3().setFromObject(o)); occludable.push(o);
 	}
 	// rocks
@@ -52,9 +62,10 @@ export const createDestination = () => {
 		const s = 0.6 + Math.random() * 2.4;
 		const r = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), rockMat);
 		const rx = Math.cos(a) * d, rz = GZ + Math.sin(a) * d;
-		r.position.set(rx, terrainHeight(rx, rz) + s * 0.4, rz); r.rotation.set(Math.random(), Math.random(), Math.random());
+		r.position.set(rx, meshHeight(rx, rz) + s * 0.4, rz); r.rotation.set(Math.random(), Math.random(), Math.random());
 		r.castShadow = r.receiveShadow = true; scene.add(r);
-		colliders.push(new THREE.Box3().setFromObject(r)); occludable.push(r);
+		// circle collider hugging the visible rock (a Box3 of a rotated dodecahedron is up to 1.7× too wide → invisible walls)
+		colliders.push({ circle: true, x: rx, z: rz, r: s * 0.85 }); occludable.push(r);
 	}
 
 	// gate
@@ -72,7 +83,8 @@ export const createDestination = () => {
 		name: 'planet', scene, colliders, gate, occludable,
 		spawn: new THREE.Vector3(0, 0, GZ + 1.2), spawnYaw: 0, // facing +Z (away from the gate)
 		exitDir: 1, // player walks +Z out of this gate
-		clampCamera: (p) => { p.y = Math.max(p.y, terrainHeight(p.x, p.z) + 0.4); },
-		floorAt: (x, z) => { const r = Math.hypot(x, z - GZ); return r < 6.5 ? 0.3 : r < 7.5 ? 0.15 : terrainHeight(x, z); },
+		clampCamera: (p) => { p.y = Math.max(p.y, meshHeight(p.x, p.z) + 0.4); },
+		floorAt: (x, z) => { const r = Math.hypot(x, z - GZ); return r < 6.5 ? 0.3 : r < 7.5 ? 0.15 : meshHeight(x, z); },
+		ground, terrainHeight, meshHeight,
 	};
 };

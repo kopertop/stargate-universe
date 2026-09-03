@@ -94,12 +94,76 @@ const makeNoise = (freq, type = 'lowpass') => {
 const sfxRumble = makeNoise(140);
 const sfxWhoosh = makeNoise(900, 'bandpass');
 const playOnce = (a) => { if (a.isPlaying) a.stop(); a.play(); };
+// Footfalls: synthesized per surface (sand = soft low-passed puff, deck = short bright tap). ponytail: swap for samples later.
+const footBuffer = (surface) => {
+	const ctx = listener.context, sr = ctx.sampleRate, len = Math.floor(sr * (surface === 'sand' ? 0.14 : 0.07));
+	const buf = ctx.createBuffer(1, len, sr), out = buf.getChannelData(0); let lp = 0;
+	for (let i = 0; i < len; i++) {
+		const env = Math.pow(1 - i / len, surface === 'sand' ? 1.6 : 3.5);
+		const n = Math.random() * 2 - 1; lp = lp * (surface === 'sand' ? 0.82 : 0.4) + n * (surface === 'sand' ? 0.18 : 0.6);
+		out[i] = lp * env * (surface === 'sand' ? 0.9 : 0.5);
+	}
+	return buf;
+};
+const footBuffers = { sand: footBuffer('sand'), deck: footBuffer('deck') };
+const footPool = Array.from({ length: 4 }, () => new THREE.Audio(listener));
+let footIdx = 0, stepDist = 0;
+const footstep = (surface, loud) => {
+	const a = footPool[footIdx++ % footPool.length]; if (a.isPlaying) a.stop();
+	a.setBuffer(footBuffers[surface]); a.setPlaybackRate(0.9 + Math.random() * 0.25); a.setVolume((surface === 'sand' ? 0.35 : 0.22) * (loud ? 1.3 : 1)); a.play();
+};
+// Sand kick-up: small dust puffs at the feet on each sand footfall (planet scene only)
+const DCOUNT = 400;
+const dGeo = new THREE.BufferGeometry();
+dGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(DCOUNT * 3), 3));
+dGeo.setAttribute('aAlpha', new THREE.BufferAttribute(new Float32Array(DCOUNT), 1));
+dGeo.setAttribute('aSize', new THREE.BufferAttribute(new Float32Array(DCOUNT), 1));
+const dVel = new Float32Array(DCOUNT * 3), dLife = new Float32Array(DCOUNT), dMax = new Float32Array(DCOUNT);
+// soft round sprites with per-particle alpha/size (PointsMaterial can't fade alpha per point, and additive on bright sand reads as white blocks)
+const dust = new THREE.Points(dGeo, new THREE.ShaderMaterial({
+	transparent: true, depthWrite: false,
+	uniforms: { uColor: { value: new THREE.Color(0xf1dcb2) } },
+	vertexShader: `attribute float aAlpha, aSize; varying float vA;
+		void main(){ vA = aAlpha; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = aSize * 380.0 / -mv.z; gl_Position = projectionMatrix * mv; }`,
+	fragmentShader: `uniform vec3 uColor; varying float vA;
+		void main(){ float d = length(gl_PointCoord - 0.5) * 2.0; float soft = smoothstep(1.0, 0.35, d); if (soft <= 0.001) discard; gl_FragColor = vec4(uColor, soft * vA); }`,
+}));
+dust.frustumCulled = false; planet.scene.add(dust);
+let dNext = 0;
+const kickSand = (loud) => {
+	const p = player.root.position, pos = dGeo.attributes.position.array;
+	const back = new THREE.Vector3(Math.sin(player.root.rotation.y), 0, Math.cos(player.root.rotation.y)).multiplyScalar(-1); // behind the model (+Z is its forward)
+	const n = loud ? 26 : 14;
+	for (let k = 0; k < n; k++) {
+		const i = dNext++ % DCOUNT;
+		pos[i * 3] = p.x + (Math.random() - 0.5) * 0.35; pos[i * 3 + 1] = p.y + 0.05; pos[i * 3 + 2] = p.z + (Math.random() - 0.5) * 0.35;
+		dVel[i * 3] = back.x * (0.8 + Math.random()) + (Math.random() - 0.5) * 0.8; dVel[i * 3 + 1] = 1.1 + Math.random() * 1.3; dVel[i * 3 + 2] = back.z * (0.8 + Math.random()) + (Math.random() - 0.5) * 0.8;
+		dLife[i] = dMax[i] = 0.45 + Math.random() * 0.35;
+	}
+};
+const tickDust = (dt) => {
+	const pos = dGeo.attributes.position.array, al = dGeo.attributes.aAlpha.array, sz = dGeo.attributes.aSize.array;
+	for (let i = 0; i < DCOUNT; i++) {
+		if (dLife[i] <= 0) { al[i] = 0; continue; }
+		dLife[i] -= dt; dVel[i * 3 + 1] -= 3.5 * dt;
+		pos[i * 3] += dVel[i * 3] * dt; pos[i * 3 + 1] += dVel[i * 3 + 1] * dt; pos[i * 3 + 2] += dVel[i * 3 + 2] * dt;
+		const k = Math.max(0, dLife[i] / dMax[i]); // 1 → 0
+		al[i] = 0.85 * k; sz[i] = 0.22 + (1 - k) * 0.55; // fade out while puffing up
+	}
+	dGeo.attributes.position.needsUpdate = true; dGeo.attributes.aAlpha.needsUpdate = true; dGeo.attributes.aSize.needsUpdate = true;
+};
+const tickFootsteps = (dt) => {
+	if (!player.grounded || player.speed < 0.6) { stepDist = 0; return; }
+	stepDist += player.speed * dt;
+	const stride = player.speed > 7 ? 1.55 : 0.85; // run vs walk
+	if (stepDist >= stride) { stepDist -= stride; const loud = player.speed > 7; footstep(world === planet ? 'sand' : 'deck', loud); if (world === planet) kickSand(loud); }
+};
 
 // ---------------------------------------------------------------- dialing
-let dialing = true;
+let dialing = true, rumbleOn = false;
 const IDLE_INPUT = { move: { x: 0, y: 0 }, run: false };
 const onGateEvent = (w) => (ev, i) => {
-	if (ev === 'chevron') { playOnce(w.sfx.chevron); if (i === GATE.chevrons - 1) sfxRumble.setVolume(0); }
+	if (ev === 'chevron') { playOnce(w.sfx.chevron); if (i === GATE.chevrons - 1) { rumbleOn = false; sfxRumble.setVolume(0); } }
 	if (ev === 'kawoosh') playOnce(w.sfx.kawoosh);
 	if (ev === 'active') { w.sfx.hum.play(); if (w === world) dialing = false; }
 };
@@ -107,7 +171,7 @@ const startDial = () => {
 	document.getElementById('loading')?.remove();
 	listener.context.resume();
 	world.gate.userData.reset(); world.sfx.hum.stop(); dialing = true;
-	sfxRumble.setVolume(0); sfxRumble.isPlaying || sfxRumble.play();
+	sfxRumble.setVolume(0); sfxRumble.isPlaying || sfxRumble.play(); rumbleOn = true;
 	world.gate.userData.dial(onGateEvent(world));
 };
 document.getElementById('loading').addEventListener('click', startDial, { once: true });
@@ -194,6 +258,32 @@ const tickParticles = (dt) => {
 	pGeo.attributes.position.needsUpdate = true; pGeo.attributes.color.needsUpdate = true;
 };
 
+// ---------------------------------------------------------------- terrain debug (B): wireframe ground, floor marker, visual-vs-collision delta
+const dbgEl = document.getElementById('dbg');
+let debugTerrain = false;
+const groundWire = new THREE.Mesh(planet.ground.geometry, new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true, transparent: true, opacity: 0.35 }));
+groundWire.rotation.copy(planet.ground.rotation); groundWire.position.copy(planet.ground.position); groundWire.visible = false; planet.scene.add(groundWire);
+const floorMarker = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 8), new THREE.MeshBasicMaterial({ color: 0xff3366 })); floorMarker.visible = false;
+const footMarker = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffee00 })); footMarker.visible = false;
+const downRay = new THREE.Raycaster();
+/** Returns { feet, floor, mesh, delta } for the player's current XZ: floor = collision query, mesh = raycast onto the drawn ground. */
+const terrainReport = () => {
+	const p = player.root.position; const floor = world.floorAt(p.x, p.z);
+	let mesh = null;
+	if (world === planet) { downRay.set(new THREE.Vector3(p.x, 60, p.z), new THREE.Vector3(0, -1, 0)); const h = downRay.intersectObject(planet.ground, false)[0]; mesh = h ? h.point.y : null; }
+	return { x: +p.x.toFixed(2), z: +p.z.toFixed(2), feet: +p.y.toFixed(3), floor: +floor.toFixed(3), mesh: mesh === null ? null : +mesh.toFixed(3), delta: mesh === null ? null : +(p.y - mesh).toFixed(3) };
+};
+const setDebugTerrain = (on) => {
+	debugTerrain = on; groundWire.visible = on; floorMarker.visible = footMarker.visible = on; dbgEl.hidden = !on;
+	floorMarker.removeFromParent(); footMarker.removeFromParent(); if (on) { world.scene.add(floorMarker, footMarker); }
+};
+const tickDebugTerrain = () => {
+	if (!debugTerrain) return;
+	const r = terrainReport(); const p = player.root.position;
+	floorMarker.position.set(p.x, r.floor, p.z); footMarker.position.set(p.x + 0.25, p.y, p.z);
+	dbgEl.textContent = `feet ${r.feet}  floor ${r.floor}  mesh ${r.mesh ?? '—'}  Δ(feet−mesh) ${r.delta ?? '—'}  @ ${r.x},${r.z}`;
+};
+
 // ---------------------------------------------------------------- gate travel
 // enter (dive into the puddle) → wormhole ride → arrive (incoming kawoosh on the far gate, walk out) → control
 const flash = document.getElementById('flash');
@@ -241,7 +331,7 @@ const updateTravel = (dt, t) => {
 		flash.style.opacity = String(Math.max(1 - THREE.MathUtils.smoothstep(k, 0, 0.15), THREE.MathUtils.smoothstep(k, 0.9, 1)));
 		sfxWhoosh.setVolume(0.9 * (1 - THREE.MathUtils.smoothstep(k, 0.85, 1)));
 		if (k >= 1) {
-			travel.phase = 'arrive'; travel.t = 0; sfxWhoosh.setVolume(0);
+			travel.phase = 'arrive'; travel.t = 0; sfxWhoosh.setVolume(0); sfxWhoosh.stop();
 			enterWorld(travel.to);
 			const g = travel.to.gate.position, d = travel.to.exitDir;
 			placePlayer(travel.to, new THREE.Vector3(g.x, travel.to.floorAt(g.x, g.z + 0.35 * d), g.z + 0.35 * d), d > 0 ? 0 : Math.PI);
@@ -265,7 +355,7 @@ addEventListener('resize', () => {
 	destiny.room.userData.reflector.getRenderTarget().setSize(Math.floor(innerWidth * 0.5), Math.floor(innerHeight * 0.5));
 });
 
-window.__dbg = { input, player, camera, get world() { return world; }, destiny, planet, setView, cam: () => cam, faded: () => faded, travel: () => travel };
+window.__dbg = { dustAlive: () => dLife.reduce((n, l) => n + (l > 0 ? 1 : 0), 0), rumblePlaying: () => sfxRumble.isPlaying, humPlaying: () => world.sfx.hum.isPlaying, terrainReport, setDebugTerrain, teleport: (x, z) => { player.root.position.set(x, world.floorAt(x, z), z); }, input, player, camera, get world() { return world; }, destiny, planet, setView, cam: () => cam, faded: () => faded, travel: () => travel };
 
 const fpsEl = document.getElementById('fps');
 const clock = new THREE.Clock(); let acc = 0, frames = 0;
@@ -275,10 +365,22 @@ renderer.setAnimationLoop(() => {
 	if (input.cycleView) setView(VIEWS[(VIEWS.indexOf(view) + 1) % VIEWS.length]);
 	if (input.redial && !dialing && !travel) startDial();
 	if (travel) { player.mixer.update(dt); updateTravel(dt, t); }
-	else if (dialing) { sfxRumble.setVolume(Math.min(0.8, sfxRumble.getVolume() + dt * 0.6)); player.update(dt, IDLE_INPUT, cam.yaw, world.colliders, floorUnder()); camUpdate(dt); }
+	else if (dialing) { player.update(dt, IDLE_INPUT, cam.yaw, world.colliders, floorUnder()); camUpdate(dt); }
 	else { player.update(dt, input, cam.yaw, world.colliders, floorUnder()); gateTravelCheck(); camUpdate(dt); }
 	if (particles.visible) tickParticles(dt);
 	if (view === 'follow' && !travel) updateOcclusion();
+	// Low rumble drone: rises while the ring spins, dips at the final chevron, then sits under the hum while the gate is active.
+	{
+		const active = world.gate.userData.active && !travel;
+		const target = active ? 0.7 : dialing && rumbleOn ? Math.min(0.8, sfxRumble.getVolume() + dt * 0.6) : 0;
+		const v = sfxRumble.getVolume() + (target - sfxRumble.getVolume()) * Math.min(1, dt * 3);
+		sfxRumble.setVolume(v);
+		if (v > 0.01 && !sfxRumble.isPlaying) sfxRumble.play(); else if (v <= 0.01 && sfxRumble.isPlaying && !dialing) sfxRumble.stop();
+	}
+	if (!travel) tickFootsteps(dt);
+	if (world === planet) tickDust(dt);
+	if (input.debug) setDebugTerrain(!debugTerrain);
+	tickDebugTerrain();
 	destiny.gate.userData.tick(t, dt); planet.gate.userData.tick(t, dt);
 	renderer.render(travel?.phase === 'wormhole' ? wormhole.scene : world.scene, camera);
 	acc += dt; frames++; if (acc > 0.5) { fpsEl.textContent = `${Math.round(frames / acc)} fps`; acc = 0; frames = 0; }

@@ -41,9 +41,18 @@ export const loadPlayer = async () => {
 	const FIDGET_LEN = actions.fidget.getClip().duration;
 
 	const state = { root, mixer, actions, speed: 0, heading: 0 };
+	const skinned = []; model.traverse((o) => { if (o.isSkinnedMesh) skinned.push(o); });
+	/** 0 = solid, 1 = fully dematerialised (materials go transparent only while fading). */
+	state.setFade = (f) => { for (const m of [grey, seam]) { m.transparent = f > 0; m.opacity = 1 - f; m.depthWrite = f <= 0; } };
+	/** Random world-space point on the posed skin surface (for disintegration particles). */
+	state.samplePoint = (out) => {
+		const mesh = skinned[Math.floor(Math.random() * skinned.length)];
+		const i = Math.floor(Math.random() * mesh.geometry.attributes.position.count);
+		return mesh.getVertexPosition(i, out).applyMatrix4(mesh.matrixWorld);
+	};
 
 	/** Move with camera-relative input; slide along AABB colliders. */
-	state.update = (dt, input, camYaw, colliders) => {
+	state.update = (dt, input, camYaw, colliders, floorY = 0) => {
 		const { move, run, jump } = input;
 		const mag = Math.hypot(move.x, move.y);
 		const target = mag > 0 ? (run ? PLAYER.run : PLAYER.walk) * mag : 0;
@@ -60,7 +69,8 @@ export const loadPlayer = async () => {
 
 		// jump / gravity (flat floor at y=0)
 		if (jump && grounded) { vy = PLAYER.jumpVel; grounded = false; actions.jump.reset().play(); }
-		if (!grounded) { vy -= PLAYER.gravity * dt; root.position.y += vy * dt; if (root.position.y <= 0) { root.position.y = 0; vy = 0; grounded = true; } }
+		if (!grounded) { vy -= PLAYER.gravity * dt; root.position.y += vy * dt; if (root.position.y <= floorY) { root.position.y = floorY; vy = 0; grounded = true; } }
+		else root.position.y += (floorY - root.position.y) * Math.min(1, dt * 20); // step up/down onto daises
 		state.grounded = grounded;
 		// axis-separated slide against boxes (ponytail: XZ only, floor is flat)
 		const p = root.position; const r = PLAYER.radius;

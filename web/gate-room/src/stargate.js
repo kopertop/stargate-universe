@@ -170,7 +170,11 @@ export const createStargate = () => {
 	// onEvent(name, index) → 'chevron' | 'kawoosh' | 'active' (caller plays sounds).
 	let dial = null;
 	g.userData.dial = (onEvent) => { dial = { t: 0, locked: 0, spin: 0, onEvent }; };
-	g.userData.reset = () => { dial = null; g.userData.active = false; horizon.visible = false; plumePivot.visible = false; spill.intensity = 0; horizonMat.uniforms.uRipple.value = 0; };
+	// Incoming wormhole: chevrons already locked, jump straight to the kawoosh.
+	g.userData.incoming = (onEvent) => { dial = { t: KAWOOSH_AT - 0.05, locked: chevrons, spin: 0, onEvent }; for (const m of glowMats) m.emissiveIntensity = 1.4; };
+	let closing = 0; // >0 while the horizon collapses
+	g.userData.shutdown = () => { if (!g.userData.active) return; g.userData.active = false; closing = 0.45; };
+	g.userData.reset = () => { dial = null; closing = 0; horizon.scale.set(1, 1, 1); g.userData.active = false; horizon.visible = false; plumePivot.visible = false; spill.intensity = 0; horizonMat.uniforms.uRipple.value = 0; };
 	const CHEV_INTERVAL = 0.55, KAWOOSH_AT = 0.4 + CHEV_INTERVAL * chevrons + 0.35;
 	g.userData.colliders = []; // filled by caller after placement (ring halves)
 	g.userData.tick = (t, dt) => {
@@ -182,6 +186,12 @@ export const createStargate = () => {
 			m.emissiveIntensity += (steady - m.emissiveIntensity) * Math.min(1, dt * 6);
 		}
 		if (g.userData.active) spill.intensity = 55 + Math.sin(t * 2.3) * 6 + Math.sin(t * 7.1) * 3;
+		if (closing > 0) {
+			closing = Math.max(0, closing - dt);
+			const k = closing / 0.45; // 1 → 0
+			horizon.scale.set(k, k, 1); spill.intensity = 55 * k;
+			if (closing === 0) { horizon.visible = false; horizon.scale.set(1, 1, 1); }
+		}
 		if (!dial) return;
 		dial.t += dt;
 		// ring spin: accelerate, hold, brake to a stop at the last chevron

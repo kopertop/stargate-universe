@@ -4,14 +4,31 @@
     {
       "name": "ggez-orchestrator",
       "runtimeExecutable": "/Users/cmoyer/.bun/bin/bun",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 4300
     },
     {
       "name": "stargate-universe",
       "runtimeExecutable": "/Users/cmoyer/.bun/bin/bun",
-      "runtimeArgs": ["start"],
+      "runtimeArgs": [
+        "start"
+      ],
       "port": 5173
+    },
+    {
+      "name": "gate-room-web",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8090",
+        "--bind",
+        "127.0.0.1"
+      ],
+      "port": 8090
     }
   ]
 }

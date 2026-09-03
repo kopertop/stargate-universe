@@ -8,6 +8,11 @@ export const createDestination = () => {
 	scene.fog = new THREE.FogExp2(0xc9b28a, 0.012);
 	const colliders = [], occludable = [];
 	const GZ = 0; // gate at origin facing +Z; player exits toward +Z
+	// ONE terrain function drives both the ground mesh and collision (floorAt). Flat within 14 m of the gate.
+	const terrainHeight = (x, z) => {
+		const dd = Math.hypot(x, z - GZ);
+		return dd < 14 ? 0 : Math.sin(x * 0.08) * Math.cos(z * 0.06) * 2.2 * Math.min(1, (dd - 14) / 20);
+	};
 
 	// sky dome (gradient)
 	const sky = new THREE.Mesh(new THREE.SphereGeometry(180, 24, 12), new THREE.ShaderMaterial({
@@ -25,7 +30,8 @@ export const createDestination = () => {
 	const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400, 64, 64), new THREE.MeshStandardMaterial({ map: gt, roughness: 1 }));
 	// gentle dunes away from the dais
 	const pos = ground.geometry.attributes.position;
-	for (let i = 0; i < pos.count; i++) { const x = pos.getX(i), y = pos.getY(i); const d = Math.hypot(x, y); pos.setZ(i, d < 14 ? 0 : Math.sin(x * 0.08) * Math.cos(y * 0.06) * 2.2 * Math.min(1, (d - 14) / 20)); }
+	// plane is rotated -90° about X, so local (x, y) → world (x, -y); terrainHeight is even in z so the sign is irrelevant
+	for (let i = 0; i < pos.count; i++) pos.setZ(i, terrainHeight(pos.getX(i), -pos.getY(i)));
 	ground.geometry.computeVertexNormals();
 	ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
 
@@ -36,7 +42,7 @@ export const createDestination = () => {
 	// obelisks flanking the approach (colliders)
 	for (const sx of [-1, 1]) for (const z of [8, 14]) {
 		const o = new THREE.Mesh(new THREE.BoxGeometry(0.8, 3.5 + Math.random(), 0.8), stone);
-		o.position.set(sx * 3.8, 1.75, GZ + z); o.castShadow = o.receiveShadow = true; scene.add(o);
+		o.position.set(sx * 3.8, 1.75 + terrainHeight(sx * 3.8, GZ + z), GZ + z); o.castShadow = o.receiveShadow = true; scene.add(o);
 		colliders.push(new THREE.Box3().setFromObject(o)); occludable.push(o);
 	}
 	// rocks
@@ -45,7 +51,8 @@ export const createDestination = () => {
 		const a = Math.random() * Math.PI * 2, d = 14 + Math.random() * 60;
 		const s = 0.6 + Math.random() * 2.4;
 		const r = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), rockMat);
-		r.position.set(Math.cos(a) * d, s * 0.4, GZ + Math.sin(a) * d); r.rotation.set(Math.random(), Math.random(), Math.random());
+		const rx = Math.cos(a) * d, rz = GZ + Math.sin(a) * d;
+		r.position.set(rx, terrainHeight(rx, rz) + s * 0.4, rz); r.rotation.set(Math.random(), Math.random(), Math.random());
 		r.castShadow = r.receiveShadow = true; scene.add(r);
 		colliders.push(new THREE.Box3().setFromObject(r)); occludable.push(r);
 	}
@@ -65,7 +72,7 @@ export const createDestination = () => {
 		name: 'planet', scene, colliders, gate, occludable,
 		spawn: new THREE.Vector3(0, 0, GZ + 1.2), spawnYaw: 0, // facing +Z (away from the gate)
 		exitDir: 1, // player walks +Z out of this gate
-		clampCamera: (p) => { p.y = Math.max(p.y, 0.4); },
-		floorAt: (x, z) => { const r = Math.hypot(x, z - GZ); return r < 6.5 ? 0.3 : r < 7.5 ? 0.15 : 0; },
+		clampCamera: (p) => { p.y = Math.max(p.y, terrainHeight(p.x, p.z) + 0.4); },
+		floorAt: (x, z) => { const r = Math.hypot(x, z - GZ); return r < 6.5 ? 0.3 : r < 7.5 ? 0.15 : terrainHeight(x, z); },
 	};
 };

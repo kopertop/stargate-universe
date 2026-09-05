@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Destiny Gate Room — Three.js</title>
+<style>
+	html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:-apple-system,system-ui,sans-serif;color:#cfe}
+	canvas{display:block}
+	#hud{position:fixed;left:14px;bottom:12px;font-size:12px;line-height:1.5;opacity:.75;pointer-events:none;text-shadow:0 1px 2px #000}
+	#hud b{color:#7ff}
+	#fps{position:fixed;right:14px;top:10px;font:12px monospace;opacity:.6}
+	#flash{position:fixed;inset:0;background:#dff6ff;opacity:0;pointer-events:none;transition:opacity .25s}
+	#loading{cursor:pointer;position:fixed;inset:0;display:grid;place-items:center;background:#05070c;font-size:14px;letter-spacing:.2em}
+</style>
+<script type="importmap">
+{ "imports": {
+	"three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+	"three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="loading">LOADING DESTINY…</div>
+<div id="flash"></div>
+<div id="fps"></div>
+<div id="dbg" hidden style="position:fixed;left:14px;top:10px;font:12px monospace;color:#ffee88;background:rgba(0,0,0,.55);padding:4px 8px;border-radius:4px"></div>
+<div id="view" style="position:fixed;right:14px;top:28px;font:12px monospace;opacity:.6">view: follow (V)</div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

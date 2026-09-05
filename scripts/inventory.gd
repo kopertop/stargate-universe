@@ -287,7 +287,7 @@ func equipped_items() -> Dictionary:
 # on the relevant defs, (b) wires the call sites flagged with TODO below
 # into the systems that consume them (planet atmosphere gate, inventory
 # capacity). The accumulation rules here (any-true / additive-sum) are the
-# intended semantics; only the consumer wiring is deferred.
+# intended semantics; only the consumer wiring is deferred. (Issue #75 closed.)
 
 # The raw `effects` dict declared on an item def (empty when none / not a def).
 func _effects_of(item_id: String) -> Dictionary:

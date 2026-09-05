@@ -463,9 +463,9 @@ func _spawn_interactables() -> void:
 			# Floor 2 access-code terminal: always present in the control room
 			# (a data terminal the player can examine). Disabled once collected.
 			_spawn_floor_code_terminal(2)
-		# engineering_bay removed from authored floor 0; Engineering
-		# now lives as a generated special on floors 2+. Elevator restore via
-		# the fuse-based mechanic shipped in issue #132 (now closed).
+		# engineering_bay removed from authored floor 0; Engineering now lives
+		# as a generated special on floors 2+. Elevator restore via the power
+		# console is deferred to the fuse-based mechanic (issue #132, closed).
 		# GameState.unlock_elevator() remains callable for e1_flow unit tests.
 		"aft_storage_hall":
 			# D4: Aft Storage Hall seeds Floor-1 parts for the player.

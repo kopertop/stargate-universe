@@ -29,6 +29,20 @@
         "127.0.0.1"
       ],
       "port": 8090
+    },
+    {
+      "name": "gate-room-dist",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8092",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "web/gate-room/dist"
+      ],
+      "port": 8092
     }
   ]
 }

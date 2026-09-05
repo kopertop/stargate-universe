@@ -1,4 +1,5 @@
 // RPG layer: level/XP, health/oxygen, inventory, equipment slots, talents. Item catalog = repo data/items.json + web-only additions.
+import { ASSETS } from './assets.js';
 const listeners = new Set();
 export const onRpgChange = (fn) => listeners.add(fn);
 const emit = () => { for (const fn of listeners) fn(rpg); };
@@ -28,7 +29,7 @@ export const rpg = {
 export const xpToNext = (lvl) => 100 * lvl;
 
 export const loadItems = async () => {
-	try { for (const it of await (await fetch('../../data/items.json')).json()) ITEMS[it.id] = it; } catch { /* repo data optional */ }
+	try { for (const it of await (await fetch(`${ASSETS}data/items.json`)).json()) ITEMS[it.id] = it; } catch { /* repo data optional */ }
 	for (const it of WEB_ITEMS) ITEMS[it.id] = it;
 	if (ITEMS.field_backpack) ITEMS.field_backpack.description ??= 'Roomy canvas pack. +6 carry.';
 };

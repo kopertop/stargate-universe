@@ -97,3 +97,6 @@ models/mixamo_openbot/Eli_*
 models/mixamo_openbot/Greer_*
 models/mixamo_openbot/*.blend
 models/mixamo_openbot/*.blend1
+
+# itch.io HTML5 build output
+web/gate-room/dist/

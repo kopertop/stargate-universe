@@ -32,7 +32,7 @@ export const createAutoplay = (d) => {
 	auto.run = async () => {
 		if (auto.running) return; auto.running = true; auto.abort = false;
 		try {
-			document.querySelector('#chapter button')?.click(); say('begin: cold open arrival');
+			document.querySelector('#chapter [data-action="new"]')?.click(); await sleep(300); document.querySelector('#chapter button')?.click(); say('begin: cold open arrival');
 			await waitFor(() => !d.travel(), 8000); await sleep(800);
 			say('power relay'); await walkTo(3.2, 12.4); await interact(3.2, 13.6);
 			say('to the control room'); await walkTo(0, 12.8); await walkTo(0, 20); await walkTo(0, 30); await walkTo(0, 33.3);

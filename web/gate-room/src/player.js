@@ -2,9 +2,10 @@
 // (same skeleton). Locomotion blend (idle/fidget/walk/carry/jog/jump) + one-shot / looping action API for interactions.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { ASSETS } from './assets.js';
 
-const MODEL_URL = '../../models/quaternius/anim_lib/UAL1_Standard.glb';
-const EXTRA_CLIPS_URL = '../../models/quaternius/anim_lib/UAL2_Standard.glb';
+const MODEL_URL = `${ASSETS}models/quaternius/anim_lib/UAL1_Standard.glb`;
+const EXTRA_CLIPS_URL = `${ASSETS}models/quaternius/anim_lib/UAL2_Standard.glb`;
 export const PLAYER = { radius: 0.35, height: 1.72, walk: 4.2, run: 10.4, turnLerp: 10, jumpVel: 5.5, gravity: 15 };
 
 // Semantic action names → library clip names. To swap in a Mixamo pack (FBX → GLB, retargeted to this skeleton or its own),

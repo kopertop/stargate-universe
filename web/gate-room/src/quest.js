@@ -6,7 +6,9 @@ export const createQuestEngine = ({ onTrigger, onStep, onChapterComplete, grantX
 	eng.chapterById = (id) => eng.chapters.find((c) => c.id === id);
 	const runTriggers = (list) => { for (const t of list ?? []) onTrigger?.(t, eng); };
 	eng.startChapter = (id) => {
-		eng.chapter = eng.chapterById(id); eng.stepIndex = 0; eng.flags.clear();
+		eng.chapter = eng.chapterById(id); eng.stepIndex = 0;
+		// keep world-state flags (power, kino, seals…) across chapters; only reset the ones this chapter's steps complete on
+		for (const s of eng.chapter.steps) eng.flags.delete(s.complete_when);
 		runTriggers(eng.step()?.on_enter); onStep?.(eng.step(), eng.chapter);
 	};
 	eng.setFlag = (f) => { if (!f || eng.flags.has(f)) return; eng.flags.add(f); eng.check(); };

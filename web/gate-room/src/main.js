@@ -12,7 +12,8 @@ import { createQuestEngine } from './quest.js';
 import { createKino } from './kino.js';
 import { createUI } from './ui.js';
 import * as interact from './interact.js';
-import { rpg, loadItems, addItem, removeItem, count, equip, stats, carried, grantXp, addLog, onRpgChange } from './rpg.js';
+import { rpg, loadItems, addItem, removeItem, count, equip, stats, carried, grantXp, addLog, onRpgChange, save as saveRpg, load as loadRpg } from './rpg.js';
+import { ASSETS } from './assets.js';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
@@ -86,7 +87,7 @@ const scott = await spawnNpc('Lt. Scott', 0x7a8a6a, destiny, new THREE.Vector3(-
 const listener = new THREE.AudioListener(); camera.add(listener);
 const audioLoader = new THREE.AudioLoader();
 const buffers = {};
-for (const [k, url] of Object.entries({ chevron: '../../sounds/stargate_chevron_incom.mp3', kawoosh: '../../sounds/gate_kawoosh.wav', hum: '../../sounds/gate_active_hum.wav' })) buffers[k] = await audioLoader.loadAsync(url);
+for (const [k, url] of Object.entries({ chevron: `${ASSETS}sounds/stargate_chevron_incom.mp3`, kawoosh: `${ASSETS}sounds/gate_kawoosh.wav`, hum: `${ASSETS}sounds/gate_active_hum.wav` })) buffers[k] = await audioLoader.loadAsync(url);
 const noiseBuffer = (len = 2, smooth = 0.985, gain = 6) => { const ctx = listener.context, n = ctx.sampleRate * len, buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0); let l = 0; for (let i = 0; i < n; i++) { l = l * smooth + (Math.random() * 2 - 1) * (1 - smooth); d[i] = l * gain; } return buf; };
 const makeNoise = (freq, type = 'lowpass') => { const a = new THREE.Audio(listener); a.setBuffer(noiseBuffer()); a.setLoop(true); a.setVolume(0); const f = listener.context.createBiquadFilter(); f.type = type; f.frequency.value = freq; a.setFilter(f); return a; };
 const sfxRumble = makeNoise(140), sfxWhoosh = makeNoise(900, 'bandpass');
@@ -144,7 +145,7 @@ const flash = document.getElementById('flash');
 let shake = 0;
 quest = createQuestEngine({
 	grantXp: (n) => grantXp(n),
-	onStep: (step) => { ui.refreshTracker(); if (step && !step.terminal) ui.toast(`New objective: ${step.label}`, 3); },
+	onStep: (step) => { ui.refreshTracker(); if (step && !step.terminal) ui.toast(`New objective: ${step.label}`, 3); saveGame(); },
 	onTrigger: (t) => {
 		if (t.type === 'subtitle') ui.subtitle(t.who, t.text);
 		if (t.type === 'radio') ui.subtitle(t.who, t.text, { radio: true });
@@ -153,7 +154,7 @@ quest = createQuestEngine({
 		if (t.type === 'dial') setTimeout(() => dialGate(destiny), 900);
 	},
 	onChapterComplete: (ch) => {
-		grantXp(300); addLog(`${ch.title} — complete`);
+		grantXp(300); addLog(`${ch.title} — complete`); saveGame();
 		const next = quest.nextChapter();
 		setTimeout(() => ui.showChapter(`${ch.title} — Complete`, ch.steps.at(-1).objective + (next ? `<br><br>Next: <b>${next.title}</b> — ${next.subtitle}` : ''), next ? `Continue to ${next.title}` : 'The End (for now)', () => next && startChapter(next.id)), 1200);
 	},
@@ -358,9 +359,36 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
 window.__dbg = { input, player, camera, quest, rpg, get world() { return world; }, destiny, get planet() { return planet; }, setView, cam: () => cam, travel: () => travel, teleport: (x, z) => { player.root.position.set(x, world.floorAt(x, z), z); }, dialGate: () => dialGate(world), launchKino, interact: () => interact.current?.id, ui, startChapter, kino: () => kinoWorld?.name };
 
 // ---------------------------------------------------------------- start: chapter card → cold open (arrive through the gate)
+// ---------------------------------------------------------------- save / load (localStorage) + title screen
+const SAVE_KEY = 'sgu.save';
+let gameStarted = false; // saves only once a game is running (startChapter fires onStep during boot/load)
+const saveGame = () => { if (!quest.chapter || !gameStarted) return; try { localStorage.setItem(SAVE_KEY, JSON.stringify({ chapter: quest.chapter.id, stepIndex: quest.stepIndex, flags: [...quest.flags], lastScan, savedAt: Date.now() })); saveRpg(); } catch {} };
+const hasSave = () => { try { return !!localStorage.getItem(SAVE_KEY); } catch { return false; } };
+/** Restore chapter/step/flags + RPG, rebuild Destiny state from flags, and put the player in the gate room. Planet-side steps rewind to the gate. */
+const loadGame = () => {
+	let s; try { s = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch { s = null; }
+	if (!s) return false;
+	startChapter(s.chapter); loadRpg(); lastScan = s.lastScan ?? null;
+	for (const f of s.flags) quest.flags.add(f);
+	const steps = quest.chapter.steps, idx = (id) => steps.findIndex((x) => x.id === id);
+	let si = Math.min(s.stepIndex, steps.length - 1);
+	const travelIdx = idx('travel'), brodyIdx = idx('give_brody');
+	if (travelIdx >= 0 && brodyIdx >= 0 && si > travelIdx && si < brodyIdx) { si = travelIdx; for (const f of ['on_planet', 'returned_from_planet']) quest.flags.delete(f); }
+	quest.stepIndex = si;
+	const S2 = destiny.ship;
+	if (quest.has('power_restored')) S2.setPower(true); if (quest.has('any_breach_sealed')) S2.sealBreach(); if (quest.has('kino_acquired')) S2.takeKino(); if (quest.has('scrubber_repaired')) S2.repairScrubber();
+	const step = quest.step();
+	if (quest.has('ftl_dropped') && ['scout_kino', 'gear_up', 'travel'].includes(step?.id)) { destiny.gate.userData.reset(); destiny.gate.userData.incoming(onGateEvent(destiny)); }
+	enterWorld(destiny); placePlayer(destiny, destiny.spawn, destiny.spawnYaw); cam.yaw = 0;
+	gameStarted = true; saveGame();
+	ui.refreshTracker(); ui.refreshPlayer(); ui.toast(`Loaded: ${quest.chapter.title} — ${step?.label ?? ''}`, 4);
+	return true;
+};
+window.__save = { saveGame, loadGame, hasSave, clear: () => localStorage.removeItem(SAVE_KEY) };
 startChapter('e1_air');
 document.getElementById('loading')?.remove();
-ui.showChapter(quest.chapter.title, quest.chapter.subtitle, 'Begin', () => { listener.context.resume(); destiny.scene.add(beacon); arriveAt(destiny); });
+const newGame = () => { listener.context.resume(); destiny.scene.add(beacon); localStorage.removeItem(SAVE_KEY); localStorage.removeItem('sgu.rpg'); ui.showChapter(quest.chapter.title, quest.chapter.subtitle, 'Begin', () => { gameStarted = true; arriveAt(destiny); }); };
+ui.showTitle({ hasSave: hasSave(), onNew: newGame, onContinue: () => { listener.context.resume(); destiny.scene.add(beacon); if (!loadGame()) newGame(); } });
 // ?autoplay → hands-free demo driver (recordings / smoke runs); start it with window.__auto.run()
 if (location.search.includes('autoplay')) { const { createAutoplay } = await import('./autoplay.js'); window.__auto = createAutoplay(window.__dbg); }
 // ?record → in-page recorder (WebGL + text HUD) → local save endpoint; control with window.__rec.start()/stop(name)
@@ -382,6 +410,7 @@ renderer.setAnimationLoop(() => {
 	if (input.remote && !kino.active) { if (paused) { ui.closeRemote(); player.stopAction(); } else if (quest.has('kino_acquired')) { ui.openRemote(); player.playAction('device', { loop: true }); } else ui.toast('You have no device to open yet'); }
 	if (input.launchKino && !paused && !travel && !kino.active) launchKino();
 	if (input.cycleView) setView(VIEWS[(VIEWS.indexOf(view) + 1) % VIEWS.length]);
+	if (input.fullscreen) { if (document.fullscreenElement) document.exitFullscreen?.(); else document.documentElement.requestFullscreen?.().catch?.(() => {}); }
 	const dt = paused ? 0 : rawDt;
 	if (shake > 0) shake = Math.max(0, shake - dt);
 	if (dt > 0) {

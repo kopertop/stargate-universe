@@ -32,7 +32,8 @@ const css = `
 	#toast{position:absolute;left:50%;top:22%;transform:translateX(-50%);padding:10px 22px;font:600 16px sans-serif;color:var(--gold);letter-spacing:.04em;text-align:center}
 	#chapter{position:fixed;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.86);pointer-events:auto;text-align:center}
 	#chapter h1{font:300 34px/1.2 Georgia,serif;letter-spacing:.2em;color:var(--gold);margin:0}#chapter p{max-width:560px;opacity:.85}
-	#chapter button{margin-top:18px;background:transparent;border:1px solid var(--gold);color:var(--gold);padding:8px 22px;font:14px monospace;cursor:pointer}
+	#chapter button{margin:18px 6px 0;background:transparent;border:1px solid var(--gold);color:var(--gold);padding:8px 22px;font:14px monospace;cursor:pointer}#chapter button:hover{background:rgba(212,168,82,.12)}
+	#chapter .ctl{margin:16px auto 0;width:max-content;display:grid;grid-template-columns:auto auto;gap:4px 18px;text-align:left;font:13px monospace;color:#cbb}#chapter .ctl b{color:var(--gold)}
 	#remote{position:fixed;inset:0;display:grid;place-items:center;background:rgba(4,6,10,.78);pointer-events:auto}
 	#remote .dev{width:min(960px,92vw);height:min(600px,86vh);background:linear-gradient(#141a22,#0b0e14);border:2px solid var(--gold-dim);box-shadow:0 0 40px #000,0 0 0 1px #000 inset;display:grid;grid-template-columns:170px 1fr;font-size:13px}
 	#remote nav{border-right:1px solid var(--gold-dim);padding:10px 0;display:flex;flex-direction:column}
@@ -161,5 +162,16 @@ export const createUI = (ctx) => {
 	const closeRemote = () => { open = false; remote.classList.add('hidden'); ctx.onResume?.(); };
 	hud.querySelectorAll('#menu button').forEach((b) => (b.onclick = () => openRemote(b.dataset.tab === 'map' ? 'ship' : b.dataset.tab)));
 
-	return { refreshPlayer, refreshTracker, drawMinimap, setPrompt, subtitle, toast, zone, showChapter, openRemote, closeRemote, isRemoteOpen: () => open, renderRemote };
+	// ---- title screen + controls card
+	const CONTROLS = [['WASD / L-stick', 'move'], ['Shift / RT', 'run'], ['Space / A', 'jump'], ['E / X', 'interact (hold to dig)'], ['Mouse / R-stick', 'look (click to capture)'], ['TAB / Start', 'Kino Remote (quest, gear, talents, ship, gate)'], ['K / Y', 'launch Kino'], ['V', 'camera view'], ['F', 'fullscreen'], ['B', 'terrain debug']];
+	const showTitle = ({ hasSave, onNew, onContinue }) => {
+		chapterCard.innerHTML = `<div><div style="font:12px monospace;letter-spacing:.3em;color:#887">A THREE.JS PROTOTYPE</div><h1>STARGATE UNIVERSE</h1><p>Destiny · Episode 1: Air</p>
+			<button data-action="new">New Game</button>${hasSave ? '<button data-action="continue">Continue</button>' : ''}<button data-action="controls">Controls</button>
+			<div class="ctl hidden">${CONTROLS.map(([k, v]) => `<b>${k}</b><span>${v}</span>`).join('')}</div></div>`;
+		chapterCard.classList.remove('hidden');
+		chapterCard.querySelector('[data-action="new"]').onclick = () => { chapterCard.classList.add('hidden'); onNew(); };
+		chapterCard.querySelector('[data-action="continue"]')?.addEventListener('click', () => { chapterCard.classList.add('hidden'); onContinue(); });
+		chapterCard.querySelector('[data-action="controls"]').onclick = () => chapterCard.querySelector('.ctl').classList.toggle('hidden');
+	};
+	return { refreshPlayer, refreshTracker, drawMinimap, setPrompt, subtitle, toast, zone, showChapter, showTitle, openRemote, closeRemote, isRemoteOpen: () => open, renderRemote };
 };

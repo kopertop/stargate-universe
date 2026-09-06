@@ -11,18 +11,19 @@ export const input = {
 	interactHeld: false,
 	remote: false,     // edge-triggered (Tab / pad Start)
 	launchKino: false, // edge-triggered (K / pad Y)
+	fullscreen: false, // edge-triggered (F)
 	lockEnabled: true,
 	keys: new Set(),
 	mouseDelta: { x: 0, y: 0 },
 };
 
-const pending = { jump: false, cycleView: false, redial: false, debug: false, interact: false, remote: false, launchKino: false };
+const pending = { jump: false, cycleView: false, redial: false, debug: false, interact: false, remote: false, launchKino: false, fullscreen: false };
 let padPrev = {};
 const dead = (v, d = 0.15) => (Math.abs(v) < d ? 0 : (v - Math.sign(v) * d) / (1 - d));
 
 export const initInput = (canvas) => {
 	window.addEventListener('keydown', (e) => {
-		if (!e.repeat) { if (e.code === 'Space') pending.jump = true; if (e.code === 'KeyV') pending.cycleView = true; if (e.code === 'KeyR') pending.redial = true; if (e.code === 'KeyB') pending.debug = true; if (e.code === 'KeyE') pending.interact = true; if (e.code === 'Tab' || e.code === 'Escape') pending.remote = true; if (e.code === 'KeyK') pending.launchKino = true; }
+		if (!e.repeat) { if (e.code === 'Space') pending.jump = true; if (e.code === 'KeyV') pending.cycleView = true; if (e.code === 'KeyR') pending.redial = true; if (e.code === 'KeyB') pending.debug = true; if (e.code === 'KeyE') pending.interact = true; if (e.code === 'Tab' || e.code === 'Escape') pending.remote = true; if (e.code === 'KeyK') pending.launchKino = true; if (e.code === 'KeyF') pending.fullscreen = true; }
 		input.keys.add(e.code); if (e.code === 'Tab' || e.code === 'Space') e.preventDefault();
 	});
 	window.addEventListener('keyup', (e) => input.keys.delete(e.code));
@@ -62,6 +63,6 @@ export const poll = (dt) => {
 	input.look.x = lx; input.look.y = ly;
 	input.run = run;
 	input.interactHeld = k.has('KeyE') || input.interactHeld;
-	input.jump = pending.jump; input.cycleView = pending.cycleView; input.redial = pending.redial; input.debug = pending.debug; input.interact = pending.interact; input.remote = pending.remote; input.launchKino = pending.launchKino;
-	pending.jump = pending.cycleView = pending.redial = pending.debug = pending.interact = pending.remote = pending.launchKino = false;
+	input.jump = pending.jump; input.cycleView = pending.cycleView; input.redial = pending.redial; input.debug = pending.debug; input.interact = pending.interact; input.remote = pending.remote; input.launchKino = pending.launchKino; input.fullscreen = pending.fullscreen;
+	pending.jump = pending.cycleView = pending.redial = pending.debug = pending.interact = pending.remote = pending.launchKino = pending.fullscreen = false;
 };

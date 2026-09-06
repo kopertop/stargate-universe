@@ -166,7 +166,7 @@ export const createUI = (ctx) => {
 		remote.querySelectorAll('[data-dial]').forEach((b) => (b.onclick = () => { closeRemote(); ctx.onDial(b.dataset.dial); }));
 		remote.querySelectorAll('[data-launch]').forEach((b) => (b.onclick = () => { closeRemote(); ctx.onLaunchKino(); }));
 	};
-	const openRemote = (t) => { if (t) tab = t; open = true; remote.classList.remove('hidden'); renderRemote(); if (document.pointerLockElement) document.exitPointerLock(); };
+	const openRemote = (t) => { if (t) tab = t; const was = open; open = true; remote.classList.remove('hidden'); renderRemote(); if (document.pointerLockElement) document.exitPointerLock(); if (!was) ctx.onOpen?.(); };
 	const closeRemote = () => { open = false; remote.classList.add('hidden'); ctx.onResume?.(); };
 	hud.querySelectorAll('#menu button').forEach((b) => (b.onclick = () => openRemote(b.dataset.tab === 'map' ? 'ship' : b.dataset.tab)));
 

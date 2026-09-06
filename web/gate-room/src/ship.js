@@ -86,7 +86,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 		for (let i = 0; i < n; i++) {
 			const t = (i + 0.5) / n, x = alongZ ? cx : r.x0 + w * t, z = alongZ ? r.z0 + d * t : cz;
 			const s = box(alongZ ? Math.min(w * 0.5, 2.5) : 0.35, 0.06, alongZ ? 0.35 : Math.min(d * 0.5, 2.5), strip, x, H - 0.05, z, false);
-			const l = new THREE.PointLight(0xbfd8ff, gate ? 6 : Math.min(6, 1.5 + Math.min(w, d) * 0.5), gate ? 22 : 14, 1.6); l.visible = false; l.position.set(x, H - 0.6, z); group.add(l);
+			const l = new THREE.PointLight(0xbfd8ff, gate ? 6 : Math.min(8, 3 + Math.min(w, d) * 0.5), gate ? 22 : 16, 1.5); l.visible = false; l.position.set(x, H - 0.6, z); group.add(l);
 			const em = new THREE.PointLight(0xff3020, 5, 9, 2); em.position.set(x, H - 0.7, z); group.add(em);
 			lights.push({ l, em, s, on: l.intensity });
 		}
@@ -225,7 +225,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 		anchors[`${spur.id}:SealLever`] = lp.clone().addScaledVector(n, 0.9).setY(0);
 	}
 
-	const state = { group, rooms, doors: doorObjs, anchors, occludable, ceilings, powered: false, doorSpeed: 1 };
+	const state = { group, rooms, doors: doorObjs, anchors, occludable, ceilings, powered: false, doorSpeed: 1, onDoor: null }; // onDoor(ev, door): 'unlock' | 'closed' | 'denied'
 	state.setPower = (on) => {
 		state.powered = on;
 		strip.emissiveIntensity = on ? 1.2 : 0; edge.emissiveIntensity = on ? 1.8 : 0.25;
@@ -241,11 +241,13 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 		for (const d of doorObjs) {
 			const near = playerPos.distanceTo(d.g.position) < 3.2;
 			const target = !d.locked && !d.sealed && near ? 1 : 0;
+			if (near && !d.wasNear && target === 0) state.onDoor?.('denied', d); d.wasNear = near;
 			const prev = d.open; d.open += (target - d.open) * Math.min(1, dt * 4 * state.doorSpeed);
 			const unlock = Math.min(1, d.open * 3), slide = Math.max(0, (d.open - 0.33) / 0.67);
 			for (const h of d.hubs) { h.rotation.z = unlock * Math.PI * 2; h.position.z = BULGE / 2 + Math.sin(unlock * Math.PI) * 0.06; } // one full turn, pops out, then splits with the leaves
 			for (const { m, s } of d.halves) m.position.x = s * slide * (R + HUB_R + 0.12); // far enough that the gear halves vanish into the wall
 			if ((prev > 0.6) !== (d.open > 0.6)) setDoorCollider(d);
+			if (prev < 0.01 && d.open >= 0.01) state.onDoor?.('unlock', d); if (prev > 0.08 && d.open <= 0.08 && target === 0) state.onDoor?.('closed', d);
 		}
 		// only the nearest few lamps are live: every visible light recompiles into every material's shader cost
 		const near = lights.map((L) => [L.l.position.distanceToSquared(playerPos), L]).filter(([d2]) => d2 < LIGHT_RANGE * LIGHT_RANGE).sort((a, b) => a[0] - b[0]).slice(0, MAX_LIVE).map(([, L]) => L);

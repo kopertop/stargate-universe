@@ -14,6 +14,7 @@ import { createUI } from './ui.js';
 import * as interact from './interact.js';
 import { rpg, loadItems, addItem, removeItem, count, equip, stats, carried, grantXp, addLog, onRpgChange, save as saveRpg, load as loadRpg } from './rpg.js';
 import { ASSETS } from './assets.js';
+import { createMusic } from './music.js';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
@@ -32,7 +33,7 @@ const buildDestiny = async () => {
 	const [layout, connections] = await Promise.all([`${ASSETS}data/ship_layout.json`, `${ASSETS}data/room_connections.json`].map((u) => fetch(u).then((r) => r.json())));
 	const scene = new THREE.Scene();
 	scene.background = new THREE.Color(0x04060a); scene.fog = new THREE.Fog(0x05070c, 26, 70);
-	scene.environment = envTex; scene.environmentIntensity = 0.15;
+	scene.environment = envTex; scene.environmentIntensity = 0.28;
 	const { group: room, colliders } = createGateRoom(renderer); scene.add(room);
 	const gate = createStargate(); gate.position.set(0, GATE.rInner + ROOM.daisH - 0.15, ROOM.gateZ); scene.add(gate);
 	const gz = ROOM.gateZ;
@@ -87,7 +88,10 @@ const scott = await spawnNpc('Lt. Scott', 0x7a8a6a, destiny, A['gate_room:Scott'
 const listener = new THREE.AudioListener(); camera.add(listener);
 const audioLoader = new THREE.AudioLoader();
 const buffers = {};
-for (const [k, url] of Object.entries({ chevron: `${ASSETS}sounds/stargate_chevron_incom.mp3`, kawoosh: `${ASSETS}sounds/gate_kawoosh.wav`, hum: `${ASSETS}sounds/gate_active_hum.wav` })) buffers[k] = await audioLoader.loadAsync(url);
+const SFX_FILES = { chevron: 'stargate_chevron_incom.mp3', kawoosh: 'gate_kawoosh.wav', hum: 'gate_active_hum.wav', doorThunk: 'impact_metal_heavy_000.ogg', doorLock: 'impact_metal_000.ogg', terminal: 'terminal_boot.ogg', menuOpen: 'menu_open.ogg', menuClose: 'menu_close.ogg', radio: 'radio_click.ogg', ftlDrop: 'ftl-dropout.ogg', discover: 'discovery_stinger.ogg', discoverKey: 'discovery_stinger_key.ogg', step1: 'footstep_01.ogg', step2: 'footstep_02.ogg', step3: 'footstep_03.ogg', step4: 'footstep_04.ogg', sand1: 'footstep_desert_00.ogg', sand2: 'footstep_desert_01.ogg', sand3: 'footstep_desert_02.ogg', sand4: 'footstep_desert_03.ogg' };
+await Promise.all(Object.entries(SFX_FILES).map(async ([k, f]) => { buffers[k] = await audioLoader.loadAsync(`${ASSETS}sounds/${f}`); }));
+const music = createMusic(listener, Object.fromEntries(Object.entries({ theme: 'sgu_main_theme.mp3', derelict: 'loops/bed_derelict_cold.ogg', ship_warm: 'loops/bed_ship_warm.ogg', space: 'loops/bed_space_vast.ogg', planet: 'loops/bed_planet_open.ogg', shimmer: 'loops/pad_shimmer.ogg', tense: 'loops/pad_strings_tense.ogg', pulse_slow: 'loops/pulse_slow.ogg', pulse_drive: 'loops/pulse_drive.ogg', cello: 'loops/mel_cello_lonely.ogg' }).map(([k, f]) => [k, `${ASSETS}sounds/music/${f}`])));
+music.load(); // streams in the background; silent until the first mood is set after a user gesture
 const noiseBuffer = (len = 2, smooth = 0.985, gain = 6) => { const ctx = listener.context, n = ctx.sampleRate * len, buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0); let l = 0; for (let i = 0; i < n; i++) { l = l * smooth + (Math.random() * 2 - 1) * (1 - smooth); d[i] = l * gain; } return buf; };
 const makeNoise = (freq, type = 'lowpass') => { const a = new THREE.Audio(listener); a.setBuffer(noiseBuffer()); a.setLoop(true); a.setVolume(0); const f = listener.context.createBiquadFilter(); f.type = type; f.frequency.value = freq; a.setFilter(f); return a; };
 const sfxRumble = makeNoise(140), sfxWhoosh = makeNoise(900, 'bandpass');
@@ -105,9 +109,14 @@ attachGateAudio(destiny);
 const playOnce = (a) => { if (a.isPlaying) a.stop(); a.play(); };
 const oneShot = (buf, vol = 0.6, rate = 1) => { const a = new THREE.Audio(listener); a.setBuffer(buf); a.setVolume(vol); a.setPlaybackRate(rate); a.play(); };
 const footBuffer = (surface) => { const ctx = listener.context, sr = ctx.sampleRate, len = Math.floor(sr * (surface === 'sand' ? 0.14 : 0.07)), buf = ctx.createBuffer(1, len, sr), out = buf.getChannelData(0); let lp = 0; for (let i = 0; i < len; i++) { const env = Math.pow(1 - i / len, surface === 'sand' ? 1.6 : 3.5); const n = Math.random() * 2 - 1; lp = lp * (surface === 'sand' ? 0.82 : 0.4) + n * (surface === 'sand' ? 0.18 : 0.6); out[i] = lp * env * (surface === 'sand' ? 0.9 : 0.5); } return buf; };
-const footBuffers = { sand: footBuffer('sand'), deck: footBuffer('deck') };
+const footBuffers = { sand: [buffers.sand1, buffers.sand2, buffers.sand3, buffers.sand4], deck: [buffers.step1, buffers.step2, buffers.step3, buffers.step4] }; void footBuffer;
 const footPool = Array.from({ length: 4 }, () => new THREE.Audio(listener)); let footIdx = 0, stepDist = 0;
-const footstep = (surface, loud) => { const a = footPool[footIdx++ % footPool.length]; if (a.isPlaying) a.stop(); a.setBuffer(footBuffers[surface]); a.setPlaybackRate(0.9 + Math.random() * 0.25); a.setVolume((surface === 'sand' ? 0.35 : 0.22) * (loud ? 1.3 : 1)); a.play(); };
+const footstep = (surface, loud) => { const a = footPool[footIdx++ % footPool.length]; if (a.isPlaying) a.stop(); const pool = footBuffers[surface]; a.setBuffer(pool[Math.floor(Math.random() * pool.length)]); a.setPlaybackRate(0.9 + Math.random() * 0.25); a.setVolume((surface === 'sand' ? 0.5 : 0.35) * (loud ? 1.3 : 1)); a.play(); };
+// door mechanism: positional thunk when the gear unlocks, slide hiss while the leaves move, heavy seat when they close
+const doorAudio = new Map();
+const doorSfx = (d, buf, vol, rate = 1) => { let a = doorAudio.get(d); if (!a) { a = new THREE.PositionalAudio(listener); a.setRefDistance(4); a.setMaxDistance(30); d.g.add(a); doorAudio.set(d, a); } if (a.isPlaying) a.stop(); a.setBuffer(buf); a.setVolume(vol); a.setPlaybackRate(rate); a.play(); };
+const slideBuf = (() => { const ctx = listener.context, sr = ctx.sampleRate, len = Math.floor(sr * 1.1), b = ctx.createBuffer(1, len, sr), o = b.getChannelData(0); let lp = 0; for (let i = 0; i < len; i++) { const k = i / len, env = Math.sin(Math.PI * Math.min(1, k * 1.15)) * (1 - k * 0.3); lp = lp * 0.9 + (Math.random() * 2 - 1) * 0.1; o[i] = lp * 2.4 * env; } return b; })();
+destiny.ship.onDoor = (ev, d) => { if (ev === 'unlock') { doorSfx(d, buffers.doorLock, 0.7, 0.85); setTimeout(() => doorSfx(d, slideBuf, 0.5), 350); } else if (ev === 'closed') doorSfx(d, buffers.doorThunk, 0.8, 0.8); else if (ev === 'denied' && !destiny.ship.powered) doorSfx(d, buffers.menuClose, 0.5, 0.6); };
 const humFades = new Set();
 const fadeHum = (w) => { if (w.sfx.hum.isPlaying) humFades.add(w); };
 const tickHumFades = (dt) => { for (const w of humFades) { const h = w.sfx.hum, v = h.getVolume() - dt * 0.9; if (v <= 0) { h.stop(); h.setVolume(0.6); humFades.delete(w); } else h.setVolume(v); } };
@@ -138,20 +147,21 @@ const ui = createUI({
 	onDial: (id) => dialGate(id === 'destiny' ? planet : destiny),
 	canLaunchKino: () => count('kino_orb') > 0 && world === destiny && destiny.gate.userData.active && !travel,
 	onLaunchKino: () => launchKino(), lastScan: () => lastScan,
-	onResume: () => {},
+	onResume: () => { oneShot(buffers.menuClose, 0.5); }, onOpen: () => { oneShot(buffers.menuOpen, 0.5); },
 });
 onRpgChange(() => { ui.refreshPlayer(); player.speedMul = stats().speed; if (ui.isRemoteOpen()) ui.renderRemote(); });
 
 const flash = document.getElementById('flash');
 let shake = 0;
+let alertUntil = 0; // music 'alert' mood window (breach, FTL drop)
 quest = createQuestEngine({
 	grantXp: (n) => grantXp(n),
 	onStep: (step) => { ui.refreshTracker(); if (step && !step.terminal) ui.toast(`New objective: ${step.label}`, 3); saveGame(); },
 	onTrigger: (t) => {
 		if (t.type === 'subtitle') ui.subtitle(t.who, t.text);
-		if (t.type === 'radio') ui.subtitle(t.who, t.text, { radio: true });
+		if (t.type === 'radio') { oneShot(buffers.radio, 0.6); ui.subtitle(t.who, t.text, { radio: true }); }
 		if (t.type === 'toast') ui.toast(t.text, 6);
-		if (t.type === 'ftl_drop') { shake = 1.4; oneShot(shutdownBuf, 0.8, 0.55); addLog('Destiny dropped out of FTL'); }
+		if (t.type === 'ftl_drop') { shake = 1.4; oneShot(buffers.ftlDrop, 0.9); oneShot(shutdownBuf, 0.5, 0.55); addLog('Destiny dropped out of FTL'); alertUntil = performance.now() + 18000; }
 		if (t.type === 'dial') setTimeout(() => dialGate(destiny), 900);
 	},
 	onChapterComplete: (ch) => {
@@ -175,7 +185,7 @@ const startChapter = (id) => {
 const S = destiny.ship;
 const stepIs = (id) => quest.step()?.id === id;
 interact.register({ world: 'destiny', id: 'relay', position: A['gate_room:PowerRelay'], prompt: () => (!S.powered ? 'Restore power' : null), action: () => withAnim('interact', () => { S.setPower(true); quest.setFlag('power_restored'); ui.subtitle('Eli', 'Power relay engaged... lights are coming up. Doors should unlock.'); oneShot(shutdownBuf, 0.5, 1.6); }) });
-interact.register({ world: 'destiny', id: 'console', position: A['control_interface_room:ControlConsole'], prompt: () => (S.powered && !quest.has('life_support_diagnosed') ? 'Access control terminal' : null), action: () => withAnim('interact', () => { quest.setFlag('life_support_diagnosed'); ui.subtitle('Eli', 'Hull breach — port shuttle dock. And life support is flagged red across the board.'); ui.openRemote('ship'); }, { at: 0.6 }) });
+interact.register({ world: 'destiny', id: 'console', position: A['control_interface_room:ControlConsole'], prompt: () => (S.powered && !quest.has('life_support_diagnosed') ? 'Access control terminal' : null), action: () => withAnim('interact', () => { oneShot(buffers.terminal, 0.6); quest.setFlag('life_support_diagnosed'); ui.subtitle('Eli', 'Hull breach — port shuttle dock. And life support is flagged red across the board.'); ui.openRemote('ship'); }, { at: 0.6 }) });
 interact.register({ world: 'destiny', id: 'elevator', position: A['elevator_north:Elevator'], prompt: () => 'Call elevator — upper deck', action: () => { ui.toast(S.powered ? 'Elevator offline — no power routed to the upper deck yet.' : 'No power.'); } });
 interact.register({ world: 'destiny', id: 'lever', position: A['south_spur:SealLever'], prompt: () => (quest.has('life_support_diagnosed') && !quest.has('any_breach_sealed') ? 'Pull emergency seal' : null), action: () => withAnim('interact', () => { S.sealBreach(); quest.setFlag('any_breach_sealed'); oneShot(shutdownBuf, 0.9, 0.8); ui.subtitle('Rush', 'Pressure is holding. Good. Now go make yourself useful somewhere else.'); }) });
 interact.register({ world: 'destiny', id: 'kino', position: A['eli_quarters:KinoPedestal'], prompt: () => (!quest.has('kino_acquired') ? 'Take the Kino and its remote' : null), action: () => withAnim('pickup', () => { S.takeKino(); addItem('kino_remote'); addItem('kino_orb', 2); quest.setFlag('kino_acquired'); }, { at: 0.55 }) });
@@ -357,12 +367,12 @@ const tickRooms = () => {
 	const id = world === destiny ? destiny.ship.roomAt(player.root.position) : 'planet';
 	if (id !== currentRoom) {
 		currentRoom = id; const r = destiny.rooms.find((x) => x.id === id); ui.zone(world === planet ? planet.def.name : r?.name ?? '');
-		if (r && !discovered.has(id)) { discovered.add(id); ui.toast(`Discovered: ${r.name}`, 3); addLog(`Discovered ${r.name}`); grantXp(r.key ? 15 : 5); }
+		if (r && !discovered.has(id)) { discovered.add(id); ui.toast(`Discovered: ${r.name}`, 3); addLog(`Discovered ${r.name}`); grantXp(r.key ? 15 : 5); oneShot(r.key ? buffers.discoverKey : buffers.discover, r.key ? 0.55 : 0.4); }
 		const s = quest.step(); if (s && !s.terminal && s.target?.room === id && s.target.anchor === 'RoomCenter') quest.setFlag(s.complete_when);
 	}
 };
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); destiny.room.userData.reflector.getRenderTarget().setSize(Math.floor(innerWidth * 0.5), Math.floor(innerHeight * 0.5)); });
-window.__dbg = { input, player, camera, quest, rpg, get world() { return world; }, destiny, get planet() { return planet; }, setView, cam: () => cam, travel: () => travel, teleport: (x, z) => { player.root.position.set(x, world.floorAt(x, z), z); }, dialGate: () => dialGate(world), launchKino, interact: () => interact.current?.id, ui, startChapter, kino: () => kinoWorld?.name };
+window.__dbg = { input, player, camera, quest, rpg, get world() { return world; }, destiny, get planet() { return planet; }, setView, cam: () => cam, travel: () => travel, teleport: (x, z) => { player.root.position.set(x, world.floorAt(x, z), z); }, dialGate: () => dialGate(world), launchKino, interact: () => interact.current?.id, ui, startChapter, kino: () => kinoWorld?.name, music };
 
 // ---------------------------------------------------------------- start: chapter card → cold open (arrive through the gate)
 // ---------------------------------------------------------------- save / load (localStorage) + title screen
@@ -435,6 +445,7 @@ renderer.setAnimationLoop(() => {
 		destiny.gate.userData.tick(t, dt); planet.gate.userData.tick(t, dt);
 		if (particles.visible) tickParticles(dt); if (world === planet) tickDust(dt);
 		tickHumFades(dt);
+		music.setMood(travel?.phase === 'wormhole' ? 'wormhole' : world === planet ? 'planet' : !gameStarted ? 'title' : performance.now() < alertUntil ? 'alert' : world.gate.userData.active ? 'gate' : !destiny.ship.powered ? 'ship_dark' : 'ship'); music.tick(dt);
 		{ // low rumble drone: rises while the ring spins, dips at the final chevron, then sits under the hum while the gate is active
 			const active = world.gate.userData.active && (!travel || travel.phase === 'arrive');
 			const target = active ? 0.7 : dialingWorld && rumbleOn ? Math.min(0.8, sfxRumble.getVolume() + dt * 0.6) : 0;

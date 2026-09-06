@@ -33,7 +33,7 @@ const css = `
 	#chapter{position:fixed;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.86);pointer-events:auto;text-align:center}
 	#chapter h1{font:300 34px/1.2 Georgia,serif;letter-spacing:.2em;color:var(--gold);margin:0}#chapter p{max-width:560px;opacity:.85}
 	#chapter button{margin:18px 6px 0;background:transparent;border:1px solid var(--gold);color:var(--gold);padding:8px 22px;font:14px monospace;cursor:pointer}#chapter button:hover{background:rgba(212,168,82,.12)}
-	#chapter .ctl{margin-top:16px;display:inline-grid;grid-template-columns:auto auto;gap:4px 18px;text-align:left;font:13px monospace;color:#cbb}#chapter .ctl b{color:var(--gold)}
+	#chapter .ctl{margin:16px auto 0;width:max-content;display:grid;grid-template-columns:auto auto;gap:4px 18px;text-align:left;font:13px monospace;color:#cbb}#chapter .ctl b{color:var(--gold)}
 	#remote{position:fixed;inset:0;display:grid;place-items:center;background:rgba(4,6,10,.78);pointer-events:auto}
 	#remote .dev{width:min(960px,92vw);height:min(600px,86vh);background:linear-gradient(#141a22,#0b0e14);border:2px solid var(--gold-dim);box-shadow:0 0 40px #000,0 0 0 1px #000 inset;display:grid;grid-template-columns:170px 1fr;font-size:13px}
 	#remote nav{border-right:1px solid var(--gold-dim);padding:10px 0;display:flex;flex-direction:column}

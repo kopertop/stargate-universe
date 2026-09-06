@@ -61,14 +61,15 @@ const wallTexture = () => {
 	const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
 };
 
-export const ROOM = { width: 14, length: 30, height: 11, gateZ: -11, daisH: 0.18 };
+// Hall footprint = the gate_room rect in data/ship_layout.json (800×400 plan units → 40×20 m, z ∈ [-20, 20]); ship.js
+// builds its walls/ceiling/doors from that data, this module dresses the interior. Gate stands 5 m in from the back wall.
+export const ROOM = { width: 20, length: 40, height: 11, gateZ: -15, daisH: 0.18 };
 
 export const createGateRoom = (renderer) => {
 	const group = new THREE.Group(); group.name = 'gateRoom';
 	const colliders = [];
 	const { width, length, height, gateZ, daisH } = ROOM;
-	const zMid = gateZ + 4; // hall centre
-	const zBack = gateZ - 5, zFront = gateZ + length - 5;
+	const zBack = gateZ - 5, zFront = zBack + length, zMid = (zBack + zFront) / 2;
 
 	const wallMat = ancientMaterial({ repeat: [4, 1.6], base: '#171c24', plates: 6 }); // Ancient plates (concept: materials sheet)
 	const stoneMat = ancientMaterial({ repeat: [1, 3], base: '#1f242c', plates: 3, roughness: 0.6 });
@@ -95,23 +96,11 @@ export const createGateRoom = (renderer) => {
 		for (const dx of [-1.6, 0, 1.6]) group.add(box(0.06, 1.0, 0.06, railMat, sx * 3.0 + dx, 0.5, gateZ + 2.4, null, { noCollide: true, shadow: false }));
 	}
 
-	// --- Walls / ceiling
-	group.add(box(0.4, height, length, wallMat, -width / 2 - 0.2, height / 2, zMid, colliders));
-	group.add(box(0.4, height, length, wallMat, width / 2 + 0.2, height / 2, zMid, colliders));
-	group.add(box(width + 1, height, 0.4, wallMat, 0, height / 2, zBack - 0.2, colliders));
-	// front wall with a door gap (door itself lives in ship.js)
-	const DW = 2.4, DH = 3.2, sideW = (width + 1 - DW) / 2;
-	group.add(box(sideW, height, 0.4, wallMat, -(DW / 2 + sideW / 2), height / 2, zFront + 0.2, colliders));
-	group.add(box(sideW, height, 0.4, wallMat, DW / 2 + sideW / 2, height / 2, zFront + 0.2, colliders));
-	group.add(box(DW, height - DH, 0.4, wallMat, 0, DH + (height - DH) / 2, zFront + 0.2, colliders));
-	octagonFrame(group, { w: DW + 0.2, h: DH + 0.1, mat: darkMat, position: new THREE.Vector3(0, 0, zFront - 0.15) });
-	const ceiling = box(width + 1, 0.4, length, ceilMat, 0, height + 0.2, zMid, null, { noCollide: true, shadow: false });
-	group.add(ceiling); group.userData.ceiling = ceiling;
-
-	// --- Back wall windows (lattice, warm glow) flanking the gate
+	// --- Walls / ceiling / doors come from ship.js (data-driven). Wall inner faces sit at ±(width/2 - 0.3).
+	const wx = width / 2 - 0.3;
 	// tall vertical light slits in the back wall and along the side walls (concept: gate-room-active)
-	for (const sx of [-1, 1]) for (const dx of [3.6, 4.6, 5.6]) wallSlit(group, { x: sx * dx, y: 5.6, z: zBack + 0.06, h: 4.2, intensity: 1.8 });
-	for (const sx of [-1, 1]) for (let i = 0; i < 5; i++) { const z = gateZ + 2 + i * 5; wallSlit(group, { x: sx * (width / 2 - 0.05), y: 6.2, z, h: 2.6, rotationY: Math.PI / 2, intensity: 1.6 }); wallSlit(group, { x: sx * (width / 2 - 0.05), y: 2.2, z, h: 1.2, rotationY: Math.PI / 2, color: 0xffb060, intensity: 1.2 }); }
+	for (const sx of [-1, 1]) for (const dx of [3.6, 4.6, 5.6]) wallSlit(group, { x: sx * dx, y: 5.6, z: zBack + 0.36, h: 4.2, intensity: 1.8 });
+	for (const sx of [-1, 1]) for (let i = 0; i < 7; i++) { const z = gateZ + 2 + i * 5; wallSlit(group, { x: sx * (wx - 0.05), y: 6.2, z, h: 2.6, rotationY: Math.PI / 2, intensity: 1.6 }); wallSlit(group, { x: sx * (wx - 0.05), y: 2.2, z, h: 1.2, rotationY: Math.PI / 2, color: 0xffb060, intensity: 1.2 }); }
 	const ringMat = ancientMaterial({ repeat: [6, 1], base: '#12161c', plates: 4, roughness: 0.5, metalness: 0.85 });
 	const ceilRing = new THREE.Mesh(new THREE.TorusGeometry(5.2, 0.35, 8, 48), ringMat); ceilRing.rotation.x = Math.PI / 2; ceilRing.position.set(0, height - 0.6, gateZ + 6); group.add(ceilRing);
 	for (let i = 0; i < 3; i++) { const a = (i / 3) * Math.PI * 2 + Math.PI / 2; const sp = new THREE.SpotLight(0xcfe0ff, 45, 18, 0.5, 0.6, 1.4); sp.position.set(Math.cos(a) * 4.2, height - 0.9, gateZ + 6 + Math.sin(a) * 4.2); sp.target.position.set(Math.cos(a) * 2.5, 0, gateZ + 6 + Math.sin(a) * 2.5); group.add(sp, sp.target); }
@@ -131,14 +120,14 @@ export const createGateRoom = (renderer) => {
 	}
 
 	// --- Dark tech columns with cyan light strips along the side walls
-	for (const sx of [-1, 1]) for (let i = 0; i < 4; i++) {
-		const z = gateZ + 6 + i * 5.5;
-		group.add(box(0.9, height, 0.9, darkMat, sx * (width / 2 - 0.45), height / 2, z, colliders));
-		for (let k = 0; k < 9; k++) group.add(box(0.06, 0.5, 0.06, cyan, sx * (width / 2 - 0.92), 1.5 + k * 1.05, z, null, { noCollide: true, shadow: false }));
+	for (const sx of [-1, 1]) for (let i = 0; i < 5; i++) {
+		const z = gateZ + 6 + i * 5.5; if (Math.abs(z) < 2.2) continue; // leave the side (north/south connector) doors clear
+		group.add(box(0.9, height, 0.9, darkMat, sx * (wx - 0.45), height / 2, z, colliders));
+		for (let k = 0; k < 9; k++) group.add(box(0.06, 0.5, 0.06, cyan, sx * (wx - 0.92), 1.5 + k * 1.05, z, null, { noCollide: true, shadow: false }));
 		// horizontal segmented wall panel
 		const py = 6.2;
-		group.add(box(0.25, 0.55, 2.6, darkMat, sx * (width / 2 - 0.15), py, z + 2.7, null, { noCollide: true, shadow: false }));
-		for (let s = 0; s < 4; s++) group.add(box(0.1, 0.22, 0.45, cyan, sx * (width / 2 - 0.3), py, z + 1.85 + s * 0.57, null, { noCollide: true, shadow: false }));
+		group.add(box(0.25, 0.55, 2.6, darkMat, sx * (wx - 0.15), py, z + 2.7, null, { noCollide: true, shadow: false }));
+		for (let s = 0; s < 4; s++) group.add(box(0.1, 0.22, 0.45, cyan, sx * (wx - 0.3), py, z + 1.85 + s * 0.57, null, { noCollide: true, shadow: false }));
 	}
 
 	// --- Two angled console pedestals in the foreground
@@ -153,15 +142,15 @@ export const createGateRoom = (renderer) => {
 	}
 
 	// --- Upper-left monitor alcove (from the reference's top-left)
-	group.add(box(2.2, 1.6, 0.2, darkMat, -width / 2 + 0.6, 8.6, gateZ + 15, null, { noCollide: true, shadow: false }));
-	group.add(box(1.9, 1.3, 0.05, new THREE.MeshStandardMaterial({ color: 0x0c1a2a, emissive: 0x18426a, emissiveIntensity: 1.5 }), -width / 2 + 0.75, 8.6, gateZ + 15, null, { noCollide: true, shadow: false }));
+	group.add(box(2.2, 1.6, 0.2, darkMat, -wx + 0.3, 8.6, gateZ + 15, null, { noCollide: true, shadow: false }));
+	group.add(box(1.9, 1.3, 0.05, new THREE.MeshStandardMaterial({ color: 0x0c1a2a, emissive: 0x18426a, emissiveIntensity: 1.5 }), -wx + 0.45, 8.6, gateZ + 15, null, { noCollide: true, shadow: false }));
 
 	// --- Lighting
 	const hemi = new THREE.HemisphereLight(0x5d7590, 0x0a0c10, 0.45); group.add(hemi);
 	const key = new THREE.DirectionalLight(0xbfd4f0, 1.4);
 	key.position.set(-6, 10, gateZ + 6); key.target.position.set(0, 0, gateZ + 6);
 	key.castShadow = true; key.shadow.mapSize.set(2048, 2048);
-	key.shadow.camera.left = -12; key.shadow.camera.right = 12; key.shadow.camera.top = 16; key.shadow.camera.bottom = -16;
+	key.shadow.camera.left = -12; key.shadow.camera.right = 12; key.shadow.camera.top = 24; key.shadow.camera.bottom = -24;
 	key.shadow.camera.near = 1; key.shadow.camera.far = 40; key.shadow.bias = -0.0005;
 	group.add(key, key.target);
 	const backFill = new THREE.PointLight(0x9fc4ff, 10, 24, 1.6);

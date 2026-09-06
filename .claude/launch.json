@@ -22,11 +22,8 @@
       "name": "gate-room-web",
       "runtimeExecutable": "python3",
       "runtimeArgs": [
-        "-m",
-        "http.server",
-        "8090",
-        "--bind",
-        "127.0.0.1"
+        "web/gate-room/tools/edit_server.py",
+        "8090"
       ],
       "port": 8090
     },

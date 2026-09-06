@@ -29,8 +29,10 @@ const camFill = new THREE.PointLight(0xbfd4f0, 2.5, 10, 1.8); camera.add(camFill
 const envTex = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
 
 // ---------------------------------------------------------------- worlds
+// ?layout=live → the map editor's working copy (localStorage) instead of the repo data files
+const LIVE = (() => { try { return location.search.includes('layout=live') ? JSON.parse(localStorage.getItem('sgu.layout.live')) : null; } catch { return null; } })();
 const buildDestiny = async () => {
-	const [layout, connections] = await Promise.all([`${ASSETS}data/ship_layout.json`, `${ASSETS}data/room_connections.json`].map((u) => fetch(u).then((r) => r.json())));
+	const [layout, connections] = LIVE ? [LIVE.layout, LIVE.connections] : await Promise.all([`${ASSETS}data/ship_layout.json`, `${ASSETS}data/room_connections.json`].map((u) => fetch(u).then((r) => r.json())));
 	const scene = new THREE.Scene();
 	scene.background = new THREE.Color(0x04060a); scene.fog = new THREE.Fog(0x05070c, 26, 70);
 	scene.environment = envTex; scene.environmentIntensity = 0.28;
@@ -170,7 +172,7 @@ quest = createQuestEngine({
 		setTimeout(() => ui.showChapter(`${ch.title} — Complete`, ch.steps.at(-1).objective + (next ? `<br><br>Next: <b>${next.title}</b> — ${next.subtitle}` : ''), next ? `Continue to ${next.title}` : 'The End (for now)', () => next && startChapter(next.id)), 1200);
 	},
 });
-await quest.load('./data/chapters.json');
+await quest.load('./data/chapters.json'); if (LIVE?.chapters) quest.chapters = LIVE.chapters.chapters ?? LIVE.chapters;
 
 // ---------------------------------------------------------------- chapter start: build the chapter's planet, reset gates
 const startChapter = (id) => {

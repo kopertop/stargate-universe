@@ -14,7 +14,7 @@ echo "→ assets"
 mkdir -p "$DIST/assets/models/quaternius/anim_lib" "$DIST/assets/sounds" "$DIST/assets/data"
 cp "$REPO"/models/quaternius/anim_lib/UAL1_Standard.glb "$REPO"/models/quaternius/anim_lib/UAL2_Standard.glb "$DIST/assets/models/quaternius/anim_lib/"
 cp "$REPO"/sounds/stargate_chevron_incom.mp3 "$REPO"/sounds/gate_kawoosh.wav "$REPO"/sounds/gate_active_hum.wav "$DIST/assets/sounds/"
-cp "$REPO"/data/items.json "$DIST/assets/data/"
+cp "$REPO"/data/items.json "$REPO"/data/ship_layout.json "$REPO"/data/room_connections.json "$DIST/assets/data/"
 
 echo "→ vendor three ${THREE_VER}"
 curl -fsSL "$CDN/build/three.module.js" -o "$DIST/vendor/three/build/three.module.js"

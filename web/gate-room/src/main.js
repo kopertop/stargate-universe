@@ -5,7 +5,7 @@ import { createGateRoom, ROOM } from './gate-room.js';
 import { createStargate, GATE } from './stargate.js';
 import { createDestination } from './destination.js';
 import { createWormhole } from './wormhole.js';
-import { createShip, SHIP_ROOMS } from './ship.js';
+import { createShip } from './ship.js';
 import { loadPlayer } from './player.js';
 import { initInput, poll, input } from './input.js';
 import { createQuestEngine } from './quest.js';
@@ -28,7 +28,8 @@ const camFill = new THREE.PointLight(0xbfd4f0, 2.5, 10, 1.8); camera.add(camFill
 const envTex = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
 
 // ---------------------------------------------------------------- worlds
-const buildDestiny = () => {
+const buildDestiny = async () => {
+	const [layout, connections] = await Promise.all([`${ASSETS}data/ship_layout.json`, `${ASSETS}data/room_connections.json`].map((u) => fetch(u).then((r) => r.json())));
 	const scene = new THREE.Scene();
 	scene.background = new THREE.Color(0x04060a); scene.fog = new THREE.Fog(0x05070c, 26, 70);
 	scene.environment = envTex; scene.environmentIntensity = 0.15;
@@ -36,19 +37,18 @@ const buildDestiny = () => {
 	const gate = createStargate(); gate.position.set(0, GATE.rInner + ROOM.daisH - 0.15, ROOM.gateZ); scene.add(gate);
 	const gz = ROOM.gateZ;
 	for (const sx of [-1, 1]) colliders.push(new THREE.Box3(new THREE.Vector3(sx * 2.9 - 0.7, 0, gz - 0.4), new THREE.Vector3(sx * 2.9 + 0.7, 8, gz + 0.4)));
-	const ship = createShip(scene, colliders);
+	const ship = createShip(scene, colliders, { layout, connections, gateZ: gz });
 	const occludable = [...ship.occludable];
 	room.traverse((o) => { if (o.isMesh && o !== room.userData.reflector && o.geometry.type !== 'PlaneGeometry') occludable.push(o); });
 	gate.traverse((o) => { if (o.isMesh && o.name !== 'eventHorizon') occludable.push(o); });
-	const rooms = [{ id: 'gate_room', name: 'Gate Room', x0: -7, x1: 7, z0: -16, z1: 14 }, ...SHIP_ROOMS];
 	return {
-		name: 'destiny', scene, room, ship, colliders, gate, occludable, rooms, anchors: ship.anchors,
+		name: 'destiny', scene, room, ship, colliders, gate, occludable, rooms: ship.rooms, anchors: ship.anchors,
 		spawn: new THREE.Vector3(0, 0, gz + 14), spawnYaw: Math.PI, exitDir: 1,
 		floorAt: (x, z) => (Math.abs(x) < 4 && z > gz - 1 && z < gz + 2.2 ? ROOM.daisH : 0),
-		clampCamera: (p) => { p.y = Math.max(p.y, 0.3); if (p.z < 14 && Math.abs(p.x) < 7.2 && p.z > -17) p.x = THREE.MathUtils.clamp(p.x, -ROOM.width / 2 + 0.4, ROOM.width / 2 - 0.4); },
+		clampCamera: (p) => { p.y = Math.max(p.y, 0.3); if (Math.abs(p.z) < ROOM.length / 2 && Math.abs(p.x) < ROOM.width / 2 + 0.2) p.x = THREE.MathUtils.clamp(p.x, -ROOM.width / 2 + 0.7, ROOM.width / 2 - 0.7); },
 	};
 };
-const destiny = buildDestiny();
+const destiny = await buildDestiny();
 const wormhole = createWormhole();
 let planet = null;
 let world = destiny;
@@ -61,7 +61,7 @@ const withAnim = (name, effect, { at = 0.45, timeScale = 1 } = {}) => { const du
 const npcTalk = (n, seconds = 3) => { n.playAction('talk', { loop: true }); setTimeout(() => n.stopAction(), seconds * 1000); };
 let view = 'follow';
 const placePlayer = (w, pos, yaw) => { player.root.removeFromParent(); w.scene.add(player.root); player.root.position.copy(pos); player.root.rotation.y = yaw; player.root.visible = true; };
-const enterWorld = (w) => { world = w; camera.removeFromParent(); w.scene.add(camera); if (destiny.room.userData.ceiling) destiny.room.userData.ceiling.visible = view !== 'top'; };
+const enterWorld = (w) => { world = w; camera.removeFromParent(); w.scene.add(camera); destiny.ship.ceilings.visible = view !== 'top'; };
 const floorUnder = () => world.floorAt(player.root.position.x, player.root.position.z);
 placePlayer(destiny, destiny.spawn, destiny.spawnYaw);
 const IDLE_INPUT = { move: { x: 0, y: 0 }, run: false };
@@ -81,7 +81,7 @@ const spawnNpc = async (name, tint, w, pos, yaw) => {
 const A = destiny.anchors;
 const brody = await spawnNpc('Brody', 0x8a9a7a, destiny, A['gate_room:Brody'], Math.PI * 0.9);
 const rush = await spawnNpc('Rush', 0x7a7a8a, destiny, A['control_interface_room:Rush'], -Math.PI / 2);
-const scott = await spawnNpc('Lt. Scott', 0x7a8a6a, destiny, new THREE.Vector3(-3.5, 0, 6), Math.PI * 0.6);
+const scott = await spawnNpc('Lt. Scott', 0x7a8a6a, destiny, A['gate_room:Scott'], Math.PI * 0.6);
 
 // ---------------------------------------------------------------- audio
 const listener = new THREE.AudioListener(); camera.add(listener);
@@ -129,6 +129,7 @@ let quest = null;
 const ui = createUI({
 	flags: { has: (f) => quest?.flags.has(f) ?? false },
 	chapterTitle: () => quest?.chapter?.title ?? '', steps: () => quest?.chapter?.steps ?? [], stepIndex: () => quest?.stepIndex ?? 0,
+	deckMap: () => ({ rooms: destiny.rooms, player: player.root.position, current: currentRoom, discovered: [...discovered], waypoint: world === destiny ? waypointPos() : null }),
 	shipStatus: () => [['Power', destiny.ship.powered ? 'ONLINE' : 'OFFLINE', destiny.ship.powered], ['Hull (port dock)', quest.has('any_breach_sealed') ? 'SEALED' : quest.has('life_support_diagnosed') ? 'BREACH' : 'unknown', quest.has('any_breach_sealed')], ['CO2 scrubbers', quest.has('scrubber_repaired') ? 'NOMINAL' : quest.has('scrubber_diagnosed') ? 'FAILED — lime bed exhausted' : 'unknown', quest.has('scrubber_repaired')], ['FTL', quest.has('ftl_dropped') && !quest.has('scrubber_repaired') ? 'DROPPED — gate window open' : 'CRUISING', true]],
 	planets: () => [
 		...(planet ? [{ id: planet.def.id, name: planet.def.name, scan: lastScan?.id === planet.def.id ? lastScan.atmosphere.composition : null, canDial: world === destiny && !destiny.gate.userData.active && !dialingWorld && quest.has('ftl_dropped') }] : []),
@@ -175,10 +176,11 @@ const S = destiny.ship;
 const stepIs = (id) => quest.step()?.id === id;
 interact.register({ world: 'destiny', id: 'relay', position: A['gate_room:PowerRelay'], prompt: () => (!S.powered ? 'Restore power' : null), action: () => withAnim('interact', () => { S.setPower(true); quest.setFlag('power_restored'); ui.subtitle('Eli', 'Power relay engaged... lights are coming up. Doors should unlock.'); oneShot(shutdownBuf, 0.5, 1.6); }) });
 interact.register({ world: 'destiny', id: 'console', position: A['control_interface_room:ControlConsole'], prompt: () => (S.powered && !quest.has('life_support_diagnosed') ? 'Access control terminal' : null), action: () => withAnim('interact', () => { quest.setFlag('life_support_diagnosed'); ui.subtitle('Eli', 'Hull breach — port shuttle dock. And life support is flagged red across the board.'); ui.openRemote('ship'); }, { at: 0.6 }) });
-interact.register({ world: 'destiny', id: 'lever', position: A['breached_section:SealLever'], prompt: () => (quest.has('life_support_diagnosed') && !quest.has('any_breach_sealed') ? 'Pull emergency seal' : null), action: () => withAnim('interact', () => { S.sealBreach(); quest.setFlag('any_breach_sealed'); oneShot(shutdownBuf, 0.9, 0.8); ui.subtitle('Rush', 'Pressure is holding. Good. Now go make yourself useful somewhere else.'); }) });
+interact.register({ world: 'destiny', id: 'elevator', position: A['elevator_north:Elevator'], prompt: () => 'Call elevator — upper deck', action: () => { ui.toast(S.powered ? 'Elevator offline — no power routed to the upper deck yet.' : 'No power.'); } });
+interact.register({ world: 'destiny', id: 'lever', position: A['south_spur:SealLever'], prompt: () => (quest.has('life_support_diagnosed') && !quest.has('any_breach_sealed') ? 'Pull emergency seal' : null), action: () => withAnim('interact', () => { S.sealBreach(); quest.setFlag('any_breach_sealed'); oneShot(shutdownBuf, 0.9, 0.8); ui.subtitle('Rush', 'Pressure is holding. Good. Now go make yourself useful somewhere else.'); }) });
 interact.register({ world: 'destiny', id: 'kino', position: A['eli_quarters:KinoPedestal'], prompt: () => (!quest.has('kino_acquired') ? 'Take the Kino and its remote' : null), action: () => withAnim('pickup', () => { S.takeKino(); addItem('kino_remote'); addItem('kino_orb', 2); quest.setFlag('kino_acquired'); }, { at: 0.55 }) });
 interact.register({ world: 'destiny', id: 'locker', position: A['eli_quarters:Locker'], prompt: () => (!quest.has('locker_opened') ? 'Open locker' : null), action: () => withAnim('open', () => { quest.setFlag('locker_opened'); addItem('tac_vest'); ui.toast('Found: Tactical Vest (+20 health) — equip it from Character', 5); }, { at: 0.6 }) });
-interact.register({ world: 'destiny', id: 'scrubber', position: A['life_support:Scrubber'], prompt: () => (quest.has('kino_acquired') && !quest.has('scrubber_diagnosed') ? 'Inspect CO2 scrubber' : (stepIs('repair_scrubber') || stepIs('repair_water')) && count('refined_lime') > 0 ? `Load refined ${planet?.resource?.name?.toLowerCase() ?? 'lime'}` : null),
+interact.register({ world: 'destiny', id: 'scrubber', position: A['south_corridor:Scrubber'], prompt: () => (quest.has('kino_acquired') && !quest.has('scrubber_diagnosed') ? 'Inspect CO2 scrubber' : (stepIs('repair_scrubber') || stepIs('repair_water')) && count('refined_lime') > 0 ? `Load refined ${planet?.resource?.name?.toLowerCase() ?? 'lime'}` : null),
 	action: () => {
 		if (!quest.has('scrubber_diagnosed')) { withAnim('interact', () => { quest.setFlag('scrubber_diagnosed'); ui.subtitle('Rush', 'The scrubber bed is spent — the lime is inert. We need more, and there is none on this ship.'); }); return; }
 		withAnim('repair', () => { removeItem('refined_lime', count('refined_lime')); S.repairScrubber(); quest.setFlag('scrubber_repaired'); ui.subtitle('Eli', 'Scrubber is cycling. CO2 is dropping. We can breathe.'); oneShot(shutdownBuf, 0.5, 1.8); }, { at: 0.8, timeScale: 1.4 });
@@ -221,7 +223,7 @@ const registerPlanetInteractables = () => {
 const VIEWS = ['follow', 'top', 'orbit'];
 const orbit = new OrbitControls(camera, renderer.domElement); orbit.enabled = false; orbit.enableDamping = true;
 const viewEl = document.getElementById('view');
-const setView = (v) => { view = v; input.lockEnabled = v === 'follow'; orbit.enabled = v === 'orbit'; if (v !== 'follow' && document.pointerLockElement) document.exitPointerLock(); const g = world.gate.position; orbit.target.set(g.x, GATE.rOuter, g.z); if (v === 'orbit') camera.position.set(g.x + 9, 7, g.z + 9); destiny.room.userData.ceiling.visible = v !== 'top'; viewEl.textContent = `view: ${v} (V)`; };
+const setView = (v) => { view = v; input.lockEnabled = v === 'follow'; orbit.enabled = v === 'orbit'; if (v !== 'follow' && document.pointerLockElement) document.exitPointerLock(); const g = world.gate.position; orbit.target.set(g.x, GATE.rOuter, g.z); if (v === 'orbit') camera.position.set(g.x + 9, 7, g.z + 9); destiny.ship.ceilings.visible = v !== 'top'; viewEl.textContent = `view: ${v} (V)`; };
 enterWorld(destiny);
 const cam = { yaw: 0, pitch: 0.12, dist: 5.0, height: 1.5 };
 const camTarget = new THREE.Vector3(), camPos = new THREE.Vector3();
@@ -331,7 +333,10 @@ const updateTravel = (dt, t) => {
 const kino = createKino(); let kinoWorld = null, kinoScanT = 0;
 const launchKino = () => {
 	if (count('kino_orb') <= 0 || !destiny.gate.userData.active || world !== destiny) { ui.toast('Kino needs an active gate and a Kino in inventory'); return; }
-	kinoWorld = destiny; destiny.scene.add(kino.orb); kino.launch(player.root.position.clone().add(new THREE.Vector3(0, 1.4, -1)), 0); // kino yaw 0 = facing -Z (toward the gate) camera.removeFromParent(); destiny.scene.add(camera); kinoScanT = 0; addLog('Kino launched');
+	// launch ahead of the player, heading where they face (kino yaw 0 = -Z; player rotation.y = π when facing -Z)
+	const ry = player.root.rotation.y, fwd = new THREE.Vector3(Math.sin(ry), 0, Math.cos(ry));
+	kinoWorld = destiny; destiny.scene.add(kino.orb); kino.launch(player.root.position.clone().addScaledVector(fwd, 1).add(new THREE.Vector3(0, 1.4, 0)), ry + Math.PI);
+	camera.removeFromParent(); destiny.scene.add(camera); kinoScanT = 0; addLog('Kino launched');
 };
 const recallKino = () => { kino.recall(); kino.orb.removeFromParent(); kinoWorld = null; enterWorld(world); camera.position.copy(player.root.position).add(new THREE.Vector3(0, 2, 5)); };
 const updateKino = (dt) => {
@@ -347,11 +352,12 @@ const updateKino = (dt) => {
 };
 
 // ---------------------------------------------------------------- rooms / zones
-let currentRoom = null;
+let currentRoom = null; const discovered = new Set(['gate_room']);
 const tickRooms = () => {
 	const id = world === destiny ? destiny.ship.roomAt(player.root.position) : 'planet';
 	if (id !== currentRoom) {
 		currentRoom = id; const r = destiny.rooms.find((x) => x.id === id); ui.zone(world === planet ? planet.def.name : r?.name ?? '');
+		if (r && !discovered.has(id)) { discovered.add(id); ui.toast(`Discovered: ${r.name}`, 3); addLog(`Discovered ${r.name}`); grantXp(r.key ? 15 : 5); }
 		const s = quest.step(); if (s && !s.terminal && s.target?.room === id && s.target.anchor === 'RoomCenter') quest.setFlag(s.complete_when);
 	}
 };

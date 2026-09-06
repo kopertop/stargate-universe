@@ -133,6 +133,14 @@ export const createUI = (ctx) => {
 	};
 
 	// ---- Kino Remote (full mode, pauses the game)
+	/** Blueprint deck plan (SVG): discovered rooms lit, current room highlighted, player + objective markers. */
+	const deckMap = ({ rooms, player, current, discovered, waypoint }) => {
+		const x0 = Math.min(...rooms.map((r) => r.x0)) - 2, x1 = Math.max(...rooms.map((r) => r.x1)) + 2, z0 = Math.min(...rooms.map((r) => r.z0)) - 2, z1 = Math.max(...rooms.map((r) => r.z1)) + 2;
+		// plan view: ship's long axis left→right with the gate end on the left (map x = -world z), port/starboard = world x
+		const seen = new Set(discovered), R = (r) => `<rect x="${-r.z1}" y="${r.x0}" width="${r.z1 - r.z0}" height="${r.x1 - r.x0}" rx=".6" fill="${r.id === current ? 'rgba(212,168,82,.35)' : seen.has(r.id) ? 'rgba(80,140,200,.28)' : 'rgba(80,140,200,.08)'}" stroke="${seen.has(r.id) ? '#6fb3e8' : 'rgba(111,179,232,.3)'}" stroke-width=".5"/>`;
+		const L = (r) => (seen.has(r.id) && Math.min(r.z1 - r.z0, r.x1 - r.x0) > 5 ? `<text x="${-(r.z0 + r.z1) / 2}" y="${(r.x0 + r.x1) / 2}" font-size="2.6" fill="#cfe4f5" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif">${r.name}</text>` : '');
+		return `<svg viewBox="${-z1} ${x0} ${z1 - z0} ${x1 - x0}" style="width:100%;max-height:46vh;background:#06101a;border:1px solid #234;border-radius:6px">${rooms.map(R).join('')}${rooms.map(L).join('')}${waypoint ? `<circle cx="${-waypoint.z}" cy="${waypoint.x}" r="1.4" fill="#ffd24a"/>` : ''}<circle cx="${-player.z}" cy="${player.x}" r="1.2" fill="#fff"/></svg>`;
+	};
 	const TABS = ['quest', 'character', 'inventory', 'talents', 'ship', 'gate', 'kino', 'log'];
 	let tab = 'quest', open = false;
 	const renderRemote = () => {
@@ -145,7 +153,7 @@ export const createUI = (ctx) => {
 				<h2 style="margin-top:14px">EQUIPMENT</h2><div class="slots">${Object.entries(rpg.equipment).map(([slot, id]) => `<div class="gslot"><small>${slot}</small>${id ? `${ITEMS[id]?.name ?? id}<br><button class="btn" data-unequip="${slot}">unequip</button>` : '<span style="color:#554">empty</span>'}</div>`).join('')}</div>`,
 			inventory: () => `<h2>INVENTORY</h2><div class="hint">Carry ${carried()} / ${s.carry} — resources are stackable; gear can be equipped.</div><table>${Object.entries(rpg.inventory).map(([id, c]) => `<tr><td><b>${ITEMS[id]?.name ?? id}</b>${c > 1 ? ` ×${c}` : ''}</td><td style="color:#998">${ITEMS[id]?.description ?? ''}</td><td>${ITEMS[id]?.slot ? `<button class="btn" data-equip="${id}">equip</button>` : ''}</td></tr>`).join('') || '<tr><td>Empty</td></tr>'}</table>`,
 			talents: () => `<h2>TALENTS</h2><div class="hint">Points available: <b style="color:var(--gold)">${rpg.talentPoints}</b> — one per level.</div><div class="tal" style="margin-top:10px">${TALENTS.map((t) => `<div><b>${t.name}</b> <span style="color:var(--gold)">${rpg.talents[t.id]}/${t.max}</span><div style="color:#aa9;margin:6px 0">${t.desc}</div><button class="btn" data-talent="${t.id}" ${rpg.talentPoints <= 0 || rpg.talents[t.id] >= t.max ? 'disabled' : ''}>Train</button></div>`).join('')}</div>`,
-			ship: () => `<h2>SHIP SYSTEMS</h2><table>${ctx.shipStatus().map(([k, v, ok]) => `<tr><td>${k}</td><td style="color:${ok ? '#57bd42' : '#e05040'}">${v}</td></tr>`).join('')}</table>`,
+			ship: () => `<h2>DESTINY — DECK 0</h2>${deckMap(ctx.deckMap())}<h2 style="margin-top:14px">SHIP SYSTEMS</h2><table>${ctx.shipStatus().map(([k, v, ok]) => `<tr><td>${k}</td><td style="color:${ok ? '#57bd42' : '#e05040'}">${v}</td></tr>`).join('')}</table>`,
 			gate: () => `<h2>GATE CONTROL</h2><div class="hint">Dial a destination. The gate must be idle. Destiny's address is always available from a planet.</div><table>${ctx.planets().map((p) => `<tr><td><b>${p.name}</b></td><td style="color:#998">${p.scan ? p.scan : 'no scan data'}</td><td><button class="btn" data-dial="${p.id}" ${p.canDial ? '' : 'disabled'}>Dial</button></td></tr>`).join('')}</table>`,
 			kino: () => `<h2>KINO CONTROL</h2><div class="hint">Kinos: ${count('kino_orb')}. Launch one to fly it through an active gate; the Kino reports the atmosphere on the far side. Fly with WASD, mouse to look, Space up / Shift down. TAB or E recalls it.</div><p><button class="btn" data-launch="1" ${ctx.canLaunchKino() ? '' : 'disabled'}>Launch Kino</button></p>${ctx.lastScan() ? `<h2 style="margin-top:14px">LAST SCAN — ${ctx.lastScan().name}</h2><table>${Object.entries(ctx.lastScan().atmosphere).map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table>` : ''}`,
 			log: () => `<h2>LOG</h2>${rpg.log.slice().reverse().map((t) => `<div style="color:#dcb">${t}</div>`).join('')}`,

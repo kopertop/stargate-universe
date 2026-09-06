@@ -21,12 +21,13 @@ class Handler(SimpleHTTPRequestHandler):
         except Exception as e:
             self.send_response(400); self.end_headers(); self.wfile.write(f'bad json: {e}'.encode()); return
         target = os.path.join(ROOT, self.path.lstrip('/'))
-        indent = '\t'  # keep the file's existing indentation style so saves don't reformat the repo data
+        # keep the file's existing indentation, ASCII-escaping and trailing-newline style so saves don't reformat the repo data
+        indent, nl = '\t', '\n'
         try:
-            with open(target) as f: second = f.read().split('\n')[1]
-            m = re.match(r'^(\s+)', second); indent = m.group(1) if m else '\t'
+            with open(target) as f: existing = f.read()
+            m = re.match(r'^(\s+)', existing.split('\n')[1]); indent = m.group(1) if m else '\t'; nl = '\n' if existing.endswith('\n') else ''
         except Exception: pass
-        with open(target, 'w') as f: json.dump(data, f, indent=indent, ensure_ascii=True)  # existing files escape non-ASCII (\u2014); keep diffs clean; f.write('\n')
+        with open(target, 'w') as f: json.dump(data, f, indent=indent, ensure_ascii=True); f.write(nl)
         self.send_response(200); self.end_headers(); self.wfile.write(f'wrote {self.path} ({len(body)} bytes)'.encode())
     def log_message(self, fmt, *args):
         if self.command == 'PUT': super().log_message(fmt, *args)

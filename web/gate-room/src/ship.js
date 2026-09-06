@@ -98,7 +98,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 	}
 	// ---- doors (SGU style): arched two-leaf door with radial spokes, a sunburst gear hub locking the seam, arched wall console
 	// with a dome button per side. Built in a local frame (door in the x/y plane, normal = local z) then rotated for 'x' walls.
-	const R = DOOR_W / 2, ARCH_Y = DOOR_H - R;
+	const R = DOOR_W / 2, ARCH_Y = DOOR_H - R, BULGE = 0.1, HUB_R = 0.42;
 	const leafTex = (() => {
 		const W = 480, Hc = 640, c = document.createElement('canvas'); c.width = W; c.height = Hc; const g = c.getContext('2d');
 		g.fillStyle = '#2b2d30'; g.fillRect(0, 0, W, Hc);
@@ -113,7 +113,15 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 	const leafMat = new THREE.MeshStandardMaterial({ map: leafTex, roughness: 0.55, metalness: 0.7 });
 	const leafGeo = (s) => { // half arch: inner edge at x = 0, outer at s·R, semicircular top
 		const sh = new THREE.Shape(); sh.moveTo(0, 0); sh.lineTo(s * R, 0); sh.lineTo(s * R, ARCH_Y); sh.absarc(0, ARCH_Y, R, s > 0 ? 0 : Math.PI, Math.PI / 2, s < 0); sh.lineTo(0, 0); // aClockwise: left leaf sweeps π→π/2 clockwise
-		const geo = new THREE.ExtrudeGeometry(sh, { depth: 0.16, bevelEnabled: false }); geo.translate(0, 0, -0.08); return geo;
+		const geo = new THREE.ExtrudeGeometry(sh, { depth: 0.16, bevelEnabled: false }); geo.translate(0, 0, -0.08);
+		// slight convex curve across the leaf (SGU doors bow outward): push the seam edge forward, outer edge back
+		const P = geo.attributes.position; for (let i = 0; i < P.count; i++) { const x = P.getX(i) / R; P.setZ(i, P.getZ(i) + BULGE * (0.5 - x * x)); }
+		geo.computeVertexNormals(); return geo;
+	};
+	/** Half of the locking gear (split on the seam) so each leaf carries its half apart. Centred at the origin, radius HUB_R. */
+	const hubHalfGeo = (s) => {
+		const sh = new THREE.Shape(); sh.moveTo(0, -HUB_R); sh.absarc(0, 0, HUB_R, s > 0 ? -Math.PI / 2 : Math.PI / 2, s > 0 ? Math.PI / 2 : Math.PI * 1.5, false); sh.lineTo(0, -HUB_R);
+		const geo = new THREE.ExtrudeGeometry(sh, { depth: 0.26, bevelEnabled: false }); geo.translate(0, 0, -0.13); return geo;
 	};
 	const hubTex = (() => {
 		const S = 256, c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d'), m = S / 2;
@@ -121,7 +129,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 		g.fillStyle = '#b9b3a2'; for (let i = 0; i < 24; i++) { const a = (i / 24) * Math.PI * 2; g.beginPath(); g.arc(m + Math.cos(a) * 104, m + Math.sin(a) * 104, 7, 0, 7); g.fill(); }
 		g.fillStyle = '#c9962c'; g.beginPath(); for (let i = 0; i < 32; i++) { const a = (i / 32) * Math.PI * 2, r = i % 2 ? 96 : 60; g.lineTo(m + Math.cos(a) * r, m + Math.sin(a) * r); } g.closePath(); g.fill();
 		g.fillStyle = '#2a3346'; g.beginPath(); g.arc(m, m, 34, 0, 7); g.fill(); g.fillStyle = '#3aa8ff'; g.beginPath(); g.arc(m, m, 12, 0, 7); g.fill();
-		const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+		const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.repeat.set(1 / (2 * HUB_R), 1 / (2 * HUB_R)); t.offset.set(0.5, 0.5); return t;
 	})();
 	const hubMat = new THREE.MeshStandardMaterial({ map: hubTex, roughness: 0.4, metalness: 0.8 });
 	const consoleTex = (() => {
@@ -139,19 +147,20 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 		for (const s of [-1, 1]) { const p = new THREE.Mesh(postGeo, frameMat); p.position.set(s * (R + 0.13), ARCH_Y / 2, 0); p.castShadow = p.receiveShadow = true; g.add(p); occludable.push(p); }
 		const arch = new THREE.Mesh(archGeo, frameMat); arch.position.set(0, ARCH_Y, 0); arch.scale.z = 1.3; g.add(arch); occludable.push(arch);
 		const halves = [-1, 1].map((s) => { const m = new THREE.Mesh(leafGeo(s), leafMat); m.castShadow = m.receiveShadow = true; g.add(m); occludable.push(m); return { m, s }; });
-		const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.14, 32), hubMat); hub.rotation.x = Math.PI / 2; hub.position.set(0, DOOR_H / 2, 0.06); halves[0].m.add(hub); // sits on the spoke-wheel centre (texture v = 0.5)
-		const hub2 = hub.clone(); hub2.position.z = -0.06; hub2.rotation.x = -Math.PI / 2; halves[0].m.add(hub2); // gear on both faces of the seam
+		// one central locking gear, split on the seam: each half is parented to its leaf, sits on the spoke-wheel centre
+		const hubs = halves.map(({ m, s }) => { const h = new THREE.Mesh(hubHalfGeo(s), hubMat); h.position.set(0, DOOR_H / 2, BULGE / 2); h.castShadow = true; m.add(h); return h; });
+		for (const s of [-1, 1]) { const bar = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.06, 0.06), edge); bar.position.set(0, DOOR_H + 0.3, s * (WALL_T + 0.03)); g.add(bar); } // lintel lamp per side
 		const ind = new THREE.MeshStandardMaterial({ color: 0xff3020, emissive: 0xff2010, emissiveIntensity: 2 });
 		for (const rid of d.rooms) { // per side: plaque over the arch naming the far room, console with dome button beside the door
 			const r = byId[rid], c = center(r), n = d.axis === 'x' ? Math.sign(c.x - d.at) : Math.sign(c.z - d.at), ry = n > 0 ? 0 : Math.PI;
-			const p = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 0.37), new THREE.MeshBasicMaterial({ map: textPlaque(d.plaque[rid]), transparent: true })); p.position.set(0, DOOR_H + 0.62, n * 0.42); p.rotation.y = ry; g.add(p);
+			const p = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 0.37), new THREE.MeshBasicMaterial({ map: textPlaque(d.plaque[rid]), transparent: true })); p.position.set(0, DOOR_H + 0.78, n * 0.42); p.rotation.y = ry; g.add(p);
 			const con = new THREE.Group(); con.position.set(n * (R + 0.62), 1.35, n * (WALL_T + 0.07)); con.rotation.y = ry; g.add(con); // on this room's wall face (walls are inset WALL_T into each room)
 			const body = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.44, 0.1), consoleMat); const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.1, 16, 1, false, 0, Math.PI), consoleMat); cap.rotation.z = Math.PI / 2; cap.rotation.y = Math.PI / 2; cap.position.y = 0.22; con.add(body, cap);
 			const dome = new THREE.Mesh(new THREE.SphereGeometry(0.075, 16, 12), new THREE.MeshStandardMaterial({ color: 0x7a5a30, roughness: 0.35, metalness: 0.9 })); dome.position.set(0, -0.09, 0.06); con.add(dome);
 			const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.04, 0.02), ind); lamp.position.set(0, 0.0, 0.055); con.add(lamp);
 		}
 		const collider = new THREE.Box3(); colliders.push(collider);
-		return { ...d, g, halves, hub, hub2, lamp: { material: ind }, open: 0, locked: true, collider };
+		return { ...d, g, halves, hubs, lamp: { material: ind }, open: 0, locked: true, collider };
 	});
 	const setDoorCollider = (d) => {
 		if (d.open > 0.6) { d.collider.min.set(1e6, 1e6, 1e6); d.collider.max.set(1e6, 1e6, 1e6); return; }
@@ -216,7 +225,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 		anchors[`${spur.id}:SealLever`] = lp.clone().addScaledVector(n, 0.9).setY(0);
 	}
 
-	const state = { group, rooms, doors: doorObjs, anchors, occludable, ceilings, powered: false };
+	const state = { group, rooms, doors: doorObjs, anchors, occludable, ceilings, powered: false, doorSpeed: 1 };
 	state.setPower = (on) => {
 		state.powered = on;
 		strip.emissiveIntensity = on ? 1.2 : 0; edge.emissiveIntensity = on ? 1.8 : 0.25;
@@ -232,10 +241,10 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 		for (const d of doorObjs) {
 			const near = playerPos.distanceTo(d.g.position) < 3.2;
 			const target = !d.locked && !d.sealed && near ? 1 : 0;
-			const prev = d.open; d.open += (target - d.open) * Math.min(1, dt * 4);
+			const prev = d.open; d.open += (target - d.open) * Math.min(1, dt * 4 * state.doorSpeed);
 			const unlock = Math.min(1, d.open * 3), slide = Math.max(0, (d.open - 0.33) / 0.67);
-			d.hub.rotation.y = unlock * Math.PI / 2; d.hub.position.z = 0.06 + unlock * 0.05; d.hub2.rotation.y = -unlock * Math.PI / 2; d.hub2.position.z = -0.06 - unlock * 0.05;
-			for (const { m, s } of d.halves) m.position.x = s * slide * (R + 0.08);
+			for (const h of d.hubs) { h.rotation.z = unlock * Math.PI * 2; h.position.z = BULGE / 2 + Math.sin(unlock * Math.PI) * 0.06; } // one full turn, pops out, then splits with the leaves
+			for (const { m, s } of d.halves) m.position.x = s * slide * (R + HUB_R + 0.12); // far enough that the gear halves vanish into the wall
 			if ((prev > 0.6) !== (d.open > 0.6)) setDoorCollider(d);
 		}
 		// only the nearest few lamps are live: every visible light recompiles into every material's shader cost

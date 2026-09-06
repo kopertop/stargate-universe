@@ -86,7 +86,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 	};
 	for (const r of rooms) {
 		const { x: cx, z: cz, w, d } = center(r), H = roomH(r), gate = r.type === 'gate_room';
-		if (!gate) { box(w, 0.1, d, floorMat, cx, -0.05, cz, false).receiveShadow = true; }
+		const floor = box(w, 0.1, d, floorMat, cx, -0.05, cz, false); floor.receiveShadow = true; floor.userData.roomId = r.id; if (gate) floor.visible = false; // gate hall floor is gate-room.js's reflector; keep an invisible pick target
 		const ceil = box(w, 0.1, d, ceilMat, cx, H + 0.05, cz, false); group.remove(ceil); ceilings.add(ceil);
 		const mat = gate ? tallWallMat : wallMat;
 		wall('x', r.x0, r.z0, r.z1, +1, H, mat); wall('x', r.x1, r.z0, r.z1, -1, H, mat); wall('z', r.z0, r.x0, r.x1, +1, H, mat); wall('z', r.z1, r.x0, r.x1, -1, H, mat);
@@ -188,7 +188,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 	doorObjs.forEach(setDoorCollider);
 
 	// ---- props: reusable components placed from room.props (layout data / editor) or the per-type defaults
-	const parts = { screens: [], kino: [] };
+	const parts = { screens: [], kino: [] }, propMeshes = [];
 	const mats = { dark: darkMat, floor: floorMat, door: doorMat, red: redMat, slit: new THREE.MeshStandardMaterial({ color: 0xcfe6ff, emissive: 0xcfe6ff, emissiveIntensity: 1.6 }), crate: new THREE.MeshStandardMaterial({ color: 0x5e6a3a, roughness: 0.9 }), steel: new THREE.MeshStandardMaterial({ color: 0xa8b0b8, roughness: 0.6 }) };
 	for (const r of rooms) {
 		const c = center(r), specs = r.props ?? ROOM_PROPS[r.id] ?? DEFAULT_PROPS[r.type] ?? [];
@@ -196,7 +196,10 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 		for (const s of specs) {
 			const comp = COMPONENTS[s.type]; if (!comp) continue;
 			const p = { x: r.x0 + c.w * s.u, z: r.z0 + c.d * s.v }, spec = { ry: 0, ...s };
+			const n0 = group.children.length, c0 = colliders.length;
 			const out = comp.build(ctx, p, spec) ?? {};
+			for (const m of group.children.slice(n0)) { m.userData.prop = { roomId: r.id, spec: s }; propMeshes.push(m); }
+			for (let i = c0; i < colliders.length; i++) colliders[i].prop = { roomId: r.id, spec: s };
 			if (out.anchor && (spec.anchor || comp.defaultAnchor)) anchors[`${r.id}:${spec.anchor ?? comp.defaultAnchor}`] = out.anchor;
 		}
 		if (r.type === 'gate_room') anchors['gate_room:GateFront'] = new THREE.Vector3(0, 0, gateZ + 3);
@@ -213,7 +216,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 		anchors[`${spur.id}:SealLever`] = lp.clone().addScaledVector(n, 0.9).setY(0);
 	}
 
-	const state = { group, rooms, doors: doorObjs, anchors, occludable, ceilings, powered: false, doorSpeed: 1, onDoor: null }; // onDoor(ev, door): 'unlock' | 'closed' | 'denied'
+	const state = { group, rooms, doors: doorObjs, anchors, occludable, ceilings, propMeshes, powered: false, doorSpeed: 1, onDoor: null }; // onDoor(ev, door): 'unlock' | 'closed' | 'denied'
 	state.setPower = (on) => {
 		state.powered = on;
 		strip.emissiveIntensity = on ? 1.2 : 0; edge.emissiveIntensity = on ? 1.8 : 0.25;

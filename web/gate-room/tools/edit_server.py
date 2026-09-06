@@ -26,12 +26,12 @@ class Handler(SimpleHTTPRequestHandler):
             with open(target) as f: second = f.read().split('\n')[1]
             m = re.match(r'^(\s+)', second); indent = m.group(1) if m else '\t'
         except Exception: pass
-        with open(target, 'w') as f: json.dump(data, f, indent=indent, ensure_ascii=False); f.write('\n')
+        with open(target, 'w') as f: json.dump(data, f, indent=indent, ensure_ascii=True)  # existing files escape non-ASCII (\u2014); keep diffs clean; f.write('\n')
         self.send_response(200); self.end_headers(); self.wfile.write(f'wrote {self.path} ({len(body)} bytes)'.encode())
     def log_message(self, fmt, *args):
         if self.command == 'PUT': super().log_message(fmt, *args)
 
 if __name__ == '__main__':
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8090
-    print(f'serving {ROOT} on http://localhost:{port}  (PUT enabled for data/*.json)')
-    ThreadingHTTPServer(('', port), Handler).serve_forever()
+    print(f'serving {ROOT} on http://127.0.0.1:{port}  (PUT enabled for data/*.json, localhost only)')
+    ThreadingHTTPServer(('127.0.0.1', port), Handler).serve_forever()  # localhost only: the PUT endpoint is unauthenticated by design (dev tool)

@@ -23,6 +23,7 @@ const dead = (v, d = 0.15) => (Math.abs(v) < d ? 0 : (v - Math.sign(v) * d) / (1
 
 export const initInput = (canvas) => {
 	window.addEventListener('keydown', (e) => {
+		if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return; // typing into the dev console / editor panel
 		if (!e.repeat) { if (e.code === 'Space') pending.jump = true; if (e.code === 'KeyV') pending.cycleView = true; if (e.code === 'KeyR') pending.redial = true; if (e.code === 'KeyB') pending.debug = true; if (e.code === 'KeyE') pending.interact = true; if (e.code === 'Tab' || e.code === 'Escape') pending.remote = true; if (e.code === 'KeyK') pending.launchKino = true; if (e.code === 'KeyF') pending.fullscreen = true; }
 		input.keys.add(e.code); if (e.code === 'Tab' || e.code === 'Space') e.preventDefault();
 	});

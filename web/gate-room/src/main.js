@@ -15,6 +15,8 @@ import * as interact from './interact.js';
 import { rpg, loadItems, addItem, removeItem, count, equip, stats, carried, grantXp, addLog, onRpgChange, save as saveRpg, load as loadRpg } from './rpg.js';
 import { ASSETS } from './assets.js';
 import { createMusic } from './music.js';
+import { createConsole } from './console.js';
+import { createLevelEditor } from './leveledit.js';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
@@ -40,18 +42,25 @@ const buildDestiny = async () => {
 	const gate = createStargate(); gate.position.set(0, GATE.rInner + ROOM.daisH - 0.15, ROOM.gateZ); scene.add(gate);
 	const gz = ROOM.gateZ;
 	for (const sx of [-1, 1]) colliders.push(new THREE.Box3(new THREE.Vector3(sx * 2.9 - 0.7, 0, gz - 0.4), new THREE.Vector3(sx * 2.9 + 0.7, 8, gz + 0.4)));
+	const baseColliders = colliders.length, baseOccludable = [];
+	room.traverse((o) => { if (o.isMesh && o !== room.userData.reflector && o.geometry.type !== 'PlaneGeometry') baseOccludable.push(o); });
+	gate.traverse((o) => { if (o.isMesh && o.name !== 'eventHorizon') baseOccludable.push(o); });
 	const ship = createShip(scene, colliders, { layout, connections, gateZ: gz });
-	const occludable = [...ship.occludable];
-	room.traverse((o) => { if (o.isMesh && o !== room.userData.reflector && o.geometry.type !== 'PlaneGeometry') occludable.push(o); });
-	gate.traverse((o) => { if (o.isMesh && o.name !== 'eventHorizon') occludable.push(o); });
 	return {
-		name: 'destiny', scene, room, ship, colliders, gate, occludable, rooms: ship.rooms, anchors: ship.anchors,
+		name: 'destiny', scene, room, ship, colliders, gate, occludable: [...ship.occludable, ...baseOccludable], rooms: ship.rooms, anchors: ship.anchors, data: { layout, connections }, baseColliders, baseOccludable,
 		spawn: new THREE.Vector3(0, 0, gz + 14), spawnYaw: Math.PI, exitDir: 1,
 		floorAt: (x, z) => (Math.abs(x) < 4 && z > gz - 1 && z < gz + 2.2 ? ROOM.daisH : 0),
 		clampCamera: (p) => { p.y = Math.max(p.y, 0.3); if (Math.abs(p.z) < ROOM.length / 2 && Math.abs(p.x) < ROOM.width / 2 + 0.2) p.x = THREE.MathUtils.clamp(p.x, -ROOM.width / 2 + 0.7, ROOM.width / 2 - 0.7); },
 	};
 };
 const destiny = await buildDestiny();
+/** Level editor: tear the ship down and rebuild it from an edited layout, in the live scene. Interactables keep stale anchors until reload. */
+const rebuildShip = (layout, connections) => {
+	const { powered, onDoor } = destiny.ship; destiny.scene.remove(destiny.ship.group); destiny.colliders.length = destiny.baseColliders;
+	const ship = createShip(destiny.scene, destiny.colliders, { layout, connections, gateZ: ROOM.gateZ }); ship.setPower(powered); ship.onDoor = onDoor;
+	destiny.ship = ship; destiny.rooms = ship.rooms; destiny.occludable = [...ship.occludable, ...destiny.baseOccludable];
+	for (const k of Object.keys(destiny.anchors)) delete destiny.anchors[k]; Object.assign(destiny.anchors, ship.anchors); destiny.data = { layout, connections };
+};
 const wormhole = createWormhole();
 let planet = null;
 let world = destiny;
@@ -374,6 +383,7 @@ const tickRooms = () => {
 	}
 };
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); destiny.room.userData.reflector.getRenderTarget().setSize(Math.floor(innerWidth * 0.5), Math.floor(innerHeight * 0.5)); });
+let noclip = false;
 window.__dbg = { input, player, camera, quest, rpg, get world() { return world; }, destiny, get planet() { return planet; }, setView, cam: () => cam, travel: () => travel, teleport: (x, z) => { player.root.position.set(x, world.floorAt(x, z), z); }, dialGate: () => dialGate(world), launchKino, interact: () => interact.current?.id, ui, startChapter, kino: () => kinoWorld?.name, music };
 
 // ---------------------------------------------------------------- start: chapter card → cold open (arrive through the gate)
@@ -419,12 +429,30 @@ if (location.search.includes('record')) {
 	window.__rec = recorder;
 }
 
+// ---------------------------------------------------------------- dev console (`) + in-game level editor
+const edit = createLevelEditor({
+	renderer, camera, destiny, input, envTex, rebuildShip, chapters: () => quest.chapters,
+	onEnter: () => { document.querySelector('.hud').hidden = true; player.root.visible = false; beacon.visible = false; ui.closeRemote(); input.lockEnabled = false; if (document.pointerLockElement) document.exitPointerLock(); camera.removeFromParent(); destiny.scene.add(camera); },
+	onExit: () => { location.href = `${location.pathname}?layout=live`; }, // play the edited map
+});
+const devcon = createConsole({
+	leveledit: () => { if (edit.active) { edit.exit(); return 'leaving editor'; } edit.enter(); devcon.toggle(false); return 'level editor on — ` reopens this console, Exit button reloads on the edited map'; },
+	noclip: () => { noclip = !noclip; return `noclip ${noclip ? 'on' : 'off'}`; },
+	power: (v = 'on') => { destiny.ship.setPower(v !== 'off'); return `power ${v}`; },
+	tp: (x, z) => { player.root.position.set(+x, world.floorAt(+x, +z), +z); return `teleported to ${x}, ${z}`; },
+	flag: (f) => { quest.setFlag(f); return `flag ${f} set → step ${quest.step()?.id}`; },
+	give: (id, n = 1) => { for (let i = 0; i < +n; i++) addItem(id); return `gave ${n}× ${id}`; },
+	chapter: (id) => { startChapter(id); return `chapter ${id}`; },
+});
+window.__dbg.edit = edit; window.__dbg.console = devcon;
+
 const fpsEl = document.getElementById('fps');
 const clock = new THREE.Clock(); let acc = 0, frames = 0;
 renderer.setAnimationLoop(() => {
 	const rawDt = Math.min(clock.getDelta(), 0.05); const t = clock.elapsedTime;
 	poll(rawDt);
-	const paused = ui.isRemoteOpen();
+	if (edit.active) { const sc = edit.update(rawDt); destiny.gate.userData.tick(t, rawDt); if (camera.parent !== sc) { camera.removeFromParent(); sc.add(camera); } renderer.render(sc, camera); return; }
+	const paused = ui.isRemoteOpen() || devcon.isOpen();
 	if (input.remote && !kino.active) { if (paused) { ui.closeRemote(); player.stopAction(); } else if (quest.has('kino_acquired')) { ui.openRemote(); player.playAction('device', { loop: true }); } else ui.toast('You have no device to open yet'); }
 	if (input.launchKino && !paused && !travel && !kino.active) launchKino();
 	if (input.cycleView) setView(VIEWS[(VIEWS.indexOf(view) + 1) % VIEWS.length]);
@@ -436,7 +464,7 @@ renderer.setAnimationLoop(() => {
 		if (kino.active) { player.mixer.update(dt); updateKino(dt); }
 		else if (travel) { player.mixer.update(dt); updateTravel(dt, t); }
 		else {
-			player.update(dt, input, cam.yaw, world.colliders, floorUnder());
+			player.update(dt, input, cam.yaw, noclip ? [] : world.colliders, floorUnder());
 			gateTravelCheck(); camUpdate(dt); tickRooms();
 			ui.setPrompt(interact.update(dt, player.root.position, input.interact, input.interactHeld, world.name)); tickDigAnim();
 			player.carrying = carried() >= 3;

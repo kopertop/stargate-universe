@@ -15,6 +15,7 @@ export const input = {
 	lockEnabled: true,
 	keys: new Set(),
 	mouseDelta: { x: 0, y: 0 },
+	sensitivity: 1, invertY: false, // from settings
 };
 
 const pending = { jump: false, cycleView: false, redial: false, debug: false, interact: false, remote: false, launchKino: false, fullscreen: false };
@@ -43,16 +44,16 @@ export const poll = (dt) => {
 	let x = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
 	let y = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0);
 	let run = k.has('ShiftLeft') || k.has('ShiftRight');
-	let lx = input.mouseDelta.x * 0.0022;
-	let ly = input.mouseDelta.y * 0.0022;
+	let lx = input.mouseDelta.x * 0.0022 * input.sensitivity;
+	let ly = input.mouseDelta.y * 0.0022 * input.sensitivity * (input.invertY ? -1 : 1);
 	input.mouseDelta.x = input.mouseDelta.y = 0;
 
 	const pad = navigator.getGamepads?.().find((g) => g && g.connected);
 	if (pad) {
 		const gx = dead(pad.axes[0]), gy = -dead(pad.axes[1]);
 		if (gx || gy) { x = gx; y = gy; }
-		lx += dead(pad.axes[2]) * 2.6 * dt;
-		ly += dead(pad.axes[3]) * 2.0 * dt;
+		lx += dead(pad.axes[2]) * 2.6 * dt * input.sensitivity;
+		ly += dead(pad.axes[3]) * 2.0 * dt * input.sensitivity * (input.invertY ? -1 : 1);
 		run ||= (pad.buttons[7]?.value ?? 0) > 0.4 || pad.buttons[10]?.pressed;
 		const edge = (b, key) => { const now = !!pad.buttons[b]?.pressed; if (now && !padPrev[b]) pending[key] = true; padPrev[b] = now; };
 		edge(0, 'jump'); edge(2, 'interact'); edge(3, 'launchKino'); edge(9, 'remote'); edge(8, 'cycleView');

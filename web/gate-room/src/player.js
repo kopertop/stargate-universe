@@ -7,6 +7,10 @@ import { ASSETS } from './assets.js';
 const MODEL_URL = `${ASSETS}models/quaternius/anim_lib/UAL1_Standard.glb`;
 const EXTRA_CLIPS_URL = `${ASSETS}models/quaternius/anim_lib/UAL2_Standard.glb`;
 export const PLAYER = { radius: 0.35, height: 1.72, walk: 4.2, run: 10.4, turnLerp: 10, jumpVel: 5.5, gravity: 15 };
+// Ground speed each in-place loop was authored for (m/s at 1.72 m height), measured from foot velocity during stance.
+// Clip timeScale = speed / CLIP_SPEED so a planted foot stays put on the floor; the gait is chosen by speed so the scale stays ~1.
+const CLIP_SPEED = { walk: 0.9, carry: 0.6, run: 5.1, sprint: 9.0 }; // jog verified in-game (foot velocity at plant ≈ 0); sprint stance is <1 frame at 60 Hz, so 9.0 is the best estimate
+const FOOT_PLANT_Y = 0.14, FOOT_SWING_Y = 0.2; // foot bone height (m above root) below which it is planted / above which it has swung
 
 // Semantic action names → library clip names. To swap in a Mixamo pack (FBX → GLB, retargeted to this skeleton or its own),
 // change MODEL_URL/EXTRA_CLIPS_URL and remap here; gameplay code only ever uses the keys.
@@ -45,7 +49,8 @@ export const loadPlayer = async ({ tint = 0x9d978d } = {}) => {
 	loco.idle.setEffectiveWeight(1);
 	const weights = Object.fromEntries(Object.keys(loco).map((k) => [k, k === 'idle' ? 1 : 0]));
 
-	const state = { root, model, mixer, clips, speed: 0, grounded: true, speedMul: 1, carrying: false, action: null };
+	const state = { root, model, mixer, clips, speed: 0, grounded: true, speedMul: 1, carrying: false, action: null, onStep: null /* (side, speed) fired when a foot plants */ };
+	const feet = { l: { bone: model.getObjectByName('foot_l'), y: 1, swung: false }, r: { bone: model.getObjectByName('foot_r'), y: 1, swung: false } }, footPos = new THREE.Vector3();
 	let vy = 0, grounded = true, fidgetTimer = 4, fidgetLeft = 0, landT = 0;
 	const FIDGET_LEN = clips.get(CLIPS.fidget).duration;
 
@@ -107,13 +112,13 @@ export const loadPlayer = async ({ tint = 0x9d978d } = {}) => {
 		}
 		for (const c of colliders) { if (!c.circle) continue; const dx = p.x - c.x, dz = p.z - c.z, dist = Math.hypot(dx, dz), minD = c.r + r; if (dist < minD && dist > 1e-4) { p.x = c.x + (dx / dist) * minD; p.z = c.z + (dz / dist) * minD; } }
 
-		// locomotion blend
+		// locomotion blend: gait by speed (walk < ~2 m/s, jog to ~7, sprint above), each clip scaled to its authored ground speed
 		const moveT = THREE.MathUtils.smoothstep(state.speed, 0.05, 0.9);
-		const runT = THREE.MathUtils.smoothstep(state.speed, PLAYER.walk + 0.6, PLAYER.run - 1.5);
-		const sprintT = THREE.MathUtils.smoothstep(state.speed, 8.5, 10);
+		const runT = THREE.MathUtils.smoothstep(state.speed, 1.2, 2.4);
+		const sprintT = THREE.MathUtils.smoothstep(state.speed, 6.5, 8.5);
 		if (moveT < 0.05 && !state.action) { if (fidgetLeft > 0) fidgetLeft -= dt; else if ((fidgetTimer -= dt) <= 0) { fidgetLeft = FIDGET_LEN; fidgetTimer = 6 + Math.random() * 5; loco.fidget.reset(); } } else fidgetLeft = 0;
 		const fid = fidgetLeft > 0.3 ? 1 : 0, air = grounded ? 0 : 1, actW = state.action ? 1 : 0; // action layer takes over the body
-		const walkW = moveT * (1 - runT), carryW = state.carrying ? 1 : 0;
+		const walkW = moveT * (1 - runT), carryW = state.carrying && state.speed < 1.6 ? 1 : 0; // the carry loop is a slow shuffle; jog when carrying fast
 		const tw = {
 			idle: (1 - moveT) * (1 - fid) * (1 - air) * (1 - actW), fidget: (1 - moveT) * fid * (1 - air) * (1 - actW),
 			walk: walkW * (1 - carryW) * (1 - air) * (1 - actW), carry: walkW * carryW * (1 - air) * (1 - actW),
@@ -122,9 +127,16 @@ export const loadPlayer = async ({ tint = 0x9d978d } = {}) => {
 		for (const k in tw) weights[k] += (tw[k] - weights[k]) * Math.min(1, dt * (k === 'air' ? 25 : 10));
 		if (!state.action) { const sum = Object.values(weights).reduce((a, b) => a + b, 0); if (sum < 1) weights.idle += 1 - sum; }
 		for (const k in tw) loco[k].setEffectiveWeight(weights[k]);
-		loco.walk.timeScale = loco.carry.timeScale = 0.9 + (state.speed / PLAYER.walk) * 0.45; loco.run.timeScale = 0.9 + (state.speed / PLAYER.run) * 0.5;
+		const sp = Math.max(state.speed, 0.3);
+		loco.walk.timeScale = THREE.MathUtils.clamp(sp / CLIP_SPEED.walk, 0.6, 2.4); loco.carry.timeScale = THREE.MathUtils.clamp(sp / CLIP_SPEED.carry, 0.6, 2.4);
+		loco.run.timeScale = THREE.MathUtils.clamp(sp / CLIP_SPEED.run, 0.5, 1.8); loco.sprint.timeScale = THREE.MathUtils.clamp(sp / CLIP_SPEED.sprint, 0.6, 1.8);
 		if (landT > 0) landT -= dt;
 		mixer.update(dt);
+		// foot plants: a foot that swung up then drops below the plant height has landed → footstep (sound, dust) lands on the frame
+		if (state.onStep && grounded && !state.action && state.speed > 0.5) {
+			model.updateMatrixWorld(true);
+			for (const side in feet) { const f = feet[side]; if (!f.bone) continue; f.bone.getWorldPosition(footPos); const y = footPos.y - root.position.y; if (y > FOOT_SWING_Y) f.swung = true; if (f.swung && f.y >= FOOT_PLANT_Y && y < FOOT_PLANT_Y) { f.swung = false; state.onStep(side, state.speed); } f.y = y; }
+		} else for (const side in feet) feet[side].swung = false;
 	};
 	return state;
 };

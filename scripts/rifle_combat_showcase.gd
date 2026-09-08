@@ -153,12 +153,13 @@ func _finish_spawn() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	_spawn_ready = true
 	_refresh_label()
-	print(
-		"spawn complete; landed=", _landed,
-		" ground_y=", _ground_y,
-		" body.y=", _body.global_position.y,
-		" fall_frames=", guard
-	)
+	if OS.is_debug_build():
+		print(
+			"spawn complete; landed=", _landed,
+			" ground_y=", _ground_y,
+			" body.y=", _body.global_position.y,
+			" fall_frames=", guard,
+		)
 
 
 func _plant_on_floor(y: float) -> void:
@@ -760,13 +761,15 @@ func _spawn_host() -> bool:
 	_muzzle = _find_named(_host, "Muzzle")
 	_lock_root_translation_tracks()
 	if _anim:
-		print("anims=", _anim.get_animation_list())
-	print(
-		"host=", path,
-		" rifle=", _rifle.name if _rifle else "null",
-		" muzzle=", _muzzle != null,
-		" drop_y=", DROP_HEIGHT
-	)
+		if OS.is_debug_build():
+			print("anims=", _anim.get_animation_list())
+	if OS.is_debug_build():
+		print(
+			"host=", path,
+			" rifle=", _rifle.name if _rifle else "null",
+			" muzzle=", _muzzle != null,
+			" drop_y=", DROP_HEIGHT,
+		)
 	return true
 
 
@@ -833,16 +836,18 @@ func _align_visual_feet() -> void:
 	var floor_y: float = _body.global_position.y
 	var lowest: float = _lowest_sole_world_y()
 	if lowest > 1e8:
-		print("align feet FAILED — no sole samples")
+		if OS.is_debug_build():
+			print("align feet FAILED — no sole samples")
 		return
 	var delta_y: float = (floor_y + FOOT_SOLE_CLEARANCE) - lowest
 	_host.position.y += delta_y
 	_host_floor_y = _host.position.y
-	print(
-		"aligned feet; host.local_y=", _host.position.y,
-		" sole_world_y=", lowest,
-		" delta=", delta_y
-	)
+	if OS.is_debug_build():
+		print(
+			"aligned feet; host.local_y=", _host.position.y,
+			" sole_world_y=", lowest,
+			" delta=", delta_y,
+		)
 
 
 func _lowest_sole_world_y() -> float:
@@ -902,11 +907,12 @@ func _setup_rifle_mounts() -> void:
 		if back_bone != "":
 			_back_mount.bone_name = back_bone
 			_skel.add_child(_back_mount)
-	print(
-		"rifle mounts: hand=", _rifle != null,
-		" holster_mesh=", _rifle_holster != null,
-		" muzzle=", _muzzle != null
-	)
+	if OS.is_debug_build():
+		print(
+			"rifle mounts: hand=", _rifle != null,
+			" holster_mesh=", _rifle_holster != null,
+			" muzzle=", _muzzle != null,
+		)
 	_set_rifle_holstered(true)
 
 
@@ -973,12 +979,14 @@ func _toggle_holster_tune() -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		if _tune_panel != null:
 			_tune_panel.visible = true
-		print("HOLSTER TUNE ON — prefer Blender for final seat; buttons are temporary")
+		if OS.is_debug_build():
+			print("HOLSTER TUNE ON — prefer Blender for final seat; buttons are temporary")
 	else:
 		if _tune_panel != null:
 			_tune_panel.visible = false
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-		print("HOLSTER TUNE OFF")
+		if OS.is_debug_build():
+			print("HOLSTER TUNE OFF")
 	_refresh_tune_label()
 	_refresh_label()
 	_seat_rifle_on_back()
@@ -1053,7 +1061,8 @@ func _nudge_holster(keycode: int, mult: float) -> void:
 	if moved:
 		_seat_rifle_on_back()
 		_refresh_tune_label()
-		print("holster nudge → pos=", _holster_pos, " rot=", _holster_rot_deg)
+		if OS.is_debug_build():
+			print("holster nudge → pos=", _holster_pos, " rot=", _holster_rot_deg)
 
 
 func _make_tune_btn(text: String, keycode: int) -> Button:
@@ -1093,10 +1102,11 @@ func _build_tune_panel(ui: CanvasLayer) -> void:
 func _print_holster_values() -> void:
 	var msg := (
 		"HOLSTER VALUES (paste into showcase script):\n"
-		+ "\t_holster_pos = Vector3(%.4f, %.4f, %.4f)\n" % [_holster_pos.x, _holster_pos.y, _holster_pos.z]
-		+ "\t_holster_rot_deg = Vector3(%.2f, %.2f, %.2f)" % [_holster_rot_deg.x, _holster_rot_deg.y, _holster_rot_deg.z]
+		+ "	_holster_pos = Vector3(%.4f, %.4f, %.4f)\n" % [_holster_pos.x, _holster_pos.y, _holster_pos.z]
+		+ "	_holster_rot_deg = Vector3(%.2f, %.2f, %.2f)" % [_holster_rot_deg.x, _holster_rot_deg.y, _holster_rot_deg.z]
 	)
-	print(msg)
+	if OS.is_debug_build():
+		print(msg)
 	DisplayServer.clipboard_set(
 		"_holster_pos = Vector3(%.4f, %.4f, %.4f)\n_holster_rot_deg = Vector3(%.2f, %.2f, %.2f)"
 		% [_holster_pos.x, _holster_pos.y, _holster_pos.z, _holster_rot_deg.x, _holster_rot_deg.y, _holster_rot_deg.z]

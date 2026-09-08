@@ -15,7 +15,7 @@ const MIN_DROP: float = 0.35
 @export var prompt: String = "Collect scrap parts"
 @export var enabled: bool = false
 
-var _collected: bool = false
+var _collected: bool = false  # @collection-ok: per-instance "already consumed" guard for a disposable interactable; collection membership is tracked via Inventory.add_item
 var _collectable: bool = false
 var _vel: Vector3 = Vector3.ZERO
 var _spin: Vector3 = Vector3.ZERO

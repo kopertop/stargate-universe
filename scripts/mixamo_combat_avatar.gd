@@ -31,9 +31,11 @@ const CROUCH_AIM_CLIPS: Array[String] = [
 const CROUCH_FIRE_CLIPS: Array[String] = [
 	"Fire_Rifle_Crouched", "Firing_Rifle", "Shoot_Rifle",
 ]
-const TOOL_DIGGING_CLIPS: Array[String] = ["Digging", "Digging_01"]
+const TOOL_DIGGING_CLIPS: Array[String] = [
+	"Digging", "Digging_01", "Interact_Stub",
+]
 const TOOL_REPAIR_CLIPS: Array[String] = [
-	"Working_On_Device", "Working", "Working_On_Device_01",
+	"Working_On_Device", "Working", "Working_On_Device_01", "Interact_Stub",
 ]
 
 const LASERS: Array[String] = [

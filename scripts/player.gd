@@ -352,9 +352,10 @@ func _setup_mixamo_avatar() -> void:
 	_mint = null
 	_animation = null
 	_tune_mixamo_capsule()
+<<<<<<< HEAD
 	_sync_mixamo_weapon_visibility()
 	_bind_inventory_wield_signals()
-	call_deferred("_finish_mixamo_spawn")
+	call_deferred("_finish_mixamo_spawn_frames", 2)
 
 
 func _bind_inventory_wield_signals() -> void:
@@ -397,15 +398,12 @@ func _sync_mixamo_weapon_visibility() -> void:
 		_mixamo.call("set_held_interface", wield)
 
 
-func _finish_mixamo_spawn() -> void:
-	# Scene-boot smoke frees rooms before deferred awaits resume — bail cleanly.
-	if not is_inside_tree() or _mixamo == null:
+func _finish_mixamo_spawn_frames(frames_left: int) -> void:
+	# Avoid await — scene-boot frees the player mid-resume and logs engine errors.
+	if not is_inside_tree() or not is_instance_valid(self) or _mixamo == null:
 		return
-	await get_tree().process_frame
-	if not is_inside_tree() or _mixamo == null:
-		return
-	await get_tree().process_frame
-	if not is_inside_tree() or _mixamo == null:
+	if frames_left > 0:
+		call_deferred("_finish_mixamo_spawn_frames", frames_left - 1)
 		return
 	if _mixamo.has_method("align_feet_once"):
 		_mixamo.call("align_feet_once")

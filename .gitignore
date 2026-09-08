@@ -63,6 +63,7 @@ docs/hud-redesign/captures/
 # Doc-only images don't need Godot import sidecars (the game never loads them);
 # the raw blob URL serves the PNG directly.
 docs/hud-redesign/*.import
+docs/demo/*.import
 # TTS bake-off reference audio is dev-tool input, not a game asset — Godot's
 # auto-generated .import sidecars for it are noise.
 tools/tts-bakeoff/**/*.import

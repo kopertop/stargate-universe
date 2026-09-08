@@ -44,7 +44,7 @@ class Handler(SimpleHTTPRequestHandler):
             fps = int(q.get('fps', ['30'])[0])
             with LOCK:
                 if name in ENCODERS: ENCODERS.pop(name).stdin.close()
-                ENCODERS[name] = subprocess.Popen(['ffmpeg', '-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', str(fps), '-i', '-', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-crf', '19', target], stdin=subprocess.PIPE)
+                ENCODERS[name] = subprocess.Popen(['ffmpeg', '-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', str(fps), '-i', '-', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-crf', '23', target], stdin=subprocess.PIPE)
             return self.reply(200, f'encoding {target} at {fps} fps')
         if u.path == '/rec/frame':
             enc = ENCODERS.get(name)

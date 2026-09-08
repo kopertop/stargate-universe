@@ -34,6 +34,20 @@ const schematicScreen = () => {
 	const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 };
 
+/** Olive supply-crate material with a stencilled label (one canvas per label, cached). */
+const crateTexCache = {};
+const crateMat = (ctx, label) => {
+	if (!crateTexCache[label]) {
+		const c = document.createElement('canvas'); c.width = 512; c.height = 256; const g = c.getContext('2d');
+		g.fillStyle = '#5e6a3a'; g.fillRect(0, 0, 512, 256); for (let i = 0; i < 1800; i++) { g.fillStyle = `rgba(0,0,0,${Math.random() * 0.12})`; g.fillRect(Math.random() * 512, Math.random() * 256, 2, 2 + Math.random() * 10); }
+		g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = 6; g.strokeRect(20, 20, 472, 216);
+		g.fillStyle = 'rgba(20,24,16,0.85)'; g.font = '700 54px "Courier New", monospace'; g.textAlign = 'center'; g.fillText(label, 256, 120); g.font = '700 26px "Courier New", monospace'; g.fillText(label === 'SALVAGE' ? 'ICARUS BASE · LOT 7' : 'STARGATE COMMAND', 256, 170);
+		g.fillStyle = 'rgba(220,180,60,0.8)'; g.beginPath(); g.moveTo(60, 220); g.lineTo(90, 220); g.lineTo(75, 196); g.fill();
+		const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; crateTexCache[label] = new THREE.MeshStandardMaterial({ map: t, roughness: 0.9 });
+	}
+	return crateTexCache[label];
+};
+
 /** Registry. `size` (w, d in m) is the editor footprint; `build(ctx, p, spec)` places at world p = {x, z}, facing spec.ry. */
 export const COMPONENTS = {
 	console: {
@@ -79,7 +93,8 @@ export const COMPONENTS = {
 	crate: {
 		label: 'Supply crate', size: [1.4, 1.0], defaultAnchor: 'SupplyCrate',
 		build: (ctx, p, s) => {
-			ctx.box(1.4, 0.78, 1.0, ctx.mats.crate, p.x, 0.39, p.z, true, s.ry);
+			const body = ctx.box(1.4, 0.78, 1.0, ctx.mats.crate, p.x, 0.39, p.z, true, s.ry); body.material = crateMat(ctx, s.loot ? 'SALVAGE' : 'SGC SUPPLY');
+			for (const sx of [-0.45, 0.45]) { const strap = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.8, 1.02), ctx.mats.steel); strap.position.set(p.x, 0.39, p.z); strap.rotation.y = s.ry; strap.translateX(sx); ctx.group.add(strap); }
 			const lid = new THREE.Group(); lid.position.set(p.x, 0.78, p.z); lid.rotation.y = s.ry; ctx.group.add(lid); // hinge on the back edge
 			const top = new THREE.Mesh(new THREE.BoxGeometry(1.44, 0.12, 1.04), ctx.mats.crate); top.position.set(0, 0.06, 0.52); top.castShadow = true; lid.add(top); lid.position.add(fwd(s.ry).multiplyScalar(-0.52));
 			for (const sx of [-1, 1]) { const strap = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.13, 1.06), ctx.mats.steel); strap.position.set(sx * 0.45, 0.06, 0.52); lid.add(strap); }
@@ -132,8 +147,17 @@ export const COMPONENTS = {
 		build: (ctx, p, s) => { ctx.box(1.2, 2.0, 1.2, ctx.mats.dark, p.x, 1.0, p.z, true, s.ry); return { anchor: fwd(s.ry).multiplyScalar(1.1).add(new THREE.Vector3(p.x, 0, p.z)) }; },
 	},
 	elevator_door: {
-		label: 'Elevator door', size: [2.4, 0.2], defaultAnchor: 'Elevator',
-		build: (ctx, p, s) => { ctx.box(2.4, 3.2, 0.2, ctx.mats.door, p.x, 1.6, p.z, true, s.ry); const f = fwd(s.ry); lamp(ctx, p.x + f.x * 0.15, 3.35, p.z + f.z * 0.15, s.ry); return { anchor: f.multiplyScalar(1.1).add(new THREE.Vector3(p.x, 0, p.z)) }; },
+		label: 'Elevator door', size: [2.6, 0.3], defaultAnchor: 'Elevator',
+		build: (ctx, p, s) => {
+			const f = fwd(s.ry), g = new THREE.Group(); g.position.set(p.x, 0, p.z); g.rotation.y = s.ry; ctx.group.add(g);
+			ctx.box(2.6, 3.4, 0.3, ctx.mats.shell, p.x, 1.7, p.z, true, s.ry); // frame block (collider)
+			for (const sx of [-1, 1]) { const leaf = new THREE.Mesh(new THREE.BoxGeometry(1.1, 3.0, 0.08), ctx.mats.door); leaf.position.set(sx * 0.58, 1.5, 0.19); g.add(leaf); }
+			const seam = new THREE.Mesh(new THREE.BoxGeometry(0.04, 3.0, 0.02), emissive(0xffa040, 0.5)); seam.position.set(0, 1.5, 0.24); g.add(seam); ctx.parts.trims.push(seam);
+			const header = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.18, 0.04), emissive(0xffa040, 0.5)); header.position.set(0, 3.15, 0.22); g.add(header); ctx.parts.trims.push(header);
+			const panel = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.4, 0.08), ctx.mats.dark); panel.position.set(1.55, 1.35, 0.19); g.add(panel); // call panel beside the doors
+			const ind = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.04, 0.02), ctx.mats.red.clone()); ind.position.set(1.55, 1.5, 0.24); g.add(ind);
+			return { anchor: f.multiplyScalar(1.2).add(new THREE.Vector3(p.x, 0, p.z)) };
+		},
 	},
 	breach: {
 		label: 'Hull breach', size: [3.2, 0.1],

@@ -530,18 +530,26 @@ const frame = (dtIn) => {
 };
 // rAF stops entirely while the tab is hidden; fall back to a 30 Hz timer so simulation, autoplay smoke runs and recordings
 // keep going in a background tab (Chrome still runs timers there). dt stays clamped at 50 ms either way.
-let rafId = 0, recBusy = false, recLast = 0;
+let rafId = 0, recLast = 0;
 const schedule = () => { if (document.hidden) setTimeout(loop, 33); else rafId = requestAnimationFrame(loop); };
 // Frame-starved (hidden, occluded or throttled window): sub-step so simulation, quests and autoplay keep wall-clock time.
-// Recording: fixed 1/fps step per encoded frame, no faster than real time — the video is smooth no matter how slow the window is.
 const loop = () => {
 	rafId = 0;
-	if (recorder?.isActive()) {
-		const now = performance.now(), step = 1 / recorder.fps;
-		if (recBusy || now - recLast < 1000 / recorder.fps - 2) { schedule(); return; }
-		recLast = now; clock.getDelta(); frame(step); recBusy = true; recorder.tick().finally(() => { recBusy = false; }); schedule(); return;
-	}
+	if (recorder?.isActive()) { recLoop(); return; }
 	const real = clock.getDelta(); if (real > 0.08) { const n = Math.min(8, Math.round(real / 0.04)); for (let i = 0; i < n; i++) frame(Math.min(0.05, real / n)); } else frame(Math.min(real, 0.05)); schedule();
+};
+// Recording: every encoded frame is exactly 1/fps of simulation, produced no faster than real time and catching up (≤ 2 s of
+// debt) when the window is throttled — the mp4 is smooth however slow the machine or hidden the tab. Hidden tabs throttle
+// timers to 1 Hz, so the wait between frames is a MessageChannel hop (not throttled) instead of setTimeout/rAF.
+const hop = () => new Promise((r) => { const ch = new MessageChannel(); ch.port1.onmessage = () => r(); ch.port2.postMessage(0); });
+const recLoop = async () => {
+	const fps = recorder.fps, ms = 1000 / fps; if (!recLast) recLast = performance.now();
+	while (recorder.isActive()) {
+		const now = performance.now(); if (now - recLast > 2000) recLast = now - 2000;
+		if (now - recLast < ms) { if (document.hidden) await hop(); else await new Promise((r) => requestAnimationFrame(r)); continue; }
+		recLast += ms; clock.getDelta(); frame(1 / fps); await recorder.tick();
+	}
+	recLast = 0; clock.getDelta(); schedule();
 };
 document.addEventListener('visibilitychange', () => { if (document.hidden && rafId) { cancelAnimationFrame(rafId); rafId = 0; schedule(); } }); // a pending rAF would never fire once hidden
 schedule();

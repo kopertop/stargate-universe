@@ -10,28 +10,81 @@ const fwd = (ry) => new THREE.Vector3(Math.sin(ry), 0, Math.cos(ry));
 const lamp = (ctx, x, y, z, ry = 0, w = 0.6, h = 0.12) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.05), ctx.mats.red.clone()); m.position.set(x, y, z); m.rotation.y = ry; ctx.group.add(m); return m; };
 const emissive = (color, intensity = 0) => new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: intensity });
 
+/** Ancient glyph readout: header bar, columns of glyph clusters, a waveform. Blue on near-black; used as map + emissiveMap. */
+const glyphScreen = () => {
+	const W = 512, H = 224, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
+	const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#0b1b33'); bg.addColorStop(1, '#061020'); g.fillStyle = bg; g.fillRect(0, 0, W, H);
+	g.fillStyle = 'rgba(80,170,255,0.35)'; g.fillRect(0, 0, W, 30); g.fillRect(0, H - 8, W, 8); g.fillStyle = 'rgba(80,170,255,0.12)'; g.fillRect(12, 42, 196, 164); g.fillRect(222, 42, 278, 164);
+	g.strokeStyle = '#9fd8ff'; g.lineWidth = 4; g.lineCap = 'round';
+	const glyph = (x, y, r) => { g.beginPath(); for (let k = 0; k < 3 + Math.floor(Math.random() * 3); k++) { const a = Math.random() * 6.3, b = a + 0.6 + Math.random() * 2; g.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r); g.lineTo(x + Math.cos(b) * r * (0.3 + Math.random() * 0.7), y + Math.sin(b) * r * (0.3 + Math.random() * 0.7)); } g.stroke(); if (Math.random() < 0.5) { g.beginPath(); g.arc(x, y, r * 0.3, 0, 7); g.stroke(); } };
+	g.lineWidth = 3; for (let i = 0; i < 10; i++) glyph(28 + i * 30, 15, 9);
+	g.lineWidth = 4; for (let col = 0; col < 3; col++) for (let row = 0; row < 4; row++) glyph(46 + col * 64 + (Math.random() - 0.5) * 6, 64 + row * 38, 13);
+	g.strokeStyle = '#cfe9ff'; g.lineWidth = 3; g.beginPath(); for (let x = 232; x < W - 20; x += 4) g.lineTo(x, 100 + Math.sin(x * 0.07) * 20 * Math.sin(x * 0.011) + (Math.random() - 0.5) * 4); g.stroke();
+	g.fillStyle = 'rgba(159,216,255,0.9)'; for (let i = 0; i < 16; i++) g.fillRect(236 + i * 16, 156 + Math.random() * 30, 10, 44 - Math.random() * 30);
+	g.strokeStyle = '#ffb060'; g.lineWidth = 3; g.strokeRect(226, 46, W - 244, 156);
+	const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+};
+/** Floating schematic: ship outline + a few blinking nodes (additive holo pane). */
+const schematicScreen = () => {
+	const W = 512, H = 212, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
+	g.strokeStyle = 'rgba(120,200,255,0.9)'; g.lineWidth = 2; g.beginPath(); g.moveTo(30, 106); g.lineTo(120, 60); g.lineTo(420, 50); g.lineTo(490, 106); g.lineTo(420, 162); g.lineTo(120, 152); g.closePath(); g.stroke();
+	g.strokeStyle = 'rgba(120,200,255,0.4)'; for (let x = 120; x < 420; x += 40) { g.beginPath(); g.moveTo(x, 58); g.lineTo(x, 155); g.stroke(); }
+	g.fillStyle = 'rgba(255,170,80,0.9)'; for (let i = 0; i < 6; i++) { g.beginPath(); g.arc(140 + i * 55, 80 + (i % 2) * 50, 5, 0, 7); g.fill(); }
+	g.fillStyle = 'rgba(120,200,255,0.8)'; g.font = '600 18px monospace'; g.fillText('DESTINY · DECK 0', 200, 30); g.fillText('FTL ▸ ▸ ▸', 380, 195);
+	const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+};
+
 /** Registry. `size` (w, d in m) is the editor footprint; `build(ctx, p, spec)` places at world p = {x, z}, facing spec.ry. */
 export const COMPONENTS = {
 	console: {
-		label: 'Console', size: [2.6, 1.0], defaultAnchor: 'Console',
+		label: 'Console', size: [2.8, 1.4], defaultAnchor: 'Console',
 		build: (ctx, p, s) => {
-			ctx.box(2.6, 1.0, 1.0, ctx.mats.dark, p.x, 0.5, p.z, true, s.ry);
-			const screen = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.05, 0.8), emissive(0x9fd8ff)); screen.material.emissive.set(0x4fa8ff); screen.position.set(p.x, 1.03, p.z); screen.rotation.set(-0.3, s.ry, 0, 'YXZ'); ctx.group.add(screen);
-			ctx.parts.screens.push(screen);
-			return { anchor: fwd(s.ry).multiplyScalar(1.5).add(new THREE.Vector3(p.x, 0, p.z)) };
+			const f = fwd(s.ry), g = new THREE.Group(); g.position.set(p.x, 0, p.z); g.rotation.y = s.ry; ctx.group.add(g);
+			// plinth + sloped desk (trapezoid profile extruded across the width): dark Ancient stone-metal with a lit glyph face
+			const shell = ctx.mats.shell;
+			const plinth = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.72, 0.7), ctx.mats.dark); plinth.position.set(0, 0.36, 0.05); plinth.castShadow = plinth.receiveShadow = true; g.add(plinth);
+			const prof = new THREE.Shape(); prof.moveTo(-0.6, 0.66); prof.lineTo(0.6, 0.66); prof.lineTo(0.6, 1.2); prof.lineTo(-0.6, 0.92); prof.lineTo(-0.6, 0.66); // side view (x = depth): low at the front (−z), high at the back
+			const desk = new THREE.Mesh(new THREE.ExtrudeGeometry(prof, { depth: 2.6, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 1 }), shell); desk.rotation.y = -Math.PI / 2; desk.position.set(1.3, 0, 0); desk.castShadow = desk.receiveShadow = true; g.add(desk); // extrusion runs along -x from +1.3
+			// glyph screen laid on the slope (tilted toward the operator), plus a floating holo pane above the back edge
+			const slope = Math.atan2(0.30, 1.24);
+			const screen = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 1.0), new THREE.MeshStandardMaterial({ color: 0x102030, emissive: 0xffffff, emissiveIntensity: 0, roughness: 0.3, metalness: 0.2 })); screen.material.map = screen.material.emissiveMap = glyphScreen();
+			screen.position.set(0, 1.13, 0.0); screen.rotation.set(-Math.PI / 2 - slope, 0, 0); g.add(screen); ctx.parts.screens.push(screen); // 4 cm proud of the bevelled slope
+			const holo = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 0.7), new THREE.MeshBasicMaterial({ map: schematicScreen(), transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })); holo.position.set(0, 1.8, 0.5); holo.rotation.set(0.15, Math.PI, 0); g.add(holo); // faces the operator at the low edge ctx.parts.holos.push(holo);
+			for (const sx of [-1, 1]) { // side wings: angled panels with a small amber readout each
+				const wing = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.14, 1.0), shell); wing.position.set(sx * 1.52, 0.98, 0.05); wing.rotation.z = sx * 0.3; wing.castShadow = true; g.add(wing);
+				const rd = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.6), emissive(0xffa040, 1.2)); rd.position.set(sx * 1.55, 1.06, 0.05); rd.rotation.set(-Math.PI / 2, 0, 0); rd.rotateY(sx * 0.3); g.add(rd); ctx.parts.trims.push(rd);
+			}
+			const trim = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.03, 0.03), emissive(0xffa040, 1.2)); trim.position.set(0, 0.68, -0.6); g.add(trim); ctx.parts.trims.push(trim);
+			ctx.box(2.6, 1.2, 1.0, ctx.mats.dark, p.x, 0.6, p.z, true, s.ry).visible = false; // collider only
+			return { anchor: f.multiplyScalar(-1.4).add(new THREE.Vector3(p.x, 0, p.z)) }; // operator stands at the low front edge
 		},
 	},
 	relay: {
-		label: 'Power relay', size: [1.2, 0.25], defaultAnchor: 'PowerRelay',
+		label: 'Power relay', size: [1.2, 0.3], defaultAnchor: 'PowerRelay',
 		build: (ctx, p, s) => {
-			ctx.box(1.2, 1.6, 0.25, ctx.mats.dark, p.x, 1.2, p.z, true, s.ry);
-			const f = fwd(s.ry); ctx.parts.relayLamp = lamp(ctx, p.x + f.x * 0.15, 1.75, p.z + f.z * 0.15, s.ry);
-			return { anchor: f.multiplyScalar(0.9).add(new THREE.Vector3(p.x, 0, p.z)) };
+			const f = fwd(s.ry), g = new THREE.Group(); g.position.set(p.x, 0, p.z); g.rotation.y = s.ry; ctx.group.add(g);
+			ctx.box(1.2, 1.7, 0.3, ctx.mats.shell, p.x, 1.2, p.z, true, s.ry);
+			for (const [w, h, x, y] of [[1.1, 0.04, 0, 2.0], [1.1, 0.04, 0, 0.4], [0.04, 1.6, -0.53, 1.2], [0.04, 1.6, 0.53, 1.2]]) { const t = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.02), emissive(0xffa040, 0.5)); t.position.set(x, y, 0.16); g.add(t); ctx.parts.trims.push(t); } // panel frame lines
+			const plate = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.3, 0.03), ctx.mats.dark); plate.position.set(0, 0.62, 0.16); g.add(plate); // lower blanking plate
+			const bay = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.5, 0.12), new THREE.MeshStandardMaterial({ color: 0x06080c, roughness: 0.9 })); bay.position.set(0, 1.05, 0.12); g.add(bay); // recessed fuse bay
+			for (const [i, c] of [0xff48b8, 0x33e6e0, 0xf2b838].entries()) { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.34, 6), emissive(c, 0.9)); w.position.set(-0.2 + i * 0.2, 1.05, 0.2); w.rotation.z = Math.PI / 2; w.scale.z = 0.6; w.rotation.y = 0.9 - i * 0.9; g.add(w); } // jumper stubs
+			const fuse = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.3, 12), new THREE.MeshStandardMaterial({ color: 0xd8b060, emissive: 0x6a4010, emissiveIntensity: 0.6, roughness: 0.35, metalness: 0.6 })); fuse.rotation.z = Math.PI / 2; fuse.position.set(0, 1.05, 0.15); fuse.visible = false; g.add(fuse);
+			for (const sx of [-1, 1]) { const clip = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, 0.1), ctx.mats.steel); clip.position.set(sx * 0.17, 1.05, 0.15); g.add(clip); }
+			const cover = new THREE.Group(); cover.position.set(0, 1.32, 0.19); g.add(cover); const cm = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.58, 0.03), ctx.mats.door); cm.position.y = -0.29; cover.add(cm); // hinged at the top edge
+			ctx.parts.relayLamp = lamp(ctx, p.x + f.x * 0.17, 1.82, p.z + f.z * 0.17, s.ry, 0.5, 0.1);
+			ctx.parts.relayFuse = fuse; ctx.parts.relayCover = cover;
+			return { anchor: f.multiplyScalar(1.0).add(new THREE.Vector3(p.x, 0, p.z)) };
 		},
 	},
 	crate: {
 		label: 'Supply crate', size: [1.4, 1.0], defaultAnchor: 'SupplyCrate',
-		build: (ctx, p, s) => { ctx.box(1.4, 0.9, 1.0, ctx.mats.crate, p.x, 0.45, p.z, true, s.ry); return { anchor: fwd(s.ry).multiplyScalar(1.2).add(new THREE.Vector3(p.x, 0, p.z)) }; },
+		build: (ctx, p, s) => {
+			ctx.box(1.4, 0.78, 1.0, ctx.mats.crate, p.x, 0.39, p.z, true, s.ry);
+			const lid = new THREE.Group(); lid.position.set(p.x, 0.78, p.z); lid.rotation.y = s.ry; ctx.group.add(lid); // hinge on the back edge
+			const top = new THREE.Mesh(new THREE.BoxGeometry(1.44, 0.12, 1.04), ctx.mats.crate); top.position.set(0, 0.06, 0.52); top.castShadow = true; lid.add(top); lid.position.add(fwd(s.ry).multiplyScalar(-0.52));
+			for (const sx of [-1, 1]) { const strap = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.13, 1.06), ctx.mats.steel); strap.position.set(sx * 0.45, 0.06, 0.52); lid.add(strap); }
+			return { anchor: fwd(s.ry).multiplyScalar(1.2).add(new THREE.Vector3(p.x, 0, p.z)), lid, loot: s.loot };
+		},
 	},
 	bed: {
 		label: 'Bed', size: [2.0, 1.0], defaultAnchor: 'Bed',
@@ -102,7 +155,8 @@ export const COMPONENTS = {
 
 /** Default furniture per room type, as room-relative specs (used when the layout row has no `props`). */
 export const DEFAULT_PROPS = {
-	gate_room: [{ type: 'relay', u: 0.68, v: 0.989, ry: Math.PI }, { type: 'crate', u: 0.25, v: 0.86, ry: Math.PI }, { type: 'marker', u: 0.73, v: 0.8, anchor: 'Brody' }, { type: 'marker', u: 0.325, v: 0.725, anchor: 'Scott' }],
+	gate_room: [{ type: 'relay', u: 0.68, v: 0.989, ry: Math.PI }, { type: 'crate', u: 0.25, v: 0.86, ry: Math.PI },
+		{ type: 'crate', u: 0.84, v: 0.95, ry: Math.PI, anchor: 'Salvage1', loot: [{ id: 'large_fuse' }] }, { type: 'crate', u: 0.93, v: 0.95, ry: Math.PI, anchor: 'Salvage2', loot: [{ id: 'rations', n: 3 }] }, { type: 'crate', u: 0.955, v: 0.78, ry: -Math.PI / 2, anchor: 'Salvage3', loot: [{ id: 'small_fuse' }] }, { type: 'marker', u: 0.73, v: 0.8, anchor: 'Brody' }, { type: 'marker', u: 0.325, v: 0.725, anchor: 'Scott' }],
 	control_room: [{ type: 'console', u: 0.5, v: 0.53, ry: Math.PI, anchor: 'ControlConsole' }, { type: 'marker', u: 0.6, v: 0.52, anchor: 'Rush' }, { type: 'pillar', u: 0.2, v: 0.2 }, { type: 'pillar', u: 0.8, v: 0.2 }, { type: 'pillar', u: 0.2, v: 0.8 }, { type: 'pillar', u: 0.8, v: 0.8 }],
 	quarters: [{ type: 'bed', u: 0.15, v: 0.5, ry: Math.PI / 2 }, { type: 'locker', u: 0.92, v: 0.3, ry: -Math.PI / 2 }],
 	storage: [{ type: 'crate', u: 0.2, v: 0.25, ry: 0.3 }, { type: 'crate', u: 0.35, v: 0.3, ry: 1.1 }, { type: 'crate', u: 0.75, v: 0.7, ry: 2.4 }, { type: 'crate', u: 0.8, v: 0.3, ry: 0.8 }],

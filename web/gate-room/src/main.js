@@ -12,12 +12,13 @@ import { createQuestEngine } from './quest.js';
 import { createKino } from './kino.js';
 import { createUI } from './ui.js';
 import * as interact from './interact.js';
-import { rpg, loadItems, addItem, removeItem, count, equip, stats, carried, grantXp, addLog, onRpgChange, save as saveRpg, load as loadRpg } from './rpg.js';
+import { rpg, ITEMS, loadItems, addItem, removeItem, count, equip, stats, carried, grantXp, addLog, onRpgChange, save as saveRpg, load as loadRpg } from './rpg.js';
 import { ASSETS } from './assets.js';
 import { createMusic } from './music.js';
 import { createConsole } from './console.js';
 import { settings, onSettings } from './settings.js';
 import { createLevelEditor } from './leveledit.js';
+import { createHotwire } from './hotwire.js';
 
 const loadingEl = document.getElementById('loading');
 // surface failures instead of a silent black screen: load errors stay on the loading card, runtime errors show a toast
@@ -204,7 +205,25 @@ const startChapter = (id) => {
 // ---------------------------------------------------------------- interactables (Destiny)
 const S = destiny.ship;
 const stepIs = (id) => quest.step()?.id === id;
-interact.register({ world: 'destiny', id: 'relay', position: A['gate_room:PowerRelay'], prompt: () => (!S.powered ? 'Restore power' : null), action: () => withAnim('interact', () => { S.setPower(true); quest.setFlag('power_restored'); ui.subtitle('Eli', 'Power relay engaged... lights are coming up. Doors should unlock.'); oneShot(shutdownBuf, 0.5, 1.6); }) });
+const hotwire = createHotwire({ sfx: { pick: () => oneShot(buffers.menuOpen, 0.35, 1.4), connect: () => oneShot(buffers.doorLock, 0.5, 1.6), fault: () => oneShot(buffers.doorThunk, 0.7, 1.3), success: () => oneShot(buffers.terminal, 0.7) } });
+// Power relay: three stages — inspect (blown fuse), seat the right fuse from the salvage crates, then hotwire the protocol lines
+interact.register({ world: 'destiny', id: 'relay', position: A['gate_room:PowerRelay'],
+	prompt: () => (S.powered ? null : !quest.has('relay_inspected') ? 'Inspect power relay' : !quest.has('fuse_installed') ? (count('small_fuse') ? 'Seat the small fuse' : count('large_fuse') ? 'Try the large fuse' : 'Relay needs a fuse') : 'Hotwire the relay'),
+	action: () => {
+		if (!quest.has('relay_inspected')) return withAnim('interact', () => { quest.setFlag('relay_inspected'); oneShot(buffers.menuClose, 0.5, 0.7); ui.subtitle('Eli', 'Main fuse is blown clean through. Those crates by the wall — there have to be spares.'); });
+		if (!quest.has('fuse_installed')) {
+			if (count('small_fuse')) return withAnim('interact', () => { removeItem('small_fuse'); S.installFuse(); quest.setFlag('fuse_installed'); oneShot(buffers.doorLock, 0.6, 1.2); ui.subtitle('Eli', 'Fuse is seated. The protocol lines are pulled, though — this needs hotwiring.'); }, { at: 0.5 });
+			if (count('large_fuse')) { player.playAction('nod'); ui.subtitle('Eli', 'Way too big. Wrong fuse. Keep looking.'); return; }
+			ui.subtitle('Eli', 'Nothing to seat. Search the salvage crates.'); return;
+		}
+		player.playAction('device', { loop: true }); ui.toast('Match each jack to its protocol port — the ports show their line for a moment.', 5);
+		hotwire.play({ title: 'RELAY_HOTWIRE_v2.7', security: 'MEDIUM' }).then((ok) => { player.stopAction(); if (!ok) { ui.subtitle('Rush', 'Walking away from it will not route the power, Eli.'); return; }
+			withAnim('interact', () => { S.setPower(true); quest.setFlag('power_restored'); ui.subtitle('Eli', 'Power relay engaged... lights are coming up. Doors should unlock.'); oneShot(shutdownBuf, 0.5, 1.6); addLog(`Relay hotwired${hotwire.faults ? ` after ${hotwire.faults} fault${hotwire.faults > 1 ? 's' : ''}` : ' first try'}`); }, { at: 0.4 });
+		});
+	} });
+// Lootable crates (components with `loot`): open the lid once, hand over the contents, remember it in a flag so saves keep it
+for (const l of S.lootables) interact.register({ world: 'destiny', id: `loot:${l.key}`, position: l.anchor, prompt: () => (quest.has(`looted:${l.key}`) ? null : 'Search crate'),
+	action: () => withAnim('open', () => { S.openCrate(l); quest.setFlag(`looted:${l.key}`); for (const it of l.loot) { addItem(it.id, it.n ?? 1); if (it.id === 'small_fuse') quest.setFlag('has_small_fuse'); } const names = l.loot.map((it) => `${ITEMS[it.id]?.name ?? it.id}${(it.n ?? 1) > 1 ? ` ×${it.n}` : ''}`).join(', '); ui.toast(`Found: ${names}`, 4); oneShot(buffers.menuOpen, 0.5, 0.8); if (l.loot.some((it) => it.id === 'large_fuse')) ui.subtitle('Eli', 'A fuse... but it is huge. That is not going to fit the relay.'); }, { at: 0.6 }) });
 interact.register({ world: 'destiny', id: 'console', position: A['control_interface_room:ControlConsole'], prompt: () => (S.powered && !quest.has('life_support_diagnosed') ? 'Access control terminal' : null), action: () => withAnim('interact', () => { oneShot(buffers.terminal, 0.6); quest.setFlag('life_support_diagnosed'); ui.subtitle('Eli', 'Hull breach — port shuttle dock. And life support is flagged red across the board.'); ui.openRemote('ship'); }, { at: 0.6 }) });
 interact.register({ world: 'destiny', id: 'elevator', position: A['elevator_north:Elevator'], prompt: () => 'Call elevator — upper deck', action: () => { ui.toast(S.powered ? 'Elevator offline — no power routed to the upper deck yet.' : 'No power.'); } });
 interact.register({ world: 'destiny', id: 'lever', position: A['south_spur:SealLever'], prompt: () => (quest.has('life_support_diagnosed') && !quest.has('any_breach_sealed') ? 'Pull emergency seal' : null), action: () => withAnim('interact', () => { S.sealBreach(); quest.setFlag('any_breach_sealed'); oneShot(shutdownBuf, 0.9, 0.8); ui.subtitle('Rush', 'Pressure is holding. Good. Now go make yourself useful somewhere else.'); }) });
@@ -395,7 +414,7 @@ const tickRooms = () => {
 };
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); destiny.room.userData.reflector.getRenderTarget().setSize(Math.floor(innerWidth * 0.5), Math.floor(innerHeight * 0.5)); });
 let noclip = false;
-window.__dbg = { input, player, camera, quest, rpg, get world() { return world; }, destiny, get planet() { return planet; }, setView, cam: () => cam, travel: () => travel, teleport: (x, z) => { player.root.position.set(x, world.floorAt(x, z), z); }, dialGate: () => dialGate(world), launchKino, interact: () => interact.current?.id, ui, startChapter, kino: () => kinoWorld?.name, music };
+window.__dbg = { input, player, camera, quest, rpg, simTime: () => simTime, get world() { return world; }, destiny, get planet() { return planet; }, setView, cam: () => cam, travel: () => travel, teleport: (x, z) => { player.root.position.set(x, world.floorAt(x, z), z); }, dialGate: () => dialGate(world), launchKino, interact: () => interact.current?.id, ui, startChapter, kino: () => kinoWorld?.name, music };
 
 // ---------------------------------------------------------------- start: chapter card → cold open (arrive through the gate)
 // ---------------------------------------------------------------- save / load (localStorage) + title screen
@@ -415,6 +434,7 @@ const loadGame = () => {
 	if (travelIdx >= 0 && brodyIdx >= 0 && si > travelIdx && si < brodyIdx) { si = travelIdx; for (const f of ['on_planet', 'returned_from_planet']) quest.flags.delete(f); }
 	quest.stepIndex = si;
 	const S2 = destiny.ship;
+	if (quest.has('fuse_installed')) S2.installFuse(); for (const l of S2.lootables) if (quest.has(`looted:${l.key}`)) S2.openCrate(l);
 	if (quest.has('power_restored')) S2.setPower(true); if (quest.has('any_breach_sealed')) S2.sealBreach(); if (quest.has('kino_acquired')) S2.takeKino(); if (quest.has('scrubber_repaired')) S2.repairScrubber();
 	const step = quest.step();
 	if (quest.has('ftl_dropped') && ['scout_kino', 'gear_up', 'travel'].includes(step?.id)) { destiny.gate.userData.reset(); destiny.gate.userData.incoming(onGateEvent(destiny)); }
@@ -436,8 +456,8 @@ let recorder = null;
 if (location.search.includes('record')) {
 	const { createRecorder } = await import('./recorder.js');
 	recorder = createRecorder(renderer.domElement, () => { const s = quest.step(); const p = document.getElementById('prompt'), sub = document.getElementById('sub'); return {
-		chapter: quest.chapter?.title ?? '', label: s?.label ?? '', zone: document.getElementById('zone').textContent, level: rpg.level, hp: Math.round(rpg.hp), xp: rpg.xp, carry: `${carried()}/${stats().carry}`,
-		prompt: p.classList.contains('hidden') ? '' : p.textContent.replace(/\s+/g, ' ').trim(), subtitle: sub.classList.contains('hidden') ? '' : sub.textContent.trim() }; });
+		chapter: quest.chapter?.title ?? '', label: s?.label ?? '', zone: document.getElementById('zone').textContent, level: rpg.level, hp: Math.round(rpg.hp), xp: rpg.xp, carry: `${carried()}/${stats().carry}`, o2: Math.round(rpg.o2),
+		prompt: p.classList.contains('hidden') ? '' : p.textContent.replace(/\s+/g, ' ').trim(), subtitle: sub.classList.contains('hidden') ? '' : sub.textContent.trim(), overlay: !hotwire.isOpen() && !ui.isRemoteOpen() ? '' : hotwire.isOpen() ? 'HOTWIRE PANEL' : 'KINO REMOTE' }; });
 	window.__rec = recorder;
 }
 
@@ -456,16 +476,16 @@ const devcon = createConsole({
 	give: (id, n = 1) => { for (let i = 0; i < +n; i++) addItem(id); return `gave ${n}× ${id}`; },
 	chapter: (id) => { startChapter(id); return `chapter ${id}`; },
 });
-window.__dbg.edit = edit; window.__dbg.console = devcon; window.__dbg.renderer = renderer;
+window.__dbg.edit = edit; window.__dbg.console = devcon; window.__dbg.renderer = renderer; window.__dbg.hotwire = hotwire;
 
-const fpsEl = document.getElementById('fps');
+const fpsEl = document.getElementById('fps'); let simTime = 0; // simulated seconds (drives autoplay waits; equals wall time except while recording)
 const clock = new THREE.Clock(); let acc = 0, frames = 0;
 const frame = (dtIn) => {
-	const rawDt = dtIn ?? Math.min(clock.getDelta(), 0.05); const t = clock.elapsedTime;
+	const rawDt = dtIn ?? Math.min(clock.getDelta(), 0.05); simTime += rawDt; const t = simTime;
 	poll(rawDt);
 	if (edit.active) { const sc = edit.update(rawDt); destiny.gate.userData.tick(t, rawDt); if (camera.parent !== sc) { camera.removeFromParent(); sc.add(camera); } renderer.render(sc, camera); return; }
-	const paused = ui.isRemoteOpen() || devcon.isOpen();
-	if (input.remote && !kino.active) { if (paused) { ui.closeRemote(); player.stopAction(); } else if (quest.has('kino_acquired')) { ui.openRemote(); player.playAction('device', { loop: true }); } else ui.toast('You have no device to open yet'); }
+	const paused = ui.isRemoteOpen() || devcon.isOpen() || hotwire.isOpen();
+	if (input.remote && !kino.active && !hotwire.isOpen()) { if (paused) { ui.closeRemote(); player.stopAction(); } else if (quest.has('kino_acquired')) { ui.openRemote(); player.playAction('device', { loop: true }); } else ui.toast('You have no device to open yet'); }
 	if (input.launchKino && !paused && !travel && !kino.active) launchKino();
 	if (input.cycleView) setView(VIEWS[(VIEWS.indexOf(view) + 1) % VIEWS.length]);
 	if (input.fullscreen) { if (document.fullscreenElement) document.exitFullscreen?.(); else document.documentElement.requestFullscreen?.().catch?.(() => {}); }
@@ -495,20 +515,33 @@ const frame = (dtIn) => {
 			if (v > 0.01 && !sfxRumble.isPlaying) sfxRumble.play(); else if (v <= 0.01 && sfxRumble.isPlaying && !dialingWorld) sfxRumble.stop();
 		}
 		brodyBusy = Math.max(0, brodyBusy - dt);
+		{ // air: CO2 builds while the scrubber is dead (Episode 1), recovers once it cycles; the O2 bar is the crew's clock
+			const dying = quest.chapter?.id === 'e1_air' && !quest.has('scrubber_repaired') && gameStarted, o2 = rpg.o2;
+			rpg.o2 = dying ? Math.max(38, o2 - dt * 0.09) : Math.min(100, o2 + dt * 3);
+			if (Math.round(o2) !== Math.round(rpg.o2)) ui.refreshPlayer();
+		}
 		const wp = waypointPos(); beacon.visible = !!wp && !kino.active;
 		if (wp) { if (beacon.parent !== world.scene) { beacon.removeFromParent(); world.scene.add(beacon); } beacon.position.set(wp.x, wp.y + 3, wp.z); beacon.material.opacity = 0.18 + 0.1 * Math.sin(t * 3); }
 		ui.drawMinimap({ rooms: world === destiny ? destiny.rooms : null, nodes: world === planet ? planet.nodes : null, player: player.root.position, yaw: player.root.rotation.y, waypoint: wp, gate: world.gate.position });
 		if (quest.step()?.counter) ui.refreshTracker();
 	}
 	renderer.render(travel?.phase === 'wormhole' ? wormhole.scene : kino.active ? kinoWorld.scene : world.scene, camera);
-	recorder?.tick();
 	acc += rawDt; frames++; if (acc > 0.5) { fpsEl.textContent = `${Math.round(frames / acc)} fps`; acc = 0; frames = 0; }
 };
 // rAF stops entirely while the tab is hidden; fall back to a 30 Hz timer so simulation, autoplay smoke runs and recordings
 // keep going in a background tab (Chrome still runs timers there). dt stays clamped at 50 ms either way.
-let rafId = 0;
+let rafId = 0, recBusy = false, recLast = 0;
 const schedule = () => { if (document.hidden) setTimeout(loop, 33); else rafId = requestAnimationFrame(loop); };
-// Frame-starved (hidden, occluded or throttled window): sub-step so simulation, quests and autoplay keep wall-clock time
-const loop = () => { rafId = 0; const real = clock.getDelta(); if (real > 0.08) { const n = Math.min(8, Math.round(real / 0.04)); for (let i = 0; i < n; i++) frame(Math.min(0.05, real / n)); } else frame(Math.min(real, 0.05)); schedule(); };
+// Frame-starved (hidden, occluded or throttled window): sub-step so simulation, quests and autoplay keep wall-clock time.
+// Recording: fixed 1/fps step per encoded frame, no faster than real time — the video is smooth no matter how slow the window is.
+const loop = () => {
+	rafId = 0;
+	if (recorder?.isActive()) {
+		const now = performance.now(), step = 1 / recorder.fps;
+		if (recBusy || now - recLast < 1000 / recorder.fps - 2) { schedule(); return; }
+		recLast = now; clock.getDelta(); frame(step); recBusy = true; recorder.tick().finally(() => { recBusy = false; }); schedule(); return;
+	}
+	const real = clock.getDelta(); if (real > 0.08) { const n = Math.min(8, Math.round(real / 0.04)); for (let i = 0; i < n; i++) frame(Math.min(0.05, real / n)); } else frame(Math.min(real, 0.05)); schedule();
+};
 document.addEventListener('visibilitychange', () => { if (document.hidden && rafId) { cancelAnimationFrame(rafId); rafId = 0; schedule(); } }); // a pending rAF would never fire once hidden
 schedule();

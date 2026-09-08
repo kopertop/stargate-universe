@@ -1,5 +1,5 @@
 // WoW-style HUD (gold-on-dark, per docs/hud-redesign/HANDOFF.md) + the diegetic Kino Remote full-screen menu.
-import { rpg, ITEMS, TALENTS, stats, xpToNext, count, equip, unequip, spendTalent, carried } from './rpg.js';
+import { rpg, ITEMS, TALENTS, stats, xpToNext, count, equip, unequip, spendTalent, carried, usable, use, useVerb, iconHtml } from './rpg.js';
 import { settings, renderSettings } from './settings.js';
 
 const css = `
@@ -46,6 +46,13 @@ const css = `
 	#remote .slots{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}#remote .gslot{border:1px solid var(--gold-dim);padding:8px;min-height:54px;background:#0d1016}#remote .gslot small{color:#887;display:block}
 	#remote .tal{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}#remote .tal>div{border:1px solid var(--gold-dim);padding:10px;background:#0d1016}
 	#remote .hint{color:#887;font-size:11px;margin-top:8px}
+	#remote .grid{display:grid;grid-template-columns:repeat(8,64px);gap:6px;margin-top:10px}
+	#remote .cell{width:64px;height:64px;border:1px solid var(--gold-dim);background:#0d1016;position:relative;display:grid;place-items:center;font-size:26px;cursor:default}
+	#remote .cell img{width:52px;height:52px;object-fit:contain;image-rendering:auto;filter:drop-shadow(0 2px 2px #000)}#remote .cell.item{cursor:pointer}#remote .cell.item:hover{border-color:var(--gold);background:#161b24}
+	#remote .cell small{position:absolute;right:3px;bottom:1px;font:700 11px monospace;color:#f5ebcc;text-shadow:0 1px 2px #000}#remote .cell.sel{outline:2px solid var(--gold)}
+	#remote .detail{margin-top:12px;border:1px solid var(--gold-dim);background:#0d1016;padding:10px 12px;min-height:70px;display:grid;grid-template-columns:64px 1fr auto;gap:12px;align-items:center}
+	#remote .detail .ico{font-size:34px;display:grid;place-items:center}#remote .detail .ico img{width:56px;height:56px;object-fit:contain}#remote .detail b{color:var(--gold)}#remote .detail p{margin:4px 0 0;color:#998;font-size:12px}
+	#ab .slot img{width:34px;height:34px;object-fit:contain}
 	.srow{display:grid;grid-template-columns:150px 1fr 48px;gap:10px;align-items:center;margin:8px 0;font-size:13px}.srow b{color:var(--gold);font:12px monospace;text-align:right}.srow input[type=range]{width:100%}
 	#chapter .settings{width:min(460px,90vw);margin:14px auto 0;text-align:left;padding:10px 14px}
 	.hidden{display:none!important}
@@ -87,9 +94,9 @@ export const createUI = (ctx) => {
 	};
 	// ---- action bar (4 slots, controller-first)
 	const SLOTS = [
-		{ key: 'TAB', pad: '☰', icon: '📟', name: 'Kino Remote', has: () => count('kino_remote') > 0 || rpg.equipment.tool === 'kino_remote' || ctx.flags.has('kino_acquired') },
+		{ key: 'TAB', pad: '☰', icon: iconHtml('kino_remote'), name: 'Kino Remote', has: () => count('kino_remote') > 0 || rpg.equipment.tool === 'kino_remote' || ctx.flags.has('kino_acquired') },
 		{ key: 'E', pad: 'X', icon: '⛏', name: 'Shovel', has: () => rpg.equipment.tool === 'shovel' },
-		{ key: 'K', pad: 'Y', icon: '🛰', name: 'Launch Kino', has: () => count('kino_orb') > 0 },
+		{ key: 'K', pad: 'Y', icon: iconHtml('kino_orb'), name: 'Launch Kino', has: () => count('kino_orb') > 0 },
 		{ key: 'SPC', pad: 'A', icon: '⤒', name: 'Jump', has: () => true },
 	];
 	const refreshActionBar = () => { q('#ab').innerHTML = SLOTS.map((s) => `<div class="slot ${s.has() ? '' : 'off'}" title="${s.name}"><kbd>${s.key}</kbd>${s.icon}<small>${s.pad}</small></div>`).join(''); };
@@ -145,7 +152,7 @@ export const createUI = (ctx) => {
 		return `<svg viewBox="${-z1} ${x0} ${z1 - z0} ${x1 - x0}" style="width:100%;max-height:46vh;background:#06101a;border:1px solid #234;border-radius:6px">${rooms.map(R).join('')}${rooms.map(L).join('')}${waypoint ? `<circle cx="${-waypoint.z}" cy="${waypoint.x}" r="1.4" fill="#ffd24a"/>` : ''}<circle cx="${-player.z}" cy="${player.x}" r="1.2" fill="#fff"/></svg>`;
 	};
 	const TABS = ['quest', 'character', 'inventory', 'talents', 'ship', 'gate', 'kino', 'log', 'settings'];
-	let tab = 'quest', open = false;
+	let tab = 'quest', open = false, selItem = null;
 	const renderRemote = () => {
 		const s = stats();
 		const body = {
@@ -153,8 +160,10 @@ export const createUI = (ctx) => {
 			character: () => `<h2>CHARACTER</h2><table><tr><td>Level</td><td>${rpg.level}</td><td>XP</td><td>${rpg.xp} / ${xpToNext(rpg.level)}</td></tr>
 				<tr><td>Health</td><td>${Math.round(rpg.hp)} / ${s.maxHp}</td><td>Carry</td><td>${carried()} / ${s.carry}</td></tr>
 				<tr><td>Move speed</td><td>${Math.round(s.speed * 100)}%</td><td>Dig speed</td><td>${s.canMine ? Math.round(s.mineSpeed * 100) + '%' : '— (no tool)'}</td></tr></table>
-				<h2 style="margin-top:14px">EQUIPMENT</h2><div class="slots">${Object.entries(rpg.equipment).map(([slot, id]) => `<div class="gslot"><small>${slot}</small>${id ? `${ITEMS[id]?.name ?? id}<br><button class="btn" data-unequip="${slot}">unequip</button>` : '<span style="color:#554">empty</span>'}</div>`).join('')}</div>`,
-			inventory: () => `<h2>INVENTORY</h2><div class="hint">Carry ${carried()} / ${s.carry} — resources are stackable; gear can be equipped.</div><table>${Object.entries(rpg.inventory).map(([id, c]) => `<tr><td><b>${ITEMS[id]?.name ?? id}</b>${c > 1 ? ` ×${c}` : ''}</td><td style="color:#998">${ITEMS[id]?.description ?? ''}</td><td>${ITEMS[id]?.slot ? `<button class="btn" data-equip="${id}">equip</button>` : ''}</td></tr>`).join('') || '<tr><td>Empty</td></tr>'}</table>`,
+				<h2 style="margin-top:14px">EQUIPMENT</h2><div class="slots">${Object.entries(rpg.equipment).map(([slot, id]) => `<div class="gslot"><small>${slot}</small>${id ? `<div style="display:flex;gap:8px;align-items:center"><span class="ico" style="font-size:24px">${iconHtml(id)}</span>${ITEMS[id]?.name ?? id}</div><button class="btn" data-unequip="${slot}" style="margin-top:6px">unequip</button>` : '<span style="color:#554">empty</span>'}</div>`).join('')}</div>`,
+			inventory: () => { const ids = Object.keys(rpg.inventory); if (!ids.includes(selItem)) selItem = ids[0] ?? null; const it = selItem ? ITEMS[selItem] : null; const cells = Array.from({ length: Math.max(24, Math.ceil(ids.length / 8) * 8) }, (_, i) => ids[i]);
+				return `<h2>INVENTORY</h2><div class="hint">Carry ${carried()} / ${s.carry} resources · ${ids.length} item kinds — click an item for details, equip or use.</div><div class="grid">${cells.map((id) => id ? `<div class="cell item ${id === selItem ? 'sel' : ''}" data-item="${id}" title="${ITEMS[id]?.name ?? id}">${iconHtml(id)}${rpg.inventory[id] > 1 ? `<small>${rpg.inventory[id]}</small>` : ''}</div>` : '<div class="cell"></div>').join('')}</div>
+				${it ? `<div class="detail"><div class="ico">${iconHtml(it.id)}</div><div><b>${it.name}</b> <span style="color:#776">· ${it.category}${it.slot ? ` · ${it.slot}` : ''}${rpg.inventory[it.id] > 1 ? ` · ×${rpg.inventory[it.id]}` : ''}</span><p>${it.description ?? ''}</p></div><div>${it.slot ? `<button class="btn" data-equip="${it.id}">Equip</button>` : usable(it.id) ? `<button class="btn" data-use="${it.id}">${useVerb(it.id)}</button>` : ''}</div></div>` : '<div class="detail"><span style="color:#554">Empty — search crates and lockers.</span></div>'}`; },
 			talents: () => `<h2>TALENTS</h2><div class="hint">Points available: <b style="color:var(--gold)">${rpg.talentPoints}</b> — one per level.</div><div class="tal" style="margin-top:10px">${TALENTS.map((t) => `<div><b>${t.name}</b> <span style="color:var(--gold)">${rpg.talents[t.id]}/${t.max}</span><div style="color:#aa9;margin:6px 0">${t.desc}</div><button class="btn" data-talent="${t.id}" ${rpg.talentPoints <= 0 || rpg.talents[t.id] >= t.max ? 'disabled' : ''}>Train</button></div>`).join('')}</div>`,
 			ship: () => `<h2>DESTINY — DECK 0</h2>${deckMap(ctx.deckMap())}<h2 style="margin-top:14px">SHIP SYSTEMS</h2><table>${ctx.shipStatus().map(([k, v, ok]) => `<tr><td>${k}</td><td style="color:${ok ? '#57bd42' : '#e05040'}">${v}</td></tr>`).join('')}</table>`,
 			gate: () => `<h2>GATE CONTROL</h2><div class="hint">Dial a destination. The gate must be idle. Destiny's address is always available from a planet.</div><table>${ctx.planets().map((p) => `<tr><td><b>${p.name}</b></td><td style="color:#998">${p.scan ? p.scan : 'no scan data'}</td><td><button class="btn" data-dial="${p.id}" ${p.canDial ? '' : 'disabled'}>Dial</button></td></tr>`).join('')}</table>`,
@@ -166,6 +175,8 @@ export const createUI = (ctx) => {
 		remote.querySelectorAll('[data-tab]').forEach((b) => (b.onclick = () => { tab = b.dataset.tab; renderRemote(); }));
 		const sb = remote.querySelector('#settings-body'); if (sb) renderSettings(sb);
 		remote.querySelectorAll('[data-equip]').forEach((b) => (b.onclick = () => { equip(b.dataset.equip); renderRemote(); }));
+		remote.querySelectorAll('[data-use]').forEach((b) => (b.onclick = () => { use(b.dataset.use); renderRemote(); }));
+		remote.querySelectorAll('[data-item]').forEach((b) => (b.onclick = () => { selItem = b.dataset.item; renderRemote(); }));
 		remote.querySelectorAll('[data-unequip]').forEach((b) => (b.onclick = () => { unequip(b.dataset.unequip); renderRemote(); }));
 		remote.querySelectorAll('[data-talent]').forEach((b) => (b.onclick = () => { spendTalent(b.dataset.talent); renderRemote(); }));
 		remote.querySelectorAll('[data-dial]').forEach((b) => (b.onclick = () => { closeRemote(); ctx.onDial(b.dataset.dial); }));

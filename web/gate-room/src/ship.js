@@ -200,8 +200,8 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 	doorObjs.forEach(setDoorCollider);
 
 	// ---- props: reusable components placed from room.props (layout data / editor) or the per-type defaults
-	const parts = { screens: [], kino: [] }, propMeshes = [];
-	const mats = { dark: darkMat, floor: floorMat, door: doorMat, red: redMat, slit: new THREE.MeshStandardMaterial({ color: 0xcfe6ff, emissive: 0xcfe6ff, emissiveIntensity: 1.6 }), crate: new THREE.MeshStandardMaterial({ color: 0x5e6a3a, roughness: 0.9 }), steel: new THREE.MeshStandardMaterial({ color: 0xa8b0b8, roughness: 0.6 }) };
+	const parts = { screens: [], holos: [], trims: [], kino: [] }, propMeshes = [], lootables = [];
+	const mats = { dark: darkMat, floor: floorMat, door: doorMat, red: redMat, shell: new THREE.MeshStandardMaterial({ color: 0x2b3139, roughness: 0.45, metalness: 0.7 }), slit: new THREE.MeshStandardMaterial({ color: 0xcfe6ff, emissive: 0xcfe6ff, emissiveIntensity: 1.6 }), crate: new THREE.MeshStandardMaterial({ color: 0x5e6a3a, roughness: 0.9 }), steel: new THREE.MeshStandardMaterial({ color: 0xa8b0b8, roughness: 0.6 }) };
 	for (const r of rooms) {
 		const c = center(r), specs = r.props ?? ROOM_PROPS[r.id] ?? DEFAULT_PROPS[r.type] ?? [];
 		const ctx = { box, group, mats, parts, roomH: roomH(r) };
@@ -213,10 +213,11 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 			for (const m of group.children.slice(n0)) { m.userData.prop = { roomId: r.id, spec: s }; propMeshes.push(m); }
 			for (let i = c0; i < colliders.length; i++) colliders[i].prop = { roomId: r.id, spec: s };
 			if (out.anchor && (spec.anchor || comp.defaultAnchor)) anchors[`${r.id}:${spec.anchor ?? comp.defaultAnchor}`] = out.anchor;
+			if (out.loot) lootables.push({ key: `${r.id}:${spec.anchor ?? `${s.type}${lootables.length}`}`, roomId: r.id, anchor: out.anchor, lid: out.lid, loot: out.loot, spec: s });
 		}
 		if (r.type === 'gate_room') anchors['gate_room:GateFront'] = new THREE.Vector3(0, 0, gateZ + 3);
 	}
-	const { relayLamp, scrubLamp, scrubBed, breachLight } = parts; let handle;
+	const { relayLamp, relayFuse, relayCover, scrubLamp, scrubBed, breachLight } = parts; let handle;
 	// seal lever: on the spur side of the jammed door, offset along the wall
 	const jam = doorObjs.find((d) => d.jammed);
 	if (jam) {
@@ -229,14 +230,18 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 	}
 
 	mergeStatic();
-	const state = { group, rooms, doors: doorObjs, anchors, occludable, ceilings, propMeshes, powered: false, doorSpeed: 1, onDoor: null }; // onDoor(ev, door): 'unlock' | 'closed' | 'denied'
+	const state = { group, rooms, doors: doorObjs, anchors, occludable, ceilings, propMeshes, lootables, powered: false, doorSpeed: 1, onDoor: null }; // onDoor(ev, door): 'unlock' | 'closed' | 'denied'
 	state.setPower = (on) => {
 		state.powered = on;
 		strip.emissiveIntensity = on ? 1.2 : 0; edge.emissiveIntensity = on ? 1.8 : 0.25;
 		if (relayLamp) { relayLamp.material.color.set(on ? 0x40ff80 : 0xff3020); relayLamp.material.emissive.set(on ? 0x20ff60 : 0xff2010); }
 		for (const sc of parts.screens) sc.material.emissiveIntensity = on ? 1.6 : 0;
+		for (const h of parts.holos) h.visible = on; for (const t of parts.trims) t.material.emissiveIntensity = on ? 1.2 : 0.1;
 		for (const d of doorObjs) if (!d.jammed && !d.sealed) { d.locked = !on; d.lamp.material.color.set(on ? 0x40ff80 : 0xff3020); d.lamp.material.emissive.set(on ? 0x20ff60 : 0xff2010); }
 	};
+	/** Fuse seated in the relay bay (cover swings open, fuse visible, lamp amber = ready to hotwire). */
+	state.installFuse = () => { if (relayFuse) relayFuse.visible = true; if (relayCover) relayCover.rotation.x = -1.9; if (relayLamp && !state.powered) { relayLamp.material.color.set(0xffa020); relayLamp.material.emissive.set(0xff8000); } };
+	state.openCrate = (l) => { if (l.lid) l.lid.rotation.x = -1.35; l.opened = true; };
 	state.sealBreach = () => { const d = jam; d.sealed = true; d.locked = true; d.lamp.material.color.set(0xffa020); d.lamp.material.emissive.set(0xff8000); handle.rotation.x = -0.6; if (breachLight) breachLight.intensity = 0; };
 	state.repairScrubber = () => { if (!scrubLamp) return; scrubLamp.material.color.set(0x40ff80); scrubLamp.material.emissive.set(0x20ff60); scrubBed.material.color.set(0xe8e2d0); };
 	state.takeKino = () => { for (const m of parts.kino) m.visible = false; };
@@ -258,6 +263,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 		const near = lights.map((L) => [L.l.position.distanceToSquared(playerPos), L]).filter(([d2]) => d2 < LIGHT_RANGE * LIGHT_RANGE).sort((a, b) => a[0] - b[0]).slice(0, MAX_LIVE).map(([, L]) => L);
 		for (const L of lights) { const on = near.includes(L); L.l.visible = state.powered && on; L.em.visible = !state.powered && on; }
 	};
+	for (const h of parts.holos) h.visible = false; for (const t of parts.trims) t.material.emissiveIntensity = 0.1;
 	state.update(0, new THREE.Vector3(0, 0, 0));
 	state.roomAt = (p) => rooms.find((r) => p.x >= r.x0 && p.x <= r.x1 && p.z >= r.z0 && p.z <= r.z1)?.id ?? null;
 	/** Shortest door path between rooms (BFS). Returns door objects in walking order, or null. */

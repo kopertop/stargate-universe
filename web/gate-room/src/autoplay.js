@@ -2,22 +2,25 @@
 // the door graph (ship.route). Steps are handled by id from data/chapters.json, so a new chapter that reuses the step
 // vocabulary (talk_*, ftl_drop, scout_kino, gear_up, travel, mine, dial_home, give_brody, repair_*) runs without changes.
 // Usage: ?autoplay then window.__auto.run() (all chapters) or window.__auto.runChapter(). Progress in window.__auto.status/log.
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let simNow = () => performance.now(), waitFrame = (fn) => setTimeout(() => fn() || waitFrame(fn), 12); // rebound by createAutoplay to the game's simulated clock + per-frame hook
+const sleep = (ms) => new Promise((r) => { const t0 = simNow(); waitFrame(() => simNow() - t0 >= ms && (r(), true)); }); // measured in simulated ms, checked every frame
 const press = (code) => { window.dispatchEvent(new KeyboardEvent('keydown', { code })); window.dispatchEvent(new KeyboardEvent('keyup', { code })); };
 
 export const createAutoplay = (d) => {
+	simNow = () => d.simTime() * 1000; waitFrame = d.waitFrame;
 	const auto = { status: 'idle', log: [], running: false, abort: false, report: [] };
-	const say = (s) => { auto.status = s; auto.log.push(`${(performance.now() / 1000).toFixed(1)}s ${s}`); };
+	const say = (s) => { auto.status = s; auto.log.push(`${(simNow() / 1000).toFixed(1)}s ${s}`); };
 	const pos = () => d.player.root.position;
 	const ship = () => d.destiny.ship, A = () => d.destiny.anchors, step = () => d.quest.step(), stepId = () => step()?.id;
 	const gz = () => d.destiny.gate.position.z;
 	/** Walk toward (x,z) via the real key path; camera yaw steers so W moves toward the target. Runs on long legs. */
 	const walkTo = async (x, z, { run, tol = 0.7, timeout } = {}) => {
 		const dist0 = Math.hypot(x - pos().x, z - pos().z); run ??= dist0 > 10; timeout ??= (dist0 / (run ? 8 : 3.5)) * 1000 + 6000;
-		const t0 = performance.now(); d.input.keys.add('KeyW'); if (run) d.input.keys.add('ShiftLeft');
+		const t0 = simNow(); d.input.keys.add('KeyW'); if (run) d.input.keys.add('ShiftLeft');
 		let lastD = Infinity, stallT = 0, side = 'KeyD';
-		while (!auto.abort && performance.now() - t0 < timeout) {
+		while (!auto.abort && simNow() - t0 < timeout) {
 			const dx = x - pos().x, dz = z - pos().z, dist = Math.hypot(dx, dz); if (dist < tol) break;
+			d.input.keys.add('KeyW'); if (run) d.input.keys.add('ShiftLeft'); // re-assert every tick: input.js clears keys on window blur (screenshots, focus changes)
 			d.cam().yaw = Math.atan2(-dx, -dz);
 			if (dist > lastD - 0.02) stallT += 40; else stallT = 0; lastD = Math.min(lastD, dist);
 			if (stallT > 500) { d.input.keys.add(side); await sleep(600); d.input.keys.delete(side); side = side === 'KeyD' ? 'KeyA' : 'KeyD'; stallT = 0; lastD = Infinity; }
@@ -41,15 +44,25 @@ export const createAutoplay = (d) => {
 	const face = (x, z) => { const dx = x - pos().x, dz = z - pos().z; d.player.root.rotation.y = Math.atan2(dx, dz); };
 	const faceAnchorProp = (room, anchor) => { const a = A()[`${room}:${anchor}`]; if (!a) return; const c = ship().center(room); face(a.x + (c.x - a.x) * -0.01 + (a.x - c.x) * 0.0 + (a.x - pos().x) * 2, a.z + (a.z - pos().z) * 2); };
 	const interact = async (settle = 2200) => { await sleep(150); press('KeyE'); await sleep(settle); };
-	const waitFor = async (pred, timeout = 20000) => { const t0 = performance.now(); while (!pred() && performance.now() - t0 < timeout && !auto.abort) await sleep(80); return pred(); };
-	const holdE = async (until, timeout = 12000) => { d.input.keys.add('KeyE'); await waitFor(until, timeout); d.input.keys.delete('KeyE'); await sleep(250); };
+	const waitFor = async (pred, timeout = 20000) => { const t0 = simNow(); while (!pred() && simNow() - t0 < timeout && !auto.abort) await sleep(80); return pred(); };
+	const holdE = async (until, timeout = 12000) => { const t0 = simNow(); while (!until() && simNow() - t0 < timeout && !auto.abort) { d.input.keys.add('KeyE'); await sleep(60); } d.input.keys.delete('KeyE'); await sleep(250); };
 	/** Face the thing the anchor stands in front of: away from the room centre is a good guess for wall props, toward it for islands. */
 	const facePropAt = (room, anchor) => { const a = A()[`${room}:${anchor}`]; if (!a) return; const m = ship().propMeshes.find((x) => x.userData.prop.roomId === room && x.userData.prop.spec.anchor === anchor); if (m) { const b = m.position; face(b.x, b.z); } };
 
 	// ---- one handler per step vocabulary; each returns when it has done its part (the quest engine advances the step)
 	const H = {
 		arrive: async () => { document.querySelector('#chapter button')?.click(); await waitFor(() => !d.travel(), 8000); await sleep(800); },
-		restore_power: async (s) => { await goTo(s.target.room, s.target.anchor); facePropAt(s.target.room, s.target.anchor); await interact(); },
+		inspect_relay: async (s) => { await goTo(s.target.room, s.target.anchor); facePropAt(s.target.room, s.target.anchor); await interact(); },
+		find_fuse: async () => { // search the salvage crates in order until the small fuse turns up
+			for (const l of ship().lootables) { if (d.rpg.inventory.small_fuse) break; if (d.quest.has(`looted:${l.key}`)) continue; await walkTo(l.anchor.x, l.anchor.z, { tol: 0.5, run: false }); facePropAt(l.roomId, l.spec.anchor); await interact(1900); }
+		},
+		restore_power: async (s) => {
+			await goTo(s.target.room, s.target.anchor); facePropAt(s.target.room, s.target.anchor); await interact(2000); // seat the fuse
+			await interact(600); if (!(await waitFor(() => d.hotwire.isOpen(), 3000))) return;
+			await sleep(900); // patch each jack to the port carrying its label (the ports are still lit for a human at this point)
+			for (const j of document.querySelectorAll('#hotwire .jack')) { j.click(); await sleep(350); document.querySelector(`#hotwire .port[data-label="${j.dataset.label}"]`)?.click(); await sleep(450); }
+			await waitFor(() => !d.hotwire.isOpen(), 4000); await sleep(1800);
+		},
 		reach_control: async (s) => { await goTo(s.target.room, 'RoomCenter'); },
 		diagnose: async (s) => { await goTo(s.target.room, s.target.anchor); facePropAt(s.target.room, s.target.anchor); await interact(2600); await sleep(1200); if (d.ui.isRemoteOpen()) { press('Tab'); await sleep(600); } },
 		seal_breach: async (s) => { await goTo(s.target.room, s.target.anchor); const a = A()[`${s.target.room}:${s.target.anchor}`]; face(a.x + 1, a.z); await interact(); },
@@ -93,17 +106,17 @@ export const createAutoplay = (d) => {
 
 	/** Play the current chapter to its terminal step. Resolves { ok, chapter, seconds }. */
 	auto.runChapter = async () => {
-		const ch = d.quest.chapter, t0 = performance.now(); say(`chapter ${ch.id}: ${ch.title}`);
+		const ch = d.quest.chapter, t0 = simNow(); say(`chapter ${ch.id}: ${ch.title}`);
 		let guard = 0, lastId = null, tries = 0;
 		while (!auto.abort && guard++ < 60) {
 			const s = step(); if (!s || s.terminal) break;
-			if (s.id === lastId) { if (++tries > 2) { say(`STUCK on ${s.id}`); return { ok: false, chapter: ch.id, stuck: s.id, seconds: (performance.now() - t0) / 1000 }; } } else { tries = 0; lastId = s.id; say(`${ch.id} › ${s.id}`); }
+			if (s.id === lastId) { if (++tries > 2) { say(`STUCK on ${s.id}`); return { ok: false, chapter: ch.id, stuck: s.id, seconds: (simNow() - t0) / 1000 }; } } else { tries = 0; lastId = s.id; say(`${ch.id} › ${s.id}`); }
 			if (d.ui.isRemoteOpen()) d.ui.closeRemote(); // a stray open menu pauses the game and would stall every walk
 			const h = handlerFor(s.id);
 			if (h) await h(s); else { say(`no handler for ${s.id}, trying target`); if (s.target?.room && s.target.room !== 'planet') { await goTo(s.target.room, s.target.anchor || 'RoomCenter'); await interact(); } }
 			await waitFor(() => stepId() !== s.id, 6000);
 		}
-		const ok = !!step()?.terminal; say(`${ch.id} ${ok ? 'complete' : 'incomplete'}`); return { ok, chapter: ch.id, seconds: (performance.now() - t0) / 1000 };
+		const ok = !!step()?.terminal; say(`${ch.id} ${ok ? 'complete' : 'incomplete'}`); return { ok, chapter: ch.id, seconds: (simNow() - t0) / 1000 };
 	};
 	/** Play every chapter in order (New Game must already have been clicked). */
 	auto.run = async () => {

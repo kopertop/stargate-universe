@@ -3,10 +3,11 @@
 Usage: python3 web/gate-room/tools/edit_server.py [port]   (run from the repo root; .claude/launch.json does this)
 Only these paths accept PUT (JSON body, validated): data/*.json, web/gate-room/data/*.json
 """
-import json, os, re, sys
+import json, os, re, subprocess, sys, threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+ENCODERS, LOCK = {}, threading.Lock()  # name → ffmpeg process (frames arrive in order on one connection chain)
 WRITABLE = re.compile(r'^/(data|web/gate-room/data)/[A-Za-z0-9_\-]+\.json$')
 
 class Handler(SimpleHTTPRequestHandler):
@@ -29,18 +30,35 @@ class Handler(SimpleHTTPRequestHandler):
         except Exception: pass
         with open(target, 'w') as f: json.dump(data, f, indent=indent, ensure_ascii=True); f.write(nl)
         self.send_response(200); self.end_headers(); self.wfile.write(f'wrote {self.path} ({len(body)} bytes)'.encode())
+    def reply(self, code, text):
+        self.send_response(code); self.end_headers(); self.wfile.write(text.encode())
     def do_POST(self):
-        # recorder.js uploads a webm: POST /save?name=<file>.webm → ~/Desktop (dev convenience; localhost only)
+        # recorder.js streams JPEG frames: /rec/start?name=&fps= spawns ffmpeg reading image2pipe on stdin, /rec/frame appends
+        # one frame, /rec/stop closes the pipe → ~/Desktop/<name>.mp4. Fixed frame rate = smooth video however slow the game ran.
         from urllib.parse import urlparse, parse_qs
-        u = urlparse(self.path); name = parse_qs(u.query).get('name', ['gameplay.webm'])[0]
-        if u.path != '/save' or not re.match(r'^[A-Za-z0-9_\-]+\.(webm|mp4)$', name):
-            self.send_response(400); self.end_headers(); self.wfile.write(b'bad save request'); return
+        u = urlparse(self.path); q = parse_qs(u.query); name = q.get('name', ['gameplay'])[0]
         body = self.rfile.read(int(self.headers.get('Content-Length', 0)))
-        target = os.path.join(os.path.expanduser('~/Desktop'), name)
-        with open(target, 'wb') as f: f.write(body)
-        self.send_response(200); self.end_headers(); self.wfile.write(f'saved {target} ({len(body)} bytes)'.encode())
+        if not re.match(r'^[A-Za-z0-9_\-]+$', name): return self.reply(400, 'bad name')
+        target = os.path.join(os.path.expanduser('~/Desktop'), f'{name}.mp4')
+        if u.path == '/rec/start':
+            fps = int(q.get('fps', ['30'])[0])
+            with LOCK:
+                if name in ENCODERS: ENCODERS.pop(name).stdin.close()
+                ENCODERS[name] = subprocess.Popen(['ffmpeg', '-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', str(fps), '-i', '-', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-crf', '23', target], stdin=subprocess.PIPE)
+            return self.reply(200, f'encoding {target} at {fps} fps')
+        if u.path == '/rec/frame':
+            enc = ENCODERS.get(name)
+            if not enc: return self.reply(409, 'not recording')
+            with LOCK: enc.stdin.write(body)
+            return self.reply(200, 'ok')
+        if u.path == '/rec/stop':
+            enc = ENCODERS.pop(name, None)
+            if not enc: return self.reply(409, 'not recording')
+            enc.stdin.close(); enc.wait()
+            return self.reply(200, f'saved {target} ({os.path.getsize(target) / 1e6:.1f} MB)')
+        self.reply(400, 'bad request')
     def log_message(self, fmt, *args):
-        if self.command in ('PUT', 'POST'): super().log_message(fmt, *args)
+        if self.command == 'PUT' or (self.command == 'POST' and '/rec/frame' not in self.path): super().log_message(fmt, *args)
 
 if __name__ == '__main__':
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8090

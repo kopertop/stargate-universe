@@ -11,6 +11,15 @@ const WEB_ITEMS = [
 	{ id: 'ice', name: 'Ice', category: 'resource', stackable: true, description: 'Frozen water cut from the surface.' },
 	{ id: 'radio', name: 'Crew Radio', category: 'tool', stackable: false, description: 'Short-range crew radio.' },
 ];
+/** Consumables: `use(id)` runs these and removes one. */
+const USES = { rations: { verb: 'Eat', apply: () => { rpg.hp = Math.min(stats().maxHp, rpg.hp + 25); return 'Ate a ration pack (+25 health)'; } } };
+export const usable = (id) => !!USES[id];
+export const use = (id) => { const u = USES[id]; if (!u || count(id) <= 0) return false; const msg = u.apply(); removeItem(id, 1); addLog(msg); emit(); return true; };
+export const useVerb = (id) => USES[id]?.verb ?? 'Use';
+/** Inventory icon: 160 px copy of the repo sprite when one exists (web/gate-room/assets/items/<id>.png), else an emoji glyph. */
+const ICON_SPRITES = new Set(['combat_boots', 'field_backpack', 'kino_orb', 'kino_remote', 'large_fuse', 'lime', 'marine_helmet', 'rations', 'recon_cap', 'small_fuse', 'tablet', 'tac_vest']);
+const GLYPHS = { shovel: '⛏', refined_lime: '🧪', ice: '🧊', radio: '📻', water: '💧', food: '🍲', parts: '⚙️', bus_fuse: '🔌', sidearm: '🔫' };
+export const iconHtml = (id) => (ICON_SPRITES.has(id) ? `<img src="./assets/items/${id}.png" alt="">` : `<span>${GLYPHS[id] ?? '▪'}</span>`);
 const GEAR_STATS = { field_backpack: { carry: 6 }, tac_vest: { hp: 20 }, marine_helmet: { hp: 10 }, recon_cap: { speed: 0.05 }, combat_boots: { speed: 0.08 } };
 
 export const TALENTS = [

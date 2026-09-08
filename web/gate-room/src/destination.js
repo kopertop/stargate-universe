@@ -8,7 +8,7 @@ export const createDestination = (planetDef = {}) => {
 	const biome = { ...DEFAULT_BIOME, ...(planetDef.biome ?? {}) };
 	const scene = new THREE.Scene();
 	scene.background = new THREE.Color(biome.fog);
-	scene.fog = new THREE.FogExp2(biome.fog, 0.012);
+	scene.fog = new THREE.FogExp2(biome.fog, 0.0075); // thin enough that the mountain ring reads as a horizon
 	const colliders = [], occludable = [];
 	const GZ = 0; // gate at origin facing +Z; player exits toward +Z
 	// ONE terrain function drives both the ground mesh and collision (floorAt). Flat within 14 m of the gate.
@@ -18,11 +18,11 @@ export const createDestination = (planetDef = {}) => {
 	};
 
 	// sky dome (gradient)
-	const sky = new THREE.Mesh(new THREE.SphereGeometry(180, 24, 12), new THREE.ShaderMaterial({
+	const sky = new THREE.Mesh(new THREE.SphereGeometry(320, 24, 12), new THREE.ShaderMaterial({
 		side: THREE.BackSide, depthWrite: false,
 		uniforms: { uLow: { value: new THREE.Color(biome.sky_low) }, uHigh: { value: new THREE.Color(biome.sky_high) } },
 		vertexShader: `varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
-		fragmentShader: `varying vec3 vP; uniform vec3 uLow, uHigh; void main(){ float h = clamp(vP.y / 180.0, 0.0, 1.0); gl_FragColor = vec4(mix(uLow, uHigh, pow(h, 0.6)), 1.0); }`,
+		fragmentShader: `varying vec3 vP; uniform vec3 uLow, uHigh; void main(){ float h = clamp(vP.y / 320.0, 0.0, 1.0); gl_FragColor = vec4(mix(uLow, uHigh, pow(h, 0.6)), 1.0); }`,
 	}));
 	scene.add(sky);
 
@@ -91,6 +91,27 @@ export const createDestination = (planetDef = {}) => {
 	gate.position.set(0, GATE.rInner + 0.3 - 0.15, GZ); scene.add(gate);
 	for (const sx of [-1, 1]) colliders.push(new THREE.Box3(new THREE.Vector3(sx * 2.9 - 0.7, 0, GZ - 0.4), new THREE.Vector3(sx * 2.9 + 0.7, 8, GZ + 0.4)));
 	gate.traverse((o) => { if (o.isMesh && o.name !== 'eventHorizon') occludable.push(o); });
+
+	// horizon: a ring of jagged ridges 130–210 m out (flat-shaded, fog-tinted) so the world has an edge instead of a fog wall
+	{
+		const N = 120, inner = 130, peak = 165, outer = 210, verts = [], idx = [];
+		const heights = Array.from({ length: N }, () => 6 + Math.random() * 34); for (let k = 0; k < 2; k++) for (let i = 0; i < N; i++) heights[i] = (heights[(i + N - 1) % N] + heights[i] * 2 + heights[(i + 1) % N]) / 4; // smooth twice
+		for (let i = 0; i < N; i++) { const a = (i / N) * Math.PI * 2, c = Math.cos(a), sn = Math.sin(a); verts.push(c * inner, -2, GZ + sn * inner, c * peak, heights[i], GZ + sn * peak, c * outer, -2, GZ + sn * outer); }
+		for (let i = 0; i < N; i++) { const a = i * 3, b = ((i + 1) % N) * 3; idx.push(a, b, a + 1, b, b + 1, a + 1, a + 1, b + 1, a + 2, b + 1, b + 2, a + 2); }
+		const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+		const ridge = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: new THREE.Color(biome.rock).lerp(new THREE.Color(biome.fog), 0.35), roughness: 1, flatShading: true, side: THREE.DoubleSide })); ridge.receiveShadow = false; scene.add(ridge);
+	}
+	// sun disc on the dome, in the direction of the directional light
+	{ const dir = new THREE.Vector3(-30, 25, 20).normalize(); const disc = new THREE.Sprite(new THREE.SpriteMaterial({ color: biome.sun, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false })); disc.position.copy(dir).multiplyScalar(300); disc.scale.setScalar(26); scene.add(disc);
+		const halo = new THREE.Sprite(new THREE.SpriteMaterial({ color: biome.sun, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false })); halo.position.copy(disc.position); halo.scale.setScalar(90); scene.add(halo); }
+	// ruined Ancient pillars around the approach (whoever built the dais left more than a dais)
+	for (let i = 0; i < 5; i++) {
+		const a = -0.9 + i * 0.45 + (Math.random() - 0.5) * 0.2, d = 17 + Math.random() * 12, h = 2 + Math.random() * 4;
+		const px = Math.sin(a) * d, pz = GZ + Math.cos(a) * d;
+		const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.7, h, 8), stone); pillar.position.set(px, meshHeight(px, pz) + h / 2 - 0.2, pz); pillar.rotation.set((Math.random() - 0.5) * 0.25, Math.random() * 3, (Math.random() - 0.5) * 0.25); pillar.castShadow = pillar.receiveShadow = true; scene.add(pillar);
+		colliders.push({ circle: true, x: px, z: pz, r: 0.9 }); occludable.push(pillar);
+		if (Math.random() < 0.6) { const cap = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.35, 1.6), stone); cap.position.set(px + (Math.random() - 0.5) * 2, meshHeight(px, pz) + 0.15, pz + 1.2 + Math.random()); cap.rotation.y = Math.random() * 3; cap.castShadow = cap.receiveShadow = true; scene.add(cap); }
+	}
 
 	// lighting: low sun
 	const sun = new THREE.DirectionalLight(biome.sun, 3.2); sun.position.set(-30, 25, 20); sun.castShadow = true;

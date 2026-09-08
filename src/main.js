@@ -438,7 +438,7 @@ const tickRooms = () => {
 };
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); destiny.room.userData.reflector.getRenderTarget().setSize(Math.floor(innerWidth * 0.5), Math.floor(innerHeight * 0.5)); });
 let noclip = false;
-window.__dbg = { input, player, camera, quest, rpg, ride: rideElevator, simTime: () => simTime, waitFrame: (fn) => frameWaiters.add(fn), get world() { return world; }, destiny, get planet() { return planet; }, setView, cam: () => cam, travel: () => travel, teleport: (x, z) => { player.root.position.set(x, world.floorAt(x, z), z); }, dialGate: () => dialGate(world), launchKino, interact: () => interact.current?.id, ui, startChapter, kino: () => kinoWorld?.name, music };
+window.__dbg = { input, player, camera, orbit, quest, rpg, ride: rideElevator, simTime: () => simTime, waitFrame: (fn) => frameWaiters.add(fn), get world() { return world; }, destiny, get planet() { return planet; }, setView, cam: () => cam, travel: () => travel, teleport: (x, z) => { player.root.position.set(x, world.floorAt(x, z), z); }, dialGate: () => dialGate(world), launchKino, interact: () => interact.current?.id, ui, startChapter, kino: () => kinoWorld?.name, music };
 
 // ---------------------------------------------------------------- start: chapter card → cold open (arrive through the gate)
 // ---------------------------------------------------------------- save / load (localStorage) + title screen
@@ -458,7 +458,7 @@ const loadGame = () => {
 	if (travelIdx >= 0 && brodyIdx >= 0 && si > travelIdx && si < brodyIdx) { si = travelIdx; for (const f of ['on_planet', 'returned_from_planet']) quest.flags.delete(f); }
 	quest.stepIndex = si;
 	const S2 = destiny.ship;
-	if (quest.has('fuse_installed')) S2.installFuse(); for (const l of S2.lootables) if (quest.has(`looted:${l.key}`)) S2.openCrate(l);
+	if (quest.has('fuse_installed')) S2.installFuse(); for (const l of S2.lootables) if (quest.has(`looted:${l.key}`)) S2.openCrate(l, true);
 	if (quest.has('grow_lights_restored')) S2.setGrowLights(true); if (quest.has('elevator_fuses_seated')) S2.seatElevatorFuses(); if (quest.has('elevator_powered')) S2.setElevatorPower(true);
 	if (quest.has('power_restored')) S2.setPower(true); if (quest.has('any_breach_sealed')) S2.sealBreach(); if (quest.has('kino_acquired')) S2.takeKino(); if (quest.has('scrubber_repaired')) S2.repairScrubber();
 	const step = quest.step();

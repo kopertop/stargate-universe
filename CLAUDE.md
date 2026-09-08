@@ -1,149 +1,47 @@
-# Stargate Universe
+# Stargate Universe — Destiny (browser game)
 
-A sci-fi open-world RPG set in the Stargate Universe TV series. Players take on the role of crew
-aboard the ancient ship Destiny, exploring uncharted galaxies, managing resources, making
-story-defining choices, and surviving against alien threats.
+A third-person RPG aboard the Ancient ship *Destiny*, written in plain Three.js (0.180 via import map, ES modules, no
+bundler). Two playable episodes (Air, Water), gate travel to procedural planets, Kino drone, RPG layer, in-game level
+editor. This is the only game in the repo: the earlier Vite/ggez and Godot stacks were removed on 2026-09-08.
 
-## Current Status
+## Run / verify
 
-_Snapshot — refresh with `/help`. Last updated: 2026-05-21._
+- Dev: `python3 tools/edit_server.py 8090` → http://localhost:8090/ (or the `game` entry in `.claude/launch.json`).
+  The server serves the repo root, accepts `PUT /data/*.json` from the level editor and pipes recorder frames into ffmpeg.
+- Smoke: open `/?autoplay`, click New Game, run `window.__auto.run()`; `__auto.report` lists each chapter with `ok` and seconds.
+- Video proof: `/?autoplay&record`, `__rec.start('name')` … `__rec.stop()` → `~/Desktop/name.mp4` at a constant 30 fps.
+- Ship: `./build.sh` → `dist/sgu-destiny-html5.zip` for itch.io (HTML project, index.html at zip root).
+- Pre-commit: `git config core.hooksPath .githooks` (node --check on staged `src/*.js`, JSON validation). CI does the same plus a build.
 
-- **Phase:** Production · **Active sprint:** sprint-005 (first Godot-era sprint) · **Branch:** `godot`
-- **Sprint-005 goal:** Make E1 Mission 1 actually playable — wire rooms via doors, add Kino pickup + UI, flesh out hull breach + seal interaction, ship mission-complete trigger.
-- **Done:** Concept, Systems Design (15 GDDs in `design/gdd/`), engine pivot to Godot 4.6, E1 gate-room slice + headless smoke tests
-- **Sprint format:** Task tables in `production/sprints/sprint-NNN.md` (no `production/epics/` hierarchy)
-- **Sprints 1–4 archived:** `production/sprints/archive-browser-stack/` — all pre-pivot Three.js work. Do not resume; conceptual notes folded into design GDDs + memory.
-- **Tech debt — not blocking:** missing `docs/architecture/architecture.md`, `docs/architecture/control-manifest.md`, `design/accessibility-requirements.md` (4 ADRs exist in `docs/architecture/`)
+## Key paths
 
-## Engine
-
-**Godot 4.6** (Forward+ renderer). Bootstrapped from
-[KenneyNL/Starter-Kit-3D-Platformer](https://github.com/KenneyNL/Starter-Kit-3D-Platformer) — a
-CC0-licensed third-person platformer kit. Kit assets live in `models/`, `meshes/`, `objects/`,
-`sounds/`, `sprites/`, `fonts/`, `vector/`. The kit's `scripts/` are GDScript.
-
-### Status
-
-This branch (`reset-stack`) is a **complete engine pivot** away from the previous browser-based
-stack (Three.js + WebGPU + ggez + Crashcat + VRM). The previous stack is preserved on `main`.
-
-Reason for pivot: character animation and display had never worked properly on the browser stack;
-character pipelines in Godot are battle-tested and the Kenney kit ships a working one.
-
-### What carried over from the browser branch
-
-- `design/gdd/` — 15 Game Design Documents (engine-agnostic)
-- `production/` — sprint plans, milestones (mostly engine-agnostic)
-- `docs/` — narrative, audio inventory, deployment notes
-- `.claude/` — subagent definitions, slash commands (some need rewriting for Godot)
-
-### What was dropped
-
-- Three.js + WebGPU rendering
-- `@kopertop/vibe-game-engine` (ggez) plugin system
-- Crashcat physics
-- VRM character system (~3,600 LOC)
-- TypeScript + Vite + Bun + Wrangler / Cloudflare Pages deployment
-- `scene.runtime.json` pipeline
-- Auto-discovered scene system
-- All browser tests (Vitest, Playwright)
-
-## Key Paths
-
-| Path | Contents |
+| Path | Role |
 |---|---|
-| `project.godot` | Godot project config |
-| `scenes/` | Godot `.tscn` scenes (main, level, ui) |
-| `scripts/` | GDScript files (`audio.gd`, `hud.gd`, `main.gd`, `player.gd`, `view.gd`) |
-| `models/` | Kenney `.glb` 3D models — characters, props, level pieces |
-| `meshes/` | `.tres` mesh resources |
-| `objects/` | Reusable `.tscn` prefabs (player, enemies, pickups) |
-| `sounds/` | Kit sound effects |
-| `sprites/` | UI sprites and 2D art |
-| `fonts/` | Bitmap and TTF fonts |
-| `design/gdd/` | Per-system Game Design Documents (carried from browser branch) |
-| `production/` | Sprint plans, milestone tracking |
-| `docs/` | Narrative reference, audio inventory |
+| `src/main.js` | wiring: worlds, audio, interactables, quest triggers, save/load, game loop (rAF; timer + sub-steps when hidden; fixed step while recording) |
+| `src/ship.js` | deck generated from `data/ship_layout.json` + `room_connections.json`; SGU doors; lights (nearest 6 live); merged static walls |
+| `src/components.js` | prop registry `{type,u,v,ry,anchor,loot}` with meshes + colliders (console, relay, crate, scrubber, …) — the editor places these |
+| `src/quest.js` + `data/chapters.json` | declarative steps advance on flags; triggers on enter/exit |
+| `src/rpg.js`, `src/ui.js` | inventory/equipment/talents; HUD + Kino Remote; icons from `assets/items/` |
+| `src/hotwire.js` | wire-matching repair mini-game (power relay) |
+| `src/player.js` | Quaternius UAL rig; gait clips locked to ground speed; footsteps from foot plants |
+| `src/leveledit.js`, `src/console.js` | `` ` `` dev console; `leveledit` = first-person map builder in the live scene |
+| `src/autoplay.js`, `src/recorder.js` | hands-free chapter driver (sim clock, per-frame waits); frame-pipe recorder |
+| `tools/music-bake`, `tools/tts-bake` | ElevenLabs/TTS bake pipelines for `sounds/music/loops` and `sounds/dialog` |
+| `design/gdd/` | engine-agnostic design docs — source of intent |
+| `.ai/learnings/` | one lesson per file; read the relevant ones before extending a system |
 
-## Navigation aids
+## Conventions
 
-Every meaningful directory has its own `AGENTS.md` cheatsheet: a one-page
-summary of what lives there, project-specific conventions, and links back
-to CLAUDE.md + related docs. Read the local `AGENTS.md` FIRST when entering
-a new directory — it's faster than grepping ten files. CLAUDE.md remains
-the project-wide source of truth; the per-directory files defer to it for
-anything they don't override.
+- Tabs, `const`, arrow functions, async/await, 120 cols, kebab-case files. Data-driven: content in `data/*.json`, not code.
+- Components: `ry` is the direction the prop FACES; its anchor (where the player stands) lies along `ry`.
+- Coordinates: JSON units × 0.05 m; JSON X → world −Z, JSON Y → world X. Gate at the −Z end of the gate room.
+- Never add lights casually: every visible PointLight recompiles into shader cost; `ship.js` keeps only the nearest 6 live.
+- Any hidden-tab / timing work: read `.ai/learnings/hidden-tab-throttling-kills-raf-loops.md` and
+  `record-fixed-step-frames-not-mediarecorder.md` first.
+- Feature branches only (`feature/*`, `fix/*`, `chore/*`); commit + push before moving on; never force-push.
+- One learning per file in `.ai/learnings/<lesson>.md` whenever something non-obvious is discovered.
 
-## Dev Conventions
+## Directory cheatsheets
 
-- **Language:** GDScript (kit's idiom); C# only if a system genuinely requires it
-- **Indentation:** Tabs (Godot default)
-- **Scenes:** Composition over inheritance — small `.tscn` files combined via `instance`
-- **Signals:** Prefer Godot signals over polling for cross-node communication
-- **Static typing:** `func foo(x: int) -> void:` — enforce typed GDScript everywhere
-- **Naming:** `snake_case` files, `snake_case` variables/functions, `PascalCase` nodes/classes
-- **Resources:** Use `Resource` types for save data and content definitions
-
-## Skills
-
-The `/add-scene`, `/add-npc`, `/add-dialogue` etc. slash commands in `.claude/skills/` were written
-for the browser stack and **need to be rewritten for Godot**. Treat them as stale until ported.
-
-CCGS testing skills (`/smoke-check`, `/playtest-report`, `/qa-plan`, `/test-setup`, `/test-helpers`,
-`/soak-test`, `/dev-story`, `/regression-suite`, `/skill-test`) are imported and Godot-aware.
-
-Use the **godot-specialist** and **godot-gdscript-specialist** subagents for engine-specific work.
-
-## Testing
-
-Headless smoke + flow tests live in `tests/smoke/` (Godot `SceneTree`-extending scripts, no
-GDUnit4 needed). Run:
-
-```bash
-tests/run.sh         # all (lint + scene + flow + quest + playthrough)
-tests/run.sh scene   # scene-boot only
-tests/run.sh flow    # e1-flow only
-tests/run.sh lint    # save-registration policy only
-```
-
-See `tests/README.md` for details. Both tests must pass before any branch can claim the E1
-vertical slice ships.
-
-### Pre-commit hook
-
-Per-clone install (one-time, no dependencies):
-
-```bash
-git config core.hooksPath .githooks
-```
-
-The hook runs three policy lints (all `--staged`):
-
-1. `tests/lint/check_save_registration.sh` — the **save-registration policy**:
-   every autoload in `project.godot` must either (a) call
-   `SaveManager.register_system("<id>", self)` somewhere in its script, or
-   (b) carry a `# @no-save: <reason>` marker declaring it stateless. Without this
-   guard, a new system that holds gameplay state can ship without being captured
-   by the auto-save pipeline — state would silently disappear across save/load.
-2. `tests/lint/check_collection_forks.sh` — the **collection-fork policy**: no
-   top-level bool field in `scripts/*.gd` may use acquisition vocabulary
-   (`*_found`, `*_acquired`, `has_*`, `got_*`, …). A set of like things (items,
-   discovered rooms, unlocks) must live in ONE registry behind ONE add/enumerate
-   API, not scattered per-instance bools that every consumer must special-case
-   (the cause of the looted-fuse inventory bug #41 and the quest fork #36). Opt
-   out genuinely-distinct state with `# @collection-ok: <reason>`.
-3. `tests/lint/check_mint_idle_fingers.sh` — the **Mint Idle finger-bind policy**:
-   while `finger_rig` is `hand_bias*` / `*pending*`, `Idle.glb` must stay a clean
-   24-bone Meshy host (no finger joints). Play-path distortion is covered by
-   `tests/smoke/mint_loco_combat_pose.gd` (walk + aim + fire posed bounds).
-
-## Collaboration Protocol
-
-User-driven, not autonomous. Every task: **Question → Options → Decision → Draft → Approval**.
-Ask before writing to any file. Show drafts before approval. No commits without instruction.
-
-## Extended Docs
-
-- `@.claude/docs/coordination-rules.md` — agent coordination rules
-- `@.claude/docs/coding-standards.md` — coding standards (browser-era; needs Godot update)
-- `design/gdd/` — per-system Game Design Documents
+Each content directory has an `AGENTS.md` (data, sounds, sprites, design, docs, production, tools/music-bake). Read the local
+one when entering a directory.

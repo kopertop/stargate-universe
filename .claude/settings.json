@@ -13,8 +13,7 @@
     }
   },
   "enabledPlugins": {
-    "gamestack@gamestack": true,
-    "godot@gamestack": true
+    "gamestack@gamestack": true
   },
   "permissions": {
     "allow": [
@@ -24,10 +23,9 @@
       "Bash(git branch*)",
       "Bash(git rev-parse*)",
       "Bash(ls *)",
-      "Bash(dir *)",
       "Bash(python -m json.tool*)",
-      "Bash(python -m pytest*)",
-      "Bash(py -m pytest*)"
+      "Bash(node --check*)",
+      "Bash(rg *)"
     ],
     "deny": [
       "Bash(rm -rf *)",

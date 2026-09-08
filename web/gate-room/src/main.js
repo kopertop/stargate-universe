@@ -460,8 +460,8 @@ window.__dbg.edit = edit; window.__dbg.console = devcon; window.__dbg.renderer =
 
 const fpsEl = document.getElementById('fps');
 const clock = new THREE.Clock(); let acc = 0, frames = 0;
-const frame = () => {
-	const rawDt = Math.min(clock.getDelta(), 0.05); const t = clock.elapsedTime;
+const frame = (dtIn) => {
+	const rawDt = dtIn ?? Math.min(clock.getDelta(), 0.05); const t = clock.elapsedTime;
 	poll(rawDt);
 	if (edit.active) { const sc = edit.update(rawDt); destiny.gate.userData.tick(t, rawDt); if (camera.parent !== sc) { camera.removeFromParent(); sc.add(camera); } renderer.render(sc, camera); return; }
 	const paused = ui.isRemoteOpen() || devcon.isOpen();
@@ -508,6 +508,7 @@ const frame = () => {
 // keep going in a background tab (Chrome still runs timers there). dt stays clamped at 50 ms either way.
 let rafId = 0;
 const schedule = () => { if (document.hidden) setTimeout(loop, 33); else rafId = requestAnimationFrame(loop); };
-const loop = () => { rafId = 0; frame(); schedule(); };
+// Frame-starved (hidden, occluded or throttled window): sub-step so simulation, quests and autoplay keep wall-clock time
+const loop = () => { rafId = 0; const real = clock.getDelta(); if (real > 0.08) { const n = Math.min(8, Math.round(real / 0.04)); for (let i = 0; i < n; i++) frame(Math.min(0.05, real / n)); } else frame(Math.min(real, 0.05)); schedule(); };
 document.addEventListener('visibilitychange', () => { if (document.hidden && rafId) { cancelAnimationFrame(rafId); rafId = 0; schedule(); } }); // a pending rAF would never fire once hidden
 schedule();

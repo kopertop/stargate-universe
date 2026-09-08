@@ -16,10 +16,10 @@ const USES = { rations: { verb: 'Eat', apply: () => { rpg.hp = Math.min(stats().
 export const usable = (id) => !!USES[id];
 export const use = (id) => { const u = USES[id]; if (!u || count(id) <= 0) return false; const msg = u.apply(); removeItem(id, 1); addLog(msg); emit(); return true; };
 export const useVerb = (id) => USES[id]?.verb ?? 'Use';
-/** Inventory icon: repo sprite when one exists (sprites/ui/items/<id>.png), else an emoji glyph. */
+/** Inventory icon: 160 px copy of the repo sprite when one exists (web/gate-room/assets/items/<id>.png), else an emoji glyph. */
 const ICON_SPRITES = new Set(['combat_boots', 'field_backpack', 'kino_orb', 'kino_remote', 'large_fuse', 'lime', 'marine_helmet', 'rations', 'recon_cap', 'small_fuse', 'tablet', 'tac_vest']);
 const GLYPHS = { shovel: '⛏', refined_lime: '🧪', ice: '🧊', radio: '📻', water: '💧', food: '🍲', parts: '⚙️', bus_fuse: '🔌', sidearm: '🔫' };
-export const iconHtml = (id) => (ICON_SPRITES.has(id) ? `<img src="${ASSETS}sprites/ui/items/${id}.png" alt="">` : `<span>${GLYPHS[id] ?? '▪'}</span>`);
+export const iconHtml = (id) => (ICON_SPRITES.has(id) ? `<img src="./assets/items/${id}.png" alt="">` : `<span>${GLYPHS[id] ?? '▪'}</span>`);
 const GEAR_STATS = { field_backpack: { carry: 6 }, tac_vest: { hp: 20 }, marine_helmet: { hp: 10 }, recon_cap: { speed: 0.05 }, combat_boots: { speed: 0.08 } };
 
 export const TALENTS = [

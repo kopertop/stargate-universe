@@ -13,8 +13,8 @@ echo "→ sources"; cp -R "$HERE/src" "$HERE/data" "$DIST/"
 echo "→ assets"
 mkdir -p "$DIST/assets/models/quaternius/anim_lib" "$DIST/assets/sounds" "$DIST/assets/data"
 cp "$REPO"/models/quaternius/anim_lib/UAL1_Standard.glb "$REPO"/models/quaternius/anim_lib/UAL2_Standard.glb "$DIST/assets/models/quaternius/anim_lib/"
-mkdir -p "$DIST/assets/sounds/music/loops" "$DIST/assets/sprites/ui/items"
-cp "$REPO"/sprites/ui/items/*.png "$DIST/assets/sprites/ui/items/"
+mkdir -p "$DIST/assets/sounds/music/loops" "$DIST/assets/items"
+cp "$HERE"/assets/items/*.png "$DIST/assets/items/"
 for f in stargate_chevron_incom.mp3 gate_kawoosh.wav gate_active_hum.wav impact_metal_heavy_000.ogg impact_metal_000.ogg terminal_boot.ogg menu_open.ogg menu_close.ogg radio_click.ogg ftl-dropout.ogg discovery_stinger.ogg discovery_stinger_key.ogg footstep_01.ogg footstep_02.ogg footstep_03.ogg footstep_04.ogg footstep_desert_00.ogg footstep_desert_01.ogg footstep_desert_02.ogg footstep_desert_03.ogg; do cp "$REPO/sounds/$f" "$DIST/assets/sounds/"; done
 cp "$REPO"/sounds/music/sgu_main_theme.mp3 "$DIST/assets/sounds/music/"
 for f in bed_derelict_cold bed_ship_warm bed_space_vast bed_planet_open pad_shimmer pad_strings_tense pulse_slow pulse_drive mel_cello_lonely; do cp "$REPO/sounds/music/loops/$f.ogg" "$DIST/assets/sounds/music/loops/"; done

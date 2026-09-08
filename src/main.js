@@ -249,7 +249,7 @@ for (const rid of ['elevator_north', 'elevator_room_floor_1']) interact.register
 			withAnim('interact', () => { S.setElevatorPower(true); quest.setFlag('elevator_powered'); oneShot(shutdownBuf, 0.5, 1.6); ui.subtitle('Eli', 'Bus is live. Elevator has power.'); }, { at: 0.4 }); });
 	} });
 interact.register({ world: 'destiny', id: 'grow_console', position: A['hydroponics:GrowConsole'], prompt: () => (S.powered && !quest.has('grow_lights_restored') && quest.has('upper_deck_reached') ? 'Restart the grow lights' : null),
-	action: () => withAnim('interact', () => { oneShot(buffers.terminal, 0.6); quest.setFlag('grow_lights_restored'); ui.subtitle('Eli', 'Grow lights cycling up. There is still soil in these beds.'); }, { at: 0.6 }) });
+	action: () => withAnim('interact', () => { oneShot(buffers.terminal, 0.6); S.setGrowLights(true); quest.setFlag('grow_lights_restored'); ui.subtitle('Eli', 'Grow lights cycling up. There is still soil in these beds.'); }, { at: 0.6 }) });
 interact.register({ world: 'destiny', id: 'lever', position: A['south_spur:SealLever'], prompt: () => (quest.has('life_support_diagnosed') && !quest.has('any_breach_sealed') ? 'Pull emergency seal' : null), action: () => withAnim('interact', () => { S.sealBreach(); quest.setFlag('any_breach_sealed'); oneShot(shutdownBuf, 0.9, 0.8); ui.subtitle('Rush', 'Pressure is holding. Good. Now go make yourself useful somewhere else.'); }) });
 interact.register({ world: 'destiny', id: 'kino', position: A['eli_quarters:KinoPedestal'], prompt: () => (!quest.has('kino_acquired') ? 'Take the Kino and its remote' : null), action: () => withAnim('pickup', () => { S.takeKino(); addItem('kino_remote'); addItem('kino_orb', 2); quest.setFlag('kino_acquired'); }, { at: 0.55 }) });
 interact.register({ world: 'destiny', id: 'locker', position: A['eli_quarters:Locker'], prompt: () => (!quest.has('locker_opened') ? 'Open locker' : null), action: () => withAnim('open', () => { quest.setFlag('locker_opened'); addItem('tac_vest'); ui.toast('Found: Tactical Vest (+20 health) — equip it from Character', 5); }, { at: 0.6 }) });
@@ -459,7 +459,7 @@ const loadGame = () => {
 	quest.stepIndex = si;
 	const S2 = destiny.ship;
 	if (quest.has('fuse_installed')) S2.installFuse(); for (const l of S2.lootables) if (quest.has(`looted:${l.key}`)) S2.openCrate(l);
-	if (quest.has('elevator_fuses_seated')) S2.seatElevatorFuses(); if (quest.has('elevator_powered')) S2.setElevatorPower(true);
+	if (quest.has('grow_lights_restored')) S2.setGrowLights(true); if (quest.has('elevator_fuses_seated')) S2.seatElevatorFuses(); if (quest.has('elevator_powered')) S2.setElevatorPower(true);
 	if (quest.has('power_restored')) S2.setPower(true); if (quest.has('any_breach_sealed')) S2.sealBreach(); if (quest.has('kino_acquired')) S2.takeKino(); if (quest.has('scrubber_repaired')) S2.repairScrubber();
 	const step = quest.step();
 	if (quest.has('ftl_dropped') && ['scout_kino', 'gear_up', 'travel'].includes(step?.id)) { destiny.gate.userData.reset(); destiny.gate.userData.incoming(onGateEvent(destiny)); }

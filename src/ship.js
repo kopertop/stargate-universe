@@ -210,7 +210,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 	doorObjs.forEach(setDoorCollider);
 
 	// ---- props: reusable components placed from room.props (layout data / editor) or the per-type defaults
-	const parts = { screens: [], holos: [], trims: [], kino: [], elevators: [] }, propMeshes = [], lootables = [];
+	const parts = { screens: [], holos: [], trims: [], kino: [], elevators: [], growLamps: [], sprouts: [] }, propMeshes = [], lootables = [];
 	const mats = { dark: darkMat, floor: floorMat, door: doorMat, red: redMat, shell: new THREE.MeshStandardMaterial({ color: 0x2b3139, roughness: 0.45, metalness: 0.7 }), slit: new THREE.MeshStandardMaterial({ color: 0xcfe6ff, emissive: 0xcfe6ff, emissiveIntensity: 1.6 }), crate: new THREE.MeshStandardMaterial({ color: 0x5e6a3a, roughness: 0.9 }), steel: new THREE.MeshStandardMaterial({ color: 0xa8b0b8, roughness: 0.6 }) };
 	for (const r of rooms) {
 		cur = decks[r.floor];
@@ -256,6 +256,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 	/** Elevator bus: fuses seated (visible) → powered (lamp green, doors part). */
 	state.seatElevatorFuses = () => { for (const e of parts.elevators) for (const f of e.fuses) f.visible = true; };
 	state.setElevatorPower = (on) => { state.elevatorPowered = on; for (const e of parts.elevators) { e.lamp.material.color.set(on ? 0x40ff80 : 0xff3020); e.lamp.material.emissive.set(on ? 0x20ff60 : 0xff2010); for (const [i, m] of e.leaves.entries()) m.position.x = (i ? 1 : -1) * (on ? 1.05 : 0.58); } };
+	state.setGrowLights = (on) => { for (const l of parts.growLamps) l.material.emissiveIntensity = on ? 1.8 : 0; for (const s of parts.sprouts) s.visible = on; };
 	state.openCrate = (l) => { if (l.lid) l.lid.rotation.x = -1.35; l.opened = true; };
 	state.sealBreach = () => { const d = jam; d.sealed = true; d.locked = true; d.lamp.material.color.set(0xffa020); d.lamp.material.emissive.set(0xff8000); handle.rotation.x = -0.6; if (breachLight) breachLight.intensity = 0; };
 	state.repairScrubber = () => { if (!scrubLamp) return; scrubLamp.material.color.set(0x40ff80); scrubLamp.material.emissive.set(0x20ff60); scrubBed.material.color.set(0xe8e2d0); };

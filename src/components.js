@@ -173,6 +173,18 @@ export const COMPONENTS = {
 		label: 'Wall light', size: [0.1, 0.6],
 		build: (ctx, p, s) => { const m = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.6, 0.06), ctx.mats.slit); m.position.set(p.x, 2.0, p.z); m.rotation.y = s.ry; ctx.group.add(m); return {}; },
 	},
+	grow_bed: {
+		label: 'Grow bed', size: [3.0, 1.2], defaultAnchor: 'GrowBed',
+		build: (ctx, p, s) => { // raised planter with dark soil and a lamp bar above it; the lamp lights up when hydroponics is restored
+			const g = new THREE.Group(); g.position.set(p.x, 0, p.z); g.rotation.y = s.ry; ctx.group.add(g);
+			ctx.box(3.0, 0.7, 1.2, ctx.mats.shell, p.x, 0.35, p.z, true, s.ry);
+			const soil = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.08, 1.0), new THREE.MeshStandardMaterial({ color: 0x2a2018, roughness: 1 })); soil.position.set(0, 0.72, 0); g.add(soil);
+			for (let i = 0; i < 7; i++) { const sprout = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.18, 5), new THREE.MeshStandardMaterial({ color: 0x4f7a3a, roughness: 0.9 })); sprout.position.set(-1.2 + i * 0.4, 0.85, (i % 2 ? 0.2 : -0.2)); sprout.visible = false; g.add(sprout); ctx.parts.sprouts.push(sprout); }
+			for (const sx of [-1.35, 1.35]) { const post = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.3, 0.06), ctx.mats.dark); post.position.set(sx, 1.35, 0); g.add(post); }
+			const lampBar = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.06, 0.3), new THREE.MeshStandardMaterial({ color: 0xd8ffd0, emissive: 0xa8ff9a, emissiveIntensity: 0 })); lampBar.position.set(0, 2.0, 0); g.add(lampBar); ctx.parts.growLamps.push(lampBar);
+			return { anchor: fwd(s.ry).multiplyScalar(1.3).add(new THREE.Vector3(p.x, 0, p.z)) };
+		},
+	},
 	marker: {
 		label: 'Anchor marker', size: [0.6, 0.6], defaultAnchor: 'Spot',
 		build: (ctx, p) => ({ anchor: new THREE.Vector3(p.x, 0, p.z) }), // invisible: NPC stand spot / waypoint
@@ -189,7 +201,7 @@ export const DEFAULT_PROPS = {
 	infirmary: [{ type: 'med_bed', u: 0.25, v: 0.3, anchor: 'Beds' }, { type: 'med_bed', u: 0.25, v: 0.5 }, { type: 'med_bed', u: 0.25, v: 0.7 }, { type: 'cabinet', u: 0.85, v: 0.5, ry: -Math.PI / 2 }],
 	elevator: [{ type: 'elevator_door', u: 0.5, v: 0.04, ry: 0, anchor: 'Elevator' }],
 	'shuttle-dock': [{ type: 'breach', u: 0.99, v: 0.5, ry: -Math.PI / 2 }],
-	hydroponics: [{ type: 'console', u: 0.5, v: 0.12, ry: Math.PI, anchor: 'GrowConsole' }, { type: 'tank', u: 0.15, v: 0.4 }, { type: 'tank', u: 0.15, v: 0.65 }, { type: 'tank', u: 0.85, v: 0.4 }, { type: 'tank', u: 0.85, v: 0.65 }, { type: 'bed', u: 0.35, v: 0.55, ry: Math.PI / 2 }, { type: 'bed', u: 0.65, v: 0.55, ry: Math.PI / 2 }],
+	hydroponics: [{ type: 'console', u: 0.5, v: 0.12, ry: Math.PI, anchor: 'GrowConsole' }, { type: 'tank', u: 0.08, v: 0.9 }, { type: 'tank', u: 0.92, v: 0.9 }, { type: 'grow_bed', u: 0.25, v: 0.4, ry: Math.PI / 2 }, { type: 'grow_bed', u: 0.25, v: 0.62, ry: Math.PI / 2 }, { type: 'grow_bed', u: 0.75, v: 0.4, ry: Math.PI / 2 }, { type: 'grow_bed', u: 0.75, v: 0.62, ry: Math.PI / 2 }, { type: 'grow_bed', u: 0.5, v: 0.5, ry: Math.PI / 2 }],
 };
 /** Room-specific overrides by id (the Kino Room, the scrubber's corridor). */
 export const ROOM_PROPS = {

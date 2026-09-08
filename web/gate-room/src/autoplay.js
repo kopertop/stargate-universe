@@ -20,6 +20,7 @@ export const createAutoplay = (d) => {
 		let lastD = Infinity, stallT = 0, side = 'KeyD';
 		while (!auto.abort && simNow() - t0 < timeout) {
 			const dx = x - pos().x, dz = z - pos().z, dist = Math.hypot(dx, dz); if (dist < tol) break;
+			d.input.keys.add('KeyW'); if (run) d.input.keys.add('ShiftLeft'); // re-assert every tick: input.js clears keys on window blur (screenshots, focus changes)
 			d.cam().yaw = Math.atan2(-dx, -dz);
 			if (dist > lastD - 0.02) stallT += 40; else stallT = 0; lastD = Math.min(lastD, dist);
 			if (stallT > 500) { d.input.keys.add(side); await sleep(600); d.input.keys.delete(side); side = side === 'KeyD' ? 'KeyA' : 'KeyD'; stallT = 0; lastD = Infinity; }
@@ -44,7 +45,7 @@ export const createAutoplay = (d) => {
 	const faceAnchorProp = (room, anchor) => { const a = A()[`${room}:${anchor}`]; if (!a) return; const c = ship().center(room); face(a.x + (c.x - a.x) * -0.01 + (a.x - c.x) * 0.0 + (a.x - pos().x) * 2, a.z + (a.z - pos().z) * 2); };
 	const interact = async (settle = 2200) => { await sleep(150); press('KeyE'); await sleep(settle); };
 	const waitFor = async (pred, timeout = 20000) => { const t0 = simNow(); while (!pred() && simNow() - t0 < timeout && !auto.abort) await sleep(80); return pred(); };
-	const holdE = async (until, timeout = 12000) => { d.input.keys.add('KeyE'); await waitFor(until, timeout); d.input.keys.delete('KeyE'); await sleep(250); };
+	const holdE = async (until, timeout = 12000) => { const t0 = simNow(); while (!until() && simNow() - t0 < timeout && !auto.abort) { d.input.keys.add('KeyE'); await sleep(60); } d.input.keys.delete('KeyE'); await sleep(250); };
 	/** Face the thing the anchor stands in front of: away from the room centre is a good guess for wall props, toward it for islands. */
 	const facePropAt = (room, anchor) => { const a = A()[`${room}:${anchor}`]; if (!a) return; const m = ship().propMeshes.find((x) => x.userData.prop.roomId === room && x.userData.prop.spec.anchor === anchor); if (m) { const b = m.position; face(b.x, b.z); } };
 

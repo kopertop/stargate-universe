@@ -16,8 +16,15 @@ import { rpg, loadItems, addItem, removeItem, count, equip, stats, carried, gran
 import { ASSETS } from './assets.js';
 import { createMusic } from './music.js';
 import { createConsole } from './console.js';
+import { settings, onSettings } from './settings.js';
 import { createLevelEditor } from './leveledit.js';
 
+const loadingEl = document.getElementById('loading');
+// surface failures instead of a silent black screen: load errors stay on the loading card, runtime errors show a toast
+THREE.DefaultLoadingManager.onError = (url) => { if (loadingEl) loadingEl.textContent = `FAILED TO LOAD ${url.split('/').pop()} — reload to retry`; };
+addEventListener('error', (e) => { const t = document.getElementById('toast'); if (t) { t.textContent = `Error: ${e.message}`; t.classList.remove('hidden'); } });
+addEventListener('unhandledrejection', (e) => { const t = document.getElementById('toast'); if (t) { t.textContent = `Error: ${e.reason?.message ?? e.reason}`; t.classList.remove('hidden'); } });
+THREE.DefaultLoadingManager.onProgress = (url, n, total) => { if (loadingEl) loadingEl.textContent = `LOADING DESTINY… ${Math.round((n / Math.max(total, 1)) * 100)}%`; };
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.setSize(innerWidth, innerHeight);
@@ -103,6 +110,8 @@ const SFX_FILES = { chevron: 'stargate_chevron_incom.mp3', kawoosh: 'gate_kawoos
 await Promise.all(Object.entries(SFX_FILES).map(async ([k, f]) => { buffers[k] = await audioLoader.loadAsync(`${ASSETS}sounds/${f}`); }));
 const music = createMusic(listener, Object.fromEntries(Object.entries({ theme: 'sgu_main_theme.mp3', derelict: 'loops/bed_derelict_cold.ogg', ship_warm: 'loops/bed_ship_warm.ogg', space: 'loops/bed_space_vast.ogg', planet: 'loops/bed_planet_open.ogg', shimmer: 'loops/pad_shimmer.ogg', tense: 'loops/pad_strings_tense.ogg', pulse_slow: 'loops/pulse_slow.ogg', pulse_drive: 'loops/pulse_drive.ogg', cello: 'loops/mel_cello_lonely.ogg' }).map(([k, f]) => [k, `${ASSETS}sounds/music/${f}`])));
 music.load(); // streams in the background; silent until the first mood is set after a user gesture
+let sfxLevel = 1;
+onSettings((s) => { listener.setMasterVolume(s.master); music.setLevel(s.music); sfxLevel = s.sfx; input.sensitivity = s.sensitivity; input.invertY = s.invertY; if (camera.fov !== s.fov) { camera.fov = s.fov; camera.updateProjectionMatrix(); } });
 const noiseBuffer = (len = 2, smooth = 0.985, gain = 6) => { const ctx = listener.context, n = ctx.sampleRate * len, buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0); let l = 0; for (let i = 0; i < n; i++) { l = l * smooth + (Math.random() * 2 - 1) * (1 - smooth); d[i] = l * gain; } return buf; };
 const makeNoise = (freq, type = 'lowpass') => { const a = new THREE.Audio(listener); a.setBuffer(noiseBuffer()); a.setLoop(true); a.setVolume(0); const f = listener.context.createBiquadFilter(); f.type = type; f.frequency.value = freq; a.setFilter(f); return a; };
 const sfxRumble = makeNoise(140), sfxWhoosh = makeNoise(900, 'bandpass');
@@ -118,14 +127,14 @@ const attachGateAudio = (w) => {
 };
 attachGateAudio(destiny);
 const playOnce = (a) => { if (a.isPlaying) a.stop(); a.play(); };
-const oneShot = (buf, vol = 0.6, rate = 1) => { const a = new THREE.Audio(listener); a.setBuffer(buf); a.setVolume(vol); a.setPlaybackRate(rate); a.play(); };
+const oneShot = (buf, vol = 0.6, rate = 1) => { const a = new THREE.Audio(listener); a.setBuffer(buf); a.setVolume(vol * sfxLevel); a.setPlaybackRate(rate); a.play(); };
 const footBuffer = (surface) => { const ctx = listener.context, sr = ctx.sampleRate, len = Math.floor(sr * (surface === 'sand' ? 0.14 : 0.07)), buf = ctx.createBuffer(1, len, sr), out = buf.getChannelData(0); let lp = 0; for (let i = 0; i < len; i++) { const env = Math.pow(1 - i / len, surface === 'sand' ? 1.6 : 3.5); const n = Math.random() * 2 - 1; lp = lp * (surface === 'sand' ? 0.82 : 0.4) + n * (surface === 'sand' ? 0.18 : 0.6); out[i] = lp * env * (surface === 'sand' ? 0.9 : 0.5); } return buf; };
 const footBuffers = { sand: [buffers.sand1, buffers.sand2, buffers.sand3, buffers.sand4], deck: [buffers.step1, buffers.step2, buffers.step3, buffers.step4] }; void footBuffer;
 const footPool = Array.from({ length: 4 }, () => new THREE.Audio(listener)); let footIdx = 0, stepDist = 0;
-const footstep = (surface, loud) => { const a = footPool[footIdx++ % footPool.length]; if (a.isPlaying) a.stop(); const pool = footBuffers[surface]; a.setBuffer(pool[Math.floor(Math.random() * pool.length)]); a.setPlaybackRate(0.9 + Math.random() * 0.25); a.setVolume((surface === 'sand' ? 0.5 : 0.35) * (loud ? 1.3 : 1)); a.play(); };
+const footstep = (surface, loud) => { const a = footPool[footIdx++ % footPool.length]; if (a.isPlaying) a.stop(); const pool = footBuffers[surface]; a.setBuffer(pool[Math.floor(Math.random() * pool.length)]); a.setPlaybackRate(0.9 + Math.random() * 0.25); a.setVolume((surface === 'sand' ? 0.5 : 0.35) * (loud ? 1.3 : 1) * sfxLevel); a.play(); };
 // door mechanism: positional thunk when the gear unlocks, slide hiss while the leaves move, heavy seat when they close
 const doorAudio = new Map();
-const doorSfx = (d, buf, vol, rate = 1) => { let a = doorAudio.get(d); if (!a) { a = new THREE.PositionalAudio(listener); a.setRefDistance(4); a.setMaxDistance(30); d.g.add(a); doorAudio.set(d, a); } if (a.isPlaying) a.stop(); a.setBuffer(buf); a.setVolume(vol); a.setPlaybackRate(rate); a.play(); };
+const doorSfx = (d, buf, vol, rate = 1) => { let a = doorAudio.get(d); if (!a) { a = new THREE.PositionalAudio(listener); a.setRefDistance(4); a.setMaxDistance(30); d.g.add(a); doorAudio.set(d, a); } if (a.isPlaying) a.stop(); a.setBuffer(buf); a.setVolume(vol * sfxLevel); a.setPlaybackRate(rate); a.play(); };
 const slideBuf = (() => { const ctx = listener.context, sr = ctx.sampleRate, len = Math.floor(sr * 1.1), b = ctx.createBuffer(1, len, sr), o = b.getChannelData(0); let lp = 0; for (let i = 0; i < len; i++) { const k = i / len, env = Math.sin(Math.PI * Math.min(1, k * 1.15)) * (1 - k * 0.3); lp = lp * 0.9 + (Math.random() * 2 - 1) * 0.1; o[i] = lp * 2.4 * env; } return b; })();
 destiny.ship.onDoor = (ev, d) => { if (ev === 'unlock') { doorSfx(d, buffers.doorLock, 0.7, 0.85); setTimeout(() => doorSfx(d, slideBuf, 0.5), 350); } else if (ev === 'closed') doorSfx(d, buffers.doorThunk, 0.8, 0.8); else if (ev === 'denied' && !destiny.ship.powered) doorSfx(d, buffers.menuClose, 0.5, 0.6); };
 const humFades = new Set();
@@ -301,7 +310,9 @@ const dust = new THREE.Points(dGeo, new THREE.ShaderMaterial({ transparent: true
 dust.frustumCulled = false; let dNext = 0;
 const kickSand = (loud) => { const p = player.root.position, pos = dGeo.attributes.position.array; const back = new THREE.Vector3(Math.sin(player.root.rotation.y), 0, Math.cos(player.root.rotation.y)).multiplyScalar(-1); const n = loud ? 26 : 14; for (let k = 0; k < n; k++) { const i = dNext++ % DCOUNT; pos[i * 3] = p.x + (Math.random() - 0.5) * 0.35; pos[i * 3 + 1] = p.y + 0.05; pos[i * 3 + 2] = p.z + (Math.random() - 0.5) * 0.35; dVel[i * 3] = back.x * (0.8 + Math.random()) + (Math.random() - 0.5) * 0.8; dVel[i * 3 + 1] = 1.1 + Math.random() * 1.3; dVel[i * 3 + 2] = back.z * (0.8 + Math.random()) + (Math.random() - 0.5) * 0.8; dLife[i] = dMax[i] = 0.45 + Math.random() * 0.35; } };
 const tickDust = (dt) => { const pos = dGeo.attributes.position.array, al = dGeo.attributes.aAlpha.array, sz = dGeo.attributes.aSize.array; for (let i = 0; i < DCOUNT; i++) { if (dLife[i] <= 0) { al[i] = 0; continue; } dLife[i] -= dt; dVel[i * 3 + 1] -= 3.5 * dt; pos[i * 3] += dVel[i * 3] * dt; pos[i * 3 + 1] += dVel[i * 3 + 1] * dt; pos[i * 3 + 2] += dVel[i * 3 + 2] * dt; const k = Math.max(0, dLife[i] / dMax[i]); al[i] = 0.85 * k; sz[i] = 0.22 + (1 - k) * 0.55; } dGeo.attributes.position.needsUpdate = true; dGeo.attributes.aAlpha.needsUpdate = true; dGeo.attributes.aSize.needsUpdate = true; };
-const tickFootsteps = (dt) => { if (!player.grounded || player.speed < 0.6) { stepDist = 0; return; } stepDist += player.speed * dt; const stride = player.speed > 7 ? 1.55 : 0.85; if (stepDist >= stride) { stepDist -= stride; const loud = player.speed > 7; footstep(world === planet ? 'sand' : 'deck', loud); if (world === planet) kickSand(loud); } };
+// footsteps fire from the animation's foot plants (player.js), so sound, dust and stride share one source of truth
+player.onStep = (side, speed) => { const loud = speed > 7; footstep(world === planet ? 'sand' : 'deck', loud); if (world === planet) kickSand(loud); };
+const tickFootsteps = () => {}; void stepDist;
 
 // ---------------------------------------------------------------- gate travel + arrival
 let travel = null; const PLAYER_CHEST = 1.1;
@@ -415,6 +426,7 @@ const loadGame = () => {
 window.__save = { saveGame, loadGame, hasSave, clear: () => localStorage.removeItem(SAVE_KEY) };
 startChapter('e1_air');
 document.getElementById('loading')?.remove();
+document.addEventListener('visibilitychange', () => { if (document.hidden) listener.context.suspend?.(); else if (gameStarted) listener.context.resume?.(); }); // silence when the tab is hidden
 const newGame = () => { listener.context.resume(); destiny.scene.add(beacon); localStorage.removeItem(SAVE_KEY); localStorage.removeItem('sgu.rpg'); ui.showChapter(quest.chapter.title, quest.chapter.subtitle, 'Begin', () => { gameStarted = true; arriveAt(destiny); }); };
 ui.showTitle({ hasSave: hasSave(), onNew: newGame, onContinue: () => { listener.context.resume(); destiny.scene.add(beacon); if (!loadGame()) newGame(); } });
 // ?autoplay → hands-free demo driver (recordings / smoke runs); start it with window.__auto.run()
@@ -444,12 +456,12 @@ const devcon = createConsole({
 	give: (id, n = 1) => { for (let i = 0; i < +n; i++) addItem(id); return `gave ${n}× ${id}`; },
 	chapter: (id) => { startChapter(id); return `chapter ${id}`; },
 });
-window.__dbg.edit = edit; window.__dbg.console = devcon;
+window.__dbg.edit = edit; window.__dbg.console = devcon; window.__dbg.renderer = renderer;
 
 const fpsEl = document.getElementById('fps');
 const clock = new THREE.Clock(); let acc = 0, frames = 0;
-renderer.setAnimationLoop(() => {
-	const rawDt = Math.min(clock.getDelta(), 0.05); const t = clock.elapsedTime;
+const frame = (dtIn) => {
+	const rawDt = dtIn ?? Math.min(clock.getDelta(), 0.05); const t = clock.elapsedTime;
 	poll(rawDt);
 	if (edit.active) { const sc = edit.update(rawDt); destiny.gate.userData.tick(t, rawDt); if (camera.parent !== sc) { camera.removeFromParent(); sc.add(camera); } renderer.render(sc, camera); return; }
 	const paused = ui.isRemoteOpen() || devcon.isOpen();
@@ -491,4 +503,12 @@ renderer.setAnimationLoop(() => {
 	renderer.render(travel?.phase === 'wormhole' ? wormhole.scene : kino.active ? kinoWorld.scene : world.scene, camera);
 	recorder?.tick();
 	acc += rawDt; frames++; if (acc > 0.5) { fpsEl.textContent = `${Math.round(frames / acc)} fps`; acc = 0; frames = 0; }
-});
+};
+// rAF stops entirely while the tab is hidden; fall back to a 30 Hz timer so simulation, autoplay smoke runs and recordings
+// keep going in a background tab (Chrome still runs timers there). dt stays clamped at 50 ms either way.
+let rafId = 0;
+const schedule = () => { if (document.hidden) setTimeout(loop, 33); else rafId = requestAnimationFrame(loop); };
+// Frame-starved (hidden, occluded or throttled window): sub-step so simulation, quests and autoplay keep wall-clock time
+const loop = () => { rafId = 0; const real = clock.getDelta(); if (real > 0.08) { const n = Math.min(8, Math.round(real / 0.04)); for (let i = 0; i < n; i++) frame(Math.min(0.05, real / n)); } else frame(Math.min(real, 0.05)); schedule(); };
+document.addEventListener('visibilitychange', () => { if (document.hidden && rafId) { cancelAnimationFrame(rafId); rafId = 0; schedule(); } }); // a pending rAF would never fire once hidden
+schedule();

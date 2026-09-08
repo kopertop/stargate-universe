@@ -1,5 +1,6 @@
 // WoW-style HUD (gold-on-dark, per docs/hud-redesign/HANDOFF.md) + the diegetic Kino Remote full-screen menu.
 import { rpg, ITEMS, TALENTS, stats, xpToNext, count, equip, unequip, spendTalent, carried } from './rpg.js';
+import { settings, renderSettings } from './settings.js';
 
 const css = `
 	:root{--gold:#d4a852;--gold-dim:#8c7038;--panel:rgba(9,9,12,.82);--text:#f5ebcc;--hp:#57bd42;--o2:#59b8eb;--xp:#a98cf0}
@@ -45,6 +46,8 @@ const css = `
 	#remote .slots{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}#remote .gslot{border:1px solid var(--gold-dim);padding:8px;min-height:54px;background:#0d1016}#remote .gslot small{color:#887;display:block}
 	#remote .tal{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}#remote .tal>div{border:1px solid var(--gold-dim);padding:10px;background:#0d1016}
 	#remote .hint{color:#887;font-size:11px;margin-top:8px}
+	.srow{display:grid;grid-template-columns:150px 1fr 48px;gap:10px;align-items:center;margin:8px 0;font-size:13px}.srow b{color:var(--gold);font:12px monospace;text-align:right}.srow input[type=range]{width:100%}
+	#chapter .settings{width:min(460px,90vw);margin:14px auto 0;text-align:left;padding:10px 14px}
 	.hidden{display:none!important}
 `;
 const el = (tag, attrs = {}, html = '') => { const e = document.createElement(tag); Object.assign(e, attrs); e.innerHTML = html; return e; };
@@ -122,7 +125,7 @@ export const createUI = (ctx) => {
 	// ---- prompt / subtitle / toast
 	let subT = null, toastT = null;
 	const setPrompt = (r) => { const p = q('#prompt'); if (!r) { p.classList.add('hidden'); return; } p.classList.remove('hidden'); p.innerHTML = `<kbd>[E]</kbd> ${r.prompt}${r.hold ? ` <span style="opacity:.6">(hold)</span><div class="pb"><i style="width:${Math.round((r.progress ?? 0) * 100)}%"></i></div>` : ''}`; };
-	const subtitle = (who, text, { radio = false, dur = 4.5 } = {}) => { const s = q('#sub'); s.className = `panel${radio ? ' radio' : ''}`; s.innerHTML = `<b>${who}:</b> ${text}`; clearTimeout(subT); subT = setTimeout(() => s.classList.add('hidden'), dur * 1000); };
+	const subtitle = (who, text, { radio = false, dur = 4.5 } = {}) => { if (!settings.subtitles) return; const s = q('#sub'); s.className = `panel${radio ? ' radio' : ''}`; s.innerHTML = `<b>${who}:</b> ${text}`; clearTimeout(subT); subT = setTimeout(() => s.classList.add('hidden'), dur * 1000); };
 	const toast = (text, dur = 3.5) => { const t = q('#toast'); t.textContent = text; t.classList.remove('hidden'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.add('hidden'), dur * 1000); };
 	const zone = (name) => { q('#zone').textContent = name ?? ''; };
 
@@ -141,7 +144,7 @@ export const createUI = (ctx) => {
 		const L = (r) => (seen.has(r.id) && Math.min(r.z1 - r.z0, r.x1 - r.x0) > 5 ? `<text x="${-(r.z0 + r.z1) / 2}" y="${(r.x0 + r.x1) / 2}" font-size="2.6" fill="#cfe4f5" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif">${r.name}</text>` : '');
 		return `<svg viewBox="${-z1} ${x0} ${z1 - z0} ${x1 - x0}" style="width:100%;max-height:46vh;background:#06101a;border:1px solid #234;border-radius:6px">${rooms.map(R).join('')}${rooms.map(L).join('')}${waypoint ? `<circle cx="${-waypoint.z}" cy="${waypoint.x}" r="1.4" fill="#ffd24a"/>` : ''}<circle cx="${-player.z}" cy="${player.x}" r="1.2" fill="#fff"/></svg>`;
 	};
-	const TABS = ['quest', 'character', 'inventory', 'talents', 'ship', 'gate', 'kino', 'log'];
+	const TABS = ['quest', 'character', 'inventory', 'talents', 'ship', 'gate', 'kino', 'log', 'settings'];
 	let tab = 'quest', open = false;
 	const renderRemote = () => {
 		const s = stats();
@@ -157,9 +160,11 @@ export const createUI = (ctx) => {
 			gate: () => `<h2>GATE CONTROL</h2><div class="hint">Dial a destination. The gate must be idle. Destiny's address is always available from a planet.</div><table>${ctx.planets().map((p) => `<tr><td><b>${p.name}</b></td><td style="color:#998">${p.scan ? p.scan : 'no scan data'}</td><td><button class="btn" data-dial="${p.id}" ${p.canDial ? '' : 'disabled'}>Dial</button></td></tr>`).join('')}</table>`,
 			kino: () => `<h2>KINO CONTROL</h2><div class="hint">Kinos: ${count('kino_orb')}. Launch one to fly it through an active gate; the Kino reports the atmosphere on the far side. Fly with WASD, mouse to look, Space up / Shift down. TAB or E recalls it.</div><p><button class="btn" data-launch="1" ${ctx.canLaunchKino() ? '' : 'disabled'}>Launch Kino</button></p>${ctx.lastScan() ? `<h2 style="margin-top:14px">LAST SCAN — ${ctx.lastScan().name}</h2><table>${Object.entries(ctx.lastScan().atmosphere).map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table>` : ''}`,
 			log: () => `<h2>LOG</h2>${rpg.log.slice().reverse().map((t) => `<div style="color:#dcb">${t}</div>`).join('')}`,
+			settings: () => '<h2>SETTINGS</h2><div id="settings-body"></div>',
 		}[tab]();
 		remote.innerHTML = `<div class="dev"><nav>${TABS.map((t) => `<button class="${t === tab ? 'on' : ''}" data-tab="${t}">${t.toUpperCase()}</button>`).join('')}<div style="flex:1"></div><div class="hint" style="padding:10px 14px">TAB / Esc closes</div></nav><section>${body}</section></div>`;
 		remote.querySelectorAll('[data-tab]').forEach((b) => (b.onclick = () => { tab = b.dataset.tab; renderRemote(); }));
+		const sb = remote.querySelector('#settings-body'); if (sb) renderSettings(sb);
 		remote.querySelectorAll('[data-equip]').forEach((b) => (b.onclick = () => { equip(b.dataset.equip); renderRemote(); }));
 		remote.querySelectorAll('[data-unequip]').forEach((b) => (b.onclick = () => { unequip(b.dataset.unequip); renderRemote(); }));
 		remote.querySelectorAll('[data-talent]').forEach((b) => (b.onclick = () => { spendTalent(b.dataset.talent); renderRemote(); }));
@@ -174,12 +179,14 @@ export const createUI = (ctx) => {
 	const CONTROLS = [['WASD / L-stick', 'move'], ['Shift / RT', 'run'], ['Space / A', 'jump'], ['E / X', 'interact (hold to dig)'], ['Mouse / R-stick', 'look (click to capture)'], ['TAB / Start', 'Kino Remote (quest, gear, talents, ship, gate)'], ['K / Y', 'launch Kino'], ['V', 'camera view'], ['F', 'fullscreen'], ['B', 'terrain debug']];
 	const showTitle = ({ hasSave, onNew, onContinue }) => {
 		chapterCard.innerHTML = `<div><div style="font:12px monospace;letter-spacing:.3em;color:#887">A THREE.JS PROTOTYPE</div><h1>STARGATE UNIVERSE</h1><p>Destiny · Episode 1: Air</p>
-			<button data-action="new">New Game</button>${hasSave ? '<button data-action="continue">Continue</button>' : ''}<button data-action="controls">Controls</button>
+			<button data-action="new">New Game</button>${hasSave ? '<button data-action="continue">Continue</button>' : ''}<button data-action="controls">Controls</button><button data-action="settings">Settings</button>
 			<div class="ctl hidden">${CONTROLS.map(([k, v]) => `<b>${k}</b><span>${v}</span>`).join('')}</div></div>`;
 		chapterCard.classList.remove('hidden');
 		chapterCard.querySelector('[data-action="new"]').onclick = () => { chapterCard.classList.add('hidden'); onNew(); };
 		chapterCard.querySelector('[data-action="continue"]')?.addEventListener('click', () => { chapterCard.classList.add('hidden'); onContinue(); });
 		chapterCard.querySelector('[data-action="controls"]').onclick = () => chapterCard.querySelector('.ctl').classList.toggle('hidden');
+		const sp = el('div', { className: 'settings panel hidden' }); chapterCard.firstElementChild.appendChild(sp); renderSettings(sp);
+		chapterCard.querySelector('[data-action="settings"]').onclick = () => sp.classList.toggle('hidden');
 	};
 	return { refreshPlayer, refreshTracker, drawMinimap, setPrompt, subtitle, toast, zone, showChapter, showTitle, openRemote, closeRemote, isRemoteOpen: () => open, renderRemote };
 };

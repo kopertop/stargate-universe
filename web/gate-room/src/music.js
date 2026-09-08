@@ -18,14 +18,17 @@ const MOODS = {
 /** @param listener THREE.AudioListener  @param files {layer: url} */
 export const createMusic = (listener, files) => {
 	const loader = new THREE.AudioLoader(), layers = {}, target = {};
-	let mood = 'silent', ready = false;
+	let mood = 'silent', ready = false, level = 1;
 	const load = async () => {
 		await Promise.all(Object.entries(files).map(async ([k, url]) => {
 			const buf = await loader.loadAsync(url); const a = new THREE.Audio(listener); a.setBuffer(buf); a.setLoop(true); a.setVolume(0); layers[k] = a; target[k] = 0;
 		}));
 		ready = true;
 	};
-	const setMood = (m) => { if (!MOODS[m] || m === mood) return; mood = m; for (const k in layers) target[k] = (MOODS[m][k] ?? 0) * MASTER; };
+	const retarget = () => { for (const k in layers) target[k] = (MOODS[mood]?.[k] ?? 0) * MASTER * level; };
+	const setMood = (m) => { if (!MOODS[m] || m === mood) return; mood = m; retarget(); };
+	/** Music level 0–1 from settings. */
+	const setLevel = (l) => { level = l; retarget(); };
 	/** Per frame: fade volumes toward targets; start/stop layers as they cross zero. Needs a running AudioContext. */
 	const tick = (dt) => {
 		if (!ready || listener.context.state !== 'running') return;
@@ -35,5 +38,5 @@ export const createMusic = (listener, files) => {
 			if (nv <= 0.001 && a.isPlaying && t === 0) { a.stop(); a.setVolume(0); }
 		}
 	};
-	return { load, setMood, tick, mood: () => mood, MOODS };
+	return { load, setMood, setLevel, tick, mood: () => mood, MOODS };
 };

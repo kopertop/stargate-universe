@@ -29,8 +29,18 @@ class Handler(SimpleHTTPRequestHandler):
         except Exception: pass
         with open(target, 'w') as f: json.dump(data, f, indent=indent, ensure_ascii=True); f.write(nl)
         self.send_response(200); self.end_headers(); self.wfile.write(f'wrote {self.path} ({len(body)} bytes)'.encode())
+    def do_POST(self):
+        # recorder.js uploads a webm: POST /save?name=<file>.webm → ~/Desktop (dev convenience; localhost only)
+        from urllib.parse import urlparse, parse_qs
+        u = urlparse(self.path); name = parse_qs(u.query).get('name', ['gameplay.webm'])[0]
+        if u.path != '/save' or not re.match(r'^[A-Za-z0-9_\-]+\.(webm|mp4)$', name):
+            self.send_response(400); self.end_headers(); self.wfile.write(b'bad save request'); return
+        body = self.rfile.read(int(self.headers.get('Content-Length', 0)))
+        target = os.path.join(os.path.expanduser('~/Desktop'), name)
+        with open(target, 'wb') as f: f.write(body)
+        self.send_response(200); self.end_headers(); self.wfile.write(f'saved {target} ({len(body)} bytes)'.encode())
     def log_message(self, fmt, *args):
-        if self.command == 'PUT': super().log_message(fmt, *args)
+        if self.command in ('PUT', 'POST'): super().log_message(fmt, *args)
 
 if __name__ == '__main__':
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8090

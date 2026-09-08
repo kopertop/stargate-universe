@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { ancientMaterial, ancientFloorMaterial } from './ancient.js';
 import { COMPONENTS, DEFAULT_PROPS, ROOM_PROPS } from './components.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 export const DOOR_W = 2.4, DOOR_H = 3.2, WALL_T = 0.3;
 const R = DOOR_W / 2, ARCH_Y = DOOR_H - R, BULGE = 0.1, HUB_R = 0.42, GEAR_R = 0.2; // arched opening: straight to ARCH_Y, semicircle to DOOR_H
@@ -61,35 +62,46 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 	const strip = new THREE.MeshStandardMaterial({ color: 0xcfe6ff, emissive: 0xa8ccff, emissiveIntensity: 0 }); // cold ceiling strips (on = powered)
 	const edge = new THREE.MeshStandardMaterial({ color: 0xffa040, emissive: 0xffa040, emissiveIntensity: 0 }); // amber corridor edge lines
 	const redMat = new THREE.MeshStandardMaterial({ color: 0xff3020, emissive: 0xff2010, emissiveIntensity: 2 });
-	const box = (w, h, d, mat, x, y, z, solid = true, ry = 0) => {
+	const box = (w, h, d, mat, x, y, z, solid = true, ry = 0, mergeKey = null) => {
 		const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); m.rotation.y = ry; m.castShadow = m.receiveShadow = true; group.add(m);
-		if (solid) { m.updateMatrixWorld(); colliders.push(new THREE.Box3().setFromObject(m)); occludable.push(m); }
+		if (solid) { m.updateMatrixWorld(); colliders.push(new THREE.Box3().setFromObject(m)); if (!mergeKey) occludable.push(m); }
+		if (mergeKey) (staticParts.get(mergeKey) ?? staticParts.set(mergeKey, []).get(mergeKey)).push(m);
 		return m;
+	};
+	// static wall pieces are merged per room + material after the build (one draw call instead of dozens); colliders stay per piece
+	const staticParts = new Map();
+	const mergeStatic = () => {
+		for (const [key, parts] of staticParts) {
+			const mat = parts[0].material, geo = mergeGeometries(parts.map((m) => { m.updateMatrixWorld(); return (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()).applyMatrix4(m.matrixWorld); })); // boxes are indexed, extruded arches are not
+			for (const m of parts) { group.remove(m); m.geometry.dispose(); }
+			const merged = new THREE.Mesh(geo, mat); merged.castShadow = merged.receiveShadow = true; merged.userData.roomKey = key; group.add(merged); occludable.push(merged);
+		}
+		staticParts.clear();
 	};
 	const roomH = (r) => ROOM_H[r.type] ?? H_ROOM;
 	const doorsOnWall = (axis, at, lo, hi) => doors.filter((d) => d.axis === axis && Math.abs(d.at - at) < 1e-3 && d.center > lo && d.center < hi);
 	// wall along a boundary with door gaps; inset by WALL_T/2 into the room (dir = ±1)
-	const wall = (axis, at, lo, hi, dir, H, mat) => {
+	const wall = (axis, at, lo, hi, dir, H, mat, key) => {
 		const gaps = doorsOnWall(axis, at, lo, hi).map((d) => [d.center - DOOR_W / 2, d.center + DOOR_W / 2]).sort((a, b) => a[0] - b[0]);
 		const segs = []; let cur = lo; for (const [g0, g1] of gaps) { if (g0 > cur) segs.push([cur, g0]); cur = g1; } if (cur < hi) segs.push([cur, hi]);
 		const c = at + dir * WALL_T / 2;
-		for (const [a, b] of segs) axis === 'x' ? box(WALL_T, H, b - a, mat, c, H / 2, (a + b) / 2) : box(b - a, H, WALL_T, mat, (a + b) / 2, H / 2, c);
-		for (const [g0, g1] of gaps) archLintel(axis, c, (g0 + g1) / 2, H, mat);
+		for (const [a, b] of segs) axis === 'x' ? box(WALL_T, H, b - a, mat, c, H / 2, (a + b) / 2, true, 0, key) : box(b - a, H, WALL_T, mat, (a + b) / 2, H / 2, c, true, 0, key);
+		for (const [g0, g1] of gaps) archLintel(axis, c, (g0 + g1) / 2, H, mat, key);
 	};
 	// wall infill above a doorway with the arch cut out of it (the opening matches the door leaves' shape)
-	const archLintel = (axis, c, mid, H, mat) => {
+	const archLintel = (axis, c, mid, H, mat, key) => {
 		const sh = new THREE.Shape(); sh.moveTo(-R, ARCH_Y); sh.lineTo(-R, H); sh.lineTo(R, H); sh.lineTo(R, ARCH_Y); sh.absarc(0, ARCH_Y, R, 0, Math.PI, false); // straight sides + arch hole
 		const geo = new THREE.ExtrudeGeometry(sh, { depth: WALL_T, bevelEnabled: false }); geo.translate(0, 0, -WALL_T / 2);
 		const m = new THREE.Mesh(geo, mat); m.castShadow = m.receiveShadow = true;
 		if (axis === 'x') { m.position.set(c, 0, mid); m.rotation.y = Math.PI / 2; } else m.position.set(mid, 0, c);
-		group.add(m); occludable.push(m);
+		group.add(m); (staticParts.get(key) ?? staticParts.set(key, []).get(key)).push(m);
 	};
 	for (const r of rooms) {
 		const { x: cx, z: cz, w, d } = center(r), H = roomH(r), gate = r.type === 'gate_room';
 		const floor = box(w, 0.1, d, floorMat, cx, -0.05, cz, false); floor.receiveShadow = true; floor.userData.roomId = r.id; if (gate) floor.visible = false; // gate hall floor is gate-room.js's reflector; keep an invisible pick target
 		const ceil = box(w, 0.1, d, ceilMat, cx, H + 0.05, cz, false); group.remove(ceil); ceilings.add(ceil);
 		const mat = gate ? tallWallMat : wallMat;
-		wall('x', r.x0, r.z0, r.z1, +1, H, mat); wall('x', r.x1, r.z0, r.z1, -1, H, mat); wall('z', r.z0, r.x0, r.x1, +1, H, mat); wall('z', r.z1, r.x0, r.x1, -1, H, mat);
+		const key = `${r.id}|walls`; wall('x', r.x0, r.z0, r.z1, +1, H, mat, key); wall('x', r.x1, r.z0, r.z1, -1, H, mat, key); wall('z', r.z0, r.x0, r.x1, +1, H, mat, key); wall('z', r.z1, r.x0, r.x1, -1, H, mat, key);
 		anchors[`${r.id}:RoomCenter`] = new THREE.Vector3(cx, 0, cz);
 		// lamps every ~9 m along the long axis: strip + powered point light + emergency red (distance-culled in update)
 		const long = Math.max(w, d), n = Math.max(1, Math.round(long / 9)), alongZ = d >= w;
@@ -216,6 +228,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 		anchors[`${spur.id}:SealLever`] = lp.clone().addScaledVector(n, 0.9).setY(0);
 	}
 
+	mergeStatic();
 	const state = { group, rooms, doors: doorObjs, anchors, occludable, ceilings, propMeshes, powered: false, doorSpeed: 1, onDoor: null }; // onDoor(ev, door): 'unlock' | 'closed' | 'denied'
 	state.setPower = (on) => {
 		state.powered = on;

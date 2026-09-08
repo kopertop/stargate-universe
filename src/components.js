@@ -154,8 +154,10 @@ export const COMPONENTS = {
 			for (const sx of [-1, 1]) { const leaf = new THREE.Mesh(new THREE.BoxGeometry(1.1, 3.0, 0.08), ctx.mats.door); leaf.position.set(sx * 0.58, 1.5, 0.19); g.add(leaf); }
 			const seam = new THREE.Mesh(new THREE.BoxGeometry(0.04, 3.0, 0.02), emissive(0xffa040, 0.5)); seam.position.set(0, 1.5, 0.24); g.add(seam); ctx.parts.trims.push(seam);
 			const header = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.18, 0.04), emissive(0xffa040, 0.5)); header.position.set(0, 3.15, 0.22); g.add(header); ctx.parts.trims.push(header);
-			const panel = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.4, 0.08), ctx.mats.dark); panel.position.set(1.55, 1.35, 0.19); g.add(panel); // call panel beside the doors
-			const ind = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.04, 0.02), ctx.mats.red.clone()); ind.position.set(1.55, 1.5, 0.24); g.add(ind);
+			const panel = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.7, 0.08), ctx.mats.dark); panel.position.set(1.6, 1.3, 0.19); g.add(panel); // call panel + fuse bay beside the doors
+			const ind = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.04, 0.02), ctx.mats.red.clone()); ind.position.set(1.6, 1.6, 0.24); g.add(ind);
+			const fuses = [-0.09, 0, 0.09].map((dx, i) => { const f = new THREE.Mesh(new THREE.CylinderGeometry(i === 1 ? 0.035 : 0.025, i === 1 ? 0.035 : 0.025, 0.2, 10), new THREE.MeshStandardMaterial({ color: 0xd8b060, emissive: 0x6a4010, emissiveIntensity: 0.6, roughness: 0.35, metalness: 0.6 })); f.position.set(1.6 + dx, 1.15, 0.24); f.visible = false; g.add(f); return f; });
+			ctx.parts.elevators.push({ lamp: ind, fuses, leaves: g.children.filter((m) => m.geometry?.parameters?.width === 1.1) });
 			return { anchor: f.multiplyScalar(1.2).add(new THREE.Vector3(p.x, 0, p.z)) };
 		},
 	},
@@ -187,10 +189,14 @@ export const DEFAULT_PROPS = {
 	infirmary: [{ type: 'med_bed', u: 0.25, v: 0.3, anchor: 'Beds' }, { type: 'med_bed', u: 0.25, v: 0.5 }, { type: 'med_bed', u: 0.25, v: 0.7 }, { type: 'cabinet', u: 0.85, v: 0.5, ry: -Math.PI / 2 }],
 	elevator: [{ type: 'elevator_door', u: 0.5, v: 0.04, ry: 0, anchor: 'Elevator' }],
 	'shuttle-dock': [{ type: 'breach', u: 0.99, v: 0.5, ry: -Math.PI / 2 }],
+	hydroponics: [{ type: 'console', u: 0.5, v: 0.12, ry: Math.PI, anchor: 'GrowConsole' }, { type: 'tank', u: 0.15, v: 0.4 }, { type: 'tank', u: 0.15, v: 0.65 }, { type: 'tank', u: 0.85, v: 0.4 }, { type: 'tank', u: 0.85, v: 0.65 }, { type: 'bed', u: 0.35, v: 0.55, ry: Math.PI / 2 }, { type: 'bed', u: 0.65, v: 0.55, ry: Math.PI / 2 }],
 };
 /** Room-specific overrides by id (the Kino Room, the scrubber's corridor). */
 export const ROOM_PROPS = {
 	eli_quarters: [{ type: 'kino_pedestal', u: 0.5, v: 0.3, ry: 0, anchor: 'KinoPedestal' }, { type: 'locker', u: 0.955, v: 0.75, ry: -Math.PI / 2, anchor: 'Locker' }, { type: 'bed', u: 0.11, v: 0.75, ry: Math.PI / 2, anchor: 'Bed' }],
 	south_corridor: [{ type: 'scrubber', u: 0.953, v: 0.5585, ry: -Math.PI / 2, anchor: 'Scrubber' }],
 	sealed_section_north: [{ type: 'breach', u: 0.99, v: 0.5, ry: -Math.PI / 2, active: false }],
+	elevator_room_floor_1: [{ type: 'elevator_door', u: 0.96, v: 0.5, ry: -Math.PI / 2, anchor: 'Elevator' }], // the room's only doorway is on the −z wall
+	aft_storage_hall: [{ type: 'crate', u: 0.18, v: 0.2, ry: 0.3, anchor: 'Salvage1', loot: [{ id: 'bus_fuse' }] }, { type: 'crate', u: 0.4, v: 0.25, ry: 1.1, anchor: 'Salvage2', loot: [{ id: 'rations', n: 2 }] }, { type: 'crate', u: 0.75, v: 0.7, ry: 2.4, anchor: 'Salvage3', loot: [{ id: 'bus_fuse' }] }, { type: 'crate', u: 0.82, v: 0.28, ry: 0.8 }],
+	infirmary: [{ type: 'med_bed', u: 0.25, v: 0.3, anchor: 'Beds' }, { type: 'med_bed', u: 0.25, v: 0.5 }, { type: 'med_bed', u: 0.25, v: 0.7 }, { type: 'cabinet', u: 0.85, v: 0.5, ry: -Math.PI / 2 }, { type: 'crate', u: 0.8, v: 0.85, ry: Math.PI, anchor: 'Salvage1', loot: [{ id: 'large_fuse' }] }],
 };

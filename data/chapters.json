@@ -467,6 +467,163 @@
           "terminal": true
         }
       ]
+    },
+    {
+      "id": "e3_darkness",
+      "title": "Episode 3: Darkness",
+      "subtitle": "Destiny's reserves are failing. The upper deck has been dark since we arrived.",
+      "planet": {
+        "id": "dark_world",
+        "name": "Dark World",
+        "biome": {
+          "sky_low": "#2a2f45",
+          "sky_high": "#05060c",
+          "ground": "#3a3d48",
+          "fog": "#20242f",
+          "sun": "#8fa4d8",
+          "rock": "#2c3038"
+        },
+        "atmosphere": {
+          "breathable": false,
+          "composition": "CO2/N2 \u2014 not breathable",
+          "temperature_c": -88,
+          "radiation": "LOW",
+          "toxins": "NONE"
+        },
+        "resource": {
+          "id": "parts",
+          "name": "Parts",
+          "color": "#5a6270",
+          "count": 6,
+          "required": 4,
+          "verb": "Salvage parts"
+        }
+      },
+      "steps": [
+        {
+          "id": "talk_rush",
+          "label": "Talk to Rush",
+          "objective": "Rush is in the Control Room with the power numbers.",
+          "target": {
+            "room": "control_interface_room",
+            "anchor": "Rush"
+          },
+          "complete_when": "darkness_briefed",
+          "xp": 40,
+          "on_enter": [
+            {
+              "type": "radio",
+              "who": "Rush",
+              "text": "Eli. Control room. The reserves are dropping faster than they should."
+            }
+          ]
+        },
+        {
+          "id": "find_bus_fuses",
+          "label": "Find two bus fuses",
+          "objective": "The elevator bus needs two main-bus fuses. Search the salvage crates in the Aft Storage Hall.",
+          "target": {
+            "room": "aft_storage_hall",
+            "anchor": "Salvage1"
+          },
+          "complete_when": "has_bus_fuses",
+          "xp": 60,
+          "on_enter": [
+            {
+              "type": "subtitle",
+              "who": "Rush",
+              "text": "Hydroponics is on the upper deck and the only way up is the elevator. Its bus is dead \u2014 no fuses. Storage, aft."
+            }
+          ]
+        },
+        {
+          "id": "find_large_fuse",
+          "label": "Find a heavy-duty fuse",
+          "objective": "The bus also takes one large fuse. You may already be carrying one; otherwise check the Infirmary.",
+          "target": {
+            "room": "infirmary",
+            "anchor": "Salvage1"
+          },
+          "complete_when": "has_large_fuse",
+          "xp": 40
+        },
+        {
+          "id": "restore_elevator",
+          "label": "Restore elevator power",
+          "objective": "Seat the three fuses in the elevator panel in the North Elevator, then hotwire the bus.",
+          "target": {
+            "room": "elevator_north",
+            "anchor": "Elevator"
+          },
+          "complete_when": "elevator_powered",
+          "xp": 120,
+          "on_enter": [
+            {
+              "type": "subtitle",
+              "who": "Eli",
+              "text": "Two bus fuses and one big one. That relay panel by the elevator should take all three."
+            }
+          ]
+        },
+        {
+          "id": "ride_up",
+          "label": "Ride the elevator",
+          "objective": "Take the elevator to the upper deck.",
+          "target": {
+            "room": "elevator_north",
+            "anchor": "Elevator"
+          },
+          "complete_when": "upper_deck_reached",
+          "xp": 40
+        },
+        {
+          "id": "reach_hydroponics",
+          "label": "Find Hydroponics",
+          "objective": "Follow the dark corridor to the Hydroponics bay.",
+          "target": {
+            "room": "hydroponics",
+            "anchor": "RoomCenter"
+          },
+          "complete_when": "hydroponics_visited",
+          "xp": 60,
+          "on_enter": [
+            {
+              "type": "subtitle",
+              "who": "Scott",
+              "text": "Upper deck. Nobody has been up here. Watch your step."
+            }
+          ]
+        },
+        {
+          "id": "restart_grow_lights",
+          "label": "Restart the grow lights",
+          "objective": "Use the hydroponics console to bring the bay back online.",
+          "target": {
+            "room": "hydroponics",
+            "anchor": "GrowConsole"
+          },
+          "complete_when": "grow_lights_restored",
+          "xp": 200,
+          "on_exit": [
+            {
+              "type": "subtitle",
+              "who": "Rush",
+              "text": "Grow lights are drawing power. Good. Now Destiny can feed us \u2014 if the plants cooperate."
+            }
+          ]
+        },
+        {
+          "id": "complete",
+          "label": "Episode complete",
+          "objective": "The upper deck has light again.",
+          "target": {
+            "room": "",
+            "anchor": ""
+          },
+          "complete_when": null,
+          "terminal": true
+        }
+      ]
     }
   ]
 }

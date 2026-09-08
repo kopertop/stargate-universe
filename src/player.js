@@ -105,7 +105,7 @@ export const loadPlayer = async ({ tint = 0x9d978d } = {}) => {
 			p[axis] += vel[axis] * dt;
 			for (const b of colliders) {
 				if (b.circle) continue;
-				if (p.x + r > b.min.x && p.x - r < b.max.x && p.z + r > b.min.z && p.z - r < b.max.z && b.min.y < 1.2) {
+				if (p.x + r > b.min.x && p.x - r < b.max.x && p.z + r > b.min.z && p.z - r < b.max.z && b.min.y < p.y + 1.2 && b.max.y > p.y + 0.1) { // only boxes overlapping the player's height band (decks stack)
 					if (axis === 'x') p.x = vel.x > 0 ? b.min.x - r : b.max.x + r; else p.z = vel.z > 0 ? b.min.z - r : b.max.z + r;
 				}
 			}

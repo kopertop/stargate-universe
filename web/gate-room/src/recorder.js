@@ -1,9 +1,9 @@
 // In-page gameplay recorder: composites the WebGL frame + a minimal text HUD onto a canvas, encodes with MediaRecorder,
 // and POSTs the result to a local save endpoint (tools/save_server.py style) so it lands on disk without screen-capture permission.
-export const createRecorder = (glCanvas, hud, { fps = 30, saveUrl = 'http://127.0.0.1:8091/save' } = {}) => {
+export const createRecorder = (glCanvas, hud, { fps = 30, saveUrl = '/save' } = {}) => { // dev server (tools/edit_server.py) writes POST /save?name= to ~/Desktop
 	const c = document.createElement('canvas'); const ctx = c.getContext('2d');
 	let rec = null, chunks = [], stream = null, active = false, t0 = 0;
-	const fit = () => { if (c.width !== glCanvas.width || c.height !== glCanvas.height) { c.width = glCanvas.width; c.height = glCanvas.height; } };
+	const fit = () => { const k = Math.min(1, 1280 / glCanvas.width), w = Math.round(glCanvas.width * k), h = Math.round(glCanvas.height * k); if (c.width !== w || c.height !== h) { c.width = w; c.height = h; } }; // cap at 1280 wide: compositing full-res every frame halves the game's fps
 	const box = (x, y, w, h) => { ctx.fillStyle = 'rgba(8,8,12,0.72)'; ctx.fillRect(x, y, w, h); ctx.strokeStyle = 'rgba(212,168,82,0.8)'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h); };
 	const text = (s, x, y, size = 22, color = '#f5ebcc', weight = '') => { ctx.font = `${weight} ${size}px -apple-system, system-ui, sans-serif`; ctx.fillStyle = '#000'; ctx.fillText(s, x + 2, y + 2); ctx.fillStyle = color; ctx.fillText(s, x, y); };
 	const wrap = (s, max) => { const out = []; let line = ''; for (const w of s.split(' ')) { const t = line ? `${line} ${w}` : w; if (ctx.measureText(t).width > max && line) { out.push(line); line = w; } else line = t; } if (line) out.push(line); return out; };

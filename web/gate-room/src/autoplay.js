@@ -74,9 +74,15 @@ export const createAutoplay = (d) => {
 			}
 		},
 		dial_home: async () => {
-			await walkTo(0, 6, { run: true, tol: 1.2, timeout: 30000 }); face(0, 0); press('Tab'); await sleep(900);
-			document.querySelector('#remote [data-tab="gate"]')?.click(); await sleep(900); document.querySelector('#remote [data-dial="destiny"]')?.click();
-			await waitFor(() => d.planet.gate.userData.active, 14000); await sleep(800);
+			await walkTo(0, 6, { run: true, tol: 1.2, timeout: 30000 }); face(0, 0);
+			if (!d.planet.gate.userData.active) { // dial Destiny from the Remote's Gate tab (skip if a retry finds the gate already open)
+				if (d.ui.isRemoteOpen()) { press('Tab'); await sleep(400); }
+				press('Tab'); await waitFor(() => d.ui.isRemoteOpen(), 3000); document.querySelector('#remote [data-tab="gate"]')?.click();
+				await waitFor(() => document.querySelector('#remote [data-dial="destiny"]:not([disabled])'), 4000); document.querySelector('#remote [data-dial="destiny"]')?.click();
+				await sleep(400); if (d.ui.isRemoteOpen()) d.ui.closeRemote();
+				await waitFor(() => d.planet.gate.userData.active, 16000);
+			}
+			if (d.ui.isRemoteOpen()) d.ui.closeRemote(); await sleep(800);
 			await walkTo(0, 2.6, { tol: 0.5, run: false }); await walkTo(0, 0.4, { tol: 0.3, timeout: 5000, run: false });
 			await waitFor(() => d.world.name === 'destiny' && !d.travel(), 15000); await sleep(600);
 		},
@@ -92,6 +98,7 @@ export const createAutoplay = (d) => {
 		while (!auto.abort && guard++ < 60) {
 			const s = step(); if (!s || s.terminal) break;
 			if (s.id === lastId) { if (++tries > 2) { say(`STUCK on ${s.id}`); return { ok: false, chapter: ch.id, stuck: s.id, seconds: (performance.now() - t0) / 1000 }; } } else { tries = 0; lastId = s.id; say(`${ch.id} › ${s.id}`); }
+			if (d.ui.isRemoteOpen()) d.ui.closeRemote(); // a stray open menu pauses the game and would stall every walk
 			const h = handlerFor(s.id);
 			if (h) await h(s); else { say(`no handler for ${s.id}, trying target`); if (s.target?.room && s.target.room !== 'planet') { await goTo(s.target.room, s.target.anchor || 'RoomCenter'); await interact(); } }
 			await waitFor(() => stepId() !== s.id, 6000);

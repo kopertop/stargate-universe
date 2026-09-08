@@ -456,11 +456,11 @@ const devcon = createConsole({
 	give: (id, n = 1) => { for (let i = 0; i < +n; i++) addItem(id); return `gave ${n}× ${id}`; },
 	chapter: (id) => { startChapter(id); return `chapter ${id}`; },
 });
-window.__dbg.edit = edit; window.__dbg.console = devcon;
+window.__dbg.edit = edit; window.__dbg.console = devcon; window.__dbg.renderer = renderer;
 
 const fpsEl = document.getElementById('fps');
 const clock = new THREE.Clock(); let acc = 0, frames = 0;
-renderer.setAnimationLoop(() => {
+const frame = () => {
 	const rawDt = Math.min(clock.getDelta(), 0.05); const t = clock.elapsedTime;
 	poll(rawDt);
 	if (edit.active) { const sc = edit.update(rawDt); destiny.gate.userData.tick(t, rawDt); if (camera.parent !== sc) { camera.removeFromParent(); sc.add(camera); } renderer.render(sc, camera); return; }
@@ -503,4 +503,11 @@ renderer.setAnimationLoop(() => {
 	renderer.render(travel?.phase === 'wormhole' ? wormhole.scene : kino.active ? kinoWorld.scene : world.scene, camera);
 	recorder?.tick();
 	acc += rawDt; frames++; if (acc > 0.5) { fpsEl.textContent = `${Math.round(frames / acc)} fps`; acc = 0; frames = 0; }
-});
+};
+// rAF stops entirely while the tab is hidden; fall back to a 30 Hz timer so simulation, autoplay smoke runs and recordings
+// keep going in a background tab (Chrome still runs timers there). dt stays clamped at 50 ms either way.
+let rafId = 0;
+const schedule = () => { if (document.hidden) setTimeout(loop, 33); else rafId = requestAnimationFrame(loop); };
+const loop = () => { rafId = 0; frame(); schedule(); };
+document.addEventListener('visibilitychange', () => { if (document.hidden && rafId) { cancelAnimationFrame(rafId); rafId = 0; schedule(); } }); // a pending rAF would never fire once hidden
+schedule();

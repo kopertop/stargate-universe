@@ -5,7 +5,7 @@ import { createGateRoom, ROOM } from './gate-room.js';
 import { createStargate, GATE } from './stargate.js';
 import { createDestination } from './destination.js';
 import { createWormhole } from './wormhole.js';
-import { createShip } from './ship.js';
+import { createShip, DECK_H } from './ship.js';
 import { loadPlayer } from './player.js';
 import { initInput, poll, input } from './input.js';
 import { createQuestEngine } from './quest.js';
@@ -56,15 +56,15 @@ const buildDestiny = async () => {
 	const ship = createShip(scene, colliders, { layout, connections, gateZ: gz });
 	return {
 		name: 'destiny', scene, room, ship, colliders, gate, occludable: [...ship.occludable, ...baseOccludable], rooms: ship.rooms, anchors: ship.anchors, data: { layout, connections }, baseColliders, baseOccludable,
-		spawn: new THREE.Vector3(0, 0, gz + 14), spawnYaw: Math.PI, exitDir: 1,
-		floorAt: (x, z) => (Math.abs(x) < 4 && z > gz - 1 && z < gz + 2.2 ? ROOM.daisH : 0),
-		clampCamera: (p) => { p.y = Math.max(p.y, 0.3); if (Math.abs(p.z) < ROOM.length / 2 && Math.abs(p.x) < ROOM.width / 2 + 0.2) p.x = THREE.MathUtils.clamp(p.x, -ROOM.width / 2 + 0.7, ROOM.width / 2 - 0.7); },
+		spawn: new THREE.Vector3(0, 0, gz + 14), spawnYaw: Math.PI, exitDir: 1, deck: 0, // deck = which floor the player stands on (y = deck × DECK_H)
+		floorAt: (x, z) => destiny.deck * DECK_H + (destiny.deck === 0 && Math.abs(x) < 4 && z > gz - 1 && z < gz + 2.2 ? ROOM.daisH : 0),
+		clampCamera: (p) => { p.y = Math.max(p.y, destiny.deck * DECK_H + 0.3); if (destiny.deck !== 0) return; if (Math.abs(p.z) < ROOM.length / 2 && Math.abs(p.x) < ROOM.width / 2 + 0.2) p.x = THREE.MathUtils.clamp(p.x, -ROOM.width / 2 + 0.7, ROOM.width / 2 - 0.7); },
 	};
 };
 const destiny = await buildDestiny();
 /** Level editor: tear the ship down and rebuild it from an edited layout, in the live scene. Interactables keep stale anchors until reload. */
 const rebuildShip = (layout, connections) => {
-	const { powered, onDoor } = destiny.ship; destiny.scene.remove(destiny.ship.group); destiny.colliders.length = destiny.baseColliders;
+	const { powered, onDoor } = destiny.ship; destiny.scene.remove(destiny.ship.group); destiny.deck = 0; destiny.colliders.length = destiny.baseColliders;
 	const ship = createShip(destiny.scene, destiny.colliders, { layout, connections, gateZ: ROOM.gateZ }); ship.setPower(powered); ship.onDoor = onDoor;
 	destiny.ship = ship; destiny.rooms = ship.rooms; destiny.occludable = [...ship.occludable, ...destiny.baseOccludable];
 	for (const k of Object.keys(destiny.anchors)) delete destiny.anchors[k]; Object.assign(destiny.anchors, ship.anchors); destiny.data = { layout, connections };
@@ -159,8 +159,8 @@ let quest = null;
 const ui = createUI({
 	flags: { has: (f) => quest?.flags.has(f) ?? false },
 	chapterTitle: () => quest?.chapter?.title ?? '', steps: () => quest?.chapter?.steps ?? [], stepIndex: () => quest?.stepIndex ?? 0,
-	deckMap: () => ({ rooms: destiny.rooms, player: player.root.position, current: currentRoom, discovered: [...discovered], waypoint: world === destiny ? waypointPos() : null }),
-	shipStatus: () => [['Power', destiny.ship.powered ? 'ONLINE' : 'OFFLINE', destiny.ship.powered], ['Hull (port dock)', quest.has('any_breach_sealed') ? 'SEALED' : quest.has('life_support_diagnosed') ? 'BREACH' : 'unknown', quest.has('any_breach_sealed')], ['CO2 scrubbers', quest.has('scrubber_repaired') ? 'NOMINAL' : quest.has('scrubber_diagnosed') ? 'FAILED — lime bed exhausted' : 'unknown', quest.has('scrubber_repaired')], ['FTL', quest.has('ftl_dropped') && !quest.has('scrubber_repaired') ? 'DROPPED — gate window open' : 'CRUISING', true]],
+	deckMap: () => ({ deck: destiny.deck, rooms: destiny.rooms.filter((r) => r.floor === destiny.deck), player: player.root.position, current: currentRoom, discovered: [...discovered], waypoint: world === destiny ? waypointPos() : null }),
+	shipStatus: () => [['Power', destiny.ship.powered ? 'ONLINE' : 'OFFLINE', destiny.ship.powered], ['Elevator bus', destiny.ship.elevatorPowered ? 'ONLINE' : 'NO FUSES', !!destiny.ship.elevatorPowered], ['Hydroponics', quest.has('grow_lights_restored') ? 'GROW LIGHTS ON' : 'DARK', quest.has('grow_lights_restored')], ['Hull (port dock)', quest.has('any_breach_sealed') ? 'SEALED' : quest.has('life_support_diagnosed') ? 'BREACH' : 'unknown', quest.has('any_breach_sealed')], ['CO2 scrubbers', quest.has('scrubber_repaired') ? 'NOMINAL' : quest.has('scrubber_diagnosed') ? 'FAILED — lime bed exhausted' : 'unknown', quest.has('scrubber_repaired')], ['FTL', quest.has('ftl_dropped') && !quest.has('scrubber_repaired') ? 'DROPPED — gate window open' : 'CRUISING', true]],
 	planets: () => [
 		...(planet ? [{ id: planet.def.id, name: planet.def.name, scan: lastScan?.id === planet.def.id ? lastScan.atmosphere.composition : null, canDial: world === destiny && !destiny.gate.userData.active && !dialingWorld && quest.has('ftl_dropped') }] : []),
 		{ id: 'destiny', name: 'Destiny', scan: 'Home. Ancient seed ship.', canDial: world === planet && !planet.gate.userData.active && !dialingWorld },
@@ -199,7 +199,7 @@ const startChapter = (id) => {
 	planet = createDestination(ch.planet); planet.scene.environment = envTex; planet.scene.environmentIntensity = 0.6; attachGateAudio(planet); planet.scene.add(dust);
 	registerPlanetInteractables();
 	shutdownGate(destiny); destiny.gate.userData.reset();
-	quest.startChapter(id); ui.refreshTracker(); ui.refreshPlayer();
+	quest.startChapter(id); if (count('large_fuse') >= 1) quest.setFlag('has_large_fuse'); if (count('bus_fuse') >= 2) quest.setFlag('has_bus_fuses'); ui.refreshTracker(); ui.refreshPlayer();
 };
 
 // ---------------------------------------------------------------- interactables (Destiny)
@@ -223,9 +223,33 @@ interact.register({ world: 'destiny', id: 'relay', position: A['gate_room:PowerR
 	} });
 // Lootable crates (components with `loot`): open the lid once, hand over the contents, remember it in a flag so saves keep it
 for (const l of S.lootables) interact.register({ world: 'destiny', id: `loot:${l.key}`, position: l.anchor, prompt: () => (quest.has(`looted:${l.key}`) ? null : 'Search crate'),
-	action: () => withAnim('open', () => { S.openCrate(l); quest.setFlag(`looted:${l.key}`); for (const it of l.loot) { addItem(it.id, it.n ?? 1); if (it.id === 'small_fuse') quest.setFlag('has_small_fuse'); } const names = l.loot.map((it) => `${ITEMS[it.id]?.name ?? it.id}${(it.n ?? 1) > 1 ? ` ×${it.n}` : ''}`).join(', '); ui.toast(`Found: ${names}`, 4); oneShot(buffers.menuOpen, 0.5, 0.8); if (l.loot.some((it) => it.id === 'large_fuse')) ui.subtitle('Eli', 'A fuse... but it is huge. That is not going to fit the relay.'); }, { at: 0.6 }) });
+	action: () => withAnim('open', () => { S.openCrate(l); quest.setFlag(`looted:${l.key}`); for (const it of l.loot) { addItem(it.id, it.n ?? 1); if (it.id === 'small_fuse') quest.setFlag('has_small_fuse'); } if (count('bus_fuse') >= 2) quest.setFlag('has_bus_fuses'); if (count('large_fuse') >= 1) quest.setFlag('has_large_fuse'); const names = l.loot.map((it) => `${ITEMS[it.id]?.name ?? it.id}${(it.n ?? 1) > 1 ? ` ×${it.n}` : ''}`).join(', '); ui.toast(`Found: ${names}`, 4); oneShot(buffers.menuOpen, 0.5, 0.8); if (l.loot.some((it) => it.id === 'large_fuse')) ui.subtitle('Eli', 'A fuse... but it is huge. That is not going to fit the relay.'); }, { at: 0.6 }) });
 interact.register({ world: 'destiny', id: 'console', position: A['control_interface_room:ControlConsole'], prompt: () => (S.powered && !quest.has('life_support_diagnosed') ? 'Access control terminal' : null), action: () => withAnim('interact', () => { oneShot(buffers.terminal, 0.6); quest.setFlag('life_support_diagnosed'); ui.subtitle('Eli', 'Hull breach — port shuttle dock. And life support is flagged red across the board.'); ui.openRemote('ship'); }, { at: 0.6 }) });
-interact.register({ world: 'destiny', id: 'elevator', position: A['elevator_north:Elevator'], prompt: () => 'Call elevator — upper deck', action: () => { ui.toast(S.powered ? 'Elevator offline — no power routed to the upper deck yet.' : 'No power.'); } });
+const FUSES_NEEDED = { bus_fuse: 2, large_fuse: 1 };
+const hasElevatorFuses = () => Object.entries(FUSES_NEEDED).every(([id, n]) => count(id) >= n);
+/** Ride between decks: fade, move to the paired elevator room, swap deck. */
+const rideElevator = (fromRoom) => {
+	const link = S.elevators.find((e) => e.rooms.includes(fromRoom)); if (!link) return;
+	const to = link.rooms[0] === fromRoom ? link.rooms[1] : link.rooms[0], target = A[`${to}:Elevator`] ?? S.center(to), deck = S.deckOf(to);
+	oneShot(buffers.doorLock, 0.6, 0.7); flash.style.opacity = '1'; flash.style.background = '#000'; player.playAction('device', { loop: true });
+	setTimeout(() => { destiny.deck = deck; placePlayer(destiny, target.clone().setY(deck * DECK_H), player.root.rotation.y); camera.position.copy(player.root.position).add(new THREE.Vector3(0, 2, 4)); oneShot(buffers.doorThunk, 0.7, 0.9); player.stopAction(); if (deck > 0) quest.setFlag('upper_deck_reached'); addLog(`Elevator → deck ${deck}`); }, 1400);
+	setTimeout(() => { flash.style.opacity = '0'; setTimeout(() => (flash.style.background = ''), 400); }, 2200);
+};
+for (const rid of ['elevator_north', 'elevator_room_floor_1']) interact.register({ world: 'destiny', id: `elevator:${rid}`, position: A[`${rid}:Elevator`] ?? S.center(rid),
+	prompt: () => (!S.powered ? 'Elevator — no power' : S.elevatorPowered ? `Ride elevator — ${destiny.deck === 0 ? 'upper' : 'main'} deck` : !quest.has('elevator_fuses_seated') ? (hasElevatorFuses() ? 'Seat the bus fuses' : 'Elevator bus — needs 2 bus fuses + 1 large fuse') : 'Hotwire the elevator bus'),
+	action: () => {
+		if (!S.powered) { ui.toast('No power.'); return; }
+		if (S.elevatorPowered) return rideElevator(rid);
+		if (!quest.has('elevator_fuses_seated')) {
+			if (!hasElevatorFuses()) { ui.subtitle('Eli', `Needs ${Object.entries(FUSES_NEEDED).map(([id, n]) => `${n}× ${ITEMS[id]?.name ?? id}`).join(' and ')}. I have ${Object.keys(FUSES_NEEDED).map((id) => `${count(id)} ${ITEMS[id]?.name ?? id}`).join(', ')}.`); return; }
+			return withAnim('interact', () => { for (const [id, n] of Object.entries(FUSES_NEEDED)) removeItem(id, n); S.seatElevatorFuses(); quest.setFlag('elevator_fuses_seated'); oneShot(buffers.doorLock, 0.6, 1.2); ui.subtitle('Eli', 'All three seated. The bus still wants its protocol lines patched.'); }, { at: 0.5 });
+		}
+		player.playAction('device', { loop: true });
+		hotwire.play({ title: 'ELEVATOR_BUS_v3.1', security: 'HIGH' }).then((ok) => { player.stopAction(); if (!ok) { ui.subtitle('Rush', 'The elevator does not care about your feelings, Eli. Again.'); return; }
+			withAnim('interact', () => { S.setElevatorPower(true); quest.setFlag('elevator_powered'); oneShot(shutdownBuf, 0.5, 1.6); ui.subtitle('Eli', 'Bus is live. Elevator has power.'); }, { at: 0.4 }); });
+	} });
+interact.register({ world: 'destiny', id: 'grow_console', position: A['hydroponics:GrowConsole'], prompt: () => (S.powered && !quest.has('grow_lights_restored') && quest.has('upper_deck_reached') ? 'Restart the grow lights' : null),
+	action: () => withAnim('interact', () => { oneShot(buffers.terminal, 0.6); S.setGrowLights(true); quest.setFlag('grow_lights_restored'); ui.subtitle('Eli', 'Grow lights cycling up. There is still soil in these beds.'); }, { at: 0.6 }) });
 interact.register({ world: 'destiny', id: 'lever', position: A['south_spur:SealLever'], prompt: () => (quest.has('life_support_diagnosed') && !quest.has('any_breach_sealed') ? 'Pull emergency seal' : null), action: () => withAnim('interact', () => { S.sealBreach(); quest.setFlag('any_breach_sealed'); oneShot(shutdownBuf, 0.9, 0.8); ui.subtitle('Rush', 'Pressure is holding. Good. Now go make yourself useful somewhere else.'); }) });
 interact.register({ world: 'destiny', id: 'kino', position: A['eli_quarters:KinoPedestal'], prompt: () => (!quest.has('kino_acquired') ? 'Take the Kino and its remote' : null), action: () => withAnim('pickup', () => { S.takeKino(); addItem('kino_remote'); addItem('kino_orb', 2); quest.setFlag('kino_acquired'); }, { at: 0.55 }) });
 interact.register({ world: 'destiny', id: 'locker', position: A['eli_quarters:Locker'], prompt: () => (!quest.has('locker_opened') ? 'Open locker' : null), action: () => withAnim('open', () => { quest.setFlag('locker_opened'); addItem('tac_vest'); ui.toast('Found: Tactical Vest (+20 health) — equip it from Character', 5); }, { at: 0.6 }) });
@@ -238,7 +262,7 @@ interact.register({ world: 'destiny', id: 'crate', position: A['gate_room:Supply
 let brodyBusy = 0;
 interact.register({ world: 'destiny', id: 'brody', position: brody.root, radius: 2.6, prompt: () => { const r = planet?.resource; if (!r) return null; if (stepIs('give_brody') && count(r.id) >= r.required) return `Give ${r.name.toLowerCase()} to Brody`; if (brodyBusy > 0) return null; return 'Talk to Brody'; },
 	action: () => { const r = planet.resource; if (stepIs('give_brody') && count(r.id) >= r.required) { const n = count(r.id); withAnim('pickup', () => removeItem(r.id, n), { at: 0.5 }); brodyBusy = 4; ui.subtitle('Brody', `Give me a minute with this ${r.name.toLowerCase()}...`, { dur: 4 }); brody.playAction('repair', { timeScale: 1.3 }); setTimeout(() => { addItem('refined_lime', n); quest.setFlag('lime_refined'); }, 4000); } else { npcTalk(brody); player.playAction('nod'); ui.subtitle('Brody', 'If you find anything we can burn, breathe, or drink — bring it to me.'); } } });
-interact.register({ world: 'destiny', id: 'rush', position: rush.root, radius: 2.6, prompt: () => 'Talk to Rush', action: () => { npcTalk(rush, 4); player.playAction('nod'); if (stepIs('talk_rush')) { quest.setFlag('water_briefed'); ui.subtitle('Rush', 'Reserves are at eleven percent. The next drop is a frozen world. Bring back ice — as much as you can carry.'); } else ui.subtitle('Rush', 'I am busy, Eli.'); } });
+interact.register({ world: 'destiny', id: 'rush', position: rush.root, radius: 2.6, prompt: () => 'Talk to Rush', action: () => { npcTalk(rush, 4); player.playAction('nod'); if (stepIs('talk_rush')) { const lines = { e2_water: 'Reserves are at eleven percent. The next drop is a frozen world. Bring back ice — as much as you can carry.', e3_darkness: 'Power draw is climbing and the reserves are not. Hydroponics on the upper deck could feed us, but the elevator bus is dead. Find fuses.' }; ui.subtitle('Rush', lines[quest.chapter.id] ?? 'Listen carefully, Eli.'); quest.setFlag(quest.step().complete_when); } else ui.subtitle('Rush', 'I am busy, Eli.'); } });
 interact.register({ world: 'destiny', id: 'scott', position: scott.root, radius: 2.6, prompt: () => 'Talk to Scott', action: () => { npcTalk(scott); player.playAction('nod'); ui.subtitle('Scott', quest.has('power_restored') ? 'Good work on the power. Keep moving.' : 'See if you can find a way to get those doors open.'); } });
 
 // shovel prop (procedural) mounted in the right hand while digging
@@ -414,13 +438,13 @@ const tickRooms = () => {
 };
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); destiny.room.userData.reflector.getRenderTarget().setSize(Math.floor(innerWidth * 0.5), Math.floor(innerHeight * 0.5)); });
 let noclip = false;
-window.__dbg = { input, player, camera, quest, rpg, simTime: () => simTime, waitFrame: (fn) => frameWaiters.add(fn), get world() { return world; }, destiny, get planet() { return planet; }, setView, cam: () => cam, travel: () => travel, teleport: (x, z) => { player.root.position.set(x, world.floorAt(x, z), z); }, dialGate: () => dialGate(world), launchKino, interact: () => interact.current?.id, ui, startChapter, kino: () => kinoWorld?.name, music };
+window.__dbg = { input, player, camera, quest, rpg, ride: rideElevator, simTime: () => simTime, waitFrame: (fn) => frameWaiters.add(fn), get world() { return world; }, destiny, get planet() { return planet; }, setView, cam: () => cam, travel: () => travel, teleport: (x, z) => { player.root.position.set(x, world.floorAt(x, z), z); }, dialGate: () => dialGate(world), launchKino, interact: () => interact.current?.id, ui, startChapter, kino: () => kinoWorld?.name, music };
 
 // ---------------------------------------------------------------- start: chapter card → cold open (arrive through the gate)
 // ---------------------------------------------------------------- save / load (localStorage) + title screen
 const SAVE_KEY = 'sgu.save';
 let gameStarted = false; // saves only once a game is running (startChapter fires onStep during boot/load)
-const saveGame = () => { if (!quest.chapter || !gameStarted) return; try { localStorage.setItem(SAVE_KEY, JSON.stringify({ chapter: quest.chapter.id, stepIndex: quest.stepIndex, flags: [...quest.flags], lastScan, savedAt: Date.now() })); saveRpg(); } catch {} };
+const saveGame = () => { if (!quest.chapter || !gameStarted) return; try { localStorage.setItem(SAVE_KEY, JSON.stringify({ chapter: quest.chapter.id, stepIndex: quest.stepIndex, flags: [...quest.flags], lastScan, deck: destiny.deck, savedAt: Date.now() })); saveRpg(); } catch {} };
 const hasSave = () => { try { return !!localStorage.getItem(SAVE_KEY); } catch { return false; } };
 /** Restore chapter/step/flags + RPG, rebuild Destiny state from flags, and put the player in the gate room. Planet-side steps rewind to the gate. */
 const loadGame = () => {
@@ -435,10 +459,11 @@ const loadGame = () => {
 	quest.stepIndex = si;
 	const S2 = destiny.ship;
 	if (quest.has('fuse_installed')) S2.installFuse(); for (const l of S2.lootables) if (quest.has(`looted:${l.key}`)) S2.openCrate(l);
+	if (quest.has('grow_lights_restored')) S2.setGrowLights(true); if (quest.has('elevator_fuses_seated')) S2.seatElevatorFuses(); if (quest.has('elevator_powered')) S2.setElevatorPower(true);
 	if (quest.has('power_restored')) S2.setPower(true); if (quest.has('any_breach_sealed')) S2.sealBreach(); if (quest.has('kino_acquired')) S2.takeKino(); if (quest.has('scrubber_repaired')) S2.repairScrubber();
 	const step = quest.step();
 	if (quest.has('ftl_dropped') && ['scout_kino', 'gear_up', 'travel'].includes(step?.id)) { destiny.gate.userData.reset(); destiny.gate.userData.incoming(onGateEvent(destiny)); }
-	enterWorld(destiny); placePlayer(destiny, destiny.spawn, destiny.spawnYaw); cam.yaw = 0;
+	destiny.deck = s.deck ?? 0; enterWorld(destiny); placePlayer(destiny, destiny.deck ? (destiny.anchors['elevator_room_floor_1:Elevator'] ?? destiny.spawn).clone().setY(destiny.deck * DECK_H) : destiny.spawn, destiny.spawnYaw); cam.yaw = 0;
 	gameStarted = true; saveGame();
 	ui.refreshTracker(); ui.refreshPlayer(); ui.toast(`Loaded: ${quest.chapter.title} — ${step?.label ?? ''}`, 4);
 	return true;
@@ -471,7 +496,7 @@ const devcon = createConsole({
 	leveledit: () => { if (edit.active) { edit.exit(); return 'leaving editor'; } edit.enter(); devcon.toggle(false); return 'level editor on — ` reopens this console, Exit button reloads on the edited map'; },
 	noclip: () => { noclip = !noclip; return `noclip ${noclip ? 'on' : 'off'}`; },
 	power: (v = 'on') => { destiny.ship.setPower(v !== 'off'); return `power ${v}`; },
-	tp: (x, z) => { player.root.position.set(+x, world.floorAt(+x, +z), +z); return `teleported to ${x}, ${z}`; },
+	tp: (x, z, deck) => { if (deck != null && world === destiny) destiny.deck = +deck; player.root.position.set(+x, world.floorAt(+x, +z), +z); return `teleported to ${x}, ${z} (deck ${destiny.deck})`; },
 	flag: (f) => { quest.setFlag(f); return `flag ${f} set → step ${quest.step()?.id}`; },
 	give: (id, n = 1) => { for (let i = 0; i < +n; i++) addItem(id); return `gave ${n}× ${id}`; },
 	chapter: (id) => { startChapter(id); return `chapter ${id}`; },

@@ -154,8 +154,10 @@ export const COMPONENTS = {
 			for (const sx of [-1, 1]) { const leaf = new THREE.Mesh(new THREE.BoxGeometry(1.1, 3.0, 0.08), ctx.mats.door); leaf.position.set(sx * 0.58, 1.5, 0.19); g.add(leaf); }
 			const seam = new THREE.Mesh(new THREE.BoxGeometry(0.04, 3.0, 0.02), emissive(0xffa040, 0.5)); seam.position.set(0, 1.5, 0.24); g.add(seam); ctx.parts.trims.push(seam);
 			const header = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.18, 0.04), emissive(0xffa040, 0.5)); header.position.set(0, 3.15, 0.22); g.add(header); ctx.parts.trims.push(header);
-			const panel = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.4, 0.08), ctx.mats.dark); panel.position.set(1.55, 1.35, 0.19); g.add(panel); // call panel beside the doors
-			const ind = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.04, 0.02), ctx.mats.red.clone()); ind.position.set(1.55, 1.5, 0.24); g.add(ind);
+			const panel = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.7, 0.08), ctx.mats.dark); panel.position.set(1.6, 1.3, 0.19); g.add(panel); // call panel + fuse bay beside the doors
+			const ind = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.04, 0.02), ctx.mats.red.clone()); ind.position.set(1.6, 1.6, 0.24); g.add(ind);
+			const fuses = [-0.09, 0, 0.09].map((dx, i) => { const f = new THREE.Mesh(new THREE.CylinderGeometry(i === 1 ? 0.035 : 0.025, i === 1 ? 0.035 : 0.025, 0.2, 10), new THREE.MeshStandardMaterial({ color: 0xd8b060, emissive: 0x6a4010, emissiveIntensity: 0.6, roughness: 0.35, metalness: 0.6 })); f.position.set(1.6 + dx, 1.15, 0.24); f.visible = false; g.add(f); return f; });
+			ctx.parts.elevators.push({ lamp: ind, fuses, leaves: g.children.filter((m) => m.geometry?.parameters?.width === 1.1) });
 			return { anchor: f.multiplyScalar(1.2).add(new THREE.Vector3(p.x, 0, p.z)) };
 		},
 	},
@@ -170,6 +172,18 @@ export const COMPONENTS = {
 	wall_light: {
 		label: 'Wall light', size: [0.1, 0.6],
 		build: (ctx, p, s) => { const m = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.6, 0.06), ctx.mats.slit); m.position.set(p.x, 2.0, p.z); m.rotation.y = s.ry; ctx.group.add(m); return {}; },
+	},
+	grow_bed: {
+		label: 'Grow bed', size: [3.0, 1.2], defaultAnchor: 'GrowBed',
+		build: (ctx, p, s) => { // raised planter with dark soil and a lamp bar above it; the lamp lights up when hydroponics is restored
+			const g = new THREE.Group(); g.position.set(p.x, 0, p.z); g.rotation.y = s.ry; ctx.group.add(g);
+			ctx.box(3.0, 0.7, 1.2, ctx.mats.shell, p.x, 0.35, p.z, true, s.ry);
+			const soil = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.08, 1.0), new THREE.MeshStandardMaterial({ color: 0x2a2018, roughness: 1 })); soil.position.set(0, 0.72, 0); g.add(soil);
+			for (let i = 0; i < 7; i++) { const sprout = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.18, 5), new THREE.MeshStandardMaterial({ color: 0x4f7a3a, roughness: 0.9 })); sprout.position.set(-1.2 + i * 0.4, 0.85, (i % 2 ? 0.2 : -0.2)); sprout.visible = false; g.add(sprout); ctx.parts.sprouts.push(sprout); }
+			for (const sx of [-1.35, 1.35]) { const post = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.3, 0.06), ctx.mats.dark); post.position.set(sx, 1.35, 0); g.add(post); }
+			const lampBar = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.06, 0.3), new THREE.MeshStandardMaterial({ color: 0xd8ffd0, emissive: 0xa8ff9a, emissiveIntensity: 0 })); lampBar.position.set(0, 2.0, 0); g.add(lampBar); ctx.parts.growLamps.push(lampBar);
+			return { anchor: fwd(s.ry).multiplyScalar(1.3).add(new THREE.Vector3(p.x, 0, p.z)) };
+		},
 	},
 	marker: {
 		label: 'Anchor marker', size: [0.6, 0.6], defaultAnchor: 'Spot',
@@ -187,10 +201,14 @@ export const DEFAULT_PROPS = {
 	infirmary: [{ type: 'med_bed', u: 0.25, v: 0.3, anchor: 'Beds' }, { type: 'med_bed', u: 0.25, v: 0.5 }, { type: 'med_bed', u: 0.25, v: 0.7 }, { type: 'cabinet', u: 0.85, v: 0.5, ry: -Math.PI / 2 }],
 	elevator: [{ type: 'elevator_door', u: 0.5, v: 0.04, ry: 0, anchor: 'Elevator' }],
 	'shuttle-dock': [{ type: 'breach', u: 0.99, v: 0.5, ry: -Math.PI / 2 }],
+	hydroponics: [{ type: 'console', u: 0.5, v: 0.12, ry: Math.PI, anchor: 'GrowConsole' }, { type: 'tank', u: 0.08, v: 0.9 }, { type: 'tank', u: 0.92, v: 0.9 }, { type: 'grow_bed', u: 0.25, v: 0.4, ry: Math.PI / 2 }, { type: 'grow_bed', u: 0.25, v: 0.62, ry: Math.PI / 2 }, { type: 'grow_bed', u: 0.75, v: 0.4, ry: Math.PI / 2 }, { type: 'grow_bed', u: 0.75, v: 0.62, ry: Math.PI / 2 }, { type: 'grow_bed', u: 0.5, v: 0.5, ry: Math.PI / 2 }],
 };
 /** Room-specific overrides by id (the Kino Room, the scrubber's corridor). */
 export const ROOM_PROPS = {
 	eli_quarters: [{ type: 'kino_pedestal', u: 0.5, v: 0.3, ry: 0, anchor: 'KinoPedestal' }, { type: 'locker', u: 0.955, v: 0.75, ry: -Math.PI / 2, anchor: 'Locker' }, { type: 'bed', u: 0.11, v: 0.75, ry: Math.PI / 2, anchor: 'Bed' }],
 	south_corridor: [{ type: 'scrubber', u: 0.953, v: 0.5585, ry: -Math.PI / 2, anchor: 'Scrubber' }],
 	sealed_section_north: [{ type: 'breach', u: 0.99, v: 0.5, ry: -Math.PI / 2, active: false }],
+	elevator_room_floor_1: [{ type: 'elevator_door', u: 0.96, v: 0.5, ry: -Math.PI / 2, anchor: 'Elevator' }], // the room's only doorway is on the −z wall
+	aft_storage_hall: [{ type: 'crate', u: 0.18, v: 0.2, ry: 0.3, anchor: 'Salvage1', loot: [{ id: 'bus_fuse' }] }, { type: 'crate', u: 0.4, v: 0.25, ry: 1.1, anchor: 'Salvage2', loot: [{ id: 'rations', n: 2 }] }, { type: 'crate', u: 0.75, v: 0.7, ry: 2.4, anchor: 'Salvage3', loot: [{ id: 'bus_fuse' }] }, { type: 'crate', u: 0.82, v: 0.28, ry: 0.8 }],
+	infirmary: [{ type: 'med_bed', u: 0.25, v: 0.3, anchor: 'Beds' }, { type: 'med_bed', u: 0.25, v: 0.5 }, { type: 'med_bed', u: 0.25, v: 0.7 }, { type: 'cabinet', u: 0.85, v: 0.5, ry: -Math.PI / 2 }, { type: 'crate', u: 0.8, v: 0.85, ry: Math.PI, anchor: 'Salvage1', loot: [{ id: 'large_fuse' }] }],
 };

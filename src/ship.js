@@ -7,14 +7,14 @@ import { ancientMaterial, ancientFloorMaterial } from './ancient.js';
 import { COMPONENTS, DEFAULT_PROPS, ROOM_PROPS } from './components.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-export const DOOR_W = 2.4, DOOR_H = 3.2, WALL_T = 0.3;
+export const DOOR_W = 2.4, DOOR_H = 3.2, WALL_T = 0.3, DECK_H = 12; // decks stack DECK_H apart (gate hall is 11 m tall)
 const R = DOOR_W / 2, ARCH_Y = DOOR_H - R, BULGE = 0.1, HUB_R = 0.42, GEAR_R = 0.2; // arched opening: straight to ARCH_Y, semicircle to DOOR_H
 const SCALE = 0.05, H_ROOM = 4.6, LIGHT_RANGE = 22, MAX_LIVE = 6;
 const ROOM_H = { gate_room: 11, control_room: 6.5, hydroponics: 6, 'shuttle-dock': 6 };
 
-/** JSON rooms (floor 0) → world rects. */
-export const roomsFromLayout = (layout) => layout.filter((r) => r.floor === 0).map((r) => ({
-	id: r.id, name: r.name, type: r.type, key: !!r.key_room, props: r.props,
+/** JSON rooms (every floor) → world rects; `y0` is the deck's floor height. */
+export const roomsFromLayout = (layout) => layout.map((r) => ({
+	id: r.id, name: r.name, type: r.type, key: !!r.key_room, props: r.props, floor: r.floor ?? 0, y0: (r.floor ?? 0) * DECK_H,
 	x0: r.startY * SCALE, x1: r.endY * SCALE, z0: -r.endX * SCALE, z1: -r.startX * SCALE,
 }));
 const center = (r) => ({ x: (r.x0 + r.x1) / 2, z: (r.z0 + r.z1) / 2, w: r.x1 - r.x0, d: r.z1 - r.z0 });
@@ -29,13 +29,18 @@ const sharedEdge = (a, b) => {
 export const doorsFromLayout = (rooms, connections) => {
 	const byId = Object.fromEntries(rooms.map((r) => [r.id, r])), doors = [], seen = new Set();
 	const add = (a, b, plaque) => {
-		const key = [a.id, b.id].sort().join('|'); if (seen.has(key)) return; const e = sharedEdge(a, b); if (!e) return; seen.add(key);
+		if (a.floor !== b.floor) return; const key = [a.id, b.id].sort().join('|'); if (seen.has(key)) return; const e = sharedEdge(a, b); if (!e) return; seen.add(key);
 		doors.push({ id: key, axis: e.axis, at: e.at, center: (e.lo + e.hi) / 2, rooms: [a.id, b.id], plaque: { [a.id]: plaque ?? b.name, [b.id]: a.name }, jammed: b.type === 'shuttle-dock' && b.id.startsWith('breached'), sealed: b.id.startsWith('sealed') });
 	};
 	const linked = new Set();
 	for (const [from, list] of Object.entries(connections)) for (const c of list) { if (c.dir === 'elevator' || !byId[from] || !byId[c.to]) continue; linked.add(from); linked.add(c.to); add(byId[from], byId[c.to], c.plaque); }
 	for (const r of rooms) if (!linked.has(r.id)) for (const o of rooms) if (o !== r) add(r, o, o.name);
 	return doors;
+};
+/** Elevator links between decks (routing edges, not doors): [{ rooms: [from, to], elevator: true }]. */
+export const elevatorsFromLayout = (rooms, connections) => {
+	const byId = Object.fromEntries(rooms.map((r) => [r.id, r]));
+	return Object.entries(connections).flatMap(([from, list]) => list.filter((c) => c.dir === 'elevator' && byId[from] && byId[c.to]).map((c) => ({ id: `${from}|${c.to}`, rooms: [from, c.to], elevator: true })));
 };
 
 const textPlaque = (text, { w = 512, h = 112, color = '#d4a852' } = {}) => {
@@ -51,7 +56,10 @@ const textPlaque = (text, { w = 512, h = 112, color = '#d4a852' } = {}) => {
  */
 export const createShip = (scene, colliders, { layout, connections, gateZ }) => {
 	const group = new THREE.Group(); group.name = 'shipInterior'; scene.add(group);
-	const rooms = roomsFromLayout(layout), doors = doorsFromLayout(rooms, connections), byId = Object.fromEntries(rooms.map((r) => [r.id, r]));
+	const rooms = roomsFromLayout(layout), doors = doorsFromLayout(rooms, connections), elevators = elevatorsFromLayout(rooms, connections), byId = Object.fromEntries(rooms.map((r) => [r.id, r]));
+	// one group per deck, offset by y0: everything is built in deck-local coordinates (floor at y = 0) and colliders/anchors read world space
+	const decks = {}; for (const r of rooms) if (!decks[r.floor]) { const fg = new THREE.Group(); fg.name = `deck${r.floor}`; fg.position.y = r.y0; group.add(fg); fg.updateMatrixWorld(true); decks[r.floor] = fg; }
+	let cur = group; // the deck group new meshes go into
 	const anchors = {}, lights = [], occludable = [], ceilings = new THREE.Group(); group.add(ceilings);
 	const wallMat = ancientMaterial({ repeat: [2, 1.2], base: '#151a21', plates: 5 });
 	const tallWallMat = ancientMaterial({ repeat: [4, 1.6], base: '#171c24', plates: 6 });
@@ -63,7 +71,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 	const edge = new THREE.MeshStandardMaterial({ color: 0xffa040, emissive: 0xffa040, emissiveIntensity: 0 }); // amber corridor edge lines
 	const redMat = new THREE.MeshStandardMaterial({ color: 0xff3020, emissive: 0xff2010, emissiveIntensity: 2 });
 	const box = (w, h, d, mat, x, y, z, solid = true, ry = 0, mergeKey = null) => {
-		const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); m.rotation.y = ry; m.castShadow = m.receiveShadow = true; group.add(m);
+		const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); m.rotation.y = ry; m.castShadow = m.receiveShadow = true; cur.add(m);
 		if (solid) { m.updateMatrixWorld(); colliders.push(new THREE.Box3().setFromObject(m)); if (!mergeKey) occludable.push(m); }
 		if (mergeKey) (staticParts.get(mergeKey) ?? staticParts.set(mergeKey, []).get(mergeKey)).push(m);
 		return m;
@@ -73,7 +81,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 	const mergeStatic = () => {
 		for (const [key, parts] of staticParts) {
 			const mat = parts[0].material, geo = mergeGeometries(parts.map((m) => { m.updateMatrixWorld(); return (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()).applyMatrix4(m.matrixWorld); })); // boxes are indexed, extruded arches are not
-			for (const m of parts) { group.remove(m); m.geometry.dispose(); }
+			for (const m of parts) { m.removeFromParent(); m.geometry.dispose(); }
 			const merged = new THREE.Mesh(geo, mat); merged.castShadow = merged.receiveShadow = true; merged.userData.roomKey = key; group.add(merged); occludable.push(merged);
 		}
 		staticParts.clear();
@@ -94,23 +102,24 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 		const geo = new THREE.ExtrudeGeometry(sh, { depth: WALL_T, bevelEnabled: false }); geo.translate(0, 0, -WALL_T / 2);
 		const m = new THREE.Mesh(geo, mat); m.castShadow = m.receiveShadow = true;
 		if (axis === 'x') { m.position.set(c, 0, mid); m.rotation.y = Math.PI / 2; } else m.position.set(mid, 0, c);
-		group.add(m); (staticParts.get(key) ?? staticParts.set(key, []).get(key)).push(m);
+		cur.add(m); (staticParts.get(key) ?? staticParts.set(key, []).get(key)).push(m);
 	};
 	for (const r of rooms) {
+		cur = decks[r.floor];
 		const { x: cx, z: cz, w, d } = center(r), H = roomH(r), gate = r.type === 'gate_room';
 		const floor = box(w, 0.1, d, floorMat, cx, -0.05, cz, false); floor.receiveShadow = true; floor.userData.roomId = r.id; if (gate) floor.visible = false; // gate hall floor is gate-room.js's reflector; keep an invisible pick target
-		const ceil = box(w, 0.1, d, ceilMat, cx, H + 0.05, cz, false); group.remove(ceil); ceilings.add(ceil);
+		const ceil = box(w, 0.1, d, ceilMat, cx, H + 0.05, cz, false); ceil.removeFromParent(); ceil.position.y += r.y0; ceilings.add(ceil);
 		const mat = gate ? tallWallMat : wallMat;
 		const key = `${r.id}|walls`; wall('x', r.x0, r.z0, r.z1, +1, H, mat, key); wall('x', r.x1, r.z0, r.z1, -1, H, mat, key); wall('z', r.z0, r.x0, r.x1, +1, H, mat, key); wall('z', r.z1, r.x0, r.x1, -1, H, mat, key);
-		anchors[`${r.id}:RoomCenter`] = new THREE.Vector3(cx, 0, cz);
+		anchors[`${r.id}:RoomCenter`] = new THREE.Vector3(cx, r.y0, cz);
 		// lamps every ~9 m along the long axis: strip + powered point light + emergency red (distance-culled in update)
 		const long = Math.max(w, d), n = Math.max(1, Math.round(long / 9)), alongZ = d >= w;
 		for (let i = 0; i < n; i++) {
 			const t = (i + 0.5) / n, x = alongZ ? cx : r.x0 + w * t, z = alongZ ? r.z0 + d * t : cz;
 			const s = box(alongZ ? Math.min(w * 0.5, 2.5) : 0.35, 0.06, alongZ ? 0.35 : Math.min(d * 0.5, 2.5), strip, x, H - 0.05, z, false);
-			const l = new THREE.PointLight(0xbfd8ff, gate ? 6 : Math.min(8, 3 + Math.min(w, d) * 0.5), gate ? 22 : 16, 1.5); l.visible = false; l.position.set(x, H - 0.6, z); group.add(l);
-			const em = new THREE.PointLight(0xff3020, 5, 9, 2); em.position.set(x, H - 0.7, z); group.add(em);
-			lights.push({ l, em, s, on: l.intensity });
+			const l = new THREE.PointLight(0xbfd8ff, gate ? 6 : Math.min(8, 3 + Math.min(w, d) * 0.5), gate ? 22 : 16, 1.5); l.visible = false; l.position.set(x, H - 0.6, z); cur.add(l);
+			const em = new THREE.PointLight(0xff3020, 5, 9, 2); em.position.set(x, H - 0.7, z); cur.add(em);
+			lights.push({ l, em, s, on: l.intensity, wp: new THREE.Vector3(x, r.y0 + H - 0.6, z) });
 		}
 		if (r.type === 'corridor') { // amber edge lines both sides of the walkway (the video's corridor look)
 			const inset = 0.45;
@@ -168,7 +177,8 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 	const consoleMat = new THREE.MeshStandardMaterial({ map: consoleTex, roughness: 0.6, metalness: 0.6 });
 	const frameMat = darkMat, postGeo = new THREE.BoxGeometry(0.26, ARCH_Y, 0.34), archGeo = new THREE.TorusGeometry(R + 0.13, 0.13, 8, 32, Math.PI);
 	const doorObjs = doors.map((d) => {
-		const g = new THREE.Group(); group.add(g);
+		const y0 = byId[d.rooms[0]].y0; cur = decks[byId[d.rooms[0]].floor];
+		const g = new THREE.Group(); cur.add(g);
 		const pos = d.axis === 'x' ? new THREE.Vector3(d.at, 0, d.center) : new THREE.Vector3(d.center, 0, d.at); g.position.copy(pos); g.rotation.y = d.axis === 'x' ? Math.PI / 2 : 0;
 		box(d.axis === 'x' ? 1.0 : DOOR_W, 0.1, d.axis === 'x' ? DOOR_W : 1.0, floorMat, pos.x, -0.05, pos.z, false);
 		for (const s of [-1, 1]) { const p = new THREE.Mesh(postGeo, frameMat); p.position.set(s * (R + 0.13), ARCH_Y / 2, 0); p.castShadow = p.receiveShadow = true; g.add(p); occludable.push(p); }
@@ -189,28 +199,29 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 			const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.04, 0.02), ind); lamp.position.set(0, 0.0, 0.055); con.add(lamp);
 		}
 		const collider = new THREE.Box3(); colliders.push(collider);
-		return { ...d, g, halves, hubs, gears, lamp: { material: ind }, open: 0, locked: true, collider };
+		return { ...d, g, wp: pos.clone().setY(y0), y0, halves, hubs, gears, lamp: { material: ind }, open: 0, locked: true, collider };
 	});
 	const setDoorCollider = (d) => {
 		if (d.open > 0.6) { d.collider.min.set(1e6, 1e6, 1e6); d.collider.max.set(1e6, 1e6, 1e6); return; }
-		const p = d.g.position;
-		if (d.axis === 'x') d.collider.set(new THREE.Vector3(p.x - 0.2, 0, p.z - DOOR_W / 2), new THREE.Vector3(p.x + 0.2, DOOR_H, p.z + DOOR_W / 2));
-		else d.collider.set(new THREE.Vector3(p.x - DOOR_W / 2, 0, p.z - 0.2), new THREE.Vector3(p.x + DOOR_W / 2, DOOR_H, p.z + 0.2));
+		const p = d.g.position, y = d.y0;
+		if (d.axis === 'x') d.collider.set(new THREE.Vector3(p.x - 0.2, y, p.z - DOOR_W / 2), new THREE.Vector3(p.x + 0.2, y + DOOR_H, p.z + DOOR_W / 2));
+		else d.collider.set(new THREE.Vector3(p.x - DOOR_W / 2, y, p.z - 0.2), new THREE.Vector3(p.x + DOOR_W / 2, y + DOOR_H, p.z + 0.2));
 	};
 	doorObjs.forEach(setDoorCollider);
 
 	// ---- props: reusable components placed from room.props (layout data / editor) or the per-type defaults
-	const parts = { screens: [], holos: [], trims: [], kino: [] }, propMeshes = [], lootables = [];
+	const parts = { screens: [], holos: [], trims: [], kino: [], elevators: [], growLamps: [], sprouts: [] }, propMeshes = [], lootables = [];
 	const mats = { dark: darkMat, floor: floorMat, door: doorMat, red: redMat, shell: new THREE.MeshStandardMaterial({ color: 0x2b3139, roughness: 0.45, metalness: 0.7 }), slit: new THREE.MeshStandardMaterial({ color: 0xcfe6ff, emissive: 0xcfe6ff, emissiveIntensity: 1.6 }), crate: new THREE.MeshStandardMaterial({ color: 0x5e6a3a, roughness: 0.9 }), steel: new THREE.MeshStandardMaterial({ color: 0xa8b0b8, roughness: 0.6 }) };
 	for (const r of rooms) {
+		cur = decks[r.floor];
 		const c = center(r), specs = r.props ?? ROOM_PROPS[r.id] ?? DEFAULT_PROPS[r.type] ?? [];
-		const ctx = { box, group, mats, parts, roomH: roomH(r) };
+		const ctx = { box, group: cur, mats, parts, roomH: roomH(r) };
 		for (const s of specs) {
 			const comp = COMPONENTS[s.type]; if (!comp) continue;
 			const p = { x: r.x0 + c.w * s.u, z: r.z0 + c.d * s.v }, spec = { ry: 0, ...s };
-			const n0 = group.children.length, c0 = colliders.length;
-			const out = comp.build(ctx, p, spec) ?? {};
-			for (const m of group.children.slice(n0)) { m.userData.prop = { roomId: r.id, spec: s }; propMeshes.push(m); }
+			const n0 = cur.children.length, c0 = colliders.length;
+			const out = comp.build(ctx, p, spec) ?? {}; if (out.anchor) out.anchor.y += r.y0;
+			for (const m of cur.children.slice(n0)) { m.userData.prop = { roomId: r.id, spec: s }; propMeshes.push(m); }
 			for (let i = c0; i < colliders.length; i++) colliders[i].prop = { roomId: r.id, spec: s };
 			if (out.anchor && (spec.anchor || comp.defaultAnchor)) anchors[`${r.id}:${spec.anchor ?? comp.defaultAnchor}`] = out.anchor;
 			if (out.loot) lootables.push({ key: `${r.id}:${spec.anchor ?? `${s.type}${lootables.length}`}`, roomId: r.id, anchor: out.anchor, lid: out.lid, loot: out.loot, spec: s });
@@ -219,8 +230,9 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 	}
 	const { relayLamp, relayFuse, relayCover, scrubLamp, scrubBed, breachLight } = parts; let handle;
 	// seal lever: on the spur side of the jammed door, offset along the wall
+	cur = group;
 	const jam = doorObjs.find((d) => d.jammed);
-	if (jam) {
+	if (jam) { cur = decks[byId[jam.rooms[0]].floor];
 		const spur = byId[jam.rooms.find((id) => !id.startsWith('breached'))], c = center(spur), p = jam.g.position;
 		const n = jam.axis === 'x' ? new THREE.Vector3(Math.sign(c.x - p.x), 0, 0) : new THREE.Vector3(0, 0, Math.sign(c.z - p.z)), side = jam.axis === 'x' ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1, 0, 0);
 		const lp = p.clone().addScaledVector(n, 0.35).addScaledVector(side, DOOR_W / 2 + 0.6);
@@ -230,7 +242,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 	}
 
 	mergeStatic();
-	const state = { group, rooms, doors: doorObjs, anchors, occludable, ceilings, propMeshes, lootables, powered: false, doorSpeed: 1, onDoor: null }; // onDoor(ev, door): 'unlock' | 'closed' | 'denied'
+	const state = { group, rooms, doors: doorObjs, elevators, anchors, occludable, ceilings, propMeshes, lootables, powered: false, doorSpeed: 1, onDoor: null }; // onDoor(ev, door): 'unlock' | 'closed' | 'denied'
 	state.setPower = (on) => {
 		state.powered = on;
 		strip.emissiveIntensity = on ? 1.2 : 0; edge.emissiveIntensity = on ? 1.8 : 0.25;
@@ -241,6 +253,10 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 	};
 	/** Fuse seated in the relay bay (cover swings open, fuse visible, lamp amber = ready to hotwire). */
 	state.installFuse = () => { if (relayFuse) relayFuse.visible = true; if (relayCover) relayCover.rotation.x = -1.9; if (relayLamp && !state.powered) { relayLamp.material.color.set(0xffa020); relayLamp.material.emissive.set(0xff8000); } };
+	/** Elevator bus: fuses seated (visible) → powered (lamp green, doors part). */
+	state.seatElevatorFuses = () => { for (const e of parts.elevators) for (const f of e.fuses) f.visible = true; };
+	state.setElevatorPower = (on) => { state.elevatorPowered = on; for (const e of parts.elevators) { e.lamp.material.color.set(on ? 0x40ff80 : 0xff3020); e.lamp.material.emissive.set(on ? 0x20ff60 : 0xff2010); for (const [i, m] of e.leaves.entries()) m.position.x = (i ? 1 : -1) * (on ? 1.05 : 0.58); } };
+	state.setGrowLights = (on) => { for (const l of parts.growLamps) l.material.emissiveIntensity = on ? 1.8 : 0; for (const s of parts.sprouts) s.visible = on; };
 	state.openCrate = (l) => { if (l.lid) l.lid.rotation.x = -1.35; l.opened = true; };
 	state.sealBreach = () => { const d = jam; d.sealed = true; d.locked = true; d.lamp.material.color.set(0xffa020); d.lamp.material.emissive.set(0xff8000); handle.rotation.x = -0.6; if (breachLight) breachLight.intensity = 0; };
 	state.repairScrubber = () => { if (!scrubLamp) return; scrubLamp.material.color.set(0x40ff80); scrubLamp.material.emissive.set(0x20ff60); scrubBed.material.color.set(0xe8e2d0); };
@@ -248,7 +264,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 	/** Doors slide open when unlocked and the player is within 3 m; only lights near the player are live (light count drives shader cost). */
 	state.update = (dt, playerPos) => {
 		for (const d of doorObjs) {
-			const near = playerPos.distanceTo(d.g.position) < 3.2;
+			const near = playerPos.distanceTo(d.wp) < 3.2;
 			const target = !d.locked && !d.sealed && near ? 1 : 0;
 			if (near && !d.wasNear && target === 0) state.onDoor?.('denied', d); d.wasNear = near;
 			const prev = d.open; d.open += (target - d.open) * Math.min(1, dt * 4 * state.doorSpeed);
@@ -260,19 +276,20 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 			if (prev < 0.01 && d.open >= 0.01) state.onDoor?.('unlock', d); if (prev > 0.08 && d.open <= 0.08 && target === 0) state.onDoor?.('closed', d);
 		}
 		// only the nearest few lamps are live: every visible light recompiles into every material's shader cost
-		const near = lights.map((L) => [L.l.position.distanceToSquared(playerPos), L]).filter(([d2]) => d2 < LIGHT_RANGE * LIGHT_RANGE).sort((a, b) => a[0] - b[0]).slice(0, MAX_LIVE).map(([, L]) => L);
+		const near = lights.map((L) => [L.wp.distanceToSquared(playerPos), L]).filter(([d2]) => d2 < LIGHT_RANGE * LIGHT_RANGE).sort((a, b) => a[0] - b[0]).slice(0, MAX_LIVE).map(([, L]) => L);
 		for (const L of lights) { const on = near.includes(L); L.l.visible = state.powered && on; L.em.visible = !state.powered && on; }
 	};
 	for (const h of parts.holos) h.visible = false; for (const t of parts.trims) t.material.emissiveIntensity = 0.1;
 	state.update(0, new THREE.Vector3(0, 0, 0));
-	state.roomAt = (p) => rooms.find((r) => p.x >= r.x0 && p.x <= r.x1 && p.z >= r.z0 && p.z <= r.z1)?.id ?? null;
+	state.roomAt = (p) => rooms.find((r) => Math.abs(p.y - r.y0) < DECK_H / 2 && p.x >= r.x0 && p.x <= r.x1 && p.z >= r.z0 && p.z <= r.z1)?.id ?? null;
+	state.deckOf = (id) => byId[id]?.floor ?? 0;
 	/** Shortest door path between rooms (BFS). Returns door objects in walking order, or null. */
 	state.route = (from, to) => {
 		const prev = new Map([[from, null]]), q = [from];
-		while (q.length) { const cur = q.shift(); if (cur === to) break; for (const d of doorObjs) { if (d.sealed && !d.jammed) continue; const nxt = d.rooms[0] === cur ? d.rooms[1] : d.rooms[1] === cur ? d.rooms[0] : null; if (nxt && !prev.has(nxt)) { prev.set(nxt, { room: cur, door: d }); q.push(nxt); } } }
+		while (q.length) { const cur = q.shift(); if (cur === to) break; for (const d of [...doorObjs, ...elevators]) { if (d.sealed && !d.jammed) continue; const nxt = d.rooms[0] === cur ? d.rooms[1] : d.rooms[1] === cur ? d.rooms[0] : null; if (nxt && !prev.has(nxt)) { prev.set(nxt, { room: cur, door: d }); q.push(nxt); } } }
 		if (!prev.has(to)) return null;
 		const path = []; for (let r = to; prev.get(r); r = prev.get(r).room) path.unshift(prev.get(r).door); return path;
 	};
-	state.center = (id) => { const c = center(byId[id]); return new THREE.Vector3(c.x, 0, c.z); };
+	state.center = (id) => { const c = center(byId[id]); return new THREE.Vector3(c.x, byId[id].y0, c.z); };
 	return state;
 };

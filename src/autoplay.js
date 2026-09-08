@@ -34,7 +34,9 @@ export const createAutoplay = (d) => {
 		if (path === null) { say(`no route ${from} → ${room}`); return false; }
 		let cur = from;
 		for (const door of path) {
-			const next = door.rooms[0] === cur ? door.rooms[1] : door.rooms[0], p = door.g.position, cc = ship().center(cur);
+			const next = door.rooms[0] === cur ? door.rooms[1] : door.rooms[0];
+			if (door.elevator) { const a = A()[`${cur}:Elevator`] ?? ship().center(cur); await walkTo(a.x, a.z, { tol: 0.5, run: false }); facePropAt(cur, 'Elevator'); await interact(600); await waitFor(() => ship().roomAt(pos()) === next, 6000); await sleep(1200); cur = next; continue; }
+			const p = door.g.position, cc = ship().center(cur);
 			const n = door.axis === 'x' ? Math.sign(cc.x - p.x) : Math.sign(cc.z - p.z);
 			const before = door.axis === 'x' ? [p.x + n * 1.4, p.z] : [p.x, p.z + n * 1.4], after = door.axis === 'x' ? [p.x - n * 1.4, p.z] : [p.x, p.z - n * 1.4];
 			await walkTo(...before, { tol: 0.5 }); await sleep(450); await walkTo(...after, { tol: 0.5, run: false }); cur = next;
@@ -53,11 +55,13 @@ export const createAutoplay = (d) => {
 	const H = {
 		arrive: async () => { document.querySelector('#chapter button')?.click(); await waitFor(() => !d.travel(), 8000); await sleep(800); },
 		inspect_relay: async (s) => { await goTo(s.target.room, s.target.anchor); facePropAt(s.target.room, s.target.anchor); await interact(); },
-		find_fuse: async () => { // search the salvage crates in order until the small fuse turns up
-			for (const l of ship().lootables) { if (d.rpg.inventory.small_fuse) break; if (d.quest.has(`looted:${l.key}`)) continue; await walkTo(l.anchor.x, l.anchor.z, { tol: 0.5, run: false }); facePropAt(l.roomId, l.spec.anchor); await interact(1900); }
+		find: async (s) => { // search the target room's salvage crates until the step's flag flips
+			await goTo(s.target.room, s.target.anchor); const want = () => d.quest.has(s.complete_when);
+			for (const l of ship().lootables.filter((l) => l.roomId === s.target.room)) { if (want()) break; if (d.quest.has(`looted:${l.key}`)) continue; await walkTo(l.anchor.x, l.anchor.z, { tol: 0.5, run: false }); facePropAt(l.roomId, l.spec.anchor); await interact(1900); }
 		},
+		ride_up: async (s) => { await goTo(s.target.room, s.target.anchor); facePropAt(s.target.room, 'Elevator'); await interact(600); await waitFor(() => d.quest.has('upper_deck_reached'), 6000); await sleep(1500); },
 		restore_power: async (s) => {
-			await goTo(s.target.room, s.target.anchor); facePropAt(s.target.room, s.target.anchor); await interact(2000); // seat the fuse
+			await goTo(s.target.room, s.target.anchor); facePropAt(s.target.room, s.target.anchor); await interact(2000); // seat the fuse(s)
 			await interact(600); if (!(await waitFor(() => d.hotwire.isOpen(), 3000))) return;
 			await sleep(900); // patch each jack to the port carrying its label (the ports are still lit for a human at this point)
 			for (const j of document.querySelectorAll('#hotwire .jack')) { j.click(); await sleep(350); document.querySelector(`#hotwire .port[data-label="${j.dataset.label}"]`)?.click(); await sleep(450); }
@@ -102,7 +106,7 @@ export const createAutoplay = (d) => {
 		give_brody: async (s) => { await goTo(s.target.room, s.target.anchor); await interact(1500); await waitFor(() => stepId() !== 'give_brody', 9000); },
 		repair: async (s) => { await goTo(s.target.room, s.target.anchor); facePropAt(s.target.room, s.target.anchor); await interact(4500); },
 	};
-	const handlerFor = (id) => H[id] ?? (id.startsWith('repair_') ? H.repair : id.startsWith('talk_') ? H.talk_rush : null);
+	const handlerFor = (id) => H[id] ?? (id.startsWith('repair_') ? H.repair : id.startsWith('talk_') ? H.talk_rush : id.startsWith('find_') ? H.find : id.startsWith('restore_') ? H.restore_power : id.startsWith('reach_') ? H.reach_control : null);
 
 	/** Play the current chapter to its terminal step. Resolves { ok, chapter, seconds }. */
 	auto.runChapter = async () => {

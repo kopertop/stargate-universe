@@ -2,12 +2,12 @@
 // the door graph (ship.route). Steps are handled by id from data/chapters.json, so a new chapter that reuses the step
 // vocabulary (talk_*, ftl_drop, scout_kino, gear_up, travel, mine, dial_home, give_brody, repair_*) runs without changes.
 // Usage: ?autoplay then window.__auto.run() (all chapters) or window.__auto.runChapter(). Progress in window.__auto.status/log.
-let simNow = () => simNow(); // replaced by createAutoplay with the game's simulated clock
-const sleep = (ms) => new Promise((r) => { const t0 = simNow(); const chk = () => (simNow() - t0 >= ms ? r() : setTimeout(chk, 12)); setTimeout(chk, 12); });
+let simNow = () => performance.now(), waitFrame = (fn) => setTimeout(() => fn() || waitFrame(fn), 12); // rebound by createAutoplay to the game's simulated clock + per-frame hook
+const sleep = (ms) => new Promise((r) => { const t0 = simNow(); waitFrame(() => simNow() - t0 >= ms && (r(), true)); }); // measured in simulated ms, checked every frame
 const press = (code) => { window.dispatchEvent(new KeyboardEvent('keydown', { code })); window.dispatchEvent(new KeyboardEvent('keyup', { code })); };
 
 export const createAutoplay = (d) => {
-	simNow = () => d.simTime() * 1000;
+	simNow = () => d.simTime() * 1000; waitFrame = d.waitFrame;
 	const auto = { status: 'idle', log: [], running: false, abort: false, report: [] };
 	const say = (s) => { auto.status = s; auto.log.push(`${(simNow() / 1000).toFixed(1)}s ${s}`); };
 	const pos = () => d.player.root.position;

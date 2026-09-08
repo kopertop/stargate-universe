@@ -414,7 +414,7 @@ const tickRooms = () => {
 };
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); destiny.room.userData.reflector.getRenderTarget().setSize(Math.floor(innerWidth * 0.5), Math.floor(innerHeight * 0.5)); });
 let noclip = false;
-window.__dbg = { input, player, camera, quest, rpg, simTime: () => simTime, get world() { return world; }, destiny, get planet() { return planet; }, setView, cam: () => cam, travel: () => travel, teleport: (x, z) => { player.root.position.set(x, world.floorAt(x, z), z); }, dialGate: () => dialGate(world), launchKino, interact: () => interact.current?.id, ui, startChapter, kino: () => kinoWorld?.name, music };
+window.__dbg = { input, player, camera, quest, rpg, simTime: () => simTime, waitFrame: (fn) => frameWaiters.add(fn), get world() { return world; }, destiny, get planet() { return planet; }, setView, cam: () => cam, travel: () => travel, teleport: (x, z) => { player.root.position.set(x, world.floorAt(x, z), z); }, dialGate: () => dialGate(world), launchKino, interact: () => interact.current?.id, ui, startChapter, kino: () => kinoWorld?.name, music };
 
 // ---------------------------------------------------------------- start: chapter card → cold open (arrive through the gate)
 // ---------------------------------------------------------------- save / load (localStorage) + title screen
@@ -478,7 +478,7 @@ const devcon = createConsole({
 });
 window.__dbg.edit = edit; window.__dbg.console = devcon; window.__dbg.renderer = renderer; window.__dbg.hotwire = hotwire;
 
-const fpsEl = document.getElementById('fps'); let simTime = 0; // simulated seconds (drives autoplay waits; equals wall time except while recording)
+const fpsEl = document.getElementById('fps'); let simTime = 0; const frameWaiters = new Set(); // autoplay waits are checked once per simulated frame (timers throttle to 1 Hz in hidden tabs) // simulated seconds (drives autoplay waits; equals wall time except while recording)
 const clock = new THREE.Clock(); let acc = 0, frames = 0;
 const frame = (dtIn) => {
 	const rawDt = dtIn ?? Math.min(clock.getDelta(), 0.05); simTime += rawDt; const t = simTime;
@@ -526,6 +526,7 @@ const frame = (dtIn) => {
 		if (quest.step()?.counter) ui.refreshTracker();
 	}
 	renderer.render(travel?.phase === 'wormhole' ? wormhole.scene : kino.active ? kinoWorld.scene : world.scene, camera);
+	for (const w of frameWaiters) if (w()) frameWaiters.delete(w);
 	acc += rawDt; frames++; if (acc > 0.5) { fpsEl.textContent = `${Math.round(frames / acc)} fps`; acc = 0; frames = 0; }
 };
 // rAF stops entirely while the tab is hidden; fall back to a 30 Hz timer so simulation, autoplay smoke runs and recordings

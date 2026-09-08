@@ -11,8 +11,8 @@ intact from the pre-pivot browser stack.
 - `concept-art/` — Reference imagery. Subfolders for `destiny-ship/`,
   `gate-room/`, `ui/` (HUD layouts, restoration console).
 - `data/` — Designer-authored JSON (`entities.json`, `lights.json`,
-  `materials.json`, `rooms.json`, `ship-systems.json`). NOT loaded directly
-  by Godot — these are reference tables for designers.
+  `materials.json`, `rooms.json`, `ship-systems.json`). NOT loaded
+  by the game — these are reference tables for designers.
 - `reviews/` — Design review feedback, version history.
 - `voice-line-manifest.md` — VO planning for episodes.
 
@@ -25,7 +25,7 @@ intact from the pre-pivot browser stack.
   `fonts/`. Concept art file names should hint at intended use
   (`destiny-restored-hud-layout.png`).
 - Designer JSON in `design/data/` ≠ runtime JSON in `../data/`. Don't conflate
-  — the runtime loader (`ShipLayout`) only reads `../data/`.
+  — the game only reads `../data/`.
 
 ## Cross-references
 

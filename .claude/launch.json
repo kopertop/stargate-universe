@@ -2,33 +2,16 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "ggez-orchestrator",
-      "runtimeExecutable": "/Users/cmoyer/.bun/bin/bun",
-      "runtimeArgs": [
-        "run",
-        "dev"
-      ],
-      "port": 4300
-    },
-    {
-      "name": "stargate-universe",
-      "runtimeExecutable": "/Users/cmoyer/.bun/bin/bun",
-      "runtimeArgs": [
-        "start"
-      ],
-      "port": 5173
-    },
-    {
-      "name": "gate-room-web",
+      "name": "game",
       "runtimeExecutable": "python3",
       "runtimeArgs": [
-        "web/gate-room/tools/edit_server.py",
+        "tools/edit_server.py",
         "8090"
       ],
       "port": 8090
     },
     {
-      "name": "gate-room-dist",
+      "name": "itch-dist",
       "runtimeExecutable": "python3",
       "runtimeArgs": [
         "-m",
@@ -37,7 +20,7 @@
         "--bind",
         "127.0.0.1",
         "--directory",
-        "web/gate-room/dist"
+        "dist"
       ],
       "port": 8092
     }

@@ -2,23 +2,25 @@ name: CI
 
 on:
   pull_request:
-    branches: [main, develop]
+    branches: [main]
   push:
-    branches: [main, develop]
+    branches: [main]
 
 jobs:
-  godot-validation:
+  web-game:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Godot
-        uses: chickensoft-games/setup-godot@v1
+      - uses: actions/setup-node@v4
         with:
-          version: 4.6.2-stable
-
-      - name: Validate project (headless import + editor parse)
-        run: godot --headless --editor --quit
-        # Exits non-zero on import/scene/script parse errors.
-        # No export_presets.cfg yet → no export step.
-        # No GUT addon → no unit tests yet.
+          node-version: 22
+      - name: Syntax-check game modules
+        run: for f in src/*.js; do node --check "$f"; done
+      - name: Validate data JSON
+        run: for f in data/*.json .claude/launch.json; do python3 -m json.tool "$f" > /dev/null; done
+      - name: Build itch.io zip
+        run: ./build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sgu-destiny-html5
+          path: dist/sgu-destiny-html5.zip

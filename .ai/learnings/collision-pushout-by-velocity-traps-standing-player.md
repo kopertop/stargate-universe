@@ -11,5 +11,10 @@ prop, and the two boxes traded him every frame with zero net motion. When the pl
 sub-stepping, teleports, corner squeezes between a door frame and a wall-mounted prop) will put a capsule inside a box
 eventually — the resolver must be able to get out of any box, not just stop at one.
 
+**Follow-up:** the reason the body was inside the box at all: the scrubber spec (`v .5585`) placed a 2.2 m wall unit across the
+South Spur doorway (z −18.5 ± 1.2). The velocity-signed resolver had been *shoving walkers through it* into the spur for weeks, which
+read as "passing". Once collision was honest the level bug surfaced; the prop moved to `v .59`. When a collision fix makes a
+route fail, suspect the geometry it used to tunnel through.
+
 **Applies to:** any hand-rolled AABB slide (player, NPC walkers, Kino), and any autoplay stall where `keys` shows a held
 direction but the position does not change.

@@ -817,6 +817,119 @@
           "terminal": true
         }
       ]
+    },
+    {
+      "id": "e5_light",
+      "title": "Episode 5: Light",
+      "subtitle": "Destiny is diving into a star, and Rush says that is the plan.",
+      "steps": [
+        {
+          "id": "talk_rush",
+          "label": "Talk to Rush",
+          "objective": "The ship is accelerating toward the star. Rush is in the Control Room.",
+          "target": {
+            "room": "control_interface_room",
+            "anchor": "Rush"
+          },
+          "complete_when": "light_briefed",
+          "xp": 40,
+          "on_enter": [
+            {
+              "type": "radio",
+              "who": "Rush",
+              "text": "Eli. Control room. We are not slowing down, and no — that is not a malfunction."
+            }
+          ],
+          "on_exit": [
+            {
+              "type": "countdown",
+              "seconds": 420,
+              "label": "STAR CONTACT",
+              "cause": "heat"
+            },
+            {
+              "type": "subtitle",
+              "who": "Rush",
+              "text": "She refuels in the corona. The shields hold if both emitter banks are balanced. Two panels. Seven minutes."
+            }
+          ]
+        },
+        {
+          "id": "balance_primary",
+          "label": "Balance the primary emitters",
+          "objective": "Trim the shield emitter lines at the Control Room console.",
+          "target": {
+            "room": "control_interface_room",
+            "anchor": "ControlConsole"
+          },
+          "complete_when": "primary_balanced",
+          "xp": 120,
+          "on_enter": [
+            {
+              "type": "subtitle",
+              "who": "Eli",
+              "text": "Four lines, every one of them bleeding into the next. Of course."
+            }
+          ]
+        },
+        {
+          "id": "balance_secondary",
+          "label": "Balance the secondary emitters",
+          "objective": "The second bank routes through the Hydroponics console on the upper deck.",
+          "target": {
+            "room": "hydroponics",
+            "anchor": "GrowConsole"
+          },
+          "complete_when": "secondary_balanced",
+          "xp": 140,
+          "on_enter": [
+            {
+              "type": "radio",
+              "who": "Rush",
+              "text": "Primary is holding. The secondary bank routes through hydroponics — upper deck. Run."
+            }
+          ]
+        },
+        {
+          "id": "reach_control",
+          "label": "Report to Rush",
+          "objective": "Both banks are balanced. Get back to the Control Room before contact.",
+          "target": {
+            "room": "control_interface_room",
+            "anchor": "RoomCenter"
+          },
+          "complete_when": "light_seen",
+          "xp": 80,
+          "on_enter": [
+            {
+              "type": "radio",
+              "who": "Rush",
+              "text": "Both banks holding. Get back here before contact — I want you in the control room when she hits the corona."
+            }
+          ]
+        },
+        {
+          "id": "complete",
+          "label": "Episode complete",
+          "objective": "Destiny came out of the star with full reserves. Nobody slept.",
+          "target": {
+            "room": "",
+            "anchor": ""
+          },
+          "complete_when": null,
+          "terminal": true,
+          "on_enter": [
+            {
+              "type": "countdown_stop"
+            },
+            {
+              "type": "subtitle",
+              "who": "Rush",
+              "text": "Shields at full. She is drinking it in. Reserves will read one hundred percent for the first time since we arrived."
+            }
+          ]
+        }
+      ]
     }
   ]
 }

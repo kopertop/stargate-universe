@@ -217,7 +217,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 	for (const r of rooms) {
 		cur = decks[r.floor];
 		const c = center(r), specs = r.props ?? ROOM_PROPS[r.id] ?? DEFAULT_PROPS[r.type] ?? [];
-		const ctx = { box, group: cur, mats, parts, roomH: roomH(r) };
+		const ctx = { box, group: cur, mats, parts, roomH: roomH(r), floor: r.floor ?? 0 };
 		for (const s of specs) {
 			const comp = COMPONENTS[s.type]; if (!comp) continue;
 			const p = { x: r.x0 + c.w * s.u, z: r.z0 + c.d * s.v }, spec = { ry: 0, ...s };

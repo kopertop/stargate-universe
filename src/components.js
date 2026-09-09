@@ -33,12 +33,12 @@ const glyphScreen = () => {
 	const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 };
 /** Floating schematic: ship outline + a few blinking nodes (additive holo pane). */
-const schematicScreen = () => {
+const schematicScreen = (deck = 0) => {
 	const W = 512, H = 212, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
 	g.strokeStyle = 'rgba(120,200,255,0.9)'; g.lineWidth = 2; g.beginPath(); g.moveTo(30, 106); g.lineTo(120, 60); g.lineTo(420, 50); g.lineTo(490, 106); g.lineTo(420, 162); g.lineTo(120, 152); g.closePath(); g.stroke();
 	g.strokeStyle = 'rgba(120,200,255,0.4)'; for (let x = 120; x < 420; x += 40) { g.beginPath(); g.moveTo(x, 58); g.lineTo(x, 155); g.stroke(); }
 	g.fillStyle = 'rgba(255,170,80,0.9)'; for (let i = 0; i < 6; i++) { g.beginPath(); g.arc(140 + i * 55, 80 + (i % 2) * 50, 5, 0, 7); g.fill(); }
-	g.fillStyle = 'rgba(120,200,255,0.8)'; g.font = '600 18px monospace'; g.fillText('DESTINY · DECK 0', 200, 30); g.fillText('FTL ▸ ▸ ▸', 380, 195);
+	g.fillStyle = 'rgba(120,200,255,0.8)'; g.font = '600 18px monospace'; g.fillText(`DESTINY · DECK ${deck}`, 200, 30); g.fillText('FTL ▸ ▸ ▸', 380, 195);
 	const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 };
 
@@ -108,7 +108,7 @@ export const COMPONENTS = {
 			for (const [w, d, x, z] of [[2.44, 0.05, 0, -0.485], [2.44, 0.05, 0, 0.525], [0.05, 1.06, -1.195, 0.02], [0.05, 1.06, 1.195, 0.02]]) { const bz = new THREE.Mesh(new THREE.BoxGeometry(w, 0.025, d), blue()); bz.position.set(x, 0.035, z); sg.add(bz); ctx.parts.trims.push(bz); } // lit bezel
 			const spine = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.42, 0.22), desk); spine.position.set(0, 1.36, 0.63); spine.castShadow = true; g.add(spine);
 			const emit = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.03, 0.02), blue()); emit.position.set(0, 1.5, 0.515); g.add(emit); ctx.parts.trims.push(emit);
-			const holo = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 0.7), new THREE.MeshBasicMaterial({ map: schematicScreen(), transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })); holo.position.set(0, 2.05, 0.58); holo.rotation.set(0.15, Math.PI, 0); g.add(holo); ctx.parts.holos.push(holo); // faces the operator
+			const holo = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 0.7), new THREE.MeshBasicMaterial({ map: schematicScreen(ctx.floor ?? 0), transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })); holo.position.set(0, 2.05, 0.58); holo.rotation.set(0.15, Math.PI, 0); g.add(holo); ctx.parts.holos.push(holo); // faces the operator
 			for (const sx of [-1, 1]) { // side wings: drooping facets with an amber readout strip
 				const wg = new THREE.Group(); wg.position.set(sx * 1.66, 1.0, 0); wg.rotation.z = -sx * 0.32; g.add(wg);
 				const wing = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.12, 1.12), desk); wing.castShadow = true; wg.add(wing);

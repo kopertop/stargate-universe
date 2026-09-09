@@ -19,6 +19,7 @@ import { createConsole } from './console.js';
 import { settings, onSettings } from './settings.js';
 import { createLevelEditor } from './leveledit.js';
 import { createHotwire } from './hotwire.js';
+import { createFlow } from './flow.js';
 
 const loadingEl = document.getElementById('loading');
 // surface failures instead of a silent black screen: load errors stay on the loading card, runtime errors show a toast
@@ -206,6 +207,7 @@ const startChapter = (id) => {
 const S = destiny.ship;
 const stepIs = (id) => quest.step()?.id === id;
 const hotwire = createHotwire({ sfx: { pick: () => oneShot(buffers.menuOpen, 0.35, 1.4), connect: () => oneShot(buffers.doorLock, 0.5, 1.6), fault: () => oneShot(buffers.doorThunk, 0.7, 1.3), success: () => oneShot(buffers.terminal, 0.7) } });
+const flow = createFlow({ sfx: { pick: () => oneShot(buffers.menuOpen, 0.3, 1.2), success: () => oneShot(buffers.terminal, 0.7) } });
 // Power relay: three stages — inspect (blown fuse), seat the right fuse from the salvage crates, then hotwire the protocol lines
 interact.register({ world: 'destiny', id: 'relay', position: A['gate_room:PowerRelay'],
 	prompt: () => (S.powered ? null : !quest.has('relay_inspected') ? 'Inspect power relay' : !quest.has('fuse_installed') ? (count('small_fuse') ? 'Seat the small fuse' : count('large_fuse') ? 'Try the large fuse' : 'Relay needs a fuse') : 'Hotwire the relay'),
@@ -256,7 +258,13 @@ interact.register({ world: 'destiny', id: 'locker', position: A['eli_quarters:Lo
 interact.register({ world: 'destiny', id: 'scrubber', position: A['south_corridor:Scrubber'], prompt: () => (quest.has('kino_acquired') && !quest.has('scrubber_diagnosed') ? 'Inspect CO2 scrubber' : (stepIs('repair_scrubber') || stepIs('repair_water')) && count('refined_lime') > 0 ? `Load refined ${planet?.resource?.name?.toLowerCase() ?? 'lime'}` : null),
 	action: () => {
 		if (!quest.has('scrubber_diagnosed')) { withAnim('interact', () => { quest.setFlag('scrubber_diagnosed'); ui.subtitle('Rush', 'The scrubber bed is spent — the lime is inert. We need more, and there is none on this ship.'); }); return; }
-		withAnim('repair', () => { removeItem('refined_lime', count('refined_lime')); S.repairScrubber(); quest.setFlag('scrubber_repaired'); ui.subtitle('Eli', 'Scrubber is cycling. CO2 is dropping. We can breathe.'); oneShot(shutdownBuf, 0.5, 1.8); }, { at: 0.8, timeScale: 1.4 });
+		withAnim('repair', () => { // load the bed, then trim the flow lines on the panel before the scrubber will cycle
+			const water = stepIs('repair_water');
+			flow.play(water ? { title: 'RECLAIM_FLOW_v2.0', gauges: 4, labels: ['FEED', 'TANK_A', 'TANK_B', 'RETURN'] } : { title: 'SCRUBBER_FLOW_v1.4', gauges: 3 }).then((ok) => {
+				player.stopAction(); if (!ok) { ui.subtitle('Rush', 'The bed is loaded but the lines are not balanced. It will not cycle like that.'); return; }
+				removeItem('refined_lime', count('refined_lime')); S.repairScrubber(); quest.setFlag('scrubber_repaired'); ui.subtitle('Eli', water ? 'Reclamation is running. We have water.' : 'Scrubber is cycling. CO2 is dropping. We can breathe.'); oneShot(shutdownBuf, 0.5, 1.8);
+			});
+		}, { at: 0.8, timeScale: 1.4 });
 	} });
 interact.register({ world: 'destiny', id: 'crate', position: A['gate_room:SupplyCrate'], prompt: () => (stepIs('gear_up') ? 'Take shovel and field backpack' : null), action: () => withAnim('open', () => { addItem('shovel'); addItem('field_backpack'); equip('shovel'); equip('field_backpack'); quest.setFlag('geared_up'); ui.toast('Equipped: Field Shovel, Field Backpack (+6 carry)', 5); }, { at: 0.6 }) });
 let brodyBusy = 0;
@@ -501,7 +509,7 @@ const devcon = createConsole({
 	give: (id, n = 1) => { for (let i = 0; i < +n; i++) addItem(id); return `gave ${n}× ${id}`; },
 	chapter: (id) => { startChapter(id); return `chapter ${id}`; },
 });
-window.__dbg.edit = edit; window.__dbg.console = devcon; window.__dbg.renderer = renderer; window.__dbg.hotwire = hotwire;
+window.__dbg.edit = edit; window.__dbg.console = devcon; window.__dbg.renderer = renderer; window.__dbg.hotwire = hotwire; window.__dbg.flow = flow;
 
 const fpsEl = document.getElementById('fps'); let simTime = 0; const frameWaiters = new Set(); // autoplay waits are checked once per simulated frame (timers throttle to 1 Hz in hidden tabs) // simulated seconds (drives autoplay waits; equals wall time except while recording)
 const clock = new THREE.Clock(); let acc = 0, frames = 0;
@@ -509,7 +517,7 @@ const frame = (dtIn) => {
 	const rawDt = dtIn ?? Math.min(clock.getDelta(), 0.05); simTime += rawDt; const t = simTime;
 	poll(rawDt);
 	if (edit.active) { const sc = edit.update(rawDt); destiny.gate.userData.tick(t, rawDt); if (camera.parent !== sc) { camera.removeFromParent(); sc.add(camera); } renderer.render(sc, camera); return; }
-	const paused = ui.isRemoteOpen() || devcon.isOpen() || hotwire.isOpen();
+	const paused = ui.isRemoteOpen() || devcon.isOpen() || hotwire.isOpen() || flow.isOpen();
 	if (input.remote && !kino.active && !hotwire.isOpen()) { if (paused) { ui.closeRemote(); player.stopAction(); } else if (quest.has('kino_acquired')) { ui.openRemote(); player.playAction('device', { loop: true }); } else ui.toast('You have no device to open yet'); }
 	if (input.launchKino && !paused && !travel && !kino.active) launchKino();
 	if (input.cycleView) setView(VIEWS[(VIEWS.indexOf(view) + 1) % VIEWS.length]);

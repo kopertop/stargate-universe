@@ -685,7 +685,15 @@
             "anchor": "RoomCenter"
           },
           "complete_when": "ftl_dropped",
-          "xp": 30
+          "xp": 30,
+          "on_exit": [
+            {
+              "type": "ftl_drop"
+            },
+            {
+              "type": "dial"
+            }
+          ]
         },
         {
           "id": "scout_kino",

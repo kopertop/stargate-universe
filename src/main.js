@@ -124,6 +124,11 @@ const shutdownBuffer = () => {
 	return buf;
 };
 const shutdownBuf = shutdownBuffer();
+/** Small synthesised cues: `fn(t, k)` returns a sample for time t (s) and progress k (0..1). */
+const toneBuffer = (dur, fn) => { const ctx = listener.context, sr = ctx.sampleRate, len = Math.floor(sr * dur), buf = ctx.createBuffer(1, len, sr), out = buf.getChannelData(0); for (let i = 0; i < len; i++) out[i] = fn(i / sr, i / len); return buf; };
+const alarmBuf = toneBuffer(0.7, (t, k) => { const f = k < 0.5 ? 640 : 470, env = Math.min(1, t * 40) * (1 - k); return (Math.sign(Math.sin(2 * Math.PI * f * t)) * 0.16 + Math.sin(2 * Math.PI * f * t) * 0.26) * env; }); // two-tone klaxon under a minute
+const heartBuf = toneBuffer(0.9, (t) => { const beat = (t0, a) => { const x = t - t0; return x < 0 ? 0 : Math.sin(2 * Math.PI * 55 * x) * Math.exp(-x * 14) * a; }; return beat(0, 0.9) + beat(0.32, 0.7); }); // blackout heartbeat
+let alarmAcc = 0; const urgentAlarm = (dt) => { alarmAcc += dt; if (alarmAcc >= 2) { alarmAcc = 0; oneShot(alarmBuf, 0.28); } };
 const attachGateAudio = (w) => {
 	const mk = (buf, loop, vol) => { const a = new THREE.PositionalAudio(listener); a.setBuffer(buf); a.setLoop(loop); a.setVolume(vol); a.setRefDistance(6); a.setMaxDistance(60); w.gate.add(a); return a; };
 	w.sfx = { chevron: mk(buffers.chevron, false, 0.9), kawoosh: mk(buffers.kawoosh, false, 1.0), hum: mk(buffers.hum, true, 0.6), shutdown: mk(shutdownBuf, false, 0.9) };
@@ -206,7 +211,7 @@ const ftlRedrop = () => { shake = 1.4; oneShot(buffers.ftlDrop, 0.9); oneShot(sh
 let knockoutLines = { speaker: 'TJ', pools: { generic: ['You took a knock out there. Nothing that will not mend.'] } }, knockedOut = false;
 fetch(`${ASSETS}data/knockout_lines.json`).then((r) => r.json()).then((j) => { knockoutLines = j; }).catch(() => {});
 const knockOut = (cause) => {
-	if (knockedOut) return; knockedOut = true; if (kino.active) recallKino(); input.keys.clear(); ui.setPrompt(null);
+	if (knockedOut) return; knockedOut = true; if (kino.active) recallKino(); input.keys.clear(); ui.setPrompt(null); oneShot(heartBuf, 0.8); setTimeout(() => oneShot(heartBuf, 0.6, 0.9), 1000);
 	flash.style.transition = 'opacity 1.1s'; flash.style.background = '#000'; flash.style.opacity = '1'; addLog(`Knocked out: ${cause.replace(/_/g, ' ')}`);
 	setTimeout(() => {
 		travel = null; particles.visible = false; player.setFade(0); player.root.visible = true;
@@ -229,6 +234,7 @@ const tickCountdown = (dt) => {
 	if (!knockedOut) countdown.t = Math.max(0, countdown.t - dt); // the clock keeps drawing through a blackout, it just does not run
 	for (const [at, who, line] of [[120, 'Rush', 'Two minutes, Eli. I would very much like to be wrong about the shields.'], [30, 'Scott', 'Thirty seconds! Wherever you are, get it done!']]) if (countdown.t <= at && !countdown.warned.has(at)) { countdown.warned.add(at); oneShot(buffers.radio, 0.6); ui.subtitle(who, line, { radio: true }); if (at === 30) alertUntil = performance.now() + 30000; }
 	ui.setClock(`${countdown.label}  ${mmss(countdown.t)}`, countdown.t <= 60 ? 'urgent' : '');
+	if (countdown.t > 0 && countdown.t <= 60 && !knockedOut) urgentAlarm(dt);
 	if (countdown.t === 0) { const c = countdown; knockOut(c.cause); c.t = c.total; c.warned.clear(); shake = 1.2; }
 };
 const tickFtl = (dt) => {
@@ -237,6 +243,7 @@ const tickFtl = (dt) => {
 		for (const [at, who, line] of [[120, 'Rush', 'Two minutes on the FTL clock, Eli. The ship does not wait for you.'], [30, 'Scott', 'Thirty seconds! Whatever you are doing, stop and run.']]) if (ftl.window <= at && !ftl.warned.has(at)) { ftl.warned.add(at); oneShot(buffers.radio, 0.6); ui.subtitle(who, line, { radio: true }); if (at === 30) alertUntil = performance.now() + 30000; }
 		if (ftl.window === 0) ftlJump();
 		if (!countdown) ui.setClock(`FTL JUMP  ${mmss(ftl.window)}`, ftl.window <= 60 ? 'urgent' : '');
+		if (!countdown && ftl.window > 0 && ftl.window <= 60) urgentAlarm(dt);
 	} else if (ftl.cooldown > 0) {
 		ftl.cooldown = Math.max(0, ftl.cooldown - dt);
 		if (ftl.cooldown === 0) { if (needsPlanet() && world === destiny && !travel) ftlRedrop(); else ui.setClock(''); }

@@ -223,7 +223,7 @@ interact.register({ world: 'destiny', id: 'relay', position: A['gate_room:PowerR
 	} });
 // Lootable crates (components with `loot`): open the lid once, hand over the contents, remember it in a flag so saves keep it
 for (const l of S.lootables) interact.register({ world: 'destiny', id: `loot:${l.key}`, position: l.anchor, prompt: () => (quest.has(`looted:${l.key}`) ? null : 'Search crate'),
-	action: () => withAnim('open', () => { S.openCrate(l); quest.setFlag(`looted:${l.key}`); for (const it of l.loot) { addItem(it.id, it.n ?? 1); if (it.id === 'small_fuse') quest.setFlag('has_small_fuse'); } if (count('bus_fuse') >= 2) quest.setFlag('has_bus_fuses'); if (count('large_fuse') >= 1) quest.setFlag('has_large_fuse'); const names = l.loot.map((it) => `${ITEMS[it.id]?.name ?? it.id}${(it.n ?? 1) > 1 ? ` ×${it.n}` : ''}`).join(', '); ui.toast(`Found: ${names}`, 4); oneShot(buffers.menuOpen, 0.5, 0.8); if (l.loot.some((it) => it.id === 'large_fuse')) ui.subtitle('Eli', 'A fuse... but it is huge. That is not going to fit the relay.'); }, { at: 0.6 }) });
+	action: () => withAnim('open', () => { S.openCrate(l); quest.setFlag(`looted:${l.key}`); setTimeout(() => { S.takeLoot(l); for (const it of l.loot) { addItem(it.id, it.n ?? 1); if (it.id === 'small_fuse') quest.setFlag('has_small_fuse'); } if (count('bus_fuse') >= 2) quest.setFlag('has_bus_fuses'); if (count('large_fuse') >= 1) quest.setFlag('has_large_fuse'); const names = l.loot.map((it) => `${ITEMS[it.id]?.name ?? it.id}${(it.n ?? 1) > 1 ? ` ×${it.n}` : ''}`).join(', '); ui.toast(`Found: ${names}`, 4); oneShot(buffers.menuOpen, 0.5, 0.8); if (l.loot.some((it) => it.id === 'large_fuse')) ui.subtitle('Eli', 'A fuse... but it is huge. That is not going to fit the relay.'); }, 900); }, { at: 0.6 }) }); // loot sits in the open cavity for the lid animation, then goes to the pack
 interact.register({ world: 'destiny', id: 'console', position: A['control_interface_room:ControlConsole'], prompt: () => (S.powered && !quest.has('life_support_diagnosed') ? 'Access control terminal' : null), action: () => withAnim('interact', () => { oneShot(buffers.terminal, 0.6); quest.setFlag('life_support_diagnosed'); ui.subtitle('Eli', 'Hull breach — port shuttle dock. And life support is flagged red across the board.'); ui.openRemote('ship'); }, { at: 0.6 }) });
 const FUSES_NEEDED = { bus_fuse: 2, large_fuse: 1 };
 const hasElevatorFuses = () => Object.entries(FUSES_NEEDED).every(([id, n]) => count(id) >= n);
@@ -458,7 +458,7 @@ const loadGame = () => {
 	if (travelIdx >= 0 && brodyIdx >= 0 && si > travelIdx && si < brodyIdx) { si = travelIdx; for (const f of ['on_planet', 'returned_from_planet']) quest.flags.delete(f); }
 	quest.stepIndex = si;
 	const S2 = destiny.ship;
-	if (quest.has('fuse_installed')) S2.installFuse(); for (const l of S2.lootables) if (quest.has(`looted:${l.key}`)) S2.openCrate(l, true);
+	if (quest.has('fuse_installed')) S2.installFuse(); for (const l of S2.lootables) if (quest.has(`looted:${l.key}`)) { S2.openCrate(l, true); S2.takeLoot(l); }
 	if (quest.has('grow_lights_restored')) S2.setGrowLights(true); if (quest.has('elevator_fuses_seated')) S2.seatElevatorFuses(); if (quest.has('elevator_powered')) S2.setElevatorPower(true);
 	if (quest.has('power_restored')) S2.setPower(true); if (quest.has('any_breach_sealed')) S2.sealBreach(); if (quest.has('kino_acquired')) S2.takeKino(); if (quest.has('scrubber_repaired')) S2.repairScrubber();
 	const step = quest.step();

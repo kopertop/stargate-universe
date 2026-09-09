@@ -68,6 +68,24 @@ const hollowBox = (g, w, h, d, t, mat, y = 0) => {
 	const add = (sx, sy, sz, x, yy, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat); m.position.set(x, yy, z); m.castShadow = m.receiveShadow = true; g.add(m); return m; };
 	add(w, t, d, 0, y + t / 2, 0); add(w, h, t, 0, y + h / 2, -d / 2 + t / 2); add(w, h, t, 0, y + h / 2, d / 2 - t / 2); add(t, h, d, -w / 2 + t / 2, y + h / 2, 0); add(t, h, d, w / 2 - t / 2, y + h / 2, 0);
 };
+/** Loot silhouettes laid in a crate cavity: fuses as brass cylinders, rations as tan packs, anything else a small grey case. */
+const lootMeshes = (loot) => {
+	const g = new THREE.Group(), fuse = (r, h, c) => new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 12), new THREE.MeshStandardMaterial({ color: c, emissive: 0x4a2c08, emissiveIntensity: 0.4, roughness: 0.35, metalness: 0.6 }));
+	const pack = new THREE.MeshStandardMaterial({ color: 0xb8a070, roughness: 0.9 }), misc = new THREE.MeshStandardMaterial({ color: 0x6a7076, roughness: 0.6, metalness: 0.4 });
+	let x = 0; const items = [];
+	for (const it of loot) for (let i = 0; i < (it.n ?? 1); i++) {
+		let m;
+		if (it.id === 'large_fuse') { m = fuse(0.09, 0.5, 0xd8b060); m.rotation.z = Math.PI / 2; m.position.y = 0.09; }
+		else if (it.id === 'small_fuse') { m = fuse(0.045, 0.28, 0xd8b060); m.rotation.z = Math.PI / 2; m.position.y = 0.045; }
+		else if (it.id === 'bus_fuse') { m = fuse(0.06, 0.34, 0xc0c8d8); m.rotation.z = Math.PI / 2; m.position.y = 0.06; }
+		else if (it.id === 'rations') { m = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.09, 0.16), pack); m.position.y = 0.045; m.rotation.y = (Math.random() - 0.5) * 0.4; }
+		else { m = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.16), misc); m.position.y = 0.06; }
+		m.castShadow = true; items.push(m); g.add(m);
+	}
+	const n = items.length, pitch = Math.min(0.34, 1.0 / Math.max(1, n));
+	for (const [i, m] of items.entries()) { m.position.x = (i - (n - 1) / 2) * pitch; m.position.z += (i % 2 ? 0.12 : -0.12) * (n > 3 ? 1 : 0); x++; }
+	void x; return g;
+};
 const ease = (k) => k * k * (3 - 2 * k);
 
 /** Registry. `size` (w, d in m) is the editor footprint; `build(ctx, p, spec)` places at world p = {x, z}, facing spec.ry. */
@@ -113,6 +131,8 @@ export const COMPONENTS = {
 			const fuse = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.3, 12), new THREE.MeshStandardMaterial({ color: 0xd8b060, emissive: 0x6a4010, emissiveIntensity: 0.6, roughness: 0.35, metalness: 0.6 })); fuse.rotation.z = Math.PI / 2; fuse.position.set(0, 1.05, 0.15); fuse.visible = false; g.add(fuse);
 			for (const sx of [-1, 1]) { const clip = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, 0.1), ctx.mats.steel); clip.position.set(sx * 0.17, 1.05, 0.15); g.add(clip); }
 			const cover = new THREE.Group(); cover.position.set(0, 1.32, 0.19); g.add(cover); const cm = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.58, 0.03), ctx.mats.door); cm.position.y = -0.29; cover.add(cm); // hinged at the top edge
+			for (const sx of [-0.32, 0.32]) { const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 1.2, 10), ctx.mats.steel); pipe.position.set(sx, 2.65, 0.08); g.add(pipe); const jb = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.16), ctx.mats.dark); jb.position.set(sx, 3.3, 0.08); g.add(jb); } // conduits up to junction boxes in the wall
+			const tag = new THREE.Mesh(new THREE.PlaneGeometry(0.44, 0.11), glyphPlate()); tag.position.set(0, 0.62, 0.18); g.add(tag); ctx.parts.trims.push(tag);
 			ctx.parts.relayLamp = lamp(ctx, p.x + f.x * 0.17, 1.82, p.z + f.z * 0.17, s.ry, 0.5, 0.1);
 			ctx.parts.relayFuse = fuse; ctx.parts.relayCover = cover;
 			return { anchor: f.multiplyScalar(1.0).add(new THREE.Vector3(p.x, 0, p.z)) };
@@ -126,12 +146,13 @@ export const COMPONENTS = {
 			// case whose lid hinges up at the back. Both are hollow so the opening reads. `setOpen(k)` animates 0→1 (ship.update).
 			const f = fwd(s.ry), g = new THREE.Group(); g.position.set(p.x, 0, p.z); g.rotation.y = s.ry; ctx.group.add(g);
 			const style = s.style ?? (s.loot?.some((it) => /fuse/.test(it.id)) ? 'ancient' : 'pelican');
-			let setOpen;
+			let setOpen, items = null;
 			if (style === 'pelican') {
 				const W = 1.3, H = 0.62, D = 0.9, T = 0.05;
 				hollowBox(g, W, H, D, T, caseMats.poly);
 				const foam = new THREE.Mesh(new THREE.BoxGeometry(W - 2 * T, 0.05, D - 2 * T), caseMats.foam); foam.position.y = T + 0.025; g.add(foam);
-				for (const y of [0.16, 0.34, 0.52]) { const rib = new THREE.Mesh(new THREE.BoxGeometry(W + 0.03, 0.04, D + 0.03), caseMats.poly); rib.position.y = y; g.add(rib); } // moulded ridges
+				if (s.loot) { items = lootMeshes(s.loot); items.position.y = T + 0.05; g.add(items); }
+				for (const y of [0.16, 0.34, 0.52]) for (const [w, dd, x, z] of [[W + 0.03, 0.03, 0, -D / 2], [W + 0.03, 0.03, 0, D / 2], [0.03, D, -W / 2, 0], [0.03, D, W / 2, 0]]) { const rib = new THREE.Mesh(new THREE.BoxGeometry(w, 0.04, dd), caseMats.poly); rib.position.set(x, y, z); g.add(rib); } // moulded ridges (a frame, not a slab — the cavity stays open)
 				for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const bump = new THREE.Mesh(new THREE.BoxGeometry(0.1, H + 0.02, 0.1), caseMats.poly); bump.position.set(sx * (W / 2 - 0.03), H / 2, sz * (D / 2 - 0.03)); g.add(bump); } // corner bumpers
 				for (const sx of [-0.42, 0.42]) { // press latches: a plate on the body and a raised bar that reads as the pull
 					const plate = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.22, 0.03), caseMats.hw); plate.position.set(sx, H - 0.12, D / 2 + 0.015); g.add(plate);
@@ -151,24 +172,25 @@ export const COMPONENTS = {
 				const base = new THREE.Mesh(new THREE.BoxGeometry(W - 0.16, 0.08, D - 0.16), ctx.mats.dark); base.position.y = 0.04; g.add(base); // chamfered foot
 				hollowBox(g, W, H, D, T, ctx.mats.dark, 0.08);
 				const glow = new THREE.Mesh(new THREE.PlaneGeometry(W - 2 * T - 0.02, D - 2 * T - 0.02), caseMats.cavity); glow.rotation.x = -Math.PI / 2; glow.position.y = 0.08 + T + 0.002; g.add(glow); // lit cavity floor
+				if (s.loot) { items = lootMeshes(s.loot); items.position.y = 0.08 + T; g.add(items); }
 				for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const post = new THREE.Mesh(new THREE.BoxGeometry(0.13, H + 0.1, 0.13), ctx.mats.shell); post.position.set(sx * (W / 2 - 0.04), 0.08 + H / 2, sz * (D / 2 - 0.04)); post.castShadow = true; g.add(post); } // corner frame
 				for (const [w, d, x, z] of [[W, 0.02, 0, -D / 2 - 0.005], [W, 0.02, 0, D / 2 + 0.005], [0.02, D, -W / 2 - 0.005, 0], [0.02, D, W / 2 + 0.005, 0]]) { const seam = new THREE.Mesh(new THREE.BoxGeometry(w, 0.02, d), emissive(0x3a86c8, 0.8)); seam.position.set(x, 0.08 + H - 0.1, z); g.add(seam); ctx.parts.trims.push(seam); } // blue seam below the rim
 				const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.125), glyphPlate()); plate.position.set(0, 0.45, D / 2 + 0.003); g.add(plate); ctx.parts.trims.push(plate);
 				const lid = new THREE.Group(); lid.position.set(0, 0.08 + H, 0); g.add(lid); // rises on four corner risers, then splits like the ship's doors
 				for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const riser = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.34, 0.08), ctx.mats.shell); riser.position.set(sx * (W / 2 - 0.04), -0.17 + 0.05, sz * (D / 2 - 0.04)); lid.add(riser); }
-				const halves = [-1, 1].map((sx) => {
-					const h = new THREE.Group(); lid.add(h);
-					const slab = new THREE.Mesh(new THREE.BoxGeometry(W / 2 + 0.01, 0.1, D + 0.02), ctx.mats.dark); slab.position.set(sx * (W / 4 + 0.005), 0.05, 0); slab.castShadow = true; h.add(slab);
-					const ridge = new THREE.Mesh(new THREE.BoxGeometry(W * 0.3, 0.07, D * 0.5), ctx.mats.shell); ridge.position.set(sx * W * 0.15, 0.13, 0); h.add(ridge); // faceted centre ridge, split by the seam
-					const cap = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.11), glyphPlate()); cap.position.set(sx * W * 0.15, 0.166, 0); cap.rotation.x = -Math.PI / 2; h.add(cap); ctx.parts.trims.push(cap);
+				const halves = [-1, 1].map((sx) => { // each half pivots on its outer rail: slides out a little, then swings up gull-wing style
+					const h = new THREE.Group(); h.position.x = sx * W / 2; lid.add(h);
+					const slab = new THREE.Mesh(new THREE.BoxGeometry(W / 2 + 0.01, 0.1, D + 0.02), ctx.mats.dark); slab.position.set(-sx * (W / 4 - 0.005), 0.05, 0); slab.castShadow = true; h.add(slab);
+					const ridge = new THREE.Mesh(new THREE.BoxGeometry(W * 0.3, 0.07, D * 0.5), ctx.mats.shell); ridge.position.set(-sx * W * 0.35, 0.13, 0); h.add(ridge); // faceted centre ridge, split by the seam
+					const cap = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.11), glyphPlate()); cap.position.set(-sx * W * 0.35, 0.166, 0); cap.rotation.x = -Math.PI / 2; h.add(cap); ctx.parts.trims.push(cap);
 					return h;
 				});
 				const seam = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.02, D), emissive(0x3a86c8, 0.8)); seam.position.set(0, 0.1, 0); lid.add(seam); ctx.parts.trims.push(seam);
 				const y0 = lid.position.y;
-				setOpen = (k) => { const up = ease(Math.min(1, k / 0.4)), over = ease(Math.max(0, (k - 0.4) / 0.6)); lid.position.y = y0 + 0.34 * up; seam.visible = over < 0.02; for (const [i, h] of halves.entries()) h.position.x = (i ? 1 : -1) * (W / 2 + 0.08) * over; };
+				setOpen = (k) => { const up = ease(Math.min(1, k / 0.4)), over = ease(Math.max(0, (k - 0.4) / 0.6)); lid.position.y = y0 + 0.34 * up; seam.visible = over < 0.02; for (const [i, h] of halves.entries()) { const sx = i ? 1 : -1; h.position.x = sx * (W / 2 + 0.12 * over); h.rotation.z = -sx * 1.0 * over; } }; // stays within ~0.9 m of centre so neighbours keep their view
 				ctx.box(W + 0.1, H + 0.2, D + 0.1, ctx.mats.dark, p.x, (H + 0.2) / 2, p.z, true, s.ry).visible = false;
 			}
-			return { anchor: f.multiplyScalar(1.25).add(new THREE.Vector3(p.x, 0, p.z)), setOpen, loot: s.loot };
+			return { anchor: f.multiplyScalar(1.25).add(new THREE.Vector3(p.x, 0, p.z)), setOpen, items, loot: s.loot };
 		},
 	},
 	bed: {
@@ -204,17 +226,38 @@ export const COMPONENTS = {
 	scrubber: {
 		label: 'CO2 scrubber', size: [2.2, 0.4], defaultAnchor: 'Scrubber',
 		build: (ctx, p, s) => {
-			const f = fwd(s.ry), side = new THREE.Vector3(-f.z, 0, f.x);
+			// life-support wall unit: plated cabinet, a recessed bay where the lime bed sits behind a bar grille, intake louvres above,
+			// a header lamp, glyph tag, and two pipes running up into the ceiling. Bed turns from grey (spent) to white when reloaded.
+			const f = fwd(s.ry), g = new THREE.Group(); g.position.set(p.x, 0, p.z); g.rotation.y = s.ry; ctx.group.add(g);
 			ctx.box(2.2, 2.4, 0.4, ctx.mats.dark, p.x, 1.3, p.z, true, s.ry);
-			const sl = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.06), ctx.mats.red.clone()); sl.position.set(p.x + f.x * 0.24, 2.2, p.z + f.z * 0.24); sl.rotation.y = s.ry; ctx.group.add(sl);
-			const bed = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.2, 0.1), new THREE.MeshStandardMaterial({ color: 0x5a5245, roughness: 1 })); bed.position.set(p.x + f.x * 0.22, 1.0, p.z + f.z * 0.22); bed.rotation.y = s.ry; ctx.group.add(bed);
-			ctx.parts.scrubLamp = sl; ctx.parts.scrubBed = bed; void side;
-			return { anchor: f.multiplyScalar(1.0).add(new THREE.Vector3(p.x, 0, p.z)) };
+			for (const [w, h, x, y] of [[2.1, 0.05, 0, 2.47], [2.1, 0.05, 0, 0.13], [0.05, 2.4, -1.03, 1.3], [0.05, 2.4, 1.03, 1.3]]) { const t = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.03), ctx.mats.shell); t.position.set(x, y, 0.2); g.add(t); } // cabinet frame
+			const bay = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.3, 0.1), new THREE.MeshStandardMaterial({ color: 0x06080c, roughness: 0.9 })); bay.position.set(0, 1.05, 0.17); g.add(bay); // recessed bay
+			const bed = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.1, 0.08), new THREE.MeshStandardMaterial({ color: 0x5a5245, roughness: 1 })); bed.position.set(0, 1.05, 0.19); g.add(bed);
+			for (let i = 0; i < 7; i++) { const bar = new THREE.Mesh(new THREE.BoxGeometry(0.04, 1.3, 0.04), ctx.mats.steel); bar.position.set(-0.75 + i * 0.25, 1.05, 0.24); g.add(bar); } // grille
+			for (let i = 0; i < 3; i++) { const louvre = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.06, 0.08), ctx.mats.shell); louvre.position.set(0, 1.86 + i * 0.14, 0.22); louvre.rotation.x = 0.5; g.add(louvre); } // intake louvres
+			const sl = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 0.04), ctx.mats.red.clone()); sl.position.set(0, 2.34, 0.22); g.add(sl); // header lamp
+			const tag = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.125), glyphPlate()); tag.position.set(-0.6, 2.34, 0.21); g.add(tag); ctx.parts.trims.push(tag);
+			const kick = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.16, 0.04), ctx.mats.shell); kick.position.set(0, 0.3, 0.21); g.add(kick);
+			for (const sx of [-0.7, 0.7]) { const L = Math.min(ctx.roomH - 2.5, 1.6), pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, L, 10), ctx.mats.steel); pipe.position.set(sx, 2.5 + L / 2, 0.1); g.add(pipe); if (L < ctx.roomH - 2.5) { const jb = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.26, 0.2), ctx.mats.dark); jb.position.set(sx, 2.5 + L + 0.1, 0.1); g.add(jb); } } // ducts up to the ceiling, or into wall junctions in tall rooms
+			ctx.parts.scrubLamp = sl; ctx.parts.scrubBed = bed; void f;
+			return { anchor: fwd(s.ry).multiplyScalar(1.0).add(new THREE.Vector3(p.x, 0, p.z)) };
 		},
 	},
 	tank: {
 		label: 'Water tank', size: [1.2, 1.2], defaultAnchor: 'WaterTank',
-		build: (ctx, p, s) => { ctx.box(1.2, 2.0, 1.2, ctx.mats.dark, p.x, 1.0, p.z, true, s.ry); return { anchor: fwd(s.ry).multiplyScalar(1.1).add(new THREE.Vector3(p.x, 0, p.z)) }; },
+		build: (ctx, p, s) => { // upright reclamation tank: banded cylinder on four feet, capped, with a lit sight-glass and a valve wheel on the front
+			const g = new THREE.Group(); g.position.set(p.x, 0, p.z); g.rotation.y = s.ry; ctx.group.add(g);
+			const body = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 1.6, 24), ctx.mats.shell); body.position.y = 1.0; body.castShadow = body.receiveShadow = true; g.add(body);
+			for (const y of [0.35, 1.0, 1.65]) { const band = new THREE.Mesh(new THREE.CylinderGeometry(0.585, 0.585, 0.07, 24), ctx.mats.dark); band.position.y = y; g.add(band); }
+			const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.55, 0.16, 24), ctx.mats.dark); cap.position.y = 1.88; g.add(cap);
+			const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.6, 12), ctx.mats.steel); neck.position.y = 2.26; g.add(neck); const elbow = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.9, 12), ctx.mats.steel); elbow.rotation.x = Math.PI / 2; elbow.position.set(0, 2.56, -0.45); g.add(elbow); // feed pipe up, then back into the wall
+			for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const foot = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.2, 0.16), ctx.mats.dark); foot.position.set(sx * 0.36, 0.1, sz * 0.36); g.add(foot); }
+			const glass = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.2, 0.03), emissive(0x3a86c8, 0.8)); glass.position.set(0.2, 1.0, 0.555); g.add(glass); ctx.parts.trims.push(glass); // sight glass
+			const stub = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.25, 10), ctx.mats.steel); stub.rotation.x = Math.PI / 2; stub.position.set(-0.2, 0.75, 0.62); g.add(stub);
+			const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.02, 8, 20), ctx.mats.steel); wheel.position.set(-0.2, 0.75, 0.76); g.add(wheel);
+			ctx.box(1.2, 2.0, 1.2, ctx.mats.dark, p.x, 1.0, p.z, true, s.ry).visible = false;
+			return { anchor: fwd(s.ry).multiplyScalar(1.1).add(new THREE.Vector3(p.x, 0, p.z)) };
+		},
 	},
 	elevator_door: {
 		label: 'Elevator door', size: [2.6, 0.3], defaultAnchor: 'Elevator',

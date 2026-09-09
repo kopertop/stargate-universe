@@ -161,7 +161,7 @@ const ui = createUI({
 	flags: { has: (f) => quest?.flags.has(f) ?? false },
 	chapterTitle: () => quest?.chapter?.title ?? '', steps: () => quest?.chapter?.steps ?? [], stepIndex: () => quest?.stepIndex ?? 0,
 	deckMap: () => ({ deck: destiny.deck, rooms: destiny.rooms.filter((r) => r.floor === destiny.deck), player: player.root.position, current: currentRoom, discovered: [...discovered], waypoint: world === destiny ? waypointPos() : null }),
-	shipStatus: () => [['Power', destiny.ship.powered ? 'ONLINE' : 'OFFLINE', destiny.ship.powered], ['Elevator bus', destiny.ship.elevatorPowered ? 'ONLINE' : 'NO FUSES', !!destiny.ship.elevatorPowered], ['Crew deck', destiny.ship.quartersPowered ? 'ONLINE' : 'OPEN CONDUIT', !!destiny.ship.quartersPowered], ['Hydroponics', quest.has('grow_lights_restored') ? 'GROW LIGHTS ON' : 'DARK', quest.has('grow_lights_restored')], ['Hull (port dock)', quest.has('any_breach_sealed') ? 'SEALED' : quest.has('life_support_diagnosed') ? 'BREACH' : 'unknown', quest.has('any_breach_sealed')], ['CO2 scrubbers', quest.has('scrubber_repaired') ? 'NOMINAL' : quest.has('scrubber_diagnosed') ? 'FAILED — lime bed exhausted' : 'unknown', quest.has('scrubber_repaired')], ['FTL', quest.has('ftl_dropped') && !quest.has('scrubber_repaired') ? 'DROPPED — gate window open' : 'CRUISING', true]],
+	shipStatus: () => [['Power', destiny.ship.powered ? 'ONLINE' : 'OFFLINE', destiny.ship.powered], ['Elevator bus', destiny.ship.elevatorPowered ? 'ONLINE' : 'NO FUSES', !!destiny.ship.elevatorPowered], ['Crew deck', destiny.ship.quartersPowered ? 'ONLINE' : 'OPEN CONDUIT', !!destiny.ship.quartersPowered], ['FTL', ftl.window > 0 ? `JUMP IN ${mmss(ftl.window)}` : ftl.cooldown > 0 ? `IN FLIGHT · DROP IN ${mmss(ftl.cooldown)}` : 'IN FLIGHT', ftl.window > 60 || ftl.cooldown > 0], ['Hydroponics', quest.has('grow_lights_restored') ? 'GROW LIGHTS ON' : 'DARK', quest.has('grow_lights_restored')], ['Hull (port dock)', quest.has('any_breach_sealed') ? 'SEALED' : quest.has('life_support_diagnosed') ? 'BREACH' : 'unknown', quest.has('any_breach_sealed')], ['CO2 scrubbers', quest.has('scrubber_repaired') ? 'NOMINAL' : quest.has('scrubber_diagnosed') ? 'FAILED — lime bed exhausted' : 'unknown', quest.has('scrubber_repaired')], ['FTL', quest.has('ftl_dropped') && !quest.has('scrubber_repaired') ? 'DROPPED — gate window open' : 'CRUISING', true]],
 	planets: () => [
 		...(planet ? [{ id: planet.def.id, name: planet.def.name, scan: lastScan?.id === planet.def.id ? lastScan.atmosphere.composition : null, canDial: world === destiny && !destiny.gate.userData.active && !dialingWorld && quest.has('ftl_dropped') }] : []),
 		{ id: 'destiny', name: 'Destiny', scan: 'Home. Ancient seed ship.', canDial: world === planet && !planet.gate.userData.active && !dialingWorld },
@@ -176,6 +176,36 @@ onRpgChange(() => { ui.refreshPlayer(); player.speedMul = stats().speed; if (ui.
 const flash = document.getElementById('flash');
 let shake = 0;
 let alertUntil = 0; // music 'alert' mood window (breach, FTL drop)
+// FTL rhythm (design: timer-pressure-system): each drop-out opens a jump window; when it closes Destiny jumps whether or
+// not you are aboard. If the chapter still needs the planet, a cooldown runs and the ship drops out again at the same address.
+const FTL_WINDOW = 600, FTL_COOLDOWN = 90;
+const ftl = { window: 0, cooldown: 0, warned: new Set() };
+const mmss = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+const openFtlWindow = () => { ftl.window = quest.chapter?.planet?.window_seconds ?? FTL_WINDOW; ftl.cooldown = 0; ftl.warned.clear(); };
+const PLANET_STEPS = ['scout_kino', 'gear_up', 'travel', 'mine', 'dial_home'];
+const needsPlanet = () => PLANET_STEPS.includes(quest.step()?.id);
+const ftlJump = () => {
+	if (kino.active) recallKino();
+	if (world === planet || travel?.to === planet) { // no suits, no shuttle: Scott hauls you back through as the wormhole collapses
+		travel = null; particles.visible = false; player.setFade(0); player.root.visible = true; if (planet.gate.userData.active) shutdownGate(planet);
+		arriveAt(destiny); quest.setFlag('returned_from_planet'); ui.subtitle('Scott', 'Eli! Through the gate — NOW!'); ui.toast('Destiny jumped. Scott dragged you through as the wormhole collapsed.', 6);
+	} else if (destiny.gate.userData.active) shutdownGate(destiny);
+	shake = 1.2; oneShot(buffers.ftlDrop, 0.9); addLog('Destiny jumped to FTL'); quest.setFlag('ftl_jumped');
+	ftl.window = 0; ftl.cooldown = FTL_COOLDOWN; ftl.warned.clear();
+};
+const ftlRedrop = () => { shake = 1.4; oneShot(buffers.ftlDrop, 0.9); oneShot(shutdownBuf, 0.5, 0.55); addLog('Destiny dropped out of FTL'); alertUntil = performance.now() + 12000; openFtlWindow(); setTimeout(() => dialGate(destiny), 900); oneShot(buffers.radio, 0.6); ui.subtitle('Brody', 'We have dropped out again — same address is dialing. Whatever you did not finish, finish it.', { radio: true }); };
+const tickFtl = (dt) => {
+	if (ftl.window > 0) {
+		ftl.window = Math.max(0, ftl.window - dt);
+		for (const [at, who, line] of [[120, 'Rush', 'Two minutes on the FTL clock, Eli. The ship does not wait for you.'], [30, 'Scott', 'Thirty seconds! Whatever you are doing, stop and run.']]) if (ftl.window <= at && !ftl.warned.has(at)) { ftl.warned.add(at); oneShot(buffers.radio, 0.6); ui.subtitle(who, line, { radio: true }); if (at === 30) alertUntil = performance.now() + 30000; }
+		if (ftl.window === 0) ftlJump();
+		ui.setClock(`FTL JUMP  ${mmss(ftl.window)}`, ftl.window <= 60 ? 'urgent' : '');
+	} else if (ftl.cooldown > 0) {
+		ftl.cooldown = Math.max(0, ftl.cooldown - dt);
+		if (ftl.cooldown === 0) { if (needsPlanet() && world === destiny && !travel) ftlRedrop(); else ui.setClock(''); }
+		else ui.setClock(needsPlanet() ? `IN FTL  ·  NEXT DROP ${mmss(ftl.cooldown)}` : 'IN FTL', 'cool');
+	} else ui.setClock('');
+};
 quest = createQuestEngine({
 	grantXp: (n) => grantXp(n),
 	onStep: (step) => { ui.refreshTracker(); if (step && !step.terminal) ui.toast(`New objective: ${step.label}`, 3); saveGame(); },
@@ -183,7 +213,7 @@ quest = createQuestEngine({
 		if (t.type === 'subtitle') ui.subtitle(t.who, t.text);
 		if (t.type === 'radio') { oneShot(buffers.radio, 0.6); ui.subtitle(t.who, t.text, { radio: true }); }
 		if (t.type === 'toast') ui.toast(t.text, 6);
-		if (t.type === 'ftl_drop') { shake = 1.4; oneShot(buffers.ftlDrop, 0.9); oneShot(shutdownBuf, 0.5, 0.55); addLog('Destiny dropped out of FTL'); alertUntil = performance.now() + 18000; }
+		if (t.type === 'ftl_drop') { shake = 1.4; oneShot(buffers.ftlDrop, 0.9); oneShot(shutdownBuf, 0.5, 0.55); addLog('Destiny dropped out of FTL'); alertUntil = performance.now() + 18000; openFtlWindow(); }
 		if (t.type === 'dial') setTimeout(() => dialGate(destiny), 900);
 	},
 	onChapterComplete: (ch) => {
@@ -464,7 +494,7 @@ window.__dbg = { input, player, camera, orbit, quest, rpg, ride: rideElevator, s
 // ---------------------------------------------------------------- save / load (localStorage) + title screen
 const SAVE_KEY = 'sgu.save';
 let gameStarted = false; // saves only once a game is running (startChapter fires onStep during boot/load)
-const saveGame = () => { if (!quest.chapter || !gameStarted) return; try { localStorage.setItem(SAVE_KEY, JSON.stringify({ chapter: quest.chapter.id, stepIndex: quest.stepIndex, flags: [...quest.flags], lastScan, deck: destiny.deck, savedAt: Date.now() })); saveRpg(); } catch {} };
+const saveGame = () => { if (!quest.chapter || !gameStarted) return; try { localStorage.setItem(SAVE_KEY, JSON.stringify({ chapter: quest.chapter.id, stepIndex: quest.stepIndex, flags: [...quest.flags], lastScan, deck: destiny.deck, ftl: { window: ftl.window, cooldown: ftl.cooldown }, savedAt: Date.now() })); saveRpg(); } catch {} };
 const hasSave = () => { try { return !!localStorage.getItem(SAVE_KEY); } catch { return false; } };
 /** Restore chapter/step/flags + RPG, rebuild Destiny state from flags, and put the player in the gate room. Planet-side steps rewind to the gate. */
 const loadGame = () => {
@@ -483,6 +513,7 @@ const loadGame = () => {
 	if (quest.has('power_restored')) S2.setPower(true); if (quest.has('any_breach_sealed')) S2.sealBreach(); if (quest.has('kino_acquired')) S2.takeKino(); if (quest.has('scrubber_repaired')) S2.repairScrubber();
 	const step = quest.step();
 	if (quest.has('ftl_dropped') && ['scout_kino', 'gear_up', 'travel'].includes(step?.id)) { destiny.gate.userData.reset(); destiny.gate.userData.incoming(onGateEvent(destiny)); }
+	ftl.window = s.ftl?.window ?? 0; ftl.cooldown = s.ftl?.cooldown ?? 0; ftl.warned.clear();
 	destiny.deck = s.deck ?? 0; enterWorld(destiny); placePlayer(destiny, destiny.deck ? (destiny.anchors['elevator_room_floor_1:Elevator'] ?? destiny.spawn).clone().setY(destiny.deck * DECK_H) : destiny.spawn, destiny.spawnYaw); cam.yaw = 0;
 	gameStarted = true; saveGame();
 	ui.refreshTracker(); ui.refreshPlayer(); ui.toast(`Loaded: ${quest.chapter.title} — ${step?.label ?? ''}`, 4);
@@ -515,13 +546,14 @@ const edit = createLevelEditor({
 const devcon = createConsole({
 	leveledit: () => { if (edit.active) { edit.exit(); return 'leaving editor'; } edit.enter(); devcon.toggle(false); return 'level editor on — ` reopens this console, Exit button reloads on the edited map'; },
 	noclip: () => { noclip = !noclip; return `noclip ${noclip ? 'on' : 'off'}`; },
+	ftl: (secs) => { if (secs === undefined) return `window ${mmss(ftl.window)} cooldown ${mmss(ftl.cooldown)}`; ftl.window = +secs; return `ftl window ${mmss(ftl.window)}`; },
 	power: (v = 'on') => { destiny.ship.setPower(v !== 'off'); return `power ${v}`; },
 	tp: (x, z, deck) => { if (deck != null && world === destiny) destiny.deck = +deck; player.root.position.set(+x, world.floorAt(+x, +z), +z); return `teleported to ${x}, ${z} (deck ${destiny.deck})`; },
 	flag: (f) => { quest.setFlag(f); return `flag ${f} set → step ${quest.step()?.id}`; },
 	give: (id, n = 1) => { for (let i = 0; i < +n; i++) addItem(id); return `gave ${n}× ${id}`; },
 	chapter: (id) => { startChapter(id); return `chapter ${id}`; },
 });
-window.__dbg.edit = edit; window.__dbg.console = devcon; window.__dbg.renderer = renderer; window.__dbg.hotwire = hotwire; window.__dbg.flow = flow;
+window.__dbg.edit = edit; window.__dbg.console = devcon; window.__dbg.renderer = renderer; window.__dbg.hotwire = hotwire; window.__dbg.flow = flow; window.__dbg.ftl = ftl;
 
 const fpsEl = document.getElementById('fps'); let simTime = 0; const frameWaiters = new Set(); // autoplay waits are checked once per simulated frame (timers throttle to 1 Hz in hidden tabs) // simulated seconds (drives autoplay waits; equals wall time except while recording)
 const clock = new THREE.Clock(); let acc = 0, frames = 0;
@@ -567,6 +599,7 @@ const frame = (dtIn) => {
 			if (airless) { for (const [lvl, who, line] of [[50, 'Rush', 'Half your air, Eli. Whatever you have, it is enough — start back.'], [20, 'Eli', 'Can\'t... breathe. Gate. Now.']]) if (o2 > lvl && rpg.o2 <= lvl) ui.subtitle(who, line); }
 			if (Math.round(o2) !== Math.round(rpg.o2)) ui.refreshPlayer();
 		}
+		if (gameStarted) tickFtl(dt);
 		const wp = waypointPos(); beacon.visible = !!wp && !kino.active;
 		if (wp) { if (beacon.parent !== world.scene) { beacon.removeFromParent(); world.scene.add(beacon); } beacon.position.set(wp.x, wp.y + 3, wp.z); beacon.material.opacity = 0.18 + 0.1 * Math.sin(t * 3); }
 		ui.drawMinimap({ rooms: world === destiny ? destiny.rooms : null, nodes: world === planet ? planet.nodes : null, player: player.root.position, yaw: player.root.rotation.y, waypoint: wp, gate: world.gate.position });

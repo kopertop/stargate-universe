@@ -31,6 +31,8 @@ const css = `
 	#sub{position:absolute;left:50%;bottom:150px;transform:translateX(-50%);max-width:640px;padding:8px 16px;font-size:15px;text-align:center}
 	#sub b{color:var(--gold)}#sub.radio b::before{content:'📻 '}
 	#toast{position:absolute;left:50%;top:22%;transform:translateX(-50%);padding:10px 22px;font:600 16px sans-serif;color:var(--gold);letter-spacing:.04em;text-align:center}
+	#clock{position:absolute;left:50%;top:12px;transform:translateX(-50%);padding:4px 16px;font:700 15px monospace;letter-spacing:.14em;color:var(--gold);text-align:center}
+	#clock.urgent{color:#ff5a48;animation:clockpulse 1s infinite}#clock.cool{color:#7fb4e6;opacity:.8}@keyframes clockpulse{50%{opacity:.35}}
 	#chapter{position:fixed;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.86);pointer-events:auto;text-align:center}
 	#chapter h1{font:300 34px/1.2 Georgia,serif;letter-spacing:.2em;color:var(--gold);margin:0}#chapter p{max-width:560px;opacity:.85}
 	#chapter button{margin:18px 6px 0;background:transparent;border:1px solid var(--gold);color:var(--gold);padding:8px 22px;font:14px monospace;cursor:pointer}#chapter button:hover{background:rgba(212,168,82,.12)}
@@ -76,7 +78,8 @@ export const createUI = (ctx) => {
 		<div id="log" class="panel"></div>
 		<div id="prompt" class="panel hidden"></div>
 		<div id="sub" class="panel hidden"></div>
-		<div id="toast" class="panel hidden"></div>`;
+		<div id="toast" class="panel hidden"></div>
+		<div id="clock" class="panel hidden"></div>`;
 	const q = (s) => hud.querySelector(s);
 	const remote = el('div', { id: 'remote', className: 'hidden' }); document.body.appendChild(remote);
 	const chapterCard = el('div', { id: 'chapter', className: 'hidden' }); document.body.appendChild(chapterCard);
@@ -133,6 +136,8 @@ export const createUI = (ctx) => {
 	let subT = null, toastT = null;
 	const setPrompt = (r) => { const p = q('#prompt'); if (!r) { p.classList.add('hidden'); return; } p.classList.remove('hidden'); p.innerHTML = `<kbd>[E]</kbd> ${r.prompt}${r.hold ? ` <span style="opacity:.6">(hold)</span><div class="pb"><i style="width:${Math.round((r.progress ?? 0) * 100)}%"></i></div>` : ''}`; };
 	const subtitle = (who, text, { radio = false, dur = 4.5 } = {}) => { if (!settings.subtitles) return; const s = q('#sub'); s.className = `panel${radio ? ' radio' : ''}`; s.innerHTML = `<b>${who}:</b> ${text}`; clearTimeout(subT); subT = setTimeout(() => s.classList.add('hidden'), dur * 1000); };
+	/** Top-centre ship clock (FTL window / cooldown). Empty text hides it; cls = '' | 'urgent' | 'cool'. */
+	const setClock = (text, cls = '') => { const c = q('#clock'); if (!text) { c.classList.add('hidden'); return; } c.textContent = text; c.className = `panel ${cls}`; };
 	const toast = (text, dur = 3.5) => { const t = q('#toast'); t.textContent = text; t.classList.remove('hidden'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.add('hidden'), dur * 1000); };
 	const zone = (name) => { q('#zone').textContent = name ?? ''; };
 
@@ -199,5 +204,5 @@ export const createUI = (ctx) => {
 		const sp = el('div', { className: 'settings panel hidden' }); chapterCard.firstElementChild.appendChild(sp); renderSettings(sp);
 		chapterCard.querySelector('[data-action="settings"]').onclick = () => sp.classList.toggle('hidden');
 	};
-	return { refreshPlayer, refreshTracker, drawMinimap, setPrompt, subtitle, toast, zone, showChapter, showTitle, openRemote, closeRemote, isRemoteOpen: () => open, renderRemote };
+	return { refreshPlayer, refreshTracker, drawMinimap, setPrompt, subtitle, toast, setClock, zone, showChapter, showTitle, openRemote, closeRemote, isRemoteOpen: () => open, renderRemote };
 };

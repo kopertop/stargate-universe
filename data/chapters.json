@@ -655,7 +655,8 @@
           "required": 4,
           "verb": "Salvage parts",
           "refined": "conduit"
-        }
+        },
+        "window_seconds": 420
       },
       "steps": [
         {

@@ -319,6 +319,22 @@ export const COMPONENTS = {
 			return { anchor: f.multiplyScalar(1.2).add(new THREE.Vector3(p.x, 0, p.z)) };
 		},
 	},
+	conduit: {
+		label: 'Conduit junction', size: [1.6, 0.3], defaultAnchor: 'Conduit',
+		build: (ctx, p, s) => { // wall junction with a missing segment between two pipe stubs; the segment appears when seated, lamp goes green when hotwired
+			const f = fwd(s.ry), g = new THREE.Group(); g.position.set(p.x, 0, p.z); g.rotation.y = s.ry; ctx.group.add(g);
+			ctx.box(1.6, 1.2, 0.3, ctx.mats.shell, p.x, 1.5, p.z, true, s.ry);
+			for (const [w, h, x, y] of [[1.5, 0.04, 0, 2.06], [1.5, 0.04, 0, 0.94], [0.04, 1.1, -0.73, 1.5], [0.04, 1.1, 0.73, 1.5]]) { const t = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.02), emissive(0xffa040, 0.5)); t.position.set(x, y, 0.16); g.add(t); ctx.parts.trims.push(t); }
+			for (const sx of [-1, 1]) { const stub = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.5, 12), ctx.mats.steel); stub.rotation.z = Math.PI / 2; stub.position.set(sx * 0.5, 1.5, 0.2); g.add(stub); const flange = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.05, 12), ctx.mats.dark); flange.rotation.z = Math.PI / 2; flange.position.set(sx * 0.27, 1.5, 0.2); g.add(flange); }
+			const gap = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.3, 0.1), new THREE.MeshStandardMaterial({ color: 0x06080c, roughness: 0.9 })); gap.position.set(0, 1.5, 0.14); g.add(gap); // exposed bay behind the missing segment
+			for (const [i, c] of [0xff48b8, 0x33e6e0, 0xf2b838].entries()) { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.4, 6), emissive(c, 0.9)); w.position.set(-0.12 + i * 0.12, 1.5, 0.19); w.rotation.z = Math.PI / 2; w.rotation.y = 0.7 - i * 0.7; g.add(w); } // severed lines
+			const segment = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.5, 12), new THREE.MeshStandardMaterial({ color: 0xc8b890, emissive: 0x6a4010, emissiveIntensity: 0.5, roughness: 0.35, metalness: 0.7 })); segment.rotation.z = Math.PI / 2; segment.position.set(0, 1.5, 0.2); segment.visible = false; g.add(segment);
+			const tag = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.125), glyphPlate()); tag.position.set(0, 1.1, 0.17); g.add(tag); ctx.parts.trims.push(tag);
+			const lampM = lamp(ctx, p.x + f.x * 0.17, 1.9, p.z + f.z * 0.17, s.ry, 0.5, 0.1);
+			ctx.parts.conduits.push({ lamp: lampM, segment });
+			return { anchor: f.multiplyScalar(1.0).add(new THREE.Vector3(p.x, 0, p.z)) };
+		},
+	},
 	breach: {
 		label: 'Hull breach', size: [3.2, 0.1],
 		build: (ctx, p, s) => {
@@ -367,6 +383,7 @@ export const ROOM_PROPS = {
 	south_corridor: [{ type: 'scrubber', u: 0.953, v: 0.5585, ry: -Math.PI / 2, anchor: 'Scrubber' }],
 	sealed_section_north: [{ type: 'breach', u: 0.99, v: 0.5, ry: -Math.PI / 2, active: false }],
 	elevator_room_floor_1: [{ type: 'elevator_door', u: 0.96, v: 0.5, ry: -Math.PI / 2, anchor: 'Elevator' }], // the room's only doorway is on the −z wall
+	room_1753576770763: [{ type: 'conduit', u: 0.03, v: 0.5, ry: Math.PI / 2, anchor: 'Conduit' }], // upper-deck corridor: the crew-deck power junction
 	aft_storage_hall: [{ type: 'crate', u: 0.18, v: 0.2, ry: 0.3, anchor: 'Salvage1', loot: [{ id: 'bus_fuse' }] }, { type: 'crate', u: 0.4, v: 0.25, ry: 1.1, anchor: 'Salvage2', loot: [{ id: 'rations', n: 2 }] }, { type: 'crate', u: 0.75, v: 0.7, ry: 2.4, anchor: 'Salvage3', loot: [{ id: 'bus_fuse' }] }, { type: 'crate', u: 0.82, v: 0.28, ry: 0.8, style: 'ancient' }],
 	infirmary: [{ type: 'med_bed', u: 0.25, v: 0.3, anchor: 'Beds' }, { type: 'med_bed', u: 0.25, v: 0.5 }, { type: 'med_bed', u: 0.25, v: 0.7 }, { type: 'cabinet', u: 0.85, v: 0.5, ry: -Math.PI / 2 }, { type: 'crate', u: 0.8, v: 0.85, ry: Math.PI, anchor: 'Salvage1', loot: [{ id: 'large_fuse' }] }],
 };

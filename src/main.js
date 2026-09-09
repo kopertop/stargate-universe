@@ -161,7 +161,7 @@ const ui = createUI({
 	flags: { has: (f) => quest?.flags.has(f) ?? false },
 	chapterTitle: () => quest?.chapter?.title ?? '', steps: () => quest?.chapter?.steps ?? [], stepIndex: () => quest?.stepIndex ?? 0,
 	deckMap: () => ({ deck: destiny.deck, rooms: destiny.rooms.filter((r) => r.floor === destiny.deck), player: player.root.position, current: currentRoom, discovered: [...discovered], waypoint: world === destiny ? waypointPos() : null }),
-	shipStatus: () => [['Power', destiny.ship.powered ? 'ONLINE' : 'OFFLINE', destiny.ship.powered], ['Elevator bus', destiny.ship.elevatorPowered ? 'ONLINE' : 'NO FUSES', !!destiny.ship.elevatorPowered], ['Hydroponics', quest.has('grow_lights_restored') ? 'GROW LIGHTS ON' : 'DARK', quest.has('grow_lights_restored')], ['Hull (port dock)', quest.has('any_breach_sealed') ? 'SEALED' : quest.has('life_support_diagnosed') ? 'BREACH' : 'unknown', quest.has('any_breach_sealed')], ['CO2 scrubbers', quest.has('scrubber_repaired') ? 'NOMINAL' : quest.has('scrubber_diagnosed') ? 'FAILED — lime bed exhausted' : 'unknown', quest.has('scrubber_repaired')], ['FTL', quest.has('ftl_dropped') && !quest.has('scrubber_repaired') ? 'DROPPED — gate window open' : 'CRUISING', true]],
+	shipStatus: () => [['Power', destiny.ship.powered ? 'ONLINE' : 'OFFLINE', destiny.ship.powered], ['Elevator bus', destiny.ship.elevatorPowered ? 'ONLINE' : 'NO FUSES', !!destiny.ship.elevatorPowered], ['Crew deck', destiny.ship.quartersPowered ? 'ONLINE' : 'OPEN CONDUIT', !!destiny.ship.quartersPowered], ['Hydroponics', quest.has('grow_lights_restored') ? 'GROW LIGHTS ON' : 'DARK', quest.has('grow_lights_restored')], ['Hull (port dock)', quest.has('any_breach_sealed') ? 'SEALED' : quest.has('life_support_diagnosed') ? 'BREACH' : 'unknown', quest.has('any_breach_sealed')], ['CO2 scrubbers', quest.has('scrubber_repaired') ? 'NOMINAL' : quest.has('scrubber_diagnosed') ? 'FAILED — lime bed exhausted' : 'unknown', quest.has('scrubber_repaired')], ['FTL', quest.has('ftl_dropped') && !quest.has('scrubber_repaired') ? 'DROPPED — gate window open' : 'CRUISING', true]],
 	planets: () => [
 		...(planet ? [{ id: planet.def.id, name: planet.def.name, scan: lastScan?.id === planet.def.id ? lastScan.atmosphere.composition : null, canDial: world === destiny && !destiny.gate.userData.active && !dialingWorld && quest.has('ftl_dropped') }] : []),
 		{ id: 'destiny', name: 'Destiny', scan: 'Home. Ancient seed ship.', canDial: world === planet && !planet.gate.userData.active && !dialingWorld },
@@ -251,6 +251,19 @@ for (const rid of ['elevator_north', 'elevator_room_floor_1']) interact.register
 			withAnim('interact', () => { S.setElevatorPower(true); quest.setFlag('elevator_powered'); oneShot(shutdownBuf, 0.5, 1.6); ui.subtitle('Eli', 'Bus is live. Elevator has power.'); }, { at: 0.4 }); });
 	} });
 interact.register({ world: 'destiny', id: 'grow_console', position: A['hydroponics:GrowConsole'], prompt: () => (S.powered && !quest.has('grow_lights_restored') && quest.has('upper_deck_reached') ? 'Restart the grow lights' : null),
+// Crew-deck conduit (Episode 4): seat Brody's segment, then hotwire the line — the crew quarters light up
+if (A['room_1753576770763:Conduit']) interact.register({ world: 'destiny', id: 'conduit', position: A['room_1753576770763:Conduit'], prompt: () => (quest.has('quarters_powered') ? null : quest.has('conduit_seated') ? 'Hotwire the conduit' : count('conduit') > 0 ? 'Seat the conduit segment' : stepIs('restore_conduit') ? 'Inspect conduit junction' : null),
+	action: () => {
+		if (quest.has('quarters_powered')) return;
+		if (!quest.has('conduit_seated')) {
+			if (count('conduit') <= 0) { withAnim('interact', () => { oneShot(buffers.menuClose, 0.5, 0.7); ui.subtitle('Eli', 'Half a metre of conduit, gone. Brody will have to make one.'); }); return; }
+			withAnim('repair', () => { removeItem('conduit', 1); S.installConduit(); quest.setFlag('conduit_seated'); oneShot(buffers.doorLock, 0.6, 1.2); ui.subtitle('Eli', 'Seated. Now the protocol.'); }, { at: 0.7 }); return;
+		}
+		player.playAction('interact', { loop: true });
+		hotwire.play({ title: 'CREW_DECK_LINE_v1.9', security: 'HIGH' }).then((ok) => { player.stopAction(); if (!ok) { ui.subtitle('Rush', 'The quarters stay dark until that line is matched, Eli.'); return; }
+			S.setQuartersPower(true); quest.setFlag('quarters_powered'); oneShot(buffers.terminal, 0.7); ui.subtitle('Eli', 'Crew deck is live. Somebody tell them they have beds.'); });
+	} });
+
 	action: () => withAnim('interact', () => { oneShot(buffers.terminal, 0.6); S.setGrowLights(true); quest.setFlag('grow_lights_restored'); ui.subtitle('Eli', 'Grow lights cycling up. There is still soil in these beds.'); }, { at: 0.6 }) });
 interact.register({ world: 'destiny', id: 'lever', position: A['south_spur:SealLever'], prompt: () => (quest.has('life_support_diagnosed') && !quest.has('any_breach_sealed') ? 'Pull emergency seal' : null), action: () => withAnim('interact', () => { S.sealBreach(); quest.setFlag('any_breach_sealed'); oneShot(shutdownBuf, 0.9, 0.8); ui.subtitle('Rush', 'Pressure is holding. Good. Now go make yourself useful somewhere else.'); }) });
 interact.register({ world: 'destiny', id: 'kino', position: A['eli_quarters:KinoPedestal'], prompt: () => (!quest.has('kino_acquired') ? 'Take the Kino and its remote' : null), action: () => withAnim('pickup', () => { S.takeKino(); addItem('kino_remote'); addItem('kino_orb', 2); quest.setFlag('kino_acquired'); }, { at: 0.55 }) });
@@ -269,8 +282,8 @@ interact.register({ world: 'destiny', id: 'scrubber', position: A['south_corrido
 interact.register({ world: 'destiny', id: 'crate', position: A['gate_room:SupplyCrate'], prompt: () => (stepIs('gear_up') ? 'Take shovel and field backpack' : null), action: () => withAnim('open', () => { addItem('shovel'); addItem('field_backpack'); equip('shovel'); equip('field_backpack'); quest.setFlag('geared_up'); ui.toast('Equipped: Field Shovel, Field Backpack (+6 carry)', 5); }, { at: 0.6 }) });
 let brodyBusy = 0;
 interact.register({ world: 'destiny', id: 'brody', position: brody.root, radius: 2.6, prompt: () => { const r = planet?.resource; if (!r) return null; if (stepIs('give_brody') && count(r.id) >= r.required) return `Give ${r.name.toLowerCase()} to Brody`; if (brodyBusy > 0) return null; return 'Talk to Brody'; },
-	action: () => { const r = planet.resource; if (stepIs('give_brody') && count(r.id) >= r.required) { const n = count(r.id); withAnim('pickup', () => removeItem(r.id, n), { at: 0.5 }); brodyBusy = 4; ui.subtitle('Brody', `Give me a minute with this ${r.name.toLowerCase()}...`, { dur: 4 }); brody.playAction('repair', { timeScale: 1.3 }); setTimeout(() => { addItem('refined_lime', n); quest.setFlag('lime_refined'); }, 4000); } else { npcTalk(brody); player.playAction('nod'); ui.subtitle('Brody', 'If you find anything we can burn, breathe, or drink — bring it to me.'); } } });
-interact.register({ world: 'destiny', id: 'rush', position: rush.root, radius: 2.6, prompt: () => 'Talk to Rush', action: () => { npcTalk(rush, 4); player.playAction('nod'); if (stepIs('talk_rush')) { const lines = { e2_water: 'Reserves are at eleven percent. The next drop is a frozen world. Bring back ice — as much as you can carry.', e3_darkness: 'Power draw is climbing and the reserves are not. Hydroponics on the upper deck could feed us, but the elevator bus is dead. Find fuses.' }; ui.subtitle('Rush', lines[quest.chapter.id] ?? 'Listen carefully, Eli.'); quest.setFlag(quest.step().complete_when); } else ui.subtitle('Rush', 'I am busy, Eli.'); } });
+	action: () => { const r = planet.resource; if (stepIs('give_brody') && count(r.id) >= r.required) { const n = count(r.id); withAnim('pickup', () => removeItem(r.id, n), { at: 0.5 }); brodyBusy = 4; ui.subtitle('Brody', r.refined ? 'Ancient alloy. Give me a minute at the lathe...' : `Give me a minute with this ${r.name.toLowerCase()}...`, { dur: 4 }); brody.playAction('repair', { timeScale: 1.3 }); setTimeout(() => { addItem(r.refined ?? 'refined_lime', r.refined ? 1 : n); quest.setFlag('lime_refined'); }, 4000); } else { npcTalk(brody); player.playAction('nod'); ui.subtitle('Brody', 'If you find anything we can burn, breathe, or drink — bring it to me.'); } } });
+interact.register({ world: 'destiny', id: 'rush', position: rush.root, radius: 2.6, prompt: () => 'Talk to Rush', action: () => { npcTalk(rush, 4); player.playAction('nod'); if (stepIs('talk_rush')) { const lines = { e2_water: 'Reserves are at eleven percent. The next drop is a frozen world. Bring back ice — as much as you can carry.', e3_darkness: 'Power draw is climbing and the reserves are not. Hydroponics on the upper deck could feed us, but the elevator bus is dead. Find fuses.', e4_parts: 'The crew deck conduit is missing a segment and this ship carries no spares. The next world has Ancient ruins. Strip what you can — and watch your air, there is none down there.' }; ui.subtitle('Rush', lines[quest.chapter.id] ?? 'Listen carefully, Eli.'); quest.setFlag(quest.step().complete_when); } else ui.subtitle('Rush', 'I am busy, Eli.'); } });
 interact.register({ world: 'destiny', id: 'scott', position: scott.root, radius: 2.6, prompt: () => 'Talk to Scott', action: () => { npcTalk(scott); player.playAction('nod'); ui.subtitle('Scott', quest.has('power_restored') ? 'Good work on the power. Keep moving.' : 'See if you can find a way to get those doors open.'); } });
 
 // shovel prop (procedural) mounted in the right hand while digging
@@ -466,7 +479,7 @@ const loadGame = () => {
 	if (travelIdx >= 0 && brodyIdx >= 0 && si > travelIdx && si < brodyIdx) { si = travelIdx; for (const f of ['on_planet', 'returned_from_planet']) quest.flags.delete(f); }
 	quest.stepIndex = si;
 	const S2 = destiny.ship;
-	if (quest.has('fuse_installed')) S2.installFuse(); for (const l of S2.lootables) if (quest.has(`looted:${l.key}`)) { S2.openCrate(l, true); S2.takeLoot(l); }
+	if (quest.has('fuse_installed')) S2.installFuse(); if (quest.has('conduit_seated')) S2.installConduit(); if (quest.has('quarters_powered')) S2.setQuartersPower(true); for (const l of S2.lootables) if (quest.has(`looted:${l.key}`)) { S2.openCrate(l, true); S2.takeLoot(l); }
 	if (quest.has('grow_lights_restored')) S2.setGrowLights(true); if (quest.has('elevator_fuses_seated')) S2.seatElevatorFuses(); if (quest.has('elevator_powered')) S2.setElevatorPower(true);
 	if (quest.has('power_restored')) S2.setPower(true); if (quest.has('any_breach_sealed')) S2.sealBreach(); if (quest.has('kino_acquired')) S2.takeKino(); if (quest.has('scrubber_repaired')) S2.repairScrubber();
 	const step = quest.step();
@@ -550,7 +563,9 @@ const frame = (dtIn) => {
 		brodyBusy = Math.max(0, brodyBusy - dt);
 		{ // air: CO2 builds while the scrubber is dead (Episode 1), recovers once it cycles; the O2 bar is the crew's clock
 			const dying = quest.chapter?.id === 'e1_air' && !quest.has('scrubber_repaired') && gameStarted, o2 = rpg.o2;
-			rpg.o2 = dying ? Math.max(38, o2 - dt * 0.09) : Math.min(100, o2 + dt * 3);
+			const airless = world === planet && planet?.def?.atmosphere?.breathable === false && !kino.active; // no suits: the lungs are the clock
+			rpg.o2 = airless ? Math.max(4, o2 - dt * 0.55) : dying ? Math.max(38, o2 - dt * 0.09) : Math.min(100, o2 + dt * 3);
+			if (airless) { for (const [lvl, who, line] of [[50, 'Rush', 'Half your air, Eli. Whatever you have, it is enough — start back.'], [20, 'Eli', 'Can\'t... breathe. Gate. Now.']]) if (o2 > lvl && rpg.o2 <= lvl) ui.subtitle(who, line); }
 			if (Math.round(o2) !== Math.round(rpg.o2)) ui.refreshPlayer();
 		}
 		const wp = waypointPos(); beacon.visible = !!wp && !kino.active;

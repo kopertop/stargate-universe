@@ -186,14 +186,29 @@ const PLANET_STEPS = ['scout_kino', 'gear_up', 'travel', 'mine', 'dial_home'];
 const needsPlanet = () => PLANET_STEPS.includes(quest.step()?.id);
 const ftlJump = () => {
 	if (kino.active) recallKino();
-	if (world === planet || travel?.to === planet) { // no suits, no shuttle: Scott hauls you back through as the wormhole collapses
-		travel = null; particles.visible = false; player.setFade(0); player.root.visible = true; if (planet.gate.userData.active) shutdownGate(planet);
-		arriveAt(destiny); quest.setFlag('returned_from_planet'); ui.subtitle('Scott', 'Eli! Through the gate — NOW!'); ui.toast('Destiny jumped. Scott dragged you through as the wormhole collapsed.', 6);
-	} else if (destiny.gate.userData.active) shutdownGate(destiny);
+	if (world === planet || travel?.to === planet) { ui.subtitle('Scott', 'Eli! Through the gate — NOW!'); knockOut('window_closed'); } // no suits, no shuttle: they haul you through as it collapses
+	else if (destiny.gate.userData.active) shutdownGate(destiny);
 	shake = 1.2; oneShot(buffers.ftlDrop, 0.9); addLog('Destiny jumped to FTL'); quest.setFlag('ftl_jumped');
 	ftl.window = 0; ftl.cooldown = FTL_COOLDOWN; ftl.warned.clear();
 };
 const ftlRedrop = () => { shake = 1.4; oneShot(buffers.ftlDrop, 0.9); oneShot(shutdownBuf, 0.5, 0.55); addLog('Destiny dropped out of FTL'); alertUntil = performance.now() + 12000; openFtlWindow(); setTimeout(() => dialGate(destiny), 900); oneShot(buffers.radio, 0.6); ui.subtitle('Brody', 'We have dropped out again — same address is dialing. Whatever you did not finish, finish it.', { radio: true }); };
+// Knockout loop (design: no death, issue #92): black out, wake on an infirmary bed, TJ has a line for whatever dropped you.
+let knockoutLines = { speaker: 'TJ', pools: { generic: ['You took a knock out there. Nothing that will not mend.'] } }, knockedOut = false;
+fetch(`${ASSETS}data/knockout_lines.json`).then((r) => r.json()).then((j) => { knockoutLines = j; }).catch(() => {});
+const knockOut = (cause) => {
+	if (knockedOut) return; knockedOut = true; if (kino.active) recallKino(); input.keys.clear();
+	flash.style.transition = 'opacity 1.1s'; flash.style.background = '#000'; flash.style.opacity = '1'; addLog(`Knocked out: ${cause.replace(/_/g, ' ')}`);
+	setTimeout(() => {
+		travel = null; particles.visible = false; player.setFade(0); player.root.visible = true;
+		if (planet?.gate.userData.active) shutdownGate(planet); if (cause === 'window_closed' && destiny.gate.userData.active) shutdownGate(destiny);
+		destiny.deck = 0; enterWorld(destiny); const bed = destiny.anchors['infirmary:Beds'] ?? destiny.spawn; placePlayer(destiny, bed.clone(), Math.PI / 2); cam.yaw = Math.PI / 2; cam.pitch = 0.2;
+		rpg.hp = Math.max(30, Math.round(stats().maxHp * 0.4)); rpg.o2 = 100; ui.refreshPlayer();
+		quest.setFlag('knocked_out'); if (cause === 'window_closed' || cause === 'asphyxiation') quest.setFlag('returned_from_planet');
+		const pool = knockoutLines.pools?.[cause] ?? knockoutLines.pools?.generic ?? ['You are awake. Good.']; ui.subtitle(knockoutLines.speaker ?? 'TJ', pool[Math.floor(Math.random() * pool.length)], { dur: 6 });
+		ui.toast(cause === 'window_closed' ? 'Pulled through as Destiny jumped. You woke up in the infirmary.' : 'You blacked out. You woke up in the infirmary.', 6);
+		setTimeout(() => { flash.style.opacity = '0'; setTimeout(() => { flash.style.transition = ''; flash.style.background = ''; knockedOut = false; }, 1200); }, 900);
+	}, 1200);
+};
 const tickFtl = (dt) => {
 	if (ftl.window > 0) {
 		ftl.window = Math.max(0, ftl.window - dt);
@@ -553,7 +568,7 @@ const devcon = createConsole({
 	give: (id, n = 1) => { for (let i = 0; i < +n; i++) addItem(id); return `gave ${n}× ${id}`; },
 	chapter: (id) => { startChapter(id); return `chapter ${id}`; },
 });
-window.__dbg.edit = edit; window.__dbg.console = devcon; window.__dbg.renderer = renderer; window.__dbg.hotwire = hotwire; window.__dbg.flow = flow; window.__dbg.ftl = ftl;
+window.__dbg.edit = edit; window.__dbg.console = devcon; window.__dbg.renderer = renderer; window.__dbg.hotwire = hotwire; window.__dbg.flow = flow; window.__dbg.ftl = ftl; window.__dbg.knockOut = knockOut;
 
 const fpsEl = document.getElementById('fps'); let simTime = 0; const frameWaiters = new Set(); // autoplay waits are checked once per simulated frame (timers throttle to 1 Hz in hidden tabs) // simulated seconds (drives autoplay waits; equals wall time except while recording)
 const clock = new THREE.Clock(); let acc = 0, frames = 0;
@@ -572,6 +587,7 @@ const frame = (dtIn) => {
 		for (const n of npcs) n.update(dt, IDLE_INPUT, 0, [], 0);
 		if (kino.active) { player.mixer.update(dt); updateKino(dt); }
 		else if (travel) { player.mixer.update(dt); updateTravel(dt, t); }
+		else if (knockedOut) { player.mixer.update(dt); camUpdate(dt); }
 		else {
 			player.update(dt, input, cam.yaw, noclip ? [] : world.colliders, floorUnder());
 			gateTravelCheck(); camUpdate(dt); tickRooms();
@@ -596,6 +612,7 @@ const frame = (dtIn) => {
 			const dying = quest.chapter?.id === 'e1_air' && !quest.has('scrubber_repaired') && gameStarted, o2 = rpg.o2;
 			const airless = world === planet && planet?.def?.atmosphere?.breathable === false && !kino.active; // no suits: the lungs are the clock
 			rpg.o2 = airless ? Math.max(4, o2 - dt * 0.55) : dying ? Math.max(38, o2 - dt * 0.09) : Math.min(100, o2 + dt * 3);
+			if (airless && rpg.o2 <= 4 && !knockedOut) { rpg.hp = Math.max(0, rpg.hp - dt * 6); ui.refreshPlayer(); if (rpg.hp <= 0) knockOut('asphyxiation'); }
 			if (airless) { for (const [lvl, who, line] of [[50, 'Rush', 'Half your air, Eli. Whatever you have, it is enough — start back.'], [20, 'Eli', 'Can\'t... breathe. Gate. Now.']]) if (o2 > lvl && rpg.o2 <= lvl) ui.subtitle(who, line); }
 			if (Math.round(o2) !== Math.round(rpg.o2)) ui.refreshPlayer();
 		}

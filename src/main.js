@@ -256,7 +256,7 @@ await quest.load('./data/chapters.json'); if (LIVE?.chapters) quest.chapters = L
 // ---------------------------------------------------------------- chapter start: build the chapter's planet, reset gates
 const startChapter = (id) => {
 	const ch = quest.chapterById(id);
-	planet = createDestination(ch.planet ?? planet?.def ?? quest.chapters.find((x) => x.planet).planet); // chapters without a planet keep the last world reachable planet.scene.environment = envTex; planet.scene.environmentIntensity = 0.6; attachGateAudio(planet); planet.scene.add(dust);
+	planet = createDestination(ch.planet ?? planet?.def ?? quest.chapters.find((x) => x.planet).planet); /* chapters without a planet keep the last world reachable */ planet.scene.environment = envTex; planet.scene.environmentIntensity = 0.6; attachGateAudio(planet); planet.scene.add(dust);
 	registerPlanetInteractables();
 	shutdownGate(destiny); destiny.gate.userData.reset();
 	quest.startChapter(id); if (count('large_fuse') >= 1) quest.setFlag('has_large_fuse'); if (count('bus_fuse') >= 2) quest.setFlag('has_bus_fuses'); ui.refreshTracker(); ui.refreshPlayer();

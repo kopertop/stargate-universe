@@ -11,4 +11,10 @@ and CI now copy each file to a temp `.mjs` first), and after any automated splic
 `window.__dbg` exists before doing anything else. When inserting code by line search, anchor on the statement's *closing*
 line (`} });`), never on a line that merely contains the identifier.
 
+**Second instance (same night):** a scripted replace appended `// comment` to the *front* of a one-line statement list —
+`planet = createDestination(...); // note` — silently commenting out `attachGateAudio(planet)` and everything after it on
+that line. The syntax check passed; the game died an hour later with `Cannot read properties of undefined (reading 'kawoosh')`
+when the Kino hit the planet gate. In a codebase of dense one-liners, never introduce `//` inside a replacement — use `/* */`
+or put the comment on its own line — and grep the replaced line's tail to confirm nothing followed the old text.
+
 **Applies to:** `.githooks/pre-commit`, `.github/workflows/ci.yml`, every scripted edit of `src/*.js`.

@@ -162,6 +162,15 @@ const ui = createUI({
 	flags: { has: (f) => quest?.flags.has(f) ?? false },
 	chapterTitle: () => quest?.chapter?.title ?? '', steps: () => quest?.chapter?.steps ?? [], stepIndex: () => quest?.stepIndex ?? 0,
 	deckMap: () => ({ deck: destiny.deck, rooms: destiny.rooms.filter((r) => r.floor === destiny.deck), player: player.root.position, current: currentRoom, discovered: [...discovered], waypoint: world === destiny ? waypointPos() : null }),
+	clocks: () => { // Kino Remote CLOCKS tab: [label, value, fraction, colour]
+		const rows = [];
+		if (countdown) rows.push([countdown.label, mmss(countdown.t), countdown.t / countdown.total, countdown.t <= 60 ? '#ff5a48' : '#ffb060']);
+		if (ftl.window > 0) rows.push(['FTL jump window', mmss(ftl.window), ftl.window / (quest.chapter?.planet?.window_seconds ?? FTL_WINDOW), ftl.window <= 60 ? '#ff5a48' : '#d4a852']);
+		else if (ftl.cooldown > 0) rows.push(['FTL cooldown · next drop', mmss(ftl.cooldown), 1 - ftl.cooldown / FTL_COOLDOWN, '#7fb4e6']);
+		if (destiny.ship.growLights) for (const [i, b] of destiny.ship.growBeds.entries()) rows.push([`Hydroponics bed ${i + 1}`, b.growth >= 1 ? 'READY' : `${Math.round(b.growth * 100)}%`, b.growth, b.growth >= 1 ? '#57bd42' : '#8fd0a0']);
+		if (rpg.o2 < 99) rows.push(['Oxygen', `${Math.round(rpg.o2)}%`, rpg.o2 / 100, rpg.o2 < 25 ? '#ff5a48' : '#59b8eb']);
+		return rows;
+	},
 	shipStatus: () => [['Power', destiny.ship.powered ? 'ONLINE' : 'OFFLINE', destiny.ship.powered], ['Elevator bus', destiny.ship.elevatorPowered ? 'ONLINE' : 'NO FUSES', !!destiny.ship.elevatorPowered], ['Crew deck', destiny.ship.quartersPowered ? 'ONLINE' : 'OPEN CONDUIT', !!destiny.ship.quartersPowered], ['Hydroponics', !destiny.ship.growLights ? 'DARK' : destiny.ship.growBeds.some((b) => b.growth >= 1) ? 'READY TO HARVEST' : `GROWING ${Math.round(Math.max(0, ...destiny.ship.growBeds.map((b) => b.growth)) * 100)}%`, !!destiny.ship.growLights], ['FTL', ftl.window > 0 ? `JUMP IN ${mmss(ftl.window)}` : ftl.cooldown > 0 ? `IN FLIGHT · DROP IN ${mmss(ftl.cooldown)}` : 'IN FLIGHT', ftl.window > 60 || ftl.cooldown > 0], ['Hydroponics', quest.has('grow_lights_restored') ? 'GROW LIGHTS ON' : 'DARK', quest.has('grow_lights_restored')], ['Hull (port dock)', quest.has('any_breach_sealed') ? 'SEALED' : quest.has('life_support_diagnosed') ? 'BREACH' : 'unknown', quest.has('any_breach_sealed')], ['CO2 scrubbers', quest.has('scrubber_repaired') ? 'NOMINAL' : quest.has('scrubber_diagnosed') ? 'FAILED — lime bed exhausted' : 'unknown', quest.has('scrubber_repaired')], ['FTL', quest.has('ftl_dropped') && !quest.has('scrubber_repaired') ? 'DROPPED — gate window open' : 'CRUISING', true]],
 	planets: () => [
 		...(planet ? [{ id: planet.def.id, name: planet.def.name, scan: lastScan?.id === planet.def.id ? lastScan.atmosphere.composition : null, canDial: world === destiny && !destiny.gate.userData.active && !dialingWorld && quest.has('ftl_dropped') }] : []),

@@ -17,16 +17,19 @@ export const createAutoplay = (d) => {
 	const walkTo = async (x, z, { run, tol = 0.7, timeout } = {}) => {
 		const dist0 = Math.hypot(x - pos().x, z - pos().z); run ??= dist0 > 10; timeout ??= (dist0 / (run ? 8 : 3.5)) * 1000 + 6000;
 		const t0 = simNow(); d.input.keys.add('KeyW'); if (run) d.input.keys.add('ShiftLeft');
-		let lastD = Infinity, stallT = 0, side = 'KeyD';
+		let lastD = Infinity, stallT = 0, side = 'KeyD', stalls = 0;
 		while (!auto.abort && simNow() - t0 < timeout) {
 			const dx = x - pos().x, dz = z - pos().z, dist = Math.hypot(dx, dz); if (dist < tol) break;
 			d.input.keys.add('KeyW'); if (run) d.input.keys.add('ShiftLeft'); // re-assert every tick: input.js clears keys on window blur (screenshots, focus changes)
 			d.cam().yaw = Math.atan2(-dx, -dz);
 			if (dist > lastD - 0.02) stallT += 40; else stallT = 0; lastD = Math.min(lastD, dist);
-			if (stallT > 500) { d.input.keys.add(side); await sleep(600); d.input.keys.delete(side); side = side === 'KeyD' ? 'KeyA' : 'KeyD'; stallT = 0; lastD = Infinity; }
+			if (stallT > 500) { // unstick: every other stall backs off first, and each sidestep lasts longer than the last (pillars, door frames, wall props)
+				stalls++; if (stalls % 2 === 0) { d.input.keys.delete('KeyW'); d.input.keys.add('KeyS'); await sleep(450); d.input.keys.delete('KeyS'); }
+				d.input.keys.add(side); await sleep(Math.min(2400, 600 * stalls)); d.input.keys.delete(side); side = side === 'KeyD' ? 'KeyA' : 'KeyD'; stallT = 0; lastD = Infinity;
+			}
 			await sleep(40);
 		}
-		d.input.keys.delete('KeyW'); d.input.keys.delete('ShiftLeft'); d.input.keys.delete('KeyA'); d.input.keys.delete('KeyD'); await sleep(200);
+		for (const k of ['KeyW', 'ShiftLeft', 'KeyA', 'KeyD', 'KeyS']) d.input.keys.delete(k); await sleep(200);
 	};
 	/** Route through doors to a room, then to an anchor (or the room centre). */
 	const goTo = async (room, anchor = 'RoomCenter', opts = {}) => {

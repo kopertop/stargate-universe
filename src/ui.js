@@ -194,14 +194,17 @@ export const createUI = (ctx) => {
 
 	// ---- title screen + controls card
 	const CONTROLS = [['WASD / L-stick', 'move'], ['Shift / RT', 'run'], ['Space / A', 'jump'], ['E / X', 'interact (hold to dig)'], ['Mouse / R-stick', 'look (click to capture)'], ['TAB / Start', 'Kino Remote (quest, gear, talents, ship, gate)'], ['K / Y', 'launch Kino'], ['V', 'camera view'], ['F', 'fullscreen'], ['B', 'terrain debug']];
-	const showTitle = ({ hasSave, onNew, onContinue }) => {
+	const showTitle = ({ hasSave, onNew, onContinue, chapters = [], onChapter }) => {
 		chapterCard.innerHTML = `<div><div style="font:12px monospace;letter-spacing:.3em;color:#887">A THREE.JS PROTOTYPE</div><h1>STARGATE UNIVERSE</h1><p>Destiny · five episodes</p>
-			<button data-action="new">New Game</button>${hasSave ? '<button data-action="continue">Continue</button>' : ''}<button data-action="controls">Controls</button><button data-action="settings">Settings</button>
-			<div class="ctl hidden">${CONTROLS.map(([k, v]) => `<b>${k}</b><span>${v}</span>`).join('')}</div></div>`;
+			<button data-action="new">New Game</button>${hasSave ? '<button data-action="continue">Continue</button>' : ''}${chapters.length > 1 ? '<button data-action="chapters">Chapters</button>' : ''}<button data-action="controls">Controls</button><button data-action="settings">Settings</button>
+			<div class="ctl hidden">${CONTROLS.map(([k, v]) => `<b>${k}</b><span>${v}</span>`).join('')}</div>
+			<div class="chapters hidden" style="display:flex;flex-direction:column;gap:6px;margin-top:10px">${chapters.map((c) => `<button data-chapter="${c.id}" style="width:100%">${c.title}<small style="display:block;font-size:11px;color:#998;font-weight:400">${c.subtitle ?? ''}</small></button>`).join('')}</div></div>`;
 		chapterCard.classList.remove('hidden');
 		chapterCard.querySelector('[data-action="new"]').onclick = () => { chapterCard.classList.add('hidden'); onNew(); };
 		chapterCard.querySelector('[data-action="continue"]')?.addEventListener('click', () => { chapterCard.classList.add('hidden'); onContinue(); });
 		chapterCard.querySelector('[data-action="controls"]').onclick = () => chapterCard.querySelector('.ctl').classList.toggle('hidden');
+		chapterCard.querySelector('[data-action="chapters"]')?.addEventListener('click', () => chapterCard.querySelector('.chapters').classList.toggle('hidden'));
+		chapterCard.querySelectorAll('[data-chapter]').forEach((b) => (b.onclick = () => { chapterCard.classList.add('hidden'); onChapter?.(b.dataset.chapter); }));
 		const sp = el('div', { className: 'settings panel hidden' }); chapterCard.firstElementChild.appendChild(sp); renderSettings(sp);
 		chapterCard.querySelector('[data-action="settings"]').onclick = () => sp.classList.toggle('hidden');
 	};

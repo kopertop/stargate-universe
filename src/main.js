@@ -578,7 +578,21 @@ startChapter('e1_air');
 document.getElementById('loading')?.remove();
 document.addEventListener('visibilitychange', () => { if (document.hidden) listener.context.suspend?.(); else if (gameStarted) listener.context.resume?.(); }); // silence when the tab is hidden
 const newGame = () => { listener.context.resume(); destiny.scene.add(beacon); localStorage.removeItem(SAVE_KEY); localStorage.removeItem('sgu.rpg'); ui.showChapter(quest.chapter.title, quest.chapter.subtitle, 'Begin', () => { gameStarted = true; arriveAt(destiny); }); };
-ui.showTitle({ hasSave: hasSave(), onNew: newGame, onContinue: () => { listener.context.resume(); destiny.scene.add(beacon); if (!loadGame()) newGame(); } });
+/** Start at any chapter with the state earlier episodes would have left behind (cumulative stages, in chapter order). */
+const PREREQ_STAGES = {
+	e2_water: () => { const S = destiny.ship; S.setPower(true); S.installFuse(); S.takeKino(); S.repairScrubber(); S.sealBreach?.(); for (const f of ['relay_inspected', 'has_small_fuse', 'fuse_installed', 'power_restored', 'control_room_visited', 'life_support_diagnosed', 'any_breach_sealed', 'eli_quarters_visited', 'kino_acquired', 'locker_opened', 'scrubber_diagnosed', 'geared_up', 'scrubber_repaired']) quest.flags.add(f); for (const [id, n] of [['kino_orb', 1], ['kino_remote', 1], ['shovel', 1], ['field_backpack', 1], ['tac_vest', 1], ['rations', 2]]) if (count(id) < n) addItem(id, n - count(id)); equip('shovel'); equip('field_backpack'); equip('tac_vest'); },
+	e3_darkness: () => {},
+	e4_parts: () => { const S = destiny.ship; S.seatElevatorFuses(); S.setElevatorPower(true); S.setGrowLights(true); for (const f of ['has_bus_fuses', 'has_large_fuse', 'elevator_fuses_seated', 'elevator_powered', 'upper_deck_reached', 'hydroponics_visited', 'grow_lights_restored']) quest.flags.add(f); },
+	e5_light: () => { const S = destiny.ship; S.installConduit(); S.setQuartersPower(true); for (const f of ['conduit_seated', 'quarters_powered', 'quarters_visited']) quest.flags.add(f); },
+};
+const startFrom = (id) => {
+	listener.context.resume(); destiny.scene.add(beacon); localStorage.removeItem(SAVE_KEY); localStorage.removeItem('sgu.rpg');
+	if (id === quest.chapters[0].id) return newGame();
+	startChapter(id); for (const ch of quest.chapters) { PREREQ_STAGES[ch.id]?.(); if (ch.id === id) break; }
+	ui.refreshPlayer(); ui.refreshTracker();
+	ui.showChapter(quest.chapter.title, quest.chapter.subtitle, 'Begin', () => { gameStarted = true; enterWorld(destiny); placePlayer(destiny, destiny.spawn.clone(), destiny.spawnYaw); cam.yaw = 0; saveGame(); });
+};
+ui.showTitle({ hasSave: hasSave(), onNew: newGame, onContinue: () => { listener.context.resume(); destiny.scene.add(beacon); if (!loadGame()) newGame(); }, chapters: quest.chapters.map((c) => ({ id: c.id, title: c.title, subtitle: c.subtitle })), onChapter: startFrom });
 // ?autoplay → hands-free demo driver (recordings / smoke runs); start it with window.__auto.run()
 if (location.search.includes('autoplay')) { const { createAutoplay } = await import('./autoplay.js'); window.__auto = createAutoplay(window.__dbg); }
 // ?record → in-page recorder (WebGL + text HUD) → local save endpoint; control with window.__rec.start()/stop(name)

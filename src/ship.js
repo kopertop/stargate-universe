@@ -224,7 +224,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 			for (const m of cur.children.slice(n0)) { m.userData.prop = { roomId: r.id, spec: s }; propMeshes.push(m); }
 			for (let i = c0; i < colliders.length; i++) colliders[i].prop = { roomId: r.id, spec: s };
 			if (out.anchor && (spec.anchor || comp.defaultAnchor)) anchors[`${r.id}:${spec.anchor ?? comp.defaultAnchor}`] = out.anchor;
-			if (out.loot) lootables.push({ key: `${r.id}:${spec.anchor ?? `${s.type}${lootables.length}`}`, roomId: r.id, anchor: out.anchor, lid: out.lid, loot: out.loot, spec: s });
+			if (out.loot) lootables.push({ key: `${r.id}:${spec.anchor ?? `${s.type}${lootables.length}`}`, roomId: r.id, anchor: out.anchor, setOpen: out.setOpen, loot: out.loot, spec: s });
 		}
 		if (r.type === 'gate_room') anchors['gate_room:GateFront'] = new THREE.Vector3(0, 0, gateZ + 3);
 	}
@@ -257,12 +257,13 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 	state.seatElevatorFuses = () => { for (const e of parts.elevators) for (const f of e.fuses) f.visible = true; };
 	state.setElevatorPower = (on) => { state.elevatorPowered = on; for (const e of parts.elevators) { e.lamp.material.color.set(on ? 0x40ff80 : 0xff3020); e.lamp.material.emissive.set(on ? 0x20ff60 : 0xff2010); for (const [i, m] of e.leaves.entries()) m.position.x = (i ? 1 : -1) * (on ? 1.05 : 0.58); } };
 	state.setGrowLights = (on) => { for (const l of parts.growLamps) l.material.emissiveIntensity = on ? 1.8 : 0; for (const s of parts.sprouts) s.visible = on; };
-	state.openCrate = (l) => { if (l.lid) l.lid.rotation.x = -1.35; l.opened = true; };
+	state.openCrate = (l, instant = false) => { l.opened = true; if (instant) { l.openK = 1; l.setOpen?.(1); } else l.openK ??= 0; }; // lid animates in update()
 	state.sealBreach = () => { const d = jam; d.sealed = true; d.locked = true; d.lamp.material.color.set(0xffa020); d.lamp.material.emissive.set(0xff8000); handle.rotation.x = -0.6; if (breachLight) breachLight.intensity = 0; };
 	state.repairScrubber = () => { if (!scrubLamp) return; scrubLamp.material.color.set(0x40ff80); scrubLamp.material.emissive.set(0x20ff60); scrubBed.material.color.set(0xe8e2d0); };
 	state.takeKino = () => { for (const m of parts.kino) m.visible = false; };
 	/** Doors slide open when unlocked and the player is within 3 m; only lights near the player are live (light count drives shader cost). */
 	state.update = (dt, playerPos) => {
+		for (const l of lootables) if (l.opened && l.openK < 1) { l.openK = Math.min(1, l.openK + dt / 0.9); l.setOpen?.(l.openK); }
 		for (const d of doorObjs) {
 			const near = playerPos.distanceTo(d.wp) < 3.2;
 			const target = !d.locked && !d.sealed && near ? 1 : 0;

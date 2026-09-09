@@ -124,17 +124,29 @@ export const createAutoplay = (d) => {
 		const ok = !!step()?.terminal; say(`${ch.id} ${ok ? 'complete' : 'incomplete'}`); return { ok, chapter: ch.id, seconds: (simNow() - t0) / 1000 };
 	};
 	/** Play every chapter in order (New Game must already have been clicked). */
-	auto.run = async () => {
-		if (auto.running) return; auto.running = true; auto.abort = false; auto.report = [];
+	const RESUME_KEY = 'sgu.autoresume';
+	/** Play every chapter in order (New Game must already have been clicked). `reload: true` reloads the page at every chapter
+	 *  boundary and resumes from the save (Continue), so the run also exercises save/load. `?autoplay&reload` does the same. */
+	auto.run = async ({ reload = location.search.includes('reload'), report = [] } = {}) => {
+		if (auto.running) return; auto.running = true; auto.abort = false; auto.report = report;
 		try {
 			for (let i = 0; i < 8 && !auto.abort; i++) {
 				const r = await auto.runChapter(); auto.report.push(r); if (!r.ok) break;
 				await sleep(2500); const before = d.quest.chapter.id; document.querySelector('#chapter button')?.click(); await sleep(1500);
 				if (d.quest.chapter.id === before) { say('no next chapter'); break; }
+				if (reload) { await sleep(1500); sessionStorage.setItem(RESUME_KEY, JSON.stringify({ report: auto.report })); say(`reloading before ${d.quest.chapter.id}`); location.reload(); return; }
 				press('Tab'); await sleep(600); const remote = d.ui.isRemoteOpen(); if (remote) press('Tab'); auto.report.at(-1).remoteAfterHandoff = remote; await sleep(600);
 			}
-			say(`done: ${auto.report.map((r) => `${r.chapter} ${r.ok ? 'ok' : 'FAIL'} ${r.seconds.toFixed(0)}s`).join(' · ')}`);
+			sessionStorage.removeItem(RESUME_KEY); say(`done: ${auto.report.map((r) => `${r.chapter} ${r.ok ? 'ok' : 'FAIL'} ${r.seconds.toFixed(0)}s`).join(' · ')}`);
 		} catch (e) { say(`error: ${e.message}`); } finally { auto.running = false; d.input.keys.clear(); }
 	};
+	// resume a reload-mode run: press Continue on the title, then carry on with the saved report
+	const resume = sessionStorage.getItem(RESUME_KEY);
+	if (resume) (async () => {
+		const btn = await (async () => { for (let i = 0; i < 80; i++) { const b = document.querySelector('[data-action="continue"]'); if (b) return b; await new Promise((r) => setTimeout(r, 250)); } return null; })();
+		if (!btn) { say('resume: no Continue button'); sessionStorage.removeItem(RESUME_KEY); return; }
+		btn.click(); await new Promise((r) => setTimeout(r, 2500)); say(`resumed at ${d.quest.chapter?.id} › ${stepId()}`);
+		auto.resumed = (auto.resumed ?? 0) + 1; auto.run({ reload: true, report: JSON.parse(resume).report ?? [] });
+	})();
 	return auto;
 };

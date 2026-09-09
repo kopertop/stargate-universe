@@ -170,7 +170,7 @@ const ui = createUI({
 	clocks: () => { // Kino Remote CLOCKS tab: [label, value, fraction, colour]
 		const rows = [];
 		if (countdown) rows.push([countdown.label, mmss(countdown.t), countdown.t / countdown.total, countdown.t <= 60 ? '#ff5a48' : '#ffb060']);
-		if (ftl.window > 0) rows.push(['FTL jump window', mmss(ftl.window), ftl.window / (quest.chapter?.planet?.window_seconds ?? FTL_WINDOW), ftl.window <= 60 ? '#ff5a48' : '#d4a852']);
+		if (ftl.window > 0) rows.push(['FTL jump window', mmss(ftl.window), ftl.window / ((quest.chapter?.planet?.window_seconds ?? FTL_WINDOW) * clockScale()), ftl.window <= 60 ? '#ff5a48' : '#d4a852']);
 		else if (ftl.cooldown > 0) rows.push(['FTL cooldown · next drop', mmss(ftl.cooldown), 1 - ftl.cooldown / FTL_COOLDOWN, '#7fb4e6']);
 		if (destiny.ship.growLights) for (const [i, b] of destiny.ship.growBeds.entries()) rows.push([`Hydroponics bed ${i + 1}`, b.growth >= 1 ? 'READY' : `${Math.round(b.growth * 100)}%`, b.growth, b.growth >= 1 ? '#57bd42' : '#8fd0a0']);
 		if (rpg.o2 < 99) rows.push(['Oxygen', `${Math.round(rpg.o2)}%`, rpg.o2 / 100, rpg.o2 < 25 ? '#ff5a48' : '#59b8eb']);
@@ -196,7 +196,8 @@ let alertUntil = 0; // music 'alert' mood window (breach, FTL drop)
 const FTL_WINDOW = 600, FTL_COOLDOWN = 90;
 const ftl = { window: 0, cooldown: 0, warned: new Set() };
 const mmss = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-const openFtlWindow = () => { ftl.window = quest.chapter?.planet?.window_seconds ?? FTL_WINDOW; ftl.cooldown = 0; ftl.warned.clear(); };
+const clockScale = () => settings.clockScale ?? 1; // accessibility: stretch or shorten every story clock
+const openFtlWindow = () => { ftl.window = (quest.chapter?.planet?.window_seconds ?? FTL_WINDOW) * clockScale(); ftl.cooldown = 0; ftl.warned.clear(); };
 const PLANET_STEPS = ['scout_kino', 'gear_up', 'travel', 'mine', 'dial_home'];
 const needsPlanet = () => PLANET_STEPS.includes(quest.step()?.id);
 const ftlJump = () => {
@@ -227,7 +228,7 @@ const knockOut = (cause) => {
 // Story countdowns (data triggers `countdown` / `countdown_stop`): a deadline with a label; expiry knocks you out with the
 // given cause and re-arms, so a missed deadline costs a trip to the infirmary rather than the run. Takes over the HUD clock.
 let countdown = null;
-const startCountdown = ({ seconds = 300, label = 'DEADLINE', cause = 'generic' }) => { countdown = { t: seconds, total: seconds, label, cause, warned: new Set() }; alertUntil = performance.now() + 12000; };
+const startCountdown = ({ seconds = 300, label = 'DEADLINE', cause = 'generic' }) => { const t = seconds * clockScale(); countdown = { t, total: t, label, cause, warned: new Set() }; alertUntil = performance.now() + 12000; };
 const stopCountdown = () => { countdown = null; ui.setClock(''); };
 const tickCountdown = (dt) => {
 	if (!countdown) return;

@@ -83,6 +83,7 @@ export const createAutoplay = (d) => {
 		gear_up: async (s) => { await goTo(s.target.room, s.target.anchor); facePropAt(s.target.room, s.target.anchor); await interact(1900); },
 		travel: async () => { await goTo('gate_room', 'GateFront', { tol: 1.0 }); await walkTo(0, gz() + 8, { run: true, tol: 1.0 }); await walkTo(0, gz() + 0.7, { tol: 0.35, timeout: 8000, run: false }); await waitFor(() => d.world.name === 'planet' && !d.travel(), 15000); await sleep(600); },
 		mine: async () => {
+			if (d.world.name !== 'planet') { await waitFor(() => d.destiny.gate.userData.active, 120000); await H.travel(); } // missed the FTL window: wait for the re-drop and go back through
 			const r = d.planet.resource, have = () => d.rpg.inventory[r.id] ?? 0;
 			for (let i = 0; i < 6 && have() < r.required; i++) {
 				const n = d.planet.nodes.find((n) => !n.done); if (!n) break;

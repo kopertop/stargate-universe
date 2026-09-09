@@ -197,7 +197,7 @@ const ftlRedrop = () => { shake = 1.4; oneShot(buffers.ftlDrop, 0.9); oneShot(sh
 let knockoutLines = { speaker: 'TJ', pools: { generic: ['You took a knock out there. Nothing that will not mend.'] } }, knockedOut = false;
 fetch(`${ASSETS}data/knockout_lines.json`).then((r) => r.json()).then((j) => { knockoutLines = j; }).catch(() => {});
 const knockOut = (cause) => {
-	if (knockedOut) return; knockedOut = true; if (kino.active) recallKino(); input.keys.clear();
+	if (knockedOut) return; knockedOut = true; if (kino.active) recallKino(); input.keys.clear(); ui.setPrompt(null);
 	flash.style.transition = 'opacity 1.1s'; flash.style.background = '#000'; flash.style.opacity = '1'; addLog(`Knocked out: ${cause.replace(/_/g, ' ')}`);
 	setTimeout(() => {
 		travel = null; particles.visible = false; player.setFade(0); player.root.visible = true;
@@ -216,8 +216,8 @@ let countdown = null;
 const startCountdown = ({ seconds = 300, label = 'DEADLINE', cause = 'generic' }) => { countdown = { t: seconds, total: seconds, label, cause, warned: new Set() }; alertUntil = performance.now() + 12000; };
 const stopCountdown = () => { countdown = null; ui.setClock(''); };
 const tickCountdown = (dt) => {
-	if (!countdown || knockedOut) return;
-	countdown.t = Math.max(0, countdown.t - dt);
+	if (!countdown) return;
+	if (!knockedOut) countdown.t = Math.max(0, countdown.t - dt); // the clock keeps drawing through a blackout, it just does not run
 	for (const [at, who, line] of [[120, 'Rush', 'Two minutes, Eli. I would very much like to be wrong about the shields.'], [30, 'Scott', 'Thirty seconds! Wherever you are, get it done!']]) if (countdown.t <= at && !countdown.warned.has(at)) { countdown.warned.add(at); oneShot(buffers.radio, 0.6); ui.subtitle(who, line, { radio: true }); if (at === 30) alertUntil = performance.now() + 30000; }
 	ui.setClock(`${countdown.label}  ${mmss(countdown.t)}`, countdown.t <= 60 ? 'urgent' : '');
 	if (countdown.t === 0) { const c = countdown; knockOut(c.cause); c.t = c.total; c.warned.clear(); shake = 1.2; }

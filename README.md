@@ -2,7 +2,8 @@
 
 A browser RPG set aboard the Ancient seed ship *Destiny* (Stargate Universe). Third-person exploration of the deck,
 gate travel to procedurally dressed planets, resource runs, a Kino drone, an RPG layer (inventory, gear, talents) and a
-declarative chapter/quest engine. Two episodes ship: **Air** and **Water**.
+declarative chapter/quest engine. Five episodes ship: **Air**, **Water**, **Darkness**, **Parts** and **Light** — power, life support, the
+upper deck, a salvage run on borrowed air, and a dive into a star on a countdown.
 
 Plain Three.js (0.180 via import map) + ES modules — no bundler, no framework.
 

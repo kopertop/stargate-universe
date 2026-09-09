@@ -1,7 +1,8 @@
 # Stargate Universe — Destiny (browser game)
 
 A third-person RPG aboard the Ancient ship *Destiny*, written in plain Three.js (0.180 via import map, ES modules, no
-bundler). Two playable episodes (Air, Water), gate travel to procedural planets, Kino drone, RPG layer, in-game level
+bundler). Five playable episodes (Air, Water, Darkness, Parts, Light), gate travel to procedural planets, an FTL jump window and story
+countdowns with a no-death knockout loop, Kino drone, RPG layer, hydroponics harvest, in-game level
 editor. This is the only game in the repo: the earlier Vite/ggez and Godot stacks were removed on 2026-09-08.
 
 ## Run / verify
@@ -9,6 +10,8 @@ editor. This is the only game in the repo: the earlier Vite/ggez and Godot stack
 - Dev: `python3 tools/edit_server.py 8090` → http://localhost:8090/ (or the `game` entry in `.claude/launch.json`).
   The server serves the repo root, accepts `PUT /data/*.json` from the level editor and pipes recorder frames into ffmpeg.
 - Smoke: open `/?autoplay`, click New Game, run `window.__auto.run()`; `__auto.report` lists each chapter with `ok` and seconds.
+  `/?autoplay&reload` reloads and resumes from the save at every chapter boundary (save/load coverage). All tabs on :8090
+  share `localStorage['sgu.save']` — never run two smokes at once when one is in reload mode.
 - Video proof: `/?autoplay&record`, `__rec.start('name')` … `__rec.stop()` → `~/Desktop/name.mp4` at a constant 30 fps.
 - Ship: `./build.sh` → `dist/sgu-destiny-html5.zip` for itch.io (HTML project, index.html at zip root).
 - Pre-commit: `git config core.hooksPath .githooks` (node --check on staged `src/*.js`, JSON validation). CI does the same plus a build.

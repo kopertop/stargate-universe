@@ -353,10 +353,11 @@ export const COMPONENTS = {
 			const g = new THREE.Group(); g.position.set(p.x, 0, p.z); g.rotation.y = s.ry; ctx.group.add(g);
 			ctx.box(3.0, 0.7, 1.2, ctx.mats.shell, p.x, 0.35, p.z, true, s.ry);
 			const soil = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.08, 1.0), new THREE.MeshStandardMaterial({ color: 0x2a2018, roughness: 1 })); soil.position.set(0, 0.72, 0); g.add(soil);
-			for (let i = 0; i < 7; i++) { const sprout = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.18, 5), new THREE.MeshStandardMaterial({ color: 0x4f7a3a, roughness: 0.9 })); sprout.position.set(-1.2 + i * 0.4, 0.85, (i % 2 ? 0.2 : -0.2)); sprout.visible = false; g.add(sprout); ctx.parts.sprouts.push(sprout); }
+			const sprouts = []; // cones scale up with the bed's growth (ship.update); hidden until the grow lights come on
+			for (let i = 0; i < 7; i++) { const sprout = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.18, 5), new THREE.MeshStandardMaterial({ color: 0x4f7a3a, roughness: 0.9 })); sprout.position.set(-1.2 + i * 0.4, 0.85, (i % 2 ? 0.2 : -0.2)); sprout.scale.set(0.4, 0.3, 0.4); sprout.visible = false; g.add(sprout); ctx.parts.sprouts.push(sprout); sprouts.push(sprout); }
 			for (const sx of [-1.35, 1.35]) { const post = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.3, 0.06), ctx.mats.dark); post.position.set(sx, 1.35, 0); g.add(post); }
 			const lampBar = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.06, 0.3), new THREE.MeshStandardMaterial({ color: 0xd8ffd0, emissive: 0xa8ff9a, emissiveIntensity: 0 })); lampBar.position.set(0, 2.0, 0); g.add(lampBar); ctx.parts.growLamps.push(lampBar);
-			return { anchor: fwd(s.ry).multiplyScalar(1.3).add(new THREE.Vector3(p.x, 0, p.z)) };
+			return { anchor: fwd(s.ry).multiplyScalar(1.3).add(new THREE.Vector3(p.x, 0, p.z)), sprouts };
 		},
 	},
 	marker: {

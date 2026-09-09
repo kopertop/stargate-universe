@@ -212,7 +212,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 	doorObjs.forEach(setDoorCollider);
 
 	// ---- props: reusable components placed from room.props (layout data / editor) or the per-type defaults
-	const parts = { screens: [], holos: [], trims: [], kino: [], elevators: [], growLamps: [], sprouts: [], conduits: [] }, propMeshes = [], lootables = [];
+	const parts = { screens: [], holos: [], trims: [], kino: [], elevators: [], growLamps: [], sprouts: [], conduits: [] }, propMeshes = [], lootables = [], growBeds = [];
 	const mats = { dark: darkMat, floor: floorMat, door: doorMat, red: redMat, shell: new THREE.MeshStandardMaterial({ color: 0x2b3139, roughness: 0.45, metalness: 0.7 }), slit: new THREE.MeshStandardMaterial({ color: 0xcfe6ff, emissive: 0xcfe6ff, emissiveIntensity: 1.6 }), crate: new THREE.MeshStandardMaterial({ color: 0x5e6a3a, roughness: 0.9 }), steel: new THREE.MeshStandardMaterial({ color: 0xa8b0b8, roughness: 0.6 }) };
 	for (const r of rooms) {
 		cur = decks[r.floor];
@@ -226,6 +226,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 			for (const m of cur.children.slice(n0)) { m.userData.prop = { roomId: r.id, spec: s }; propMeshes.push(m); }
 			for (let i = c0; i < colliders.length; i++) colliders[i].prop = { roomId: r.id, spec: s };
 			if (out.anchor && (spec.anchor || comp.defaultAnchor)) anchors[`${r.id}:${spec.anchor ?? comp.defaultAnchor}`] = out.anchor;
+			if (out.sprouts) growBeds.push({ key: `${r.id}:bed${growBeds.length}`, roomId: r.id, anchor: out.anchor, sprouts: out.sprouts, growth: 0 });
 			if (out.loot) lootables.push({ key: `${r.id}:${spec.anchor ?? `${s.type}${lootables.length}`}`, roomId: r.id, anchor: out.anchor, setOpen: out.setOpen, items: out.items, loot: out.loot, spec: s });
 		}
 		if (r.type === 'gate_room') anchors['gate_room:GateFront'] = new THREE.Vector3(0, 0, gateZ + 3);
@@ -244,7 +245,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 	}
 
 	mergeStatic();
-	const state = { group, rooms, doors: doorObjs, elevators, anchors, occludable, ceilings, propMeshes, lootables, powered: false, doorSpeed: 1, onDoor: null }; // onDoor(ev, door): 'unlock' | 'closed' | 'denied'
+	const state = { group, rooms, doors: doorObjs, elevators, anchors, occludable, ceilings, propMeshes, lootables, growBeds, powered: false, doorSpeed: 1, onDoor: null }; // onDoor(ev, door): 'unlock' | 'closed' | 'denied'
 	state.setPower = (on) => {
 		state.powered = on;
 		strip.emissiveIntensity = on ? 1.2 : 0; edge.emissiveIntensity = on ? 1.8 : 0.25;
@@ -260,7 +261,11 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 	state.setElevatorPower = (on) => { state.elevatorPowered = on; for (const e of parts.elevators) { e.lamp.material.color.set(on ? 0x40ff80 : 0xff3020); e.lamp.material.emissive.set(on ? 0x20ff60 : 0xff2010); for (const [i, m] of e.leaves.entries()) m.position.x = (i ? 1 : -1) * (on ? 1.05 : 0.58); } };
 	state.installConduit = () => { for (const c of parts.conduits) { c.segment.visible = true; if (!state.quartersPowered) { c.lamp.material.color.set(0xffa020); c.lamp.material.emissive.set(0xff8000); } } };
 	state.setQuartersPower = (on) => { state.quartersPowered = on; for (const c of parts.conduits) { c.lamp.material.color.set(on ? 0x40ff80 : 0xff3020); c.lamp.material.emissive.set(on ? 0x20ff60 : 0xff2010); } };
-	state.setGrowLights = (on) => { for (const l of parts.growLamps) l.material.emissiveIntensity = on ? 1.8 : 0; for (const s of parts.sprouts) s.visible = on; };
+	state.setGrowLights = (on) => { state.growLights = on; for (const l of parts.growLamps) l.material.emissiveIntensity = on ? 1.8 : 0; for (const s of parts.sprouts) s.visible = on; };
+	const GROW_TIME = 180; // seconds from sprout to harvest under the lamps
+	const growBedPose = (b) => { for (const s of b.sprouts) s.scale.set(0.4 + b.growth * 0.9, 0.3 + b.growth * 1.5, 0.4 + b.growth * 0.9); };
+	state.harvest = (b) => { b.growth = 0; growBedPose(b); };
+	state.setGrowth = (arr) => { arr.forEach((g, i) => { if (growBeds[i]) { growBeds[i].growth = g; growBedPose(growBeds[i]); } }); };
 	state.takeLoot = (l) => { if (l.items) l.items.visible = false; l.taken = true; };
 	state.openCrate = (l, instant = false) => { l.opened = true; if (instant) { l.openK = 1; l.setOpen?.(1); } else l.openK ??= 0; }; // lid animates in update()
 	state.sealBreach = () => { const d = jam; d.sealed = true; d.locked = true; d.lamp.material.color.set(0xffa020); d.lamp.material.emissive.set(0xff8000); handle.rotation.x = -0.6; if (breachLight) breachLight.intensity = 0; };
@@ -268,6 +273,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 	state.takeKino = () => { for (const m of parts.kino) m.visible = false; };
 	/** Doors slide open when unlocked and the player is within 3 m; only lights near the player are live (light count drives shader cost). */
 	state.update = (dt, playerPos) => {
+		if (state.growLights) for (const b of growBeds) if (b.growth < 1) { b.growth = Math.min(1, b.growth + dt / GROW_TIME); growBedPose(b); }
 		for (const l of lootables) if (l.opened && l.openK < 1) { l.openK = Math.min(1, l.openK + dt / 0.9); l.setOpen?.(l.openK); }
 		for (const d of doorObjs) {
 			const near = playerPos.distanceTo(d.wp) < 3.2;

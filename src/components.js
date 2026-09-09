@@ -195,30 +195,75 @@ export const COMPONENTS = {
 	},
 	bed: {
 		label: 'Bed', size: [2.0, 1.0], defaultAnchor: 'Bed',
-		build: (ctx, p, s) => { ctx.box(2, 0.5, 1, ctx.mats.floor, p.x, 0.25, p.z, true, s.ry); return { anchor: fwd(s.ry).multiplyScalar(1.1).add(new THREE.Vector3(p.x, 0, p.z)) }; },
+		build: (ctx, p, s) => { // crew bunk: low Ancient frame, grey mattress, pillow and a folded blanket at the foot
+			const g = new THREE.Group(); g.position.set(p.x, 0, p.z); g.rotation.y = s.ry; ctx.group.add(g);
+			ctx.box(2.0, 0.5, 1.0, ctx.mats.dark, p.x, 0.25, p.z, true, s.ry).visible = false;
+			const frame = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.3, 1.0), ctx.mats.dark); frame.position.y = 0.25; frame.castShadow = frame.receiveShadow = true; g.add(frame);
+			const head = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.7, 1.0), ctx.mats.shell); head.position.set(-0.96, 0.45, 0); g.add(head);
+			const mattress = new THREE.Mesh(new THREE.BoxGeometry(1.86, 0.14, 0.9), new THREE.MeshStandardMaterial({ color: 0x5a6470, roughness: 1 })); mattress.position.y = 0.47; mattress.receiveShadow = true; g.add(mattress);
+			const pillow = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.1, 0.6), new THREE.MeshStandardMaterial({ color: 0xb9bcc0, roughness: 1 })); pillow.position.set(-0.7, 0.59, 0); g.add(pillow);
+			const blanket = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.86), new THREE.MeshStandardMaterial({ color: 0x3c4a3a, roughness: 1 })); blanket.position.set(0.6, 0.58, 0); g.add(blanket);
+			return { anchor: fwd(s.ry).multiplyScalar(1.1).add(new THREE.Vector3(p.x, 0, p.z)) };
+		},
 	},
 	med_bed: {
 		label: 'Med bed', size: [2.0, 0.9], defaultAnchor: 'Beds',
-		build: (ctx, p, s) => { ctx.box(2.0, 0.6, 0.9, ctx.mats.steel, p.x, 0.3, p.z, true, s.ry); return { anchor: fwd(s.ry).multiplyScalar(1.1).add(new THREE.Vector3(p.x, 0, p.z)) }; },
+		build: (ctx, p, s) => { // infirmary cot: steel frame on a pedestal, pale pad, side rail, monitor arm with a glyph readout
+			const g = new THREE.Group(); g.position.set(p.x, 0, p.z); g.rotation.y = s.ry; ctx.group.add(g);
+			ctx.box(2.0, 0.7, 0.9, ctx.mats.dark, p.x, 0.35, p.z, true, s.ry).visible = false;
+			const ped = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 0.6), ctx.mats.dark); ped.position.y = 0.25; g.add(ped);
+			const frame = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.08, 0.9), ctx.mats.steel); frame.position.y = 0.54; frame.castShadow = true; g.add(frame);
+			const pad = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.1, 0.8), new THREE.MeshStandardMaterial({ color: 0xd8d4c8, roughness: 0.95 })); pad.position.y = 0.63; pad.receiveShadow = true; g.add(pad);
+			const rail = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.04, 0.04), ctx.mats.steel); rail.position.set(0, 0.9, -0.42); g.add(rail); for (const x of [-0.6, 0.6]) { const post = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.3, 0.04), ctx.mats.steel); post.position.set(x, 0.75, -0.42); g.add(post); }
+			const arm = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.9, 0.05), ctx.mats.steel); arm.position.set(-0.9, 1.0, -0.4); g.add(arm);
+			const mon = new THREE.Mesh(new THREE.PlaneGeometry(0.44, 0.11), glyphPlate()); mon.position.set(-0.9, 1.5, -0.37); g.add(mon); ctx.parts.trims.push(mon);
+			return { anchor: fwd(s.ry).multiplyScalar(1.1).add(new THREE.Vector3(p.x, 0, p.z)) };
+		},
 	},
 	locker: {
 		label: 'Locker', size: [0.9, 0.6], defaultAnchor: 'Locker',
-		build: (ctx, p, s) => { ctx.box(0.9, 2.2, 0.6, ctx.mats.dark, p.x, 1.1, p.z, true, s.ry); return { anchor: fwd(s.ry).multiplyScalar(0.9).add(new THREE.Vector3(p.x, 0, p.z)) }; },
+		build: (ctx, p, s) => { // tall two-door locker: plated body, lit seam, vent slots, handles, glyph tag
+			const g = new THREE.Group(); g.position.set(p.x, 0, p.z); g.rotation.y = s.ry; ctx.group.add(g);
+			ctx.box(0.9, 2.2, 0.6, ctx.mats.dark, p.x, 1.1, p.z, true, s.ry);
+			for (const sx of [-0.22, 0.22]) { const door = new THREE.Mesh(new THREE.BoxGeometry(0.4, 2.0, 0.03), ctx.mats.door); door.position.set(sx, 1.1, 0.31); g.add(door); const hd = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.16, 0.04), ctx.mats.steel); hd.position.set(sx - Math.sign(sx) * 0.15, 1.15, 0.34); g.add(hd); for (let i = 0; i < 4; i++) { const vent = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.02, 0.01), ctx.mats.shell); vent.position.set(sx, 1.85 - i * 0.07, 0.33); g.add(vent); } }
+			const seam = new THREE.Mesh(new THREE.BoxGeometry(0.015, 2.0, 0.01), emissive(0x3a86c8, 0.8)); seam.position.set(0, 1.1, 0.33); g.add(seam); ctx.parts.trims.push(seam);
+			const tag = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.1), glyphPlate()); tag.position.set(0, 2.12, 0.31); g.add(tag); ctx.parts.trims.push(tag);
+			return { anchor: fwd(s.ry).multiplyScalar(0.9).add(new THREE.Vector3(p.x, 0, p.z)) };
+		},
 	},
 	cabinet: {
 		label: 'Cabinet', size: [1.8, 0.5],
-		build: (ctx, p, s) => { ctx.box(1.8, 2.0, 0.5, ctx.mats.dark, p.x, 1.0, p.z, true, s.ry); return {}; },
+		build: (ctx, p, s) => { // med cabinet: plated carcass, shell worktop, three drawers with handles, glazed upper with a glyph strip
+			const g = new THREE.Group(); g.position.set(p.x, 0, p.z); g.rotation.y = s.ry; ctx.group.add(g);
+			ctx.box(1.8, 2.0, 0.5, ctx.mats.dark, p.x, 1.0, p.z, true, s.ry);
+			const top = new THREE.Mesh(new THREE.BoxGeometry(1.86, 0.05, 0.56), ctx.mats.shell); top.position.y = 0.92; g.add(top);
+			for (let i = 0; i < 3; i++) { const dr = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.7, 0.02), ctx.mats.door); dr.position.set(-0.6 + i * 0.6, 0.5, 0.26); g.add(dr); const hd = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.03, 0.03), ctx.mats.steel); hd.position.set(-0.6 + i * 0.6, 0.72, 0.28); g.add(hd); }
+			const glass = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.8, 0.02), new THREE.MeshStandardMaterial({ color: 0x9ec4e0, transparent: true, opacity: 0.12, roughness: 0.1, metalness: 0.2 })); glass.position.set(0, 1.5, 0.26); g.add(glass);
+			for (let i = 0; i < 2; i++) { const shelf = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.02, 0.4), ctx.mats.steel); shelf.position.set(0, 1.25 + i * 0.35, 0.02); g.add(shelf); }
+			const strip = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.02, 0.01), emissive(0x3a86c8, 0.8)); strip.position.set(0, 1.95, 0.26); g.add(strip); ctx.parts.trims.push(strip);
+			return {};
+		},
 	},
 	pillar: {
 		label: 'Pillar', size: [1.2, 1.2],
-		build: (ctx, p, s) => { const H = ctx.roomH - 0.2; ctx.box(1.2, H, 1.2, ctx.mats.dark, p.x, H / 2, p.z, true, s.ry); return {}; },
+		build: (ctx, p, s) => { // structural column: plated core, shell corner ribs, a blue slit at eye height on each face
+			const H = ctx.roomH - 0.2, g = new THREE.Group(); g.position.set(p.x, 0, p.z); g.rotation.y = s.ry; ctx.group.add(g);
+			ctx.box(1.2, H, 1.2, ctx.mats.dark, p.x, H / 2, p.z, true, s.ry);
+			for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const rib = new THREE.Mesh(new THREE.BoxGeometry(0.12, H, 0.12), ctx.mats.shell); rib.position.set(sx * 0.58, H / 2, sz * 0.58); g.add(rib); }
+			for (const ry of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) { const slit = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.2, 0.02), emissive(0x3a86c8, 0.8)); slit.position.set(Math.sin(ry) * 0.61, 1.8, Math.cos(ry) * 0.61); slit.rotation.y = ry; g.add(slit); ctx.parts.trims.push(slit); }
+			return {};
+		},
 	},
 	kino_pedestal: {
 		label: 'Kino pedestal', size: [0.7, 0.7], defaultAnchor: 'KinoPedestal',
-		build: (ctx, p, s) => {
-			ctx.box(0.7, 1.0, 0.7, ctx.mats.dark, p.x, 0.5, p.z, true, s.ry);
+		build: (ctx, p, s) => { // waist-high plinth with a lit cradle ring; the Kino orb rests in it, the remote lies beside
+			const g = new THREE.Group(); g.position.set(p.x, 0, p.z); g.rotation.y = s.ry; ctx.group.add(g);
+			ctx.box(0.7, 1.0, 0.7, ctx.mats.dark, p.x, 0.5, p.z, true, s.ry).visible = false;
+			const col = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.36, 0.9, 6), ctx.mats.dark); col.position.y = 0.45; col.castShadow = true; g.add(col);
+			const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.3, 0.12, 6), ctx.mats.shell); cap.position.y = 0.96; g.add(cap);
+			const ring = new THREE.Mesh(new THREE.TorusGeometry(0.19, 0.015, 8, 32), emissive(0x3a86c8, 0.8)); ring.rotation.x = Math.PI / 2; ring.position.y = 1.03; g.add(ring); ctx.parts.trims.push(ring);
 			const orb = new THREE.Mesh(new THREE.SphereGeometry(0.16, 20, 14), new THREE.MeshStandardMaterial({ color: 0x555a60, roughness: 0.35, metalness: 0.8 })); orb.position.set(p.x, 1.2, p.z); ctx.group.add(orb);
-			const remote = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.04, 0.3), new THREE.MeshStandardMaterial({ color: 0x8a7a5c, emissive: 0x2ad4ff, emissiveIntensity: 0.6, metalness: 0.7 })); remote.position.set(p.x - 0.3, 1.03, p.z + 0.15); ctx.group.add(remote);
+			const remote = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.04, 0.3), new THREE.MeshStandardMaterial({ color: 0x8a7a5c, emissive: 0x2ad4ff, emissiveIntensity: 0.6, metalness: 0.7 })); remote.position.set(p.x - 0.28, 1.04, p.z + 0.12); ctx.group.add(remote);
 			ctx.parts.kino = [orb, remote];
 			return { anchor: fwd(s.ry).multiplyScalar(1.0).add(new THREE.Vector3(p.x, 0, p.z)) };
 		},

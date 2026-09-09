@@ -8,6 +8,8 @@ import { COMPONENTS, DEFAULT_PROPS, ROOM_PROPS } from './components.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 export const DOOR_W = 2.4, DOOR_H = 3.2, WALL_T = 0.3, DECK_H = 12; // decks stack DECK_H apart (gate hall is 11 m tall)
+/** Rooms fed by the crew-deck conduit (dark until `setQuartersPower(true)`). */
+export const CREW_DECK_ROOMS = new Set(['room_1753576770763', 'quarters_room_1']);
 const R = DOOR_W / 2, ARCH_Y = DOOR_H - R, BULGE = 0.1, HUB_R = 0.42, GEAR_R = 0.2; // arched opening: straight to ARCH_Y, semicircle to DOOR_H
 const SCALE = 0.05, H_ROOM = 4.6, LIGHT_RANGE = 22, MAX_LIVE = 6;
 const ROOM_H = { gate_room: 11, control_room: 6.5, hydroponics: 6, 'shuttle-dock': 6 };
@@ -119,7 +121,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 			const s = box(alongZ ? Math.min(w * 0.5, 2.5) : 0.35, 0.06, alongZ ? 0.35 : Math.min(d * 0.5, 2.5), strip, x, H - 0.05, z, false);
 			const l = new THREE.PointLight(0xbfd8ff, gate ? 6 : Math.min(8, 3 + Math.min(w, d) * 0.5), gate ? 22 : 16, 1.5); l.visible = false; l.position.set(x, H - 0.6, z); cur.add(l);
 			const em = new THREE.PointLight(0xff3020, 5, 9, 2); em.position.set(x, H - 0.7, z); cur.add(em);
-			lights.push({ l, em, s, on: l.intensity, wp: new THREE.Vector3(x, r.y0 + H - 0.6, z) });
+			lights.push({ l, em, s, on: l.intensity, roomId: r.id, wp: new THREE.Vector3(x, r.y0 + H - 0.6, z) });
 		}
 		if (r.type === 'corridor') { // amber edge lines both sides of the walkway (the video's corridor look)
 			const inset = 0.45;
@@ -281,7 +283,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 		}
 		// only the nearest few lamps are live: every visible light recompiles into every material's shader cost
 		const near = lights.map((L) => [L.wp.distanceToSquared(playerPos), L]).filter(([d2]) => d2 < LIGHT_RANGE * LIGHT_RANGE).sort((a, b) => a[0] - b[0]).slice(0, MAX_LIVE).map(([, L]) => L);
-		for (const L of lights) { const on = near.includes(L); L.l.visible = state.powered && on; L.em.visible = !state.powered && on; }
+		for (const L of lights) { const on = near.includes(L), fed = state.powered && (!CREW_DECK_ROOMS.has(L.roomId) || state.quartersPowered); L.l.visible = fed && on; L.em.visible = !fed && on; } // crew deck hangs off the open conduit until Episode 4 restores it
 	};
 	for (const h of parts.holos) h.visible = false; for (const t of parts.trims) t.material.emissiveIntensity = 0.1;
 	state.update(0, new THREE.Vector3(0, 0, 0));

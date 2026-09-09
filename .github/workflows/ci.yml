@@ -15,7 +15,7 @@ jobs:
         with:
           node-version: 22
       - name: Syntax-check game modules
-        run: for f in src/*.js; do node --check "$f"; done
+        run: for f in src/*.js; do cp "$f" /tmp/check.mjs && node --check /tmp/check.mjs || { echo "syntax error: $f"; exit 1; }; done
       - name: Validate data JSON
         run: for f in data/*.json .claude/launch.json; do python3 -m json.tool "$f" > /dev/null; done
       - name: Build itch.io zip

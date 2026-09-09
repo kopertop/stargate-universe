@@ -251,6 +251,7 @@ for (const rid of ['elevator_north', 'elevator_room_floor_1']) interact.register
 			withAnim('interact', () => { S.setElevatorPower(true); quest.setFlag('elevator_powered'); oneShot(shutdownBuf, 0.5, 1.6); ui.subtitle('Eli', 'Bus is live. Elevator has power.'); }, { at: 0.4 }); });
 	} });
 interact.register({ world: 'destiny', id: 'grow_console', position: A['hydroponics:GrowConsole'], prompt: () => (S.powered && !quest.has('grow_lights_restored') && quest.has('upper_deck_reached') ? 'Restart the grow lights' : null),
+	action: () => withAnim('interact', () => { oneShot(buffers.terminal, 0.6); S.setGrowLights(true); quest.setFlag('grow_lights_restored'); ui.subtitle('Eli', 'Grow lights cycling up. There is still soil in these beds.'); }, { at: 0.6 }) });
 // Crew-deck conduit (Episode 4): seat Brody's segment, then hotwire the line — the crew quarters light up
 if (A['room_1753576770763:Conduit']) interact.register({ world: 'destiny', id: 'conduit', position: A['room_1753576770763:Conduit'], prompt: () => (quest.has('quarters_powered') ? null : quest.has('conduit_seated') ? 'Hotwire the conduit' : count('conduit') > 0 ? 'Seat the conduit segment' : stepIs('restore_conduit') ? 'Inspect conduit junction' : null),
 	action: () => {
@@ -263,8 +264,6 @@ if (A['room_1753576770763:Conduit']) interact.register({ world: 'destiny', id: '
 		hotwire.play({ title: 'CREW_DECK_LINE_v1.9', security: 'HIGH' }).then((ok) => { player.stopAction(); if (!ok) { ui.subtitle('Rush', 'The quarters stay dark until that line is matched, Eli.'); return; }
 			S.setQuartersPower(true); quest.setFlag('quarters_powered'); oneShot(buffers.terminal, 0.7); ui.subtitle('Eli', 'Crew deck is live. Somebody tell them they have beds.'); });
 	} });
-
-	action: () => withAnim('interact', () => { oneShot(buffers.terminal, 0.6); S.setGrowLights(true); quest.setFlag('grow_lights_restored'); ui.subtitle('Eli', 'Grow lights cycling up. There is still soil in these beds.'); }, { at: 0.6 }) });
 interact.register({ world: 'destiny', id: 'lever', position: A['south_spur:SealLever'], prompt: () => (quest.has('life_support_diagnosed') && !quest.has('any_breach_sealed') ? 'Pull emergency seal' : null), action: () => withAnim('interact', () => { S.sealBreach(); quest.setFlag('any_breach_sealed'); oneShot(shutdownBuf, 0.9, 0.8); ui.subtitle('Rush', 'Pressure is holding. Good. Now go make yourself useful somewhere else.'); }) });
 interact.register({ world: 'destiny', id: 'kino', position: A['eli_quarters:KinoPedestal'], prompt: () => (!quest.has('kino_acquired') ? 'Take the Kino and its remote' : null), action: () => withAnim('pickup', () => { S.takeKino(); addItem('kino_remote'); addItem('kino_orb', 2); quest.setFlag('kino_acquired'); }, { at: 0.55 }) });
 interact.register({ world: 'destiny', id: 'locker', position: A['eli_quarters:Locker'], prompt: () => (!quest.has('locker_opened') ? 'Open locker' : null), action: () => withAnim('open', () => { quest.setFlag('locker_opened'); addItem('tac_vest'); ui.toast('Found: Tactical Vest (+20 health) — equip it from Character', 5); }, { at: 0.6 }) });

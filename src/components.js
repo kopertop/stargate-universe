@@ -381,7 +381,7 @@ export const DEFAULT_PROPS = {
 /** Room-specific overrides by id (the Kino Room, the scrubber's corridor). */
 export const ROOM_PROPS = {
 	eli_quarters: [{ type: 'kino_pedestal', u: 0.5, v: 0.3, ry: 0, anchor: 'KinoPedestal' }, { type: 'locker', u: 0.955, v: 0.75, ry: -Math.PI / 2, anchor: 'Locker' }, { type: 'bed', u: 0.11, v: 0.75, ry: Math.PI / 2, anchor: 'Bed' }],
-	south_corridor: [{ type: 'scrubber', u: 0.953, v: 0.5585, ry: -Math.PI / 2, anchor: 'Scrubber' }],
+	south_corridor: [{ type: 'scrubber', u: 0.953, v: 0.59, ry: -Math.PI / 2, anchor: 'Scrubber' }], // v .5585 sat in the South Spur doorway (z −18.5 ± 1.2)
 	sealed_section_north: [{ type: 'breach', u: 0.99, v: 0.5, ry: -Math.PI / 2, active: false }],
 	elevator_room_floor_1: [{ type: 'elevator_door', u: 0.96, v: 0.5, ry: -Math.PI / 2, anchor: 'Elevator' }], // the room's only doorway is on the −z wall
 	room_1753576770763: [{ type: 'conduit', u: 0.03, v: 0.5, ry: Math.PI / 2, anchor: 'Conduit' }], // upper-deck corridor: the crew-deck power junction

@@ -17,16 +17,19 @@ export const createAutoplay = (d) => {
 	const walkTo = async (x, z, { run, tol = 0.7, timeout } = {}) => {
 		const dist0 = Math.hypot(x - pos().x, z - pos().z); run ??= dist0 > 10; timeout ??= (dist0 / (run ? 8 : 3.5)) * 1000 + 6000;
 		const t0 = simNow(); d.input.keys.add('KeyW'); if (run) d.input.keys.add('ShiftLeft');
-		let lastD = Infinity, stallT = 0, side = 'KeyD';
+		let lastD = Infinity, stallT = 0, side = 'KeyD', stalls = 0;
 		while (!auto.abort && simNow() - t0 < timeout) {
 			const dx = x - pos().x, dz = z - pos().z, dist = Math.hypot(dx, dz); if (dist < tol) break;
 			d.input.keys.add('KeyW'); if (run) d.input.keys.add('ShiftLeft'); // re-assert every tick: input.js clears keys on window blur (screenshots, focus changes)
 			d.cam().yaw = Math.atan2(-dx, -dz);
 			if (dist > lastD - 0.02) stallT += 40; else stallT = 0; lastD = Math.min(lastD, dist);
-			if (stallT > 500) { d.input.keys.add(side); await sleep(600); d.input.keys.delete(side); side = side === 'KeyD' ? 'KeyA' : 'KeyD'; stallT = 0; lastD = Infinity; }
+			if (stallT > 500) { // unstick: every other stall backs off first, and each sidestep lasts longer than the last (pillars, door frames, wall props)
+				stalls++; if (stalls % 2 === 0) { d.input.keys.delete('KeyW'); d.input.keys.add('KeyS'); await sleep(450); d.input.keys.delete('KeyS'); }
+				d.input.keys.add(side); await sleep(Math.min(2400, 600 * stalls)); d.input.keys.delete(side); side = side === 'KeyD' ? 'KeyA' : 'KeyD'; stallT = 0; lastD = Infinity;
+			}
 			await sleep(40);
 		}
-		d.input.keys.delete('KeyW'); d.input.keys.delete('ShiftLeft'); d.input.keys.delete('KeyA'); d.input.keys.delete('KeyD'); await sleep(200);
+		for (const k of ['KeyW', 'ShiftLeft', 'KeyA', 'KeyD', 'KeyS']) d.input.keys.delete(k); await sleep(200);
 	};
 	/** Route through doors to a room, then to an anchor (or the room centre). */
 	const goTo = async (room, anchor = 'RoomCenter', opts = {}) => {
@@ -83,6 +86,7 @@ export const createAutoplay = (d) => {
 		gear_up: async (s) => { await goTo(s.target.room, s.target.anchor); facePropAt(s.target.room, s.target.anchor); await interact(1900); },
 		travel: async () => { await goTo('gate_room', 'GateFront', { tol: 1.0 }); await walkTo(0, gz() + 8, { run: true, tol: 1.0 }); await walkTo(0, gz() + 0.7, { tol: 0.35, timeout: 8000, run: false }); await waitFor(() => d.world.name === 'planet' && !d.travel(), 15000); await sleep(600); },
 		mine: async () => {
+			if (d.world.name !== 'planet') { await waitFor(() => d.destiny.gate.userData.active, 120000); await H.travel(); } // missed the FTL window: wait for the re-drop and go back through
 			const r = d.planet.resource, have = () => d.rpg.inventory[r.id] ?? 0;
 			for (let i = 0; i < 6 && have() < r.required; i++) {
 				const n = d.planet.nodes.find((n) => !n.done); if (!n) break;
@@ -104,9 +108,10 @@ export const createAutoplay = (d) => {
 			await waitFor(() => d.world.name === 'destiny' && !d.travel(), 15000); await sleep(600);
 		},
 		give_brody: async (s) => { await goTo(s.target.room, s.target.anchor); await interact(1500); await waitFor(() => stepId() !== 'give_brody', 9000); },
-		repair: async (s) => { await goTo(s.target.room, s.target.anchor); facePropAt(s.target.room, s.target.anchor); await interact(4500); },
+		balance: async (s) => { await goTo(s.target.room, s.target.anchor); facePropAt(s.target.room, s.target.anchor); await interact(600); if (await waitFor(() => d.flow?.isOpen(), 3000)) { await sleep(700); d.flow.solve(); await waitFor(() => !d.flow.isOpen(), 6000); } await sleep(1500); },
+		repair: async (s) => { await goTo(s.target.room, s.target.anchor); facePropAt(s.target.room, s.target.anchor); await interact(2600); if (await waitFor(() => d.flow?.isOpen(), 3000)) { await sleep(700); d.flow.solve(); await waitFor(() => !d.flow.isOpen(), 6000); } await sleep(1800); }, // the flow panel opens off the repair animation
 	};
-	const handlerFor = (id) => H[id] ?? (id.startsWith('repair_') ? H.repair : id.startsWith('talk_') ? H.talk_rush : id.startsWith('find_') ? H.find : id.startsWith('restore_') ? H.restore_power : id.startsWith('reach_') ? H.reach_control : null);
+	const handlerFor = (id) => H[id] ?? (id.startsWith('repair_') ? H.repair : id.startsWith('balance_') ? H.balance : id.startsWith('talk_') ? H.talk_rush : id.startsWith('find_') ? H.find : id.startsWith('restore_') ? H.restore_power : id.startsWith('reach_') ? H.reach_control : null);
 
 	/** Play the current chapter to its terminal step. Resolves { ok, chapter, seconds }. */
 	auto.runChapter = async () => {
@@ -123,17 +128,29 @@ export const createAutoplay = (d) => {
 		const ok = !!step()?.terminal; say(`${ch.id} ${ok ? 'complete' : 'incomplete'}`); return { ok, chapter: ch.id, seconds: (simNow() - t0) / 1000 };
 	};
 	/** Play every chapter in order (New Game must already have been clicked). */
-	auto.run = async () => {
-		if (auto.running) return; auto.running = true; auto.abort = false; auto.report = [];
+	const RESUME_KEY = 'sgu.autoresume';
+	/** Play every chapter in order (New Game must already have been clicked). `reload: true` reloads the page at every chapter
+	 *  boundary and resumes from the save (Continue), so the run also exercises save/load. `?autoplay&reload` does the same. */
+	auto.run = async ({ reload = location.search.includes('reload'), report = [] } = {}) => {
+		if (auto.running) return; auto.running = true; auto.abort = false; auto.report = report;
 		try {
 			for (let i = 0; i < 8 && !auto.abort; i++) {
 				const r = await auto.runChapter(); auto.report.push(r); if (!r.ok) break;
 				await sleep(2500); const before = d.quest.chapter.id; document.querySelector('#chapter button')?.click(); await sleep(1500);
 				if (d.quest.chapter.id === before) { say('no next chapter'); break; }
+				if (reload) { await sleep(1500); sessionStorage.setItem(RESUME_KEY, JSON.stringify({ report: auto.report })); say(`reloading before ${d.quest.chapter.id}`); location.reload(); return; }
 				press('Tab'); await sleep(600); const remote = d.ui.isRemoteOpen(); if (remote) press('Tab'); auto.report.at(-1).remoteAfterHandoff = remote; await sleep(600);
 			}
-			say(`done: ${auto.report.map((r) => `${r.chapter} ${r.ok ? 'ok' : 'FAIL'} ${r.seconds.toFixed(0)}s`).join(' · ')}`);
+			sessionStorage.removeItem(RESUME_KEY); say(`done: ${auto.report.map((r) => `${r.chapter} ${r.ok ? 'ok' : 'FAIL'} ${r.seconds.toFixed(0)}s`).join(' · ')}`);
 		} catch (e) { say(`error: ${e.message}`); } finally { auto.running = false; d.input.keys.clear(); }
 	};
+	// resume a reload-mode run: press Continue on the title, then carry on with the saved report
+	const resume = sessionStorage.getItem(RESUME_KEY);
+	if (resume) (async () => {
+		const btn = await (async () => { for (let i = 0; i < 80; i++) { const b = document.querySelector('[data-action="continue"]'); if (b) return b; await new Promise((r) => setTimeout(r, 250)); } return null; })();
+		if (!btn) { say('resume: no Continue button'); sessionStorage.removeItem(RESUME_KEY); return; }
+		btn.click(); await new Promise((r) => setTimeout(r, 2500)); say(`resumed at ${d.quest.chapter?.id} › ${stepId()}`);
+		auto.resumed = (auto.resumed ?? 0) + 1; auto.run({ reload: true, report: JSON.parse(resume).report ?? [] });
+	})();
 	return auto;
 };

@@ -1,7 +1,7 @@
 // Player settings (audio levels, look, FOV), persisted in localStorage. `apply` is called with the whole object whenever a
 // value changes so the game wires each key to its sink in one place (main.js).
 const KEY = 'sgu.settings';
-export const DEFAULTS = { master: 0.9, music: 1.0, sfx: 1.0, sensitivity: 1.0, invertY: false, fov: 60, subtitles: true };
+export const DEFAULTS = { master: 0.9, music: 1.0, sfx: 1.0, sensitivity: 1.0, invertY: false, fov: 60, subtitles: true, clockScale: 1.0 };
 export const settings = { ...DEFAULTS };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(KEY) ?? '{}')); } catch {}
 const listeners = new Set();
@@ -12,6 +12,7 @@ export const resetSettings = () => { for (const k in DEFAULTS) settings[k] = DEF
 const FIELDS = [
 	['master', 'Master volume', 'range', 0, 1, 0.05], ['music', 'Music', 'range', 0, 1, 0.05], ['sfx', 'Sound effects', 'range', 0, 1, 0.05],
 	['sensitivity', 'Look sensitivity', 'range', 0.3, 2.5, 0.05], ['invertY', 'Invert look Y', 'checkbox'], ['fov', 'Field of view', 'range', 50, 90, 1], ['subtitles', 'Subtitles', 'checkbox'],
+	['clockScale', 'Clock length (FTL window, countdowns)', 'range', 0.5, 2.5, 0.25],
 ];
 /** Render the settings form into `el` (title screen and Kino Remote share it). */
 export const renderSettings = (el) => {

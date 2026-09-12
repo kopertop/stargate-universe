@@ -19,10 +19,11 @@ editor. This is the only game in the repo: the earlier Vite/ggez and Godot stack
 |---|---|
 | `src/main.js` | wiring: worlds, audio, interactables, quest triggers, save/load, game loop (rAF; timer + sub-steps when hidden; fixed step while recording) |
 | `src/ship.js` | deck generated from `data/ship_layout.json` + `room_connections.json`; SGU doors; lights (nearest 6 live); merged static walls |
-| `src/components.js` | prop registry `{type,u,v,ry,anchor,loot}` with meshes + colliders (console, relay, crate, scrubber, …) — the editor places these |
+| `src/components.js` | prop registry `{type,u,v,ry,anchor,loot,style}` with meshes + colliders (console, relay, crate, scrubber, …) — the editor places these. Crates: `ancient` (lift-and-split lid) vs `pelican` (hinged), hollow, loot visible until taken via `setOpen(k)`/`takeLoot` |
 | `src/quest.js` + `data/chapters.json` | declarative steps advance on flags; triggers on enter/exit |
+| FTL clock (`main.js` `tickFtl`) | every `ftl_drop` opens a jump window (`planet.window_seconds`, default 600 s); at zero Destiny jumps (emergency gate return if you are on the planet), then a 90 s cooldown and a re-drop while a planet step is current. HUD `#clock`, Ship tab row, saved. Console: `ftl [secs]` |
 | `src/rpg.js`, `src/ui.js` | inventory/equipment/talents; HUD + Kino Remote; icons from `assets/items/` |
-| `src/hotwire.js` | wire-matching repair mini-game (power relay) |
+| `src/hotwire.js`, `src/flow.js` | repair mini-games: wire-matching (relay, elevator bus) and flow-balance (scrubber, water reclamation); both `play()` → Promise<boolean>, `isOpen()` pauses the sim |
 | `src/player.js` | Quaternius UAL rig; gait clips locked to ground speed; footsteps from foot plants |
 | `src/leveledit.js`, `src/console.js` | `` ` `` dev console; `leveledit` = first-person map builder in the live scene |
 | `src/autoplay.js`, `src/recorder.js` | hands-free chapter driver (sim clock, per-frame waits); frame-pipe recorder |

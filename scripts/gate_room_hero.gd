@@ -499,7 +499,7 @@ func _setup_lighting() -> void:
 	var ambient := DirectionalLight3D.new()
 	ambient.light_color = AMBIENT_COLOR
 	ambient.light_energy = AMBIENT_ENERGY
-	ambient.rotation = Vector3(deg_to_rad(45.0), deg_to_rad(-45.0), 0.0)
+	ambient.rotation = Vector3(deg_to_rad(45.0), 0.0, 0.0)
 	ambient.name = "AmbientKey"
 	add_child(ambient)
 	
@@ -509,7 +509,7 @@ func _setup_lighting() -> void:
 	ring_glow.light_energy = GATE_RING_GLOW_SIZE
 	ring_glow.name = "RingGlow"
 	add_child(ring_glow)
-	ring_glow.look_at(Vector3(GATE_RING_RADIUS * 2.5, HALL_HEIGHT * 0.5, -5.0))
+	ring_glow.look_at(Vector3(0.0, HALL_HEIGHT * 0.5, -5.0))
 	
 	# Vortex fill light — positioned at gate ring center, moderate energy to
 	# illuminate the gate room interior while keeping dark cinematic tone.

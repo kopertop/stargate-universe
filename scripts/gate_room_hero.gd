@@ -28,6 +28,7 @@ const CAM_ANGLE_PITCH: float = -0.55
 const AMBIENT_COLOR: Color = Color(0.03, 0.03, 0.04)
 const AMBIENT_ENERGY: float = 12.0
 const GLOBAL_ENERGY: float = 1.0
+const ADJUSTMENT_BRIGHTNESS: float = 0.55
 const FOG_DENSITY: float = 0.005
 const FOG_COLOR: Color = Color(0.08, 0.08, 0.09)
 
@@ -541,6 +542,13 @@ func _setup_lighting() -> void:
 	env.ssr_fade_in = 0.15
 	env.ssr_fade_out = 2.0
 	env.ssr_depth_tolerance = 0.2
+	# Environment adjustments (BCS) - applied AFTER tonemapping on sRGB values,
+	# so they act DOWNSTREAM of the emissive clip. The whole-frame gap is brightness:
+	# best mean 66.05 vs target 25.29 (2.6x), clipped px 0.0260 vs target 0.0013 (20x).
+	# Brightness scales the frame toward the target and keeps local contrast intact;
+	# adjustment_contrast RAISES clipping (0.0260 -> 0.0734 at 2.2) and is the wrong lever.
+	env.adjustment_enabled = true
+	env.adjustment_brightness = ADJUSTMENT_BRIGHTNESS
 	world_env.environment = env
 	add_child(world_env)
 

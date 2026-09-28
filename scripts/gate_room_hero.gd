@@ -171,7 +171,18 @@ func _build_gate_ring() -> void:
 		# then rotate_z(angle + PI) aims the apex radially inward.
 		var chevron := MeshInstance3D.new()
 		var glyph := PrismMesh.new()
-		glyph.size = Vector3(1.8, 0.8, 1.2)
+		# Chevron glyph aspect. Cycle 1896 found the nine glyphs wide enough to
+		# touch at 40-degree spacing and merge into one continuous blown-out
+		# white band around the ring silhouette. The concept art shows NINE
+		# SHARP triangular points, each pointing radially INWARD, with clear
+		# black gaps between them (angular modulation ~1.37 vs the render's
+		# 3.15 - the render is modulated by aperture arcs, not by glyphs).
+		# The glyph is therefore made TALL+THIN (1.0 tangential x 1.4 radial):
+		# tall enough to read as a triangle at this distance, and 9 * 14px =
+		# 126px of glyph in ~330px of annulus circumference leaves a wide dark
+		# gap between each pair. Geometry, not a brightness dial - the
+		# brightness axis is clip-limited (energy 60 and 180 render alike).
+		glyph.size = Vector3(GATE_RING_CHEVRON_SIZE, 1.4, 1.2)
 		glyph.left_to_right = true
 		chevron.mesh = glyph
 		chevron.material_override = _emissive(GATE_RING_GLOW_COLOR, 180.0)

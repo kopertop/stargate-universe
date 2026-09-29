@@ -157,11 +157,13 @@ void fragment() {
 	// plasma reaching almost to the centre.
 	float eye_r = hole_radius * (0.85 + (n - 0.5) * 0.25);
 	float inner = smoothstep(eye_r * 0.4, eye_r, r);
-	// Outer fade — plasma stays at FULL brightness across the disc then drops at a defined
-	// circular edge near the rim, so the churning blue sheet fills the aperture right up to
-	// the ring's inner lip (the target) and the bloom comes from that bright edge — NOT a
-	// soft early fade that hollows the disc into a dim halo well inside the ring.
-	float outer = 1.0 - smoothstep(rim_fade - 0.12, rim_fade + 0.04, r);
+	// Outer fade — WIDE monotonic ramp, not a 7px cut. The concept's plasma is a gradual
+	// ramp from the dark core that stays luminous all the way out to the ring's inner lip;
+	// a narrow ramp (rim_fade-0.12 .. +0.04, a ~7px band) collapsed the whole bright body
+	// into a small disc and left a dead grey annulus between the glow and the ring — the
+	// "plasma disc much smaller than the aperture" gap. Widening the ramp to ~0.6 of the
+	// radius lets the churning blue sheet EXTEND outward and fill the aperture.
+	float outer = 1.0 - smoothstep(rim_fade - 0.55, rim_fade + 0.05, r);
 	float band  = clamp(inner * outer, 0.0, 1.0);
 
 	// Brightness FILLS the whole aperture evenly — a near-flat radial weight so the plasma

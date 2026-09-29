@@ -105,6 +105,30 @@ func _build_hall() -> void:
 	)
 	add_child(hall)
 
+	# CYCLE 1926 CHANGE — THE CEILING GETS ITS OWN MATERIAL (the 1923 prescription,
+	# applied to the frame's #1 measured mismatch). The 12m ceiling slab shares
+	# hall_mat (metallic 0.85, roughness 0.42), so RingGlow's 20-energy specular
+	# returns its underside near-white. Measured against the concept at the TOP of
+	# the frame: render top band 76.89 and top-quarter slices 84.7 / 80.4 / 73.9 /
+	# 68.6 / 59.9 vs the concept's 16.81 / 11.1 / 17.7 / 20.3 / 18.1 / 18.4 — a
+	# 4.6x overshoot, the largest gross mismatch in the image. Dimming the light
+	# cannot fix it (1923: GATE_RING_GLOW_SIZE 20->12 closed only 60% of it, and
+	# 20->4 overshot the other way); the SURFACE has to stop returning white. This
+	# slab hangs just under the hall ceiling so the ceiling plane the camera sees
+	# is dark, matte and LOW-metallic: it kills the metallic specular return while
+	# keeping a little diffuse so the ceiling is DIM metal, not a black void (the
+	# rubric asks for dimly visible, not absent). A dark ceiling is also what the
+	# concept has ("light from small point sources only"), so this is the change
+	# that lets the emissive dome rims and downlight pips READ as small point
+	# sources instead of vanishing into a white slab.
+	var ceiling_mat := _standard_material(Color(0.035, 0.038, 0.045), 0.9, 0.1)
+	var ceiling := _box(
+		Vector3(HALL_WIDTH - 0.2, 0.12, HALL_LENGTH),
+		Vector3(0.0, HALL_HEIGHT - 0.06, 0.0),
+		ceiling_mat
+	)
+	add_child(ceiling)
+
 func _build_gate_ring() -> void:
 	# Main gate ring platform — moved to gate center Z
 	var platform := _box(

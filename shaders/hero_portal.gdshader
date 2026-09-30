@@ -156,7 +156,20 @@ void fragment() {
 	// churning throat, not a wide hole. A gentle ramp out of it keeps the surrounding
 	// plasma reaching almost to the centre.
 	float eye_r = hole_radius * (0.85 + (n - 0.5) * 0.25);
-	float inner = smoothstep(eye_r * 0.4, eye_r, r);
+	// CYCLE 1963 CHANGE — THE EYE'S INNER RAMP IS WIDENED TO 1.9x eye_r (the ONE
+	// isolated member of the 1952 bundle; Epoch-24 requires the isolated test because
+	// 1952 changed this ramp's FLOOR, hole_radius AND the hole term TOGETHER, so its
+	// 0/3 attributes to none of them). PRE-CHANGE PROBE (Epoch-60 gate, before the
+	// panel): the render's portal core is a FLAT ~82-lum disc with only a ~5px dark
+	// pinprick (r0-5 meanL 20, 67% <25; r5-10 already 92, r10-15 125), while the
+	// concept's core is genuinely dark out to ~20px (r0-15 meanL 17-21, >=92% <25)
+	// with a MONOTONIC rise outward (r20-30 25-48, r30-45 79, r45-60 104, r60-75 117).
+	// The render has no inward falloff at all - the body stays flat until the ring.
+	// Widening ONLY the ramp's upper edge makes the plasma body ramp up GRADUALLY out
+	// of the eye over a much larger radius, producing the concept's dim eye skirt and
+	// monotonic inward falloff WITHOUT touching hole_radius (1931 SPENT), the ramp
+	// floor or the hole mask (1952 bundle), or any closed family.
+	float inner = smoothstep(eye_r * 0.4, eye_r * 1.9, r);
 	// Outer fade — WIDE monotonic ramp, not a 7px cut. The concept's plasma is a gradual
 	// ramp from the dark core that stays luminous all the way out to the ring's inner lip;
 	// a narrow ramp (rim_fade-0.12 .. +0.04, a ~7px band) collapsed the whole bright body

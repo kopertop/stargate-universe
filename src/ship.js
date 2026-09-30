@@ -8,6 +8,8 @@ import { COMPONENTS, DEFAULT_PROPS, ROOM_PROPS } from './components.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 export const DOOR_W = 2.4, DOOR_H = 3.2, WALL_T = 0.3, DECK_H = 12; // decks stack DECK_H apart (gate hall is 11 m tall)
+/** Rooms fed by the crew-deck conduit (dark until `setQuartersPower(true)`). */
+export const CREW_DECK_ROOMS = new Set(['room_1753576770763', 'quarters_room_1']);
 const R = DOOR_W / 2, ARCH_Y = DOOR_H - R, BULGE = 0.1, HUB_R = 0.42, GEAR_R = 0.2; // arched opening: straight to ARCH_Y, semicircle to DOOR_H
 const SCALE = 0.05, H_ROOM = 4.6, LIGHT_RANGE = 22, MAX_LIVE = 6;
 const ROOM_H = { gate_room: 11, control_room: 6.5, hydroponics: 6, 'shuttle-dock': 6 };
@@ -119,7 +121,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 			const s = box(alongZ ? Math.min(w * 0.5, 2.5) : 0.35, 0.06, alongZ ? 0.35 : Math.min(d * 0.5, 2.5), strip, x, H - 0.05, z, false);
 			const l = new THREE.PointLight(0xbfd8ff, gate ? 6 : Math.min(8, 3 + Math.min(w, d) * 0.5), gate ? 22 : 16, 1.5); l.visible = false; l.position.set(x, H - 0.6, z); cur.add(l);
 			const em = new THREE.PointLight(0xff3020, 5, 9, 2); em.position.set(x, H - 0.7, z); cur.add(em);
-			lights.push({ l, em, s, on: l.intensity, wp: new THREE.Vector3(x, r.y0 + H - 0.6, z) });
+			lights.push({ l, em, s, on: l.intensity, roomId: r.id, wp: new THREE.Vector3(x, r.y0 + H - 0.6, z) });
 		}
 		if (r.type === 'corridor') { // amber edge lines both sides of the walkway (the video's corridor look)
 			const inset = 0.45;
@@ -210,7 +212,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 	doorObjs.forEach(setDoorCollider);
 
 	// ---- props: reusable components placed from room.props (layout data / editor) or the per-type defaults
-	const parts = { screens: [], holos: [], trims: [], kino: [], elevators: [], growLamps: [], sprouts: [] }, propMeshes = [], lootables = [];
+	const parts = { screens: [], holos: [], trims: [], kino: [], elevators: [], growLamps: [], sprouts: [], conduits: [] }, propMeshes = [], lootables = [];
 	const mats = { dark: darkMat, floor: floorMat, door: doorMat, red: redMat, shell: new THREE.MeshStandardMaterial({ color: 0x2b3139, roughness: 0.45, metalness: 0.7 }), slit: new THREE.MeshStandardMaterial({ color: 0xcfe6ff, emissive: 0xcfe6ff, emissiveIntensity: 1.6 }), crate: new THREE.MeshStandardMaterial({ color: 0x5e6a3a, roughness: 0.9 }), steel: new THREE.MeshStandardMaterial({ color: 0xa8b0b8, roughness: 0.6 }) };
 	for (const r of rooms) {
 		cur = decks[r.floor];
@@ -224,7 +226,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 			for (const m of cur.children.slice(n0)) { m.userData.prop = { roomId: r.id, spec: s }; propMeshes.push(m); }
 			for (let i = c0; i < colliders.length; i++) colliders[i].prop = { roomId: r.id, spec: s };
 			if (out.anchor && (spec.anchor || comp.defaultAnchor)) anchors[`${r.id}:${spec.anchor ?? comp.defaultAnchor}`] = out.anchor;
-			if (out.loot) lootables.push({ key: `${r.id}:${spec.anchor ?? `${s.type}${lootables.length}`}`, roomId: r.id, anchor: out.anchor, setOpen: out.setOpen, loot: out.loot, spec: s });
+			if (out.loot) lootables.push({ key: `${r.id}:${spec.anchor ?? `${s.type}${lootables.length}`}`, roomId: r.id, anchor: out.anchor, setOpen: out.setOpen, items: out.items, loot: out.loot, spec: s });
 		}
 		if (r.type === 'gate_room') anchors['gate_room:GateFront'] = new THREE.Vector3(0, 0, gateZ + 3);
 	}
@@ -256,7 +258,10 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 	/** Elevator bus: fuses seated (visible) → powered (lamp green, doors part). */
 	state.seatElevatorFuses = () => { for (const e of parts.elevators) for (const f of e.fuses) f.visible = true; };
 	state.setElevatorPower = (on) => { state.elevatorPowered = on; for (const e of parts.elevators) { e.lamp.material.color.set(on ? 0x40ff80 : 0xff3020); e.lamp.material.emissive.set(on ? 0x20ff60 : 0xff2010); for (const [i, m] of e.leaves.entries()) m.position.x = (i ? 1 : -1) * (on ? 1.05 : 0.58); } };
+	state.installConduit = () => { for (const c of parts.conduits) { c.segment.visible = true; if (!state.quartersPowered) { c.lamp.material.color.set(0xffa020); c.lamp.material.emissive.set(0xff8000); } } };
+	state.setQuartersPower = (on) => { state.quartersPowered = on; for (const c of parts.conduits) { c.lamp.material.color.set(on ? 0x40ff80 : 0xff3020); c.lamp.material.emissive.set(on ? 0x20ff60 : 0xff2010); } };
 	state.setGrowLights = (on) => { for (const l of parts.growLamps) l.material.emissiveIntensity = on ? 1.8 : 0; for (const s of parts.sprouts) s.visible = on; };
+	state.takeLoot = (l) => { if (l.items) l.items.visible = false; l.taken = true; };
 	state.openCrate = (l, instant = false) => { l.opened = true; if (instant) { l.openK = 1; l.setOpen?.(1); } else l.openK ??= 0; }; // lid animates in update()
 	state.sealBreach = () => { const d = jam; d.sealed = true; d.locked = true; d.lamp.material.color.set(0xffa020); d.lamp.material.emissive.set(0xff8000); handle.rotation.x = -0.6; if (breachLight) breachLight.intensity = 0; };
 	state.repairScrubber = () => { if (!scrubLamp) return; scrubLamp.material.color.set(0x40ff80); scrubLamp.material.emissive.set(0x20ff60); scrubBed.material.color.set(0xe8e2d0); };
@@ -278,7 +283,7 @@ export const createShip = (scene, colliders, { layout, connections, gateZ }) => 
 		}
 		// only the nearest few lamps are live: every visible light recompiles into every material's shader cost
 		const near = lights.map((L) => [L.wp.distanceToSquared(playerPos), L]).filter(([d2]) => d2 < LIGHT_RANGE * LIGHT_RANGE).sort((a, b) => a[0] - b[0]).slice(0, MAX_LIVE).map(([, L]) => L);
-		for (const L of lights) { const on = near.includes(L); L.l.visible = state.powered && on; L.em.visible = !state.powered && on; }
+		for (const L of lights) { const on = near.includes(L), fed = state.powered && (!CREW_DECK_ROOMS.has(L.roomId) || state.quartersPowered); L.l.visible = fed && on; L.em.visible = !fed && on; } // crew deck hangs off the open conduit until Episode 4 restores it
 	};
 	for (const h of parts.holos) h.visible = false; for (const t of parts.trims) t.material.emissiveIntensity = 0.1;
 	state.update(0, new THREE.Vector3(0, 0, 0));

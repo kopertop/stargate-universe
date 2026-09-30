@@ -18,7 +18,7 @@
         },
         "atmosphere": {
           "breathable": true,
-          "composition": "O2/N2 \u2014 breathable",
+          "composition": "O2/N2 — breathable",
           "temperature_c": 48,
           "radiation": "LOW",
           "toxins": "NONE"
@@ -47,14 +47,14 @@
             {
               "type": "subtitle",
               "who": "Scott",
-              "text": "Everyone stay calm. Eli \u2014 those doors aren't opening. Find us some power."
+              "text": "Everyone stay calm. Eli — those doors aren't opening. Find us some power."
             }
           ]
         },
         {
           "id": "inspect_relay",
           "label": "Find the power relay",
-          "objective": "The ship is dark. There is a relay panel on the Gate Room's aft wall \u2014 see why it is dead.",
+          "objective": "The ship is dark. There is a relay panel on the Gate Room's aft wall — see why it is dead.",
           "target": {
             "room": "gate_room",
             "anchor": "PowerRelay"
@@ -112,7 +112,7 @@
             {
               "type": "subtitle",
               "who": "Rush",
-              "text": "Eli. Control room. Now \u2014 before someone touches something."
+              "text": "Eli. Control room. Now — before someone touches something."
             }
           ]
         },
@@ -148,7 +148,7 @@
         {
           "id": "explore",
           "label": "Explore the ship",
-          "objective": "The breach is sealed. Look around \u2014 the crew wing aft of the Control Room has a room with a strange device.",
+          "objective": "The breach is sealed. Look around — the crew wing aft of the Control Room has a room with a strange device.",
           "target": {
             "room": "eli_quarters",
             "anchor": "RoomCenter"
@@ -169,7 +169,7 @@
           "on_exit": [
             {
               "type": "toast",
-              "text": "Kino Remote acquired \u2014 press TAB (gamepad: Start) for Quest, Character, Inventory, Talents, Ship, Gate and Kino Control."
+              "text": "Kino Remote acquired — press TAB (gamepad: Start) for Quest, Character, Inventory, Talents, Ship, Gate and Kino Control."
             }
           ]
         },
@@ -194,7 +194,7 @@
         {
           "id": "ftl_drop",
           "label": "Return to the Gate Room",
-          "objective": "The CO2 scrubbers are dead \u2014 the lime bed is exhausted. Head back toward the gate.",
+          "objective": "The CO2 scrubbers are dead — the lime bed is exhausted. Head back toward the gate.",
           "target": {
             "room": "gate_room",
             "anchor": "RoomCenter"
@@ -208,7 +208,7 @@
             {
               "type": "subtitle",
               "who": "Brody",
-              "text": "We've dropped out of FTL \u2014 and the gate is dialing itself."
+              "text": "We've dropped out of FTL — and the gate is dialing itself."
             },
             {
               "type": "dial"
@@ -218,7 +218,7 @@
         {
           "id": "scout_kino",
           "label": "Send a Kino through the gate",
-          "objective": "Open the Kino Remote (TAB) \u2192 Kino Control \u2192 Launch. Fly it through and read the atmosphere.",
+          "objective": "Open the Kino Remote (TAB) → Kino Control → Launch. Fly it through and read the atmosphere.",
           "target": {
             "room": "gate_room",
             "anchor": "GateFront"
@@ -273,7 +273,7 @@
         {
           "id": "dial_home",
           "label": "Dial Destiny",
-          "objective": "Open the Kino Remote \u2192 Gate and dial Destiny, then walk through.",
+          "objective": "Open the Kino Remote → Gate and dial Destiny, then walk through.",
           "target": {
             "room": "planet",
             "anchor": "GateFront"
@@ -313,7 +313,7 @@
         {
           "id": "complete",
           "label": "Episode complete",
-          "objective": "The scrubbers are running. We can breathe \u2014 for now.",
+          "objective": "The scrubbers are running. We can breathe — for now.",
           "target": {
             "room": "",
             "anchor": ""
@@ -340,7 +340,7 @@
         },
         "atmosphere": {
           "breathable": true,
-          "composition": "O2/N2 \u2014 thin, breathable",
+          "composition": "O2/N2 — thin, breathable",
           "temperature_c": -42,
           "radiation": "LOW",
           "toxins": "NONE"
@@ -388,7 +388,7 @@
         {
           "id": "scout_kino",
           "label": "Scout with a Kino",
-          "objective": "Kino Remote \u2192 Kino Control \u2192 Launch. Check the atmosphere before anyone goes through.",
+          "objective": "Kino Remote → Kino Control → Launch. Check the atmosphere before anyone goes through.",
           "target": {
             "room": "gate_room",
             "anchor": "GateFront"
@@ -399,7 +399,7 @@
         {
           "id": "travel",
           "label": "Step through the Stargate",
-          "objective": "Bring the shovel \u2014 the ice is under the surface.",
+          "objective": "Bring the shovel — the ice is under the surface.",
           "target": {
             "room": "gate_room",
             "anchor": "GateFront"
@@ -425,7 +425,7 @@
         {
           "id": "dial_home",
           "label": "Dial Destiny",
-          "objective": "Kino Remote \u2192 Gate \u2192 Destiny.",
+          "objective": "Kino Remote → Gate → Destiny.",
           "target": {
             "room": "planet",
             "anchor": "GateFront"
@@ -485,7 +485,7 @@
         },
         "atmosphere": {
           "breathable": false,
-          "composition": "CO2/N2 \u2014 not breathable",
+          "composition": "CO2/N2 — not breathable",
           "temperature_c": -88,
           "radiation": "LOW",
           "toxins": "NONE"
@@ -532,7 +532,7 @@
             {
               "type": "subtitle",
               "who": "Rush",
-              "text": "Hydroponics is on the upper deck and the only way up is the elevator. Its bus is dead \u2014 no fuses. Storage, aft."
+              "text": "Hydroponics is on the upper deck and the only way up is the elevator. Its bus is dead — no fuses. Storage, aft."
             }
           ]
         },
@@ -608,7 +608,7 @@
             {
               "type": "subtitle",
               "who": "Rush",
-              "text": "Grow lights are drawing power. Good. Now Destiny can feed us \u2014 if the plants cooperate."
+              "text": "Grow lights are drawing power. Good. Now Destiny can feed us — if the plants cooperate."
             }
           ]
         },
@@ -616,6 +616,199 @@
           "id": "complete",
           "label": "Episode complete",
           "objective": "The upper deck has light again.",
+          "target": {
+            "room": "",
+            "anchor": ""
+          },
+          "complete_when": null,
+          "terminal": true
+        }
+      ]
+    },
+    {
+      "id": "e4_parts",
+      "title": "Episode 4: Parts",
+      "subtitle": "The crew deck is dark. Its power conduit is missing a segment, and Destiny carries no spares.",
+      "planet": {
+        "id": "dark_world",
+        "name": "Dark World",
+        "biome": {
+          "sky_low": "#2a2f45",
+          "sky_high": "#05060c",
+          "ground": "#3a3d48",
+          "fog": "#20242f",
+          "sun": "#8fa4d8",
+          "rock": "#2c3038"
+        },
+        "atmosphere": {
+          "breathable": false,
+          "composition": "CO2/N2 — not breathable",
+          "temperature_c": -88,
+          "radiation": "LOW",
+          "toxins": "NONE"
+        },
+        "resource": {
+          "id": "parts",
+          "name": "Parts",
+          "color": "#5a6270",
+          "count": 6,
+          "required": 4,
+          "verb": "Salvage parts",
+          "refined": "conduit"
+        },
+        "window_seconds": 420
+      },
+      "steps": [
+        {
+          "id": "talk_rush",
+          "label": "Talk to Rush",
+          "objective": "Rush has a plan for the crew deck. Find him in the Control Room.",
+          "target": {
+            "room": "control_interface_room",
+            "anchor": "Rush"
+          },
+          "complete_when": "parts_briefed",
+          "xp": 40,
+          "on_enter": [
+            {
+              "type": "radio",
+              "who": "Rush",
+              "text": "Eli. The crew quarters on the upper deck — I want them lit before people start sleeping on the gate room floor."
+            }
+          ]
+        },
+        {
+          "id": "ftl_drop",
+          "label": "Wait for Destiny to drop out of FTL",
+          "objective": "The next world is dark and cold. Destiny is already slowing.",
+          "target": {
+            "room": "gate_room",
+            "anchor": "RoomCenter"
+          },
+          "complete_when": "ftl_dropped",
+          "xp": 30,
+          "on_exit": [
+            {
+              "type": "ftl_drop"
+            },
+            {
+              "type": "dial"
+            }
+          ]
+        },
+        {
+          "id": "scout_kino",
+          "label": "Send a Kino through",
+          "objective": "The atmosphere is not breathable. Scout it with the Kino first.",
+          "target": {
+            "room": "gate_room",
+            "anchor": "GateFront"
+          },
+          "complete_when": "kino_scout_done",
+          "xp": 60,
+          "on_enter": [
+            {
+              "type": "subtitle",
+              "who": "Eli",
+              "text": "CO2 and nitrogen. Cold enough to crack teeth. But there are ruins — Ancient ruins."
+            }
+          ]
+        },
+        {
+          "id": "travel",
+          "label": "Step through the Stargate",
+          "objective": "You will have the air in your lungs and nothing else. Move fast.",
+          "target": {
+            "room": "gate_room",
+            "anchor": "GateFront"
+          },
+          "complete_when": "on_planet",
+          "xp": 60
+        },
+        {
+          "id": "mine",
+          "label": "Salvage parts from the ruins",
+          "objective": "Strip conduit alloy from the wreckage near the pillars before your air runs out.",
+          "counter": {
+            "item": "parts",
+            "required": 4
+          },
+          "target": {
+            "room": "planet",
+            "anchor": "NearestResource"
+          },
+          "complete_when": "has_required_resource",
+          "xp": 180,
+          "on_enter": [
+            {
+              "type": "subtitle",
+              "who": "Rush",
+              "text": "Your oxygen is the clock, Eli. Four pieces. Then come home."
+            }
+          ]
+        },
+        {
+          "id": "dial_home",
+          "label": "Dial Destiny",
+          "objective": "Get back to the gate and dial home before the air goes.",
+          "target": {
+            "room": "planet",
+            "anchor": "GateFront"
+          },
+          "complete_when": "returned_from_planet",
+          "xp": 60
+        },
+        {
+          "id": "give_brody",
+          "label": "Bring the parts to Brody",
+          "objective": "Brody can machine the alloy into a conduit segment.",
+          "target": {
+            "room": "gate_room",
+            "anchor": "Brody"
+          },
+          "complete_when": "lime_refined",
+          "xp": 80,
+          "on_enter": [
+            {
+              "type": "subtitle",
+              "who": "Brody",
+              "text": "Ancient alloy. I can work with this. Give me a minute."
+            }
+          ]
+        },
+        {
+          "id": "restore_conduit",
+          "label": "Restore the crew deck conduit",
+          "objective": "Seat the segment in the open conduit junction on the upper-deck corridor, then hotwire the line.",
+          "target": {
+            "room": "room_1753576770763",
+            "anchor": "Conduit"
+          },
+          "complete_when": "quarters_powered",
+          "xp": 150,
+          "on_enter": [
+            {
+              "type": "subtitle",
+              "who": "Eli",
+              "text": "The junction is on the corridor past the elevator. One segment, then the usual argument with the protocol."
+            }
+          ]
+        },
+        {
+          "id": "reach_quarters",
+          "label": "Check the crew quarters",
+          "objective": "The lights should be on. Go and see.",
+          "target": {
+            "room": "quarters_room_1",
+            "anchor": "RoomCenter"
+          },
+          "complete_when": "quarters_visited",
+          "xp": 60
+        },
+        {
+          "id": "complete",
+          "label": "Episode complete",
+          "objective": "The crew has somewhere to sleep.",
           "target": {
             "room": "",
             "anchor": ""

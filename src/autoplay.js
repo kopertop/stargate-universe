@@ -104,7 +104,7 @@ export const createAutoplay = (d) => {
 			await waitFor(() => d.world.name === 'destiny' && !d.travel(), 15000); await sleep(600);
 		},
 		give_brody: async (s) => { await goTo(s.target.room, s.target.anchor); await interact(1500); await waitFor(() => stepId() !== 'give_brody', 9000); },
-		repair: async (s) => { await goTo(s.target.room, s.target.anchor); facePropAt(s.target.room, s.target.anchor); await interact(4500); },
+		repair: async (s) => { await goTo(s.target.room, s.target.anchor); facePropAt(s.target.room, s.target.anchor); await interact(2600); if (await waitFor(() => d.flow?.isOpen(), 3000)) { await sleep(700); d.flow.solve(); await waitFor(() => !d.flow.isOpen(), 6000); } await sleep(1800); }, // the flow panel opens off the repair animation
 	};
 	const handlerFor = (id) => H[id] ?? (id.startsWith('repair_') ? H.repair : id.startsWith('talk_') ? H.talk_rush : id.startsWith('find_') ? H.find : id.startsWith('restore_') ? H.restore_power : id.startsWith('reach_') ? H.reach_control : null);
 

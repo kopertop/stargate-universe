@@ -301,6 +301,59 @@ func _build_vortex() -> void:
 	vortex_mesh.material_override = portal_mat
 	add_child(vortex_mesh)
 
+	# CYCLE 1998 CHANGE — OPAQUE DARK EYE DISC (rubric 5: "a SMALL dark unstable
+	# eye"; the panel's standing #1 gap for 10+ consecutive cycles and the
+	# measurement's #1 aperture error).
+	# LEVER DERIVED FROM A FRESH CALIBRATED PROBE THIS CYCLE, NOT AN INHERITED
+	# PRESCRIPTION. Measured on best.png (1920x1080, radial about the gate centre
+	# 960,540): the aperture interior r0-40 reads meanL 70-107 (30-50% of those
+	# pixels above 120) against the CONCEPT's genuinely dark core r0-45 meanL
+	# 16-27 with 57-96% of pixels below 25 and a dark-blue-grey hue (RGB
+	# 16,28,37). The render's core is 4-6x too bright AND the wrong hue. Colour
+	# probe: the bright core pixels are cool white-blue (mean RGB 161,182,211,
+	# 91% B>R, min-channel 161 = NOT clipped) — i.e. a LIT pale surface, not the
+	# concept's dark void.
+	# WHY GEOMETRY, NOT ANOTHER SHADER DIAL: the plasma shader's own eye already
+	# darkens r<~32px (hole_radius 0.52 -> eye_r ~1.55 world), yet the aperture
+	# still reads bright because (a) the shader's radial weight only reaches
+	# r20-50px (cycle 1997 measured r30-40 moved just -9 lum) and (b) the shader
+	# eye is small and swamped. Every shader-side eye/radial dial is documented
+	# SPENT (hole_radius 1857/1890/1912/1931/1952; radial weight 1997 0/3; eye
+	# mask 1994). The one recorded CREDIT in this band was a GEOMETRY ADDITION of
+	# a new dark element (1992 collar torus, ACCEPT 60 closer 2/3) — so this
+	# cycle adds a dark element rather than re-tuning a spent constant.
+	# MECHANISM: an OPAQUE matte disc placed 0.15 in FRONT of the plasma plane
+	# so it occludes the plasma's inner region and the light spilling through the
+	# aperture — producing a real, centred dark eye the way the concept has one.
+	# Material is PURE-BLACK albedo (diffuse returns 0 under ANY light — the
+	# scene's 20-energy RingGlow and nine 9-energy chevron OmniLights would light
+	# a merely-dark albedo back up to ~160/255) plus a small cool self-emission
+	# so the eye reads dark-blue-grey like the concept (16,28,37), not a pure
+	# black hole. radius 2.1 world = ~44 px at the in-scope camera (1 world unit
+	# = 20.8 px at z 13.5), just larger than the concept's ~45 px dark core and
+	# well inside the plasma quad (3.5 world = 73 px) and the chevron ring
+	# (3.5 world), so it occludes neither.
+	var eye_mat := StandardMaterial3D.new()
+	eye_mat.albedo_color = Color(0.0, 0.0, 0.0)
+	eye_mat.roughness = 1.0
+	eye_mat.metallic = 0.0
+	eye_mat.metallic_specular = 0.0
+	eye_mat.disable_ambient_light = true
+	eye_mat.emission_enabled = true
+	eye_mat.emission = Color(0.06, 0.11, 0.17)
+	eye_mat.emission_energy_multiplier = 0.5
+	var eye := MeshInstance3D.new()
+	var eye_shape := CylinderMesh.new()
+	eye_shape.top_radius = 2.1
+	eye_shape.bottom_radius = 2.1
+	eye_shape.height = 0.06
+	eye_shape.radial_segments = 48
+	eye.mesh = eye_shape
+	eye.material_override = eye_mat
+	eye.position = Vector3(0.0, GATE_CENTER_Y, GATE_CENTER_Z - 0.35)
+	eye.rotate_x(PI / 2.0)
+	add_child(eye)
+
 func _build_buttresses() -> void:
 	# Large diagonal buttress beams flanking the gate ring.
 	# 4 beams total: 2 left (negative X) and 2 right (positive X).

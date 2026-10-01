@@ -173,6 +173,43 @@ func _build_gate_ring() -> void:
 	ring_mesh.position = Vector3(0.0, GATE_CENTER_Y, GATE_CENTER_Z)
 	ring_mesh.rotate_x(PI / 2.0)
 	add_child(ring_mesh)
+
+	# CYCLE 1992 CHANGE — THICK DARK OUTER RING COLLAR (rubric 4: "thick segmented
+	# DARK-metal ring with inward glowing TRIANGULAR chevrons"). LEVER CHOSEN ON A
+	# FRESH CALIBRATED PROJECTION PROBE (own script, this cycle), NOT on an inherited
+	# prescription: at the in-scope camera (0, 2.6, -19.0), fov 76, H=1080, focal_y
+	# 691.17 px, the gate plane z=13.5 sits 33.16 units out, so 1 world unit = 20.8 px.
+	# Measured screen geometry: the existing torus tube (outer R=3.5, inner 0.62R=2.17)
+	# projects to r 45..73 px, and the nine chevron glyphs (centre radius R=3.5, radial
+	# extent 1.4) project to r 59..89 px — i.e. THE GLYPHS ARE THE OUTERMOST ELEMENT
+	# (89 px), sticking 16 px PAST the tube's outer edge. So the gate has NO dark metal
+	# band outside its bright elements: the rendered silhouette's outer boundary is a
+	# blown emissive glyph ring. That is exactly the panel's standing #1 gap and the
+	# own-vision read of the same crop this cycle ("concentric white segmented arcs ...
+	# no distinct dark metal ring band ... no triangular chevrons"). The concept has the
+	# inverse structure (dark band OUTSIDE, bright triangles inset). A thick dark collar
+	# torus is rotationally symmetric about the gate normal, so it needs no per-glyph
+	# orientation work and adds no clip load. Material is dim COOL STEEL (not near-black:
+	# cycle 1848 ACCEPTed at 76 proved a near-black band "blends into the dark void" and
+	# loses credit), and NOT blue — palette rule keeps blue in the portal + screens.
+	var collar_mat := _standard_material(Color(0.20, 0.22, 0.27), 0.62, 0.45)
+	var collar := MeshInstance3D.new()
+	var collar_shape := TorusMesh.new()
+	# outer 1.45R = 5.075 world = 108 px -> extends the gate's dark silhouette 35 px
+	# beyond the current bright outer edge (73 px tube / 89 px glyphs).
+	collar_shape.outer_radius = GATE_RING_RADIUS * 1.45
+	# inner 1.02R = 3.57 world = 76 px -> clears the plasma disc edge (hard cut at
+	# 1.05 * R = 79 px), so the aperture and the vortex are NOT occluded.
+	collar_shape.inner_radius = GATE_RING_RADIUS * 1.02
+	collar_shape.ring_segments = 48
+	collar.mesh = collar_shape
+	collar.material_override = collar_mat
+	# 0.15 behind the torus tube (z 13.5) and 0.4 behind the glyph plane (z 13.25), so
+	# the bright glyphs still read ON TOP of the new dark band (the concept's inset
+	# bright triangles on a dark ring), while the collar occludes the far wall.
+	collar.position = Vector3(0.0, GATE_CENTER_Y, GATE_CENTER_Z + 0.15)
+	collar.rotate_x(PI / 2.0)
+	add_child(collar)
 	
 	# Segmented chevrons — vertical circle matching upright ring.
 	# X = cos(angle) * R, Y = GATE_CENTER_Y + sin(angle) * R, Z = GATE_CENTER_Z.

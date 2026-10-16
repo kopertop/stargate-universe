@@ -30,7 +30,7 @@
     live-ops-designer       -- Seasons, events, battle passes, retention, live economy
     community-manager       -- Patch notes, player feedback, crisis comms
 
-  Engine Specialists: NONE — web-era repo (Three.js), Godot/Unity/Unreal agents
+  Engine Specialists: NONE — web-era repo (Three.js). No Unity/Unreal agents
   were removed in the 2026-09-08 re-pivot along with the engine. Route engine
   questions to `engine-programmer` / `technical-artist` + `technical-preferences.md`.
 ```

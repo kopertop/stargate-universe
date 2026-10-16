@@ -1,13 +1,14 @@
 # VRM Character Model Integration
 
-> **⚠️ STALE engine mapping — ggez-era sections superseded by the 2026-09-08 Three.js re-pivot**
+> **⚠️ Engine mapping updated — Three.js web era (2026-09-08 re-pivot)**
 >
-> Engine-specific sections below (`@pixiv/three-vrm` on Three.js 0.181,
-> skeleton retargeting into `ggez RigDefinition`/`@ggez/anim-*`) reference the
-> ggez framework removed in `abfb5ed` — the Three.js-era repo runs plain
-> `src/*.js` + `index.html` with no VRM pipeline (`grep @pixiv` = 0 in the web
-> tree). The character visual design intent remains reference until a web-era
-> VRM path is defined, but every animation-pipeline mapping below is dead.
+> Engine-specific sections have been updated from the old framework
+> (removed in `abfb5ed`) to Three.js equivalents: `@pixiv/three-vrm`
+> provides VRM parsing directly on Three.js, `THREE.AnimationMixer` replaces
+> the old animation pipeline, and `THREE.AnimationClip` replaces
+> the old RigDefinition for skeleton retargeting. The Three.js-era repo runs
+> plain `src/*.js` + `index.html` (`build.sh`). The character visual design
+> intent remains reference until implemented in the web codebase.
 
 > **Status**: Designed
 > **Author**: User + Claude
@@ -24,9 +25,9 @@ aboard Destiny. VRM is a humanoid avatar format built on glTF 2.0 that provides
 standardized bone mapping, spring bone physics (hair, cloth, accessories), blend
 shape groups (facial expressions, lip sync visemes), and first-person rendering
 annotations. Models load via `@pixiv/three-vrm` on top of the existing Three.js
-`GLTFLoader`, then bridge into the ggez animation pipeline through a skeleton
-retargeting layer that maps VRM's humanoid bone names to ggez `RigDefinition`
-joints. The physics capsule body remains the source of truth for collision and
+`GLTFLoader`, then bridge into the Three.js animation pipeline through a skeleton
+retargeting layer that maps VRM's humanoid bone names to `THREE.AnimationMixer`
+tracks. The physics capsule body remains the source of truth for collision and
 movement; the VRM mesh is a visual-only representation parented to the player
 controller's scene `Group`. Crew NPCs share the same loading and animation
 infrastructure but are driven by the Crew AI & Schedule system and the Crew
@@ -84,12 +85,12 @@ even when no dialogue is playing.
    first-person settings.
 3. **Skeleton extraction**: The VRM humanoid provides a standardized bone hierarchy.
    A retargeting bridge maps VRM bone names (`hips`, `spine`, `chest`, `head`,
-   `leftUpperArm`, etc.) to ggez `RigDefinition` joint names. This mapping is
-   defined once in a static bone mapping table (`vrm-bone-map.ts`).
-4. **Animation binding**: After retargeting, ggez animation clips (authored in the
-   ggez animation editor) drive the VRM skeleton through the standard
-   `RuntimeAnimationBundle` pipeline. Clips reference ggez joint names; the
-   retarget layer resolves them to VRM bones at bind time.
+   `leftUpperArm`, etc.) to `THREE.AnimationMixer` track names. This mapping is
+   defined once in a static bone mapping table (`vrm-bone-map.js`).
+4. **Animation binding**: After retargeting, Three.js animation clips (authored
+   externally or imported as glTF) drive the VRM skeleton through
+   `THREE.AnimationMixer` and `THREE.AnimationAction`. Clips reference
+   Three.js track names; the retarget layer resolves them to VRM bones at bind time.
 5. **Loading queue**: Maximum 2 VRM files load concurrently to avoid frame drops.
    Additional requests are queued. Priority: player model first, then visible
    crew sorted by distance to camera.
@@ -97,9 +98,9 @@ even when no dialogue is playing.
 ### Player Model (Eli Wallace)
 
 1. **Visual attachment**: The VRM scene graph replaces the capsule `Mesh` inside
-   `StarterPlayerController.object` (the `Group`). The Crashcat rigid body
+   `StarterPlayerController.object` (the `Group`). The manual collision body
    capsule remains unchanged — physics and visuals are decoupled.
-2. **Locomotion states**: The ggez animation graph for the player defines these
+2. **Locomotion states**: The `THREE.AnimationMixer` for the player defines these
    states, each mapped to authored animation clips:
    - `idle` — breathing, subtle weight shift
    - `walk` — casual walk cycle, speed-matched to controller walk speed
@@ -115,8 +116,8 @@ even when no dialogue is playing.
    status. Walk/run blend uses movement speed as the blend parameter. Jump states
    use grounded flag transitions. Traversal states are triggered by interaction
    events.
-4. **Root motion**: Disabled. Movement is entirely physics-driven by the Crashcat
-   rigid body. The animation plays in-place on the VRM skeleton.
+4. **Root motion**: Disabled. Movement is entirely physics-driven (manual velocity
+   integration). The animation plays in-place on the VRM skeleton.
 
 ### Crew NPC Models
 
@@ -282,8 +283,8 @@ Where:
 | Dependency | Type | Purpose |
 |------------|------|---------|
 | `@pixiv/three-vrm` | New npm package | VRM file parsing, spring bones, expressions, first-person |
-| ggez Animation Pipeline (`@ggez/anim-*`) | Existing | Skeleton retargeting, animation clip playback, animation graphs |
-| Player Controller (`src/game/starter-player-controller.ts`) | Existing | Visual attachment point (`object` Group), movement state for animation |
+| `THREE.AnimationMixer` (`three`) | Existing | Skeleton retargeting, animation clip playback, animation blending |
+| Player Controller (`src/game/starter-player-controller.js`) | Existing | Visual attachment point (`object` Group), movement state for animation |
 | Camera System (`design/gdd/camera-system.md`) | Existing | Camera mode (FPS/third-person) for head hiding, distance for LOD |
 | Crew Dialogue & Choice System (`design/gdd/crew-dialogue-choice.md`) | Existing | Expression triggers, viseme events during dialogue |
 | Crew AI & Schedule System | Future (VS tier) | Crew placement, visibility decisions, animation state triggers |
@@ -336,6 +337,6 @@ hot-reloaded during development.
 - [ ] LOD transitions work correctly: spring bones and expressions disable at
       mid/far distances
 - [ ] Adaptive quality kicks in below 30 FPS, reducing spring bones and crew count
-- [ ] VRM bone mapping retargets correctly to ggez animation clips without visual
+- [ ] VRM bone mapping retargets correctly to `THREE.AnimationMixer` tracks without visual
       artifacts
 - [ ] All tuning knobs are externalized in `vrm-config.json` (no hardcoded values)

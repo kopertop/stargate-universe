@@ -15,13 +15,14 @@ const MOODS = {
 	silent: {},
 };
 
-/** @param listener THREE.AudioListener  @param files {layer: url} */
+/** @param {THREE.AudioListener} listener
+ * @param {Record<string, string>} files */
 export const createMusic = (listener, files) => {
 	const loader = new THREE.AudioLoader(), layers = {}, target = {};
 	let mood = 'silent', ready = false, level = 1;
 	const load = async () => {
 		await Promise.all(Object.entries(files).map(async ([k, url]) => {
-			const buf = await loader.loadAsync(url); const a = new THREE.Audio(listener); a.setBuffer(buf); a.setLoop(true); a.setVolume(0); layers[k] = a; target[k] = 0;
+			const buf = await loader.loadAsync(url).catch((e) => { console.warn(`[SGU] Music layer missing: ${k}`, e); return null; }); if (!buf) return; const a = new THREE.Audio(listener); a.setBuffer(buf); a.setLoop(true); a.setVolume(0); layers[k] = a; target[k] = 0;
 		}));
 		ready = true;
 	};

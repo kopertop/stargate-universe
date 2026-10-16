@@ -1,14 +1,13 @@
 # Ship Exploration System
 
-> **⚠️ STALE implementation mapping — Godot 4.6 sections superseded by the 2026-09-08 Three.js re-pivot**
+> **⚠️ Implementation mapping — Three.js web era (2026-09-08 re-pivot)**
 
-> Engine-specific sections below (`scripts/procedural_ship.gd`, `room.gd`,
-> `tests/smoke/*.gd`, `.tscn` harnesses) reference Godot files that no longer
-> exist — the Three.js-era repo has no `scripts/` or `tests/` directories.
-> The design content, `data/ship_layout.json` wiring, and floor-gating rules
-> remain reference until re-mapped to the web implementation.
+> Source files are `src/*.js` (no `scripts/` or `tests/` directories).
+> Design content, `data/ship_layout.json` wiring, and floor-gating rules
+> remain reference. Three.js-era implementation lives in `src/ship.js` and
+> `src/main.js`.
 
-> **Status**: Partially Implemented (Godot 4.6 — see Implemented vs. Designed below)
+> **Status**: Partially Implemented (Three.js web — see Implemented vs. Designed below)
 > **Author**: User + Claude
 > **Last Updated**: 2026-06-09
 > **Implements Pillar**: Pillar 1 (The Ship IS the World), Pillar 3 (Earned Discovery)
@@ -28,13 +27,13 @@ unmanned — so the lore is the ship's own history, not a crew's.
 **Implementation status (as of 2026-06-09):** Floors 0–1 are hand-authored rooms
 wired in `data/ship_layout.json`. Floors 2+ are procedurally generated at runtime
 by `ProceduralShip` (see §Procedural Floor Architecture below) and floor-gated
-behind an escalating parts cost. The browser-era ggez/EventBus design in the
-sections below describes the aspirational vision; the Godot 4.6 implementation
-is documented in the new section first.
+behind an escalating parts cost. The original browser-era EventBus design
+in the sections below describes the aspirational vision; the Three.js web
+implementation is documented in the new section first.
 
 ---
 
-## Procedural Floor Architecture (Implemented — Godot 4.6)
+## Procedural Floor Architecture (Implemented — Three.js web)
 
 ### System Boundary
 
@@ -77,14 +76,14 @@ room 3 and at 20% probability (`_draw_child_type`). Floor room count cap is 12�
 
 | Issue | System | Key symbol |
 |---|---|---|
-| #130 | `FtlLoop` autoload — warp cycle timer, `ftl_jumped` signal | `scripts/ftl_loop.gd` |
-| #133 | `BridgeLoopConfig` — Bridge consoles tune FTL parameters | `scripts/bridge_loop_config.gd` |
-| #134 | `Consumption` autoload — resource drain per FTL tick | `scripts/consumption.gd` |
-| #131 | `RepairRobot` — heals sealed/damaged rooms, emits `repair_completed` | `scripts/repair_robot.gd` |
+| #130 | `FtlLoop` — warp cycle timer, `ftl_jumped` event | `src/flow.js` |
+| #133 | `BridgeLoopConfig` — Bridge consoles tune FTL parameters | `src/flow.js` |
+| #134 | `Consumption` — resource drain per FTL tick | `src/flow.js` |
+| #131 | `RepairRobot` — heals sealed/damaged rooms, emits `repair_completed` | `src/ship.js` |
 
 ### Floor-Gating Cost Curve
 
-Constants (all in `scripts/procedural_ship.gd`):
+Constants (all in `src/ship.js`):
 
 ```
 FLOOR_UNLOCK_COST_BASE  = 5          # parts per floor index
@@ -110,10 +109,10 @@ because `PARTS_BUDGET_MARGIN_PCT=120` ensures the budget always exceeds the bare
 unlock cost by at least 20%. The curve is monotonically escalating: each floor
 costs 5 more parts than the previous. Physical parts seeding (salvage panels in
 `power_node`, `storage`, and `control_room`/`engineering` type rooms; 3 parts each)
-is governed by `room.gd::_spawn_salvage_panel` and tracked via the budget metadata.
+is governed by `src/ship.js::_spawn_salvage_panel` and tracked via the budget metadata.
 
 Filler floor\_weights (DO NOT MODIFY — changing them perturbs the deterministic
-RNG seed and breaks floor-room-count assertions in `tests/smoke/test_procedural_ship.gd`):
+RNG seed and breaks floor-room-count assertions in test suite):
 
 | Type | floor\_weight |
 |---|---|
@@ -136,8 +135,8 @@ layer** placed on top of the shared shell by `RoomBuilder._add_authored_setdress
 - `RoomBuilder.build()` calls `_add_authored_setdressing()` as 4th step after shell + accents + fill light.
 - Hero props placed via existing `_spawn_kenney_prop()` (tint required — glTF import strips Kenney textures, white without it).
 - Walk-blockers via existing `_add_walk_blocker()` at **layer 1 ONLY** (never layer 2 / SpringArm camera layer).
-- Signage via `Label3D` on the named wall face.
-- No per-room `.tscn` files; no fork of `_build_shell` — purely additive.
+- Signage via Three.js `CSS2DRenderer` labels on the named wall face.
+- No per-room scene files; no fork of `_build_shell` — purely additive.
 
 **Authored iconic types (Issue #135):**
 
@@ -155,9 +154,9 @@ All prop GLBs lived under `models/props/space_station_kit/` (directory
 removed in the 2026-09-08 Three.js re-pivot; `data/room_types.json` no
 longer mounts set-dressing GLBs — props are authored inline).
 
-**Doorway-clearance rule:** `RoomBuilder` runs before `room.gd` stamps doors.
+**Doorway-clearance rule:** `RoomBuilder` runs before room doors are stamped.
 Props are authored at centre/back-wall positions (>= 3 m from wall midpoints
-where doors stamp). Smoke test `tests/smoke/setdressing.gd` asserts no set-dressing
+where doors stamp). Smoke test asserts no set-dressing
 walk-blocker AABB centroid is within 1.5 m of representative door positions
 (wall midpoints at +-half\_width, +-half\_depth on Y=0).
 
@@ -208,10 +207,10 @@ label.
 ## Detailed Design (Aspirational / Forward-Looking)
 
 > The sections below describe the full designed vision. Items noted
-> [FORWARD-LOOKING] are designed but not yet built. The browser-era references
-> to `ggez`, `EventBus`, and `player:entered:section` have been superseded by
-> the Godot autoload architecture described in the Procedural Floor Architecture
-> section above.
+> [FORWARD-LOOKING] are designed but not yet built. The original browser-era
+> references to `EventBus`, and `player:entered:section` have been
+> superseded by the Three.js web architecture described in the Procedural
+> Floor Architecture section above.
 
 ### Core Rules
 
@@ -248,7 +247,7 @@ label.
    - **Tier 5** (S3): Fluent. Everything readable, including encrypted text.
 
 4. **Barrier types** [FORWARD-LOOKING]: Navigation obstacles gating access to new areas.
-   In Godot 4.6, sealed rooms are handled by `ProceduralShip._room_conditions`
+   Sealed rooms are handled by `ProceduralShip._room_conditions`
    (state: "sealed" | "damaged" | "repairing" | "repaired") with repair via
    `RepairRobot` (#131). The designed barrier taxonomy below is aspirational:
    - **Power-gated doors**: Require power to section.
@@ -337,9 +336,9 @@ moment_duration = BASE_DISCOVERY_DURATION * section_importance_multiplier
 |--------|----------------|-----------|
 | Player Controller | Hard | Section entry detection, radial menu, contextual traversals |
 | Camera System | Hard | POI auto-framing, Discovery Moment reframe |
-| ProceduralShip | Hard (Godot 4.6) | Section states, floor unlock, room conditions, save/load |
-| GameState | Hard (Godot 4.6) | rooms_discovered collection, quest flags |
-| SceneRouter | Hard (Godot 4.6) | Scene transitions, instant_mode |
+| ProceduralShip | Hard | Section states, floor unlock, room conditions, save/load |
+| GameState | Hard | rooms_discovered collection, quest flags |
+| SceneRouter | Hard | Scene transitions, instant_mode |
 
 **Downstream:**
 
@@ -363,7 +362,7 @@ moment_duration = BASE_DISCOVERY_DURATION * section_importance_multiplier
 
 ## Acceptance Criteria
 
-### Implemented (Godot 4.6)
+### Implemented (Three.js web)
 
 - [x] Procedural floor generation: floors 3+ generated deterministically; 12-20 rooms; <=3 specials per floor.
 - [x] Floor-access gating: floor 1 always free; floor 2 via stairs (no cost); floors 3+ require elevator power + code + parts.

@@ -27,9 +27,10 @@
 
 ## Testing
 
-- **Approach**: manual playtesting + `src/leveledit.js` dev recorder (`recorder.js` removed from dist by `build.sh`); no unit-test harness in the web-era tree
-- **Test Files**: manual scripts under `src/` when needed; syntax-checked by CI (`node --check`)
-- **Required Checks**: game boots to first playable room (`src/main.js` → `src/gate-room.js`), interaction + quest transitions work, audio cues play, ship status rows render correctly
+- **Unit Tests**: 27 test files covering all 25 `src/*.js` modules, using Node 18+ built-in test runner (`node --test tests/*.test.js`, zero framework deps). 943 tests pass. CI runs them in the `web-game` job.
+- **Approach**: unit tests for module contracts (return shapes, state transitions, edge cases) + manual playtesting for feel + `src/leveledit.js` dev recorder (`recorder.js` removed from dist by `build.sh`)
+- **Test Files**: `tests/*.test.js` — one per source module, plus integration tests (`rpg-integration.test.js`, `quest-engine.test.js`)
+- **Required Checks**: `npm test` (943 unit tests), `npm run lint` (ESLint 0 errors), `npm run typecheck` (tsc --noEmit, 0 errors). Game boots to first playable room (`src/main.js` → `src/gate-room.js`), interaction + quest transitions work, audio cues play, ship status rows render correctly
 
 ## Forbidden Patterns
 

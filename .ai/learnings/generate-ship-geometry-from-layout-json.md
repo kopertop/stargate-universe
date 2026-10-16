@@ -1,6 +1,6 @@
 # Generate ship geometry from the canonical layout JSON, not hand-placed rects
 
-**Context:** The web build had 5 hand-placed rooms; the Godot build in the reference video used the full deck from
+**Context:** The web build had 5 hand-placed rooms; the reference prototype in the design video used the full deck from
 `data/ship_layout.json` (29 rooms) + `data/room_connections.json`. Rebuilding the web deck by reading the same files
 gave the same floor plan in one pass, and the Kino Remote deck map fell out for free (rects → SVG).
 

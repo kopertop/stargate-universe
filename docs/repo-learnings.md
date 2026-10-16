@@ -148,14 +148,14 @@ survive `SceneRouter` transitions must attach to `/root` via a `call_deferred` b
   `--headless` (blank PNGs).
 - `Object.get("CONST")` silently returns null for consts/enums/static funcs.
 
-## 11. CI is a stale template — tests do not run in CI [ci, gotcha, tech-debt]
+## 11. CI — updated for web era [ci, tech-debt]
 
-`.github/workflows/ci.yml` is an unmodified TypeScript/bun template (`bun run typecheck`,
-`bun run test`) with no `package.json` in the repo and no Godot install. **The Godot suite
-and policy lints are enforced only by the local pre-commit hook.** Real CI needs a
-Godot-headless setup invoking `tests/run.sh` + `tests/lint/*.sh`. Similarly, several
-`.claude/hooks/` validators target template paths (`src/`, `assets/data/`) that don't exist
-here and are inert.
+**RESOLVED 2026-10-09** — `.github/workflows/ci.yml` now runs real checks for the web-era
+stack: `node --check` syntax validation on all `src/*.js`, JSON data validation, `npm install`
++ `node --test tests/*.test.js` (31 unit tests), `npm run typecheck` (tsc --noEmit), and
+`./build.sh` for itch.io zip artifact. The old Godot-era template with bun/typecheck on
+non-existent `package.json` is gone. The Godot suite and policy lints (§6) are Godot-era
+artifacts that no longer apply to the web/Three.js codebase.
 
 ## 12. Capture and trailer tooling [tooling]
 

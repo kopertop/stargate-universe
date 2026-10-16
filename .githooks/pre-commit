@@ -3,5 +3,6 @@
 # Install once per clone: git config core.hooksPath .githooks   (bypass: git commit --no-verify)
 set -e
 cd "$(git rev-parse --show-toplevel)"
-for f in $(git diff --cached --name-only --diff-filter=ACM -- 'src/*.js'); do node --check "$f"; done
+# parse as ES modules: `node --check foo.js` falls back to CommonJS and can pass a file the browser rejects
+for f in $(git diff --cached --name-only --diff-filter=ACM -- 'src/*.js'); do tmp="$(mktemp -t sgu-XXXXXX).mjs"; cp "$f" "$tmp"; node --check "$tmp" || { rm -f "$tmp"; echo "syntax error: $f"; exit 1; }; rm -f "$tmp"; done
 for f in $(git diff --cached --name-only --diff-filter=ACM -- 'data/*.json' '.claude/launch.json'); do python3 -m json.tool "$f" >/dev/null || { echo "invalid JSON: $f"; exit 1; }; done

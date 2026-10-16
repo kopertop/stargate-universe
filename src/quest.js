@@ -1,12 +1,12 @@
 // Chapter/quest engine: declarative steps advance when their `complete_when` flag is set. Triggers run on step enter/exit.
 export const createQuestEngine = ({ onTrigger, onStep, onChapterComplete, grantXp }) => {
 	const eng = { chapters: [], chapter: null, stepIndex: 0, flags: new Set(), done: [] };
-	eng.load = async (url) => { eng.chapters = (await (await fetch(url)).json()).chapters; };
+	eng.load = async (url) => { const r = await fetch(url); if (!r.ok) throw new Error('quest.load HTTP ' + r.status); eng.chapters = (await r.json()).chapters; };
 	eng.step = () => eng.chapter?.steps[eng.stepIndex] ?? null;
 	eng.chapterById = (id) => eng.chapters.find((c) => c.id === id);
 	const runTriggers = (list) => { for (const t of list ?? []) onTrigger?.(t, eng); };
 	eng.startChapter = (id) => {
-		eng.chapter = eng.chapterById(id); eng.stepIndex = 0;
+		eng.chapter = eng.chapterById(id); if (!eng.chapter) return; eng.stepIndex = 0;
 		// keep world-state flags (power, kino, seals…) across chapters; only reset the ones this chapter's steps complete on
 		for (const s of eng.chapter.steps) eng.flags.delete(s.complete_when);
 		runTriggers(eng.step()?.on_enter); onStep?.(eng.step(), eng.chapter);
@@ -25,6 +25,6 @@ export const createQuestEngine = ({ onTrigger, onStep, onChapterComplete, grantX
 			if (n?.terminal) { eng.done.push(eng.chapter.id); onChapterComplete?.(eng.chapter); }
 		}
 	};
-	eng.nextChapter = () => { const i = eng.chapters.indexOf(eng.chapter); return eng.chapters[i + 1] ?? null; };
+	eng.nextChapter = () => { if (!eng.chapter) return null; const i = eng.chapters.indexOf(eng.chapter); return eng.chapters[i + 1] ?? null; };
 	return eng;
 };

@@ -10,6 +10,7 @@ const WEB_ITEMS = [
 	{ id: 'refined_lime', name: 'Refined Lime', category: 'resource', stackable: true, description: 'Calcium hydroxide, ready for the CO2 scrubber bed.' },
 	{ id: 'ice', name: 'Ice', category: 'resource', stackable: true, description: 'Frozen water cut from the surface.' },
 	{ id: 'radio', name: 'Crew Radio', category: 'tool', stackable: false, description: 'Short-range crew radio.' },
+	{ id: 'conduit', name: 'Conduit Segment', category: 'resource', stackable: true, description: 'Ancient alloy machined by Brody to bridge the crew-deck power junction.' },
 ];
 /** Consumables: `use(id)` runs these and removes one. */
 const USES = { rations: { verb: 'Eat', apply: () => { rpg.hp = Math.min(stats().maxHp, rpg.hp + 25); return 'Ate a ration pack (+25 health)'; } } };
@@ -18,7 +19,7 @@ export const use = (id) => { const u = USES[id]; if (!u || count(id) <= 0) retur
 export const useVerb = (id) => USES[id]?.verb ?? 'Use';
 /** Inventory icon: 160 px copy of the repo sprite when one exists (assets/items/<id>.png), else an emoji glyph. */
 const ICON_SPRITES = new Set(['combat_boots', 'field_backpack', 'kino_orb', 'kino_remote', 'large_fuse', 'lime', 'marine_helmet', 'rations', 'recon_cap', 'small_fuse', 'tablet', 'tac_vest']);
-const GLYPHS = { shovel: '⛏', refined_lime: '🧪', ice: '🧊', radio: '📻', water: '💧', food: '🍲', parts: '⚙️', bus_fuse: '🔌', sidearm: '🔫' };
+const GLYPHS = { shovel: '⛏', refined_lime: '🧪', ice: '🧊', radio: '📻', water: '💧', food: '🍲', parts: '⚙️', conduit: '🔩', bus_fuse: '🔌', sidearm: '🔫' };
 export const iconHtml = (id) => (ICON_SPRITES.has(id) ? `<img src="./assets/items/${id}.png" alt="">` : `<span>${GLYPHS[id] ?? '▪'}</span>`);
 const GEAR_STATS = { field_backpack: { carry: 6 }, tac_vest: { hp: 20 }, marine_helmet: { hp: 10 }, recon_cap: { speed: 0.05 }, combat_boots: { speed: 0.08 } };
 
@@ -38,7 +39,7 @@ export const rpg = {
 export const xpToNext = (lvl) => 100 * lvl;
 
 export const loadItems = async () => {
-	try { for (const it of await (await fetch(`${ASSETS}data/items.json`)).json()) ITEMS[it.id] = it; } catch { /* repo data optional */ }
+	try { for (const it of await (await fetch(`${ASSETS}data/items.json`)).json()) ITEMS[it.id] = it; } catch (e) { console.warn('items.json load failed:', e.message); /* repo data optional */ }
 	for (const it of WEB_ITEMS) ITEMS[it.id] = it;
 	if (ITEMS.field_backpack) ITEMS.field_backpack.description ??= 'Roomy canvas pack. +6 carry.';
 };
@@ -72,5 +73,5 @@ export const grantXp = (n) => {
 	while (rpg.xp >= xpToNext(rpg.level)) { rpg.xp -= xpToNext(rpg.level); rpg.level++; rpg.talentPoints++; ups++; }
 	addLog(`+${n} XP${ups ? ` — Level ${rpg.level}! +${ups} talent point` : ''}`); rpg.hp = stats().maxHp; emit(); return ups;
 };
-export const save = () => { try { localStorage.setItem('sgu.rpg', JSON.stringify({ ...rpg, log: rpg.log.slice(-30) })); } catch {} };
-export const load = () => { try { const s = JSON.parse(localStorage.getItem('sgu.rpg') || 'null'); if (s) Object.assign(rpg, s); } catch {} };
+export const save = () => { try { localStorage.setItem('sgu.rpg', JSON.stringify({ ...rpg, log: rpg.log.slice(-30) })); } catch (e) { console.warn('rpg save failed:', e.message); } };
+export const load = () => { try { const s = JSON.parse(localStorage.getItem('sgu.rpg') || 'null'); if (s) Object.assign(rpg, s); } catch (e) { console.warn('rpg load failed:', e.message); } };

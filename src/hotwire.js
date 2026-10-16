@@ -25,6 +25,7 @@ const css = `
 	#hotwire .esc{position:absolute;right:26px;bottom:10px;font:11px monospace;color:#3aa9a3}
 	#hotwire.fault .hw{animation:hwshake .4s}@keyframes hwshake{0%,100%{transform:none}25%{transform:translate(-6px,2px)}50%{transform:translate(5px,-3px)}75%{transform:translate(-3px,1px)}}
 `;
+/** @param {any} opts - { sfx?: { pick?, connect?, success?, fault? } } */
 export const createHotwire = ({ sfx = {} } = {}) => {
 	document.head.appendChild(Object.assign(document.createElement('style'), { textContent: css }));
 	const el = document.createElement('div'); el.id = 'hotwire'; el.hidden = true; document.body.appendChild(el);

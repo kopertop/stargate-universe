@@ -31,6 +31,8 @@ const css = `
 	#sub{position:absolute;left:50%;bottom:150px;transform:translateX(-50%);max-width:640px;padding:8px 16px;font-size:15px;text-align:center}
 	#sub b{color:var(--gold)}#sub.radio b::before{content:'📻 '}
 	#toast{position:absolute;left:50%;top:22%;transform:translateX(-50%);padding:10px 22px;font:600 16px sans-serif;color:var(--gold);letter-spacing:.04em;text-align:center}
+	#clock{position:absolute;left:50%;top:12px;transform:translateX(-50%);padding:4px 16px;font:700 15px monospace;letter-spacing:.14em;color:var(--gold);text-align:center}
+	#clock.urgent{color:#ff5a48;animation:clockpulse 1s infinite}#clock.cool{color:#7fb4e6;opacity:.8}@keyframes clockpulse{50%{opacity:.35}}
 	#chapter{position:fixed;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.86);pointer-events:auto;text-align:center}
 	#chapter h1{font:300 34px/1.2 Georgia,serif;letter-spacing:.2em;color:var(--gold);margin:0}#chapter p{max-width:560px;opacity:.85}
 	#chapter button{margin:18px 6px 0;background:transparent;border:1px solid var(--gold);color:var(--gold);padding:8px 22px;font:14px monospace;cursor:pointer}#chapter button:hover{background:rgba(212,168,82,.12)}
@@ -76,7 +78,8 @@ export const createUI = (ctx) => {
 		<div id="log" class="panel"></div>
 		<div id="prompt" class="panel hidden"></div>
 		<div id="sub" class="panel hidden"></div>
-		<div id="toast" class="panel hidden"></div>`;
+		<div id="toast" class="panel hidden"></div>
+		<div id="clock" class="panel hidden"></div>`;
 	const q = (s) => hud.querySelector(s);
 	const remote = el('div', { id: 'remote', className: 'hidden' }); document.body.appendChild(remote);
 	const chapterCard = el('div', { id: 'chapter', className: 'hidden' }); document.body.appendChild(chapterCard);
@@ -133,6 +136,8 @@ export const createUI = (ctx) => {
 	let subT = null, toastT = null;
 	const setPrompt = (r) => { const p = q('#prompt'); if (!r) { p.classList.add('hidden'); return; } p.classList.remove('hidden'); p.innerHTML = `<kbd>[E]</kbd> ${r.prompt}${r.hold ? ` <span style="opacity:.6">(hold)</span><div class="pb"><i style="width:${Math.round((r.progress ?? 0) * 100)}%"></i></div>` : ''}`; };
 	const subtitle = (who, text, { radio = false, dur = 4.5 } = {}) => { if (!settings.subtitles) return; const s = q('#sub'); s.className = `panel${radio ? ' radio' : ''}`; s.innerHTML = `<b>${who}:</b> ${text}`; clearTimeout(subT); subT = setTimeout(() => s.classList.add('hidden'), dur * 1000); };
+	/** Top-centre ship clock (FTL window / cooldown). Empty text hides it; cls = '' | 'urgent' | 'cool'. */
+	const setClock = (text, cls = '') => { const c = q('#clock'); if (!text) { c.classList.add('hidden'); return; } c.textContent = text; c.className = `panel ${cls}`; };
 	const toast = (text, dur = 3.5) => { const t = q('#toast'); t.textContent = text; t.classList.remove('hidden'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.add('hidden'), dur * 1000); };
 	const zone = (name) => { q('#zone').textContent = name ?? ''; };
 
@@ -151,7 +156,7 @@ export const createUI = (ctx) => {
 		const L = (r) => (seen.has(r.id) && Math.min(r.z1 - r.z0, r.x1 - r.x0) > 5 ? `<text x="${-(r.z0 + r.z1) / 2}" y="${(r.x0 + r.x1) / 2}" font-size="2.6" fill="#cfe4f5" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif">${r.name}</text>` : '');
 		return `<svg viewBox="${-z1} ${x0} ${z1 - z0} ${x1 - x0}" style="width:100%;max-height:46vh;background:#06101a;border:1px solid #234;border-radius:6px">${rooms.map(R).join('')}${rooms.map(L).join('')}${waypoint ? `<circle cx="${-waypoint.z}" cy="${waypoint.x}" r="1.4" fill="#ffd24a"/>` : ''}<circle cx="${-player.z}" cy="${player.x}" r="1.2" fill="#fff"/></svg>`;
 	};
-	const TABS = ['quest', 'character', 'inventory', 'talents', 'ship', 'gate', 'kino', 'log', 'settings'];
+	const TABS = ['quest', 'character', 'inventory', 'talents', 'ship', 'clocks', 'gate', 'kino', 'log', 'settings'];
 	let tab = 'quest', open = false, selItem = null;
 	const renderRemote = () => {
 		const s = stats();
@@ -166,6 +171,7 @@ export const createUI = (ctx) => {
 				${it ? `<div class="detail"><div class="ico">${iconHtml(it.id)}</div><div><b>${it.name}</b> <span style="color:#776">· ${it.category}${it.slot ? ` · ${it.slot}` : ''}${rpg.inventory[it.id] > 1 ? ` · ×${rpg.inventory[it.id]}` : ''}</span><p>${it.description ?? ''}</p></div><div>${it.slot ? `<button class="btn" data-equip="${it.id}">Equip</button>` : usable(it.id) ? `<button class="btn" data-use="${it.id}">${useVerb(it.id)}</button>` : ''}</div></div>` : '<div class="detail"><span style="color:#554">Empty — search crates and lockers.</span></div>'}`; },
 			talents: () => `<h2>TALENTS</h2><div class="hint">Points available: <b style="color:var(--gold)">${rpg.talentPoints}</b> — one per level.</div><div class="tal" style="margin-top:10px">${TALENTS.map((t) => `<div><b>${t.name}</b> <span style="color:var(--gold)">${rpg.talents[t.id]}/${t.max}</span><div style="color:#aa9;margin:6px 0">${t.desc}</div><button class="btn" data-talent="${t.id}" ${rpg.talentPoints <= 0 || rpg.talents[t.id] >= t.max ? 'disabled' : ''}>Train</button></div>`).join('')}</div>`,
 			ship: () => `<h2>DESTINY — DECK ${ctx.deckMap().deck ?? 0}</h2>${deckMap(ctx.deckMap())}<h2 style="margin-top:14px">SHIP SYSTEMS</h2><table>${ctx.shipStatus().map(([k, v, ok]) => `<tr><td>${k}</td><td style="color:${ok ? '#57bd42' : '#e05040'}">${v}</td></tr>`).join('')}</table>`,
+			clocks: () => { const rows = ctx.clocks?.() ?? []; return `<h2>CLOCKS</h2><div class="hint">Every countdown and cooldown running aboard. The ship pauses while the Remote is open.</div>${rows.length ? rows.map(([k, v, frac, col]) => `<div style="margin:10px 0"><div style="display:flex;justify-content:space-between"><b>${k}</b><span style="color:${col}">${v}</span></div><div style="height:8px;background:#0a1018;border:1px solid #234;margin-top:4px"><i style="display:block;height:100%;width:${Math.round(Math.max(0, Math.min(1, frac)) * 100)}%;background:${col}"></i></div></div>`).join('') : '<p style="color:#887">Nothing is counting down. Enjoy it.</p>'}`; },
 			gate: () => `<h2>GATE CONTROL</h2><div class="hint">Dial a destination. The gate must be idle. Destiny's address is always available from a planet.</div><table>${ctx.planets().map((p) => `<tr><td><b>${p.name}</b></td><td style="color:#998">${p.scan ? p.scan : 'no scan data'}</td><td><button class="btn" data-dial="${p.id}" ${p.canDial ? '' : 'disabled'}>Dial</button></td></tr>`).join('')}</table>`,
 			kino: () => `<h2>KINO CONTROL</h2><div class="hint">Kinos: ${count('kino_orb')}. Launch one to fly it through an active gate; the Kino reports the atmosphere on the far side. Fly with WASD, mouse to look, Space up / Shift down. TAB or E recalls it.</div><p><button class="btn" data-launch="1" ${ctx.canLaunchKino() ? '' : 'disabled'}>Launch Kino</button></p>${ctx.lastScan() ? `<h2 style="margin-top:14px">LAST SCAN — ${ctx.lastScan().name}</h2><table>${Object.entries(ctx.lastScan().atmosphere).map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table>` : ''}`,
 			log: () => `<h2>LOG</h2>${rpg.log.slice().reverse().map((t) => `<div style="color:#dcb">${t}</div>`).join('')}`,
@@ -188,16 +194,19 @@ export const createUI = (ctx) => {
 
 	// ---- title screen + controls card
 	const CONTROLS = [['WASD / L-stick', 'move'], ['Shift / RT', 'run'], ['Space / A', 'jump'], ['E / X', 'interact (hold to dig)'], ['Mouse / R-stick', 'look (click to capture)'], ['TAB / Start', 'Kino Remote (quest, gear, talents, ship, gate)'], ['K / Y', 'launch Kino'], ['V', 'camera view'], ['F', 'fullscreen'], ['B', 'terrain debug']];
-	const showTitle = ({ hasSave, onNew, onContinue }) => {
-		chapterCard.innerHTML = `<div><div style="font:12px monospace;letter-spacing:.3em;color:#887">A THREE.JS PROTOTYPE</div><h1>STARGATE UNIVERSE</h1><p>Destiny · Episode 1: Air</p>
-			<button data-action="new">New Game</button>${hasSave ? '<button data-action="continue">Continue</button>' : ''}<button data-action="controls">Controls</button><button data-action="settings">Settings</button>
-			<div class="ctl hidden">${CONTROLS.map(([k, v]) => `<b>${k}</b><span>${v}</span>`).join('')}</div></div>`;
+	const showTitle = ({ hasSave, onNew, onContinue, chapters = [], onChapter }) => {
+		chapterCard.innerHTML = `<div><div style="font:12px monospace;letter-spacing:.3em;color:#887">A THREE.JS PROTOTYPE</div><h1>STARGATE UNIVERSE</h1><p>Destiny · five episodes</p>
+			<button data-action="new">New Game</button>${hasSave ? '<button data-action="continue">Continue</button>' : ''}${chapters.length > 1 ? '<button data-action="chapters">Chapters</button>' : ''}<button data-action="controls">Controls</button><button data-action="settings">Settings</button>
+			<div class="ctl hidden">${CONTROLS.map(([k, v]) => `<b>${k}</b><span>${v}</span>`).join('')}</div>
+			<div class="chapters hidden" style="display:flex;flex-direction:column;gap:6px;margin-top:10px">${chapters.map((c) => `<button data-chapter="${c.id}" style="width:100%">${c.title}<small style="display:block;font-size:11px;color:#998;font-weight:400">${c.subtitle ?? ''}</small></button>`).join('')}</div></div>`;
 		chapterCard.classList.remove('hidden');
 		chapterCard.querySelector('[data-action="new"]').onclick = () => { chapterCard.classList.add('hidden'); onNew(); };
 		chapterCard.querySelector('[data-action="continue"]')?.addEventListener('click', () => { chapterCard.classList.add('hidden'); onContinue(); });
 		chapterCard.querySelector('[data-action="controls"]').onclick = () => chapterCard.querySelector('.ctl').classList.toggle('hidden');
+		chapterCard.querySelector('[data-action="chapters"]')?.addEventListener('click', () => chapterCard.querySelector('.chapters').classList.toggle('hidden'));
+		chapterCard.querySelectorAll('[data-chapter]').forEach((b) => (b.onclick = () => { chapterCard.classList.add('hidden'); onChapter?.(b.dataset.chapter); }));
 		const sp = el('div', { className: 'settings panel hidden' }); chapterCard.firstElementChild.appendChild(sp); renderSettings(sp);
 		chapterCard.querySelector('[data-action="settings"]').onclick = () => sp.classList.toggle('hidden');
 	};
-	return { refreshPlayer, refreshTracker, drawMinimap, setPrompt, subtitle, toast, zone, showChapter, showTitle, openRemote, closeRemote, isRemoteOpen: () => open, renderRemote };
+	return { refreshPlayer, refreshTracker, drawMinimap, setPrompt, subtitle, toast, setClock, zone, showChapter, showTitle, openRemote, closeRemote, isRemoteOpen: () => open, renderRemote };
 };

@@ -1,12 +1,12 @@
 # Kino Remote (Diegetic Menu)
 
-> **⚠️ STALE engine mapping — ggez-era dependency superseded by the 2026-09-08 Three.js re-pivot**
+> **⚠️ Engine mapping updated — Three.js web era (2026-09-08 re-pivot)**
 >
-> The `ggez Scene Mgmt` dependency (overlay rendering) references the ggez
-> framework removed in `abfb5ed` — the Three.js-era repo runs plain `src/*.js` +
-> `index.html` (`build.sh`). The diegetic menu design (tabs, hold-to-open,
-> ship-state/resource readouts) remains reference until re-mapped onto the web
-> implementation.
+> The old scene management dependency has been replaced with Three.js scene
+> management (`THREE.Scene` overlay rendering). The Three.js-era repo runs
+> plain `src/*.js` + `index.html` (`build.sh`). The diegetic menu design
+> (tabs, hold-to-open, ship-state/resource readouts) remains reference
+> until implemented in the web codebase.
 
 > **Status**: Designed
 > **Author**: User + Claude
@@ -174,7 +174,7 @@ systems, making the ship feel real and responsive to your growing understanding.
 | **Camera System** | Outbound (mode) | Quick-check: camera stays in exploration mode. Full mode: camera may shift to show Eli holding device (optional). |
 | **Event Bus** | Inbound (subscribe) | Subscribes to `ship:*`, `resource:*`, `timer:*` for real-time updates on open screens. |
 | **Save/Load** *(undesigned)* | Outbound (serialization) | Serializes: unlocked screens, console connections, last-viewed tab. |
-| **ggez Scene Mgmt** | Reads | UI renders as an overlay on the current scene. |
+| **Three.js Scene Mgmt** | Reads | UI renders as an overlay on the current `THREE.Scene`. |
 
 ## Formulas
 
@@ -226,7 +226,7 @@ power, Resource computes quantities, Timer computes remaining time).
 |--------|----------------|-----------|
 | Ship State | Hard | Section map, system conditions, power grid data, power priority write-back |
 | Resource & Inventory | Hard | Resource quantities, scarcity warnings, story items (console connections) |
-| ggez Scene Mgmt | Soft | Renders as overlay on current scene |
+| Three.js Scene Mgmt | Soft | Renders as overlay on current `THREE.Scene` |
 | Event Bus | Hard | Subscribes to state-change events for real-time updates |
 | Ship Exploration | Hard | Knowledge tier for label translation (core feature — labels unreadable without it) |
 | Timer & Pressure | Hard | Active timer list for Timer screen and quick-check |

@@ -19,7 +19,7 @@ export const input = {
 };
 
 const pending = { jump: false, cycleView: false, redial: false, debug: false, interact: false, remote: false, launchKino: false, fullscreen: false };
-let padPrev = {};
+const padPrev = {};
 const dead = (v, d = 0.15) => (Math.abs(v) < d ? 0 : (v - Math.sign(v) * d) / (1 - d));
 
 export const initInput = (canvas) => {

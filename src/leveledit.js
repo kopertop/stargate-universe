@@ -31,18 +31,18 @@ const PANEL = `
 	</div>`;
 
 /**
- * @param ctx { renderer, camera, destiny, chapters (mutable array ref holder: {chapters}), rebuildShip(layout, connections),
+ * @param {object} ctx — { renderer, camera, destiny, chapters (mutable array ref holder: {chapters}), rebuildShip(layout, connections),
  *              envTex, input, onEnter(), onExit() }
  */
 export const createLevelEditor = (ctx) => {
 	const { renderer, camera, destiny, input } = ctx;
 	const state = { active: false, layout: null, connections: null, floor: 0, sel: null, selProp: null, placing: null, dirty: false, mode: 'ship', planetWorld: null };
-	let root, $, yaw = Math.PI, pitch = 0, speed = 8, looking = false, downAt = null, mouse = { x: 0, y: 0 };
+	let root, $, yaw = Math.PI, pitch = 0, speed = 8, looking = false, downAt = null; const mouse = new THREE.Vector2();
 	const cv = renderer.domElement;
 	const status = (t) => { const s = document.getElementById('le-status'); if (s) s.textContent = t; };
 
 	// ---- data
-	const live = () => { try { localStorage.setItem('sgu.layout.live', JSON.stringify({ layout: state.layout, connections: state.connections, chapters: { chapters: ctx.chapters() } })); } catch {} };
+	const live = () => { try { localStorage.setItem('sgu.layout.live', JSON.stringify({ layout: state.layout, connections: state.connections, chapters: { chapters: ctx.chapters() } })); } catch (e) { console.warn('leveledit live save failed:', e.message); } };
 	const put = async (path, data) => { const r = await fetch(path, { method: 'PUT', body: JSON.stringify(data) }); if (!r.ok) throw new Error(`${path}: ${await r.text()}`); return r.text(); };
 	const save = async () => {
 		for (const r of state.layout) { r.width = r.endX - r.startX; r.height = r.endY - r.startY; }
@@ -81,7 +81,7 @@ export const createLevelEditor = (ctx) => {
 	};
 	const onDown = (e) => { if (!state.active) return; if (e.button === 2) looking = true; if (e.button === 0) downAt = [e.clientX, e.clientY]; };
 	const onUp = (e) => { if (!state.active) return; if (e.button === 2) looking = false; if (e.button === 0 && downAt) { const moved = Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]); downAt = null; if (moved < 4 && e.target === cv) click(); } };
-	const onMove = (e) => { if (!state.active) return; const r = cv.getBoundingClientRect(); mouse = { x: ((e.clientX - r.left) / r.width) * 2 - 1, y: -((e.clientY - r.top) / r.height) * 2 + 1 }; if (looking || document.pointerLockElement === cv) { yaw -= e.movementX * 0.0025; pitch = THREE.MathUtils.clamp(pitch - e.movementY * 0.0025, -1.5, 1.5); } };
+	const onMove = (e) => { if (!state.active) return; const r = cv.getBoundingClientRect(); mouse.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); if (looking || document.pointerLockElement === cv) { yaw -= e.movementX * 0.0025; pitch = THREE.MathUtils.clamp(pitch - e.movementY * 0.0025, -1.5, 1.5); } };
 	const onWheel = (e) => { if (state.active) speed = THREE.MathUtils.clamp(speed * Math.exp(-e.deltaY * 0.001), 1, 60); };
 	const onCtx = (e) => { if (state.active) e.preventDefault(); };
 	const fly = (dt) => {
@@ -93,7 +93,7 @@ export const createLevelEditor = (ctx) => {
 
 	// ---- picking / placing (at the mouse; crosshair when pointer-locked)
 	const ray = new THREE.Raycaster();
-	const aim = () => { ray.setFromCamera(document.pointerLockElement === cv ? { x: 0, y: 0 } : mouse, camera); const floors = []; ship().group.traverse((o) => { if (o.userData.roomId) floors.push(o); }); return ray.intersectObjects([...floors, ...ship().propMeshes, ...ship().occludable], false)[0] ?? null; };
+	const aim = () => { ray.setFromCamera(document.pointerLockElement === cv ? mouse.set(0, 0) : mouse, camera); const floors = []; ship().group.traverse((o) => { if (o.userData.roomId) floors.push(o); }); return ray.intersectObjects([...floors, ...ship().propMeshes, ...ship().occludable], false)[0] ?? null; };
 	const click = () => {
 		if (state.mode !== 'ship') return; const hit = aim(); if (!hit) return;
 		if (state.placing && state.sel) {
@@ -150,8 +150,8 @@ export const createLevelEditor = (ctx) => {
 	const renderPalette = () => { if (!root) return; $('#le-palette').innerHTML = Object.entries(COMPONENTS).map(([k, c]) => `<button data-c="${k}" class="${state.placing === k ? 'on' : ''}" ${state.sel ? '' : 'disabled'}>${c.label}</button>`).join(''); $('#le-palette').querySelectorAll('[data-c]').forEach((b) => (b.onclick = () => { state.placing = state.placing === b.dataset.c ? null : b.dataset.c; renderPalette(); })); };
 	const renderProp = () => {
 		if (!root) return; renderPalette(); const p = state.selProp; if (!p) { $('#le-prop').innerHTML = ''; return; }
-		$('#le-prop').innerHTML = `<h2>${COMPONENTS[p.type]?.label ?? p.type}</h2><div class="row"><label>anchor</label><input data-pk="anchor" value="${p.anchor ?? ''}" placeholder="(none)"></div><div class="row"><label>rotation</label><input data-pk="ry" type="range" min="0" max="6.283" step="0.0873" value="${p.ry ?? 0}"></div><div class="row"><label>u / v</label><div style="display:flex;gap:4px"><input data-pk="u" type="number" step="0.01" value="${(+p.u).toFixed(3)}"><input data-pk="v" type="number" step="0.01" value="${(+p.v).toFixed(3)}"></div></div><div class="hint">Quests reference this as <code>${state.sel?.id}:${p.anchor || '…'}</code>.</div>`;
-		$('#le-prop').querySelectorAll('[data-pk]').forEach((inp) => (inp.onchange = () => { const q = ownProps(state.sel).find((x) => x === p) ?? p; const k = inp.dataset.pk; q[k] = k === 'anchor' ? inp.value || undefined : +inp.value; state.selProp = q; touch(); }));
+		$('#le-prop').innerHTML = `<h2>${COMPONENTS[p.type]?.label ?? p.type}</h2><div class="row"><label>anchor</label><input data-pk="anchor" value="${p.anchor ?? ''}" placeholder="(none)"></div><div class="row"><label>rotation</label><input data-pk="ry" type="range" min="0" max="6.283" step="0.0873" value="${p.ry ?? 0}"></div><div class="row"><label>u / v</label><div style="display:flex;gap:4px"><input data-pk="u" type="number" step="0.01" value="${(+p.u).toFixed(3)}"><input data-pk="v" type="number" step="0.01" value="${(+p.v).toFixed(3)}"></div></div>${p.type === 'crate' ? `<div class="row"><label>style</label><select data-pk="style"><option value="" ${!p.style ? 'selected' : ''}>auto (fuse → ancient)</option><option ${p.style === 'ancient' ? 'selected' : ''}>ancient</option><option ${p.style === 'pelican' ? 'selected' : ''}>pelican</option></select></div><div class="row"><label>loot</label><input data-pk="loot" value="${(p.loot ?? []).map((it) => `${it.id}${(it.n ?? 1) > 1 ? `×${it.n}` : ''}`).join(', ')}" placeholder="large_fuse, rations×3"></div>` : ''}<div class="hint">Quests reference this as <code>${state.sel?.id}:${p.anchor || '…'}</code>.</div>`;
+		$('#le-prop').querySelectorAll('[data-pk]').forEach((inp) => (inp.onchange = () => { const q = ownProps(state.sel).find((x) => x === p) ?? p; const k = inp.dataset.pk; q[k] = k === 'anchor' || k === 'style' ? inp.value || undefined : k === 'loot' ? (inp.value.trim() ? inp.value.split(',').map((t) => { const [id, n] = t.trim().split(/[×x]/); return n ? { id: id.trim(), n: +n } : { id: id.trim() }; }).filter((it) => it.id) : undefined) : +inp.value; state.selProp = q; touch(); })); // loot: "id×n, id" → [{ id, n }]
 	};
 
 	// ---- planets (chapter planet defs; fly-through uses destination.js like the game)

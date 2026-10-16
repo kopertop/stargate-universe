@@ -18,14 +18,14 @@ paths:
 
 **Correct** (data-driven):
 
-```gdscript
-var damage: float = config.get_value("combat", "base_damage", 10.0)
-var speed: float = stats_resource.movement_speed * delta
+```javascript
+const damage = config.combat.baseDamage;  // from external config/data
+const speed = stats.movementSpeed * delta; // delta = frame time
 ```
 
 **Incorrect** (hardcoded):
 
-```gdscript
-var damage: float = 25.0   # VIOLATION: hardcoded gameplay value
-var speed: float = 5.0      # VIOLATION: not from config, not using delta
+```javascript
+const damage = 25.0;   // VIOLATION: hardcoded gameplay value
+const speed = 5.0;      // VIOLATION: not from config, not using delta
 ```

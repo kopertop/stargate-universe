@@ -23,8 +23,8 @@ of truth.
 
 - File names: kebab-case, system-noun first.
 - These docs were written for the browser stack and are mostly engine-
-  agnostic. Where they reference Three.js / WebGPU / ggez, treat that as
-  stale: the implementation is now Godot 4.6 GDScript.
+  agnostic. Where they reference Godot / GDScript / ggez, treat that as
+  stale: the implementation is now web/Three.js (re-pivoted 2026-09-08).
 - Before writing new code, read the matching GDD and update it if your design
   drifts from it. Stale GDDs are worse than missing ones.
 

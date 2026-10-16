@@ -4,7 +4,7 @@
 //   hall 14 wide × 30 long, 11 high. Gate stands at z=-11 on a raised dais.
 import * as THREE from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
-import { ancientMaterial, ancientFloorMaterial, runwayLights, octagonFrame, wallSlit } from './ancient.js';
+import { ancientMaterial, ancientFloorMaterial, runwayLights, wallSlit } from './ancient.js';
 
 const box = (w, h, d, mat, x, y, z, colliders, opts = {}) => {
 	const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -17,64 +17,20 @@ const box = (w, h, d, mat, x, y, z, colliders, opts = {}) => {
 	return m;
 };
 
-// Canvas texture: window lattice (warm amber panes behind dark mullions)
-const latticeTexture = (cols, rows) => {
-	const c = document.createElement('canvas'); c.width = 512; c.height = 512;
-	const ctx = c.getContext('2d');
-	const grd = ctx.createRadialGradient(256, 256, 40, 256, 256, 380);
-	grd.addColorStop(0, '#f7e3b5'); grd.addColorStop(1, '#c9a86a');
-	ctx.fillStyle = grd; ctx.fillRect(0, 0, 512, 512);
-	ctx.fillStyle = '#1b1a17';
-	const cw = 512 / cols, rh = 512 / rows;
-	for (let i = 0; i <= cols; i++) ctx.fillRect(i * cw - 5, 0, 10, 512);
-	for (let j = 0; j <= rows; j++) ctx.fillRect(0, j * rh - 5, 512, 10);
-	const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
-};
-
-// Canvas texture: floor inlay — dark polished wood with concentric arc seams around the gate
-const floorTexture = () => {
-	const c = document.createElement('canvas'); c.width = 1024; c.height = 2048;
-	const ctx = c.getContext('2d');
-	ctx.fillStyle = '#5a2b1c'; ctx.fillRect(0, 0, 1024, 2048);
-	// grain streaks
-	for (let i = 0; i < 350; i++) {
-		ctx.fillStyle = `rgba(${90 + Math.random() * 40},${40 + Math.random() * 20},${25 + Math.random() * 15},${0.08 + Math.random() * 0.12})`;
-		ctx.fillRect(Math.random() * 1024, Math.random() * 2048, 2 + Math.random() * 6, 40 + Math.random() * 260);
-	}
-	ctx.strokeStyle = '#1c0d08'; ctx.lineWidth = 7;
-	// arcs centred on gate (top of texture = gate end)
-	for (const r of [260, 420, 600, 800, 1050]) { ctx.beginPath(); ctx.arc(512, 60, r, 0, Math.PI); ctx.stroke(); }
-	// radial seams
-	for (let k = -3; k <= 3; k++) { ctx.beginPath(); ctx.moveTo(512, 60); ctx.lineTo(512 + k * 300, 2048); ctx.stroke(); }
-	// centre runway edges
-	ctx.lineWidth = 10; ctx.beginPath(); ctx.moveTo(300, 2048); ctx.lineTo(300, 400); ctx.moveTo(724, 2048); ctx.lineTo(724, 400); ctx.stroke();
-	const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
-};
-
-const wallTexture = () => {
-	const c = document.createElement('canvas'); c.width = 256; c.height = 1024;
-	const ctx = c.getContext('2d');
-	ctx.fillStyle = '#4b5433'; ctx.fillRect(0, 0, 256, 1024);
-	for (let i = 0; i < 400; i++) { ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.12})`; ctx.fillRect(Math.random() * 256, Math.random() * 1024, 3, 3 + Math.random() * 30); }
-	ctx.fillStyle = '#d8cf9c'; ctx.fillRect(28, 0, 10, 1024); ctx.fillRect(218, 0, 10, 1024); // beige trim strips
-	ctx.fillStyle = '#2e3324'; ctx.fillRect(0, 0, 8, 1024); ctx.fillRect(248, 0, 8, 1024);
-	const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
-};
-
 // Hall footprint = the gate_room rect in data/ship_layout.json (800×400 plan units → 40×20 m, z ∈ [-20, 20]); ship.js
 // builds its walls/ceiling/doors from that data, this module dresses the interior. Gate stands 5 m in from the back wall.
 export const ROOM = { width: 20, length: 40, height: 11, gateZ: -15, daisH: 0.18 };
 
-export const createGateRoom = (renderer) => {
+export const createGateRoom = (_renderer) => {
 	const group = new THREE.Group(); group.name = 'gateRoom';
 	const colliders = [];
 	const { width, length, height, gateZ, daisH } = ROOM;
 	const zBack = gateZ - 5, zFront = zBack + length, zMid = (zBack + zFront) / 2;
 
-	const wallMat = ancientMaterial({ repeat: [4, 1.6], base: '#171c24', plates: 6 }); // Ancient plates (concept: materials sheet)
+	const _wallMat = ancientMaterial({ repeat: [4, 1.6], base: '#171c24', plates: 6 }); // Ancient plates (concept: materials sheet)
 	const stoneMat = ancientMaterial({ repeat: [1, 3], base: '#1f242c', plates: 3, roughness: 0.6 });
 	const darkMat = ancientMaterial({ repeat: [1, 1], base: '#0f1319', plates: 3, roughness: 0.5, metalness: 0.8 });
-	const ceilMat = ancientMaterial({ repeat: [3, 6], base: '#0c0f14', plates: 5, roughness: 0.7 });
+	const _ceilMat = ancientMaterial({ repeat: [3, 6], base: '#0c0f14', plates: 5, roughness: 0.7 });
 	const cyan = new THREE.MeshStandardMaterial({ color: 0xcfe6ff, emissive: 0xa8ccff, emissiveIntensity: 2.2 }); // cold white-blue slits
 	const amberScreen = new THREE.MeshStandardMaterial({ color: 0x9fd8ff, emissive: 0x4fa8ff, emissiveIntensity: 1.6 }); // blue console screens
 

@@ -19,19 +19,21 @@ paths:
 
 **Correct** (zero-alloc hot path):
 
-```gdscript
-# Pre-allocated array reused each frame
-var _nearby_cache: Array[Node3D] = []
+```javascript
+// Pre-allocated array reused each frame
+const _nearbyCache = [];
 
-func _physics_process(delta: float) -> void:
-    _nearby_cache.clear()  # Reuse, don't reallocate
-    _spatial_grid.query_radius(position, radius, _nearby_cache)
+function update(delta) {
+    _nearbyCache.length = 0;  // Reuse, don't reallocate
+    spatialGrid.queryRadius(position, radius, _nearbyCache);
+}
 ```
 
 **Incorrect** (allocating in hot path):
 
-```gdscript
-func _physics_process(delta: float) -> void:
-    var nearby: Array[Node3D] = []  # VIOLATION: allocates every frame
-    nearby = get_tree().get_nodes_in_group("enemies")  # VIOLATION: tree query every frame
+```javascript
+function update(delta) {
+    const nearby = [];                    // VIOLATION: allocates every frame
+    nearby.push(...scene.children.filter(c => c.userData.enemy)); // VIOLATION: full scan every frame
+}
 ```

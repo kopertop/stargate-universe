@@ -1,21 +1,64 @@
 # Save/Load Interface Contract
 
-> **⚠️ STALE implementation pointers — Godot-era mapping, superseded by the 2026-09-08 Three.js re-pivot**
+> **⚠️ Historical implementation pointers — prior-build mapping retained as design context**
 
-> The engine-mapped sections below (`tests/save/*.gd`, `.tscn` orchestration
-> harnesses, `title.gd`) reference Godot files that no longer exist — the
+> The engine-mapped sections below (test suites, scene orchestration
+> harnesses, title screen scripts) reference files that no longer exist — the
 > Three.js-era repo has no `tests/` or `scripts/` directories (runtime is
 > `src/*.js` + `data/`). The interface contract and the TS profile/checkpoint
 > model remain canonical reference until re-mapped onto the web implementation.
 
-> **Status**: Implemented — profile/checkpoint model (issues #77/#79/#80/#81/#82)
-> layered over the original Godot slot system (#44). The TS interface at the
-> bottom is the engine-agnostic origin; the Godot mapping is in "Profile +
+> **Status**: Designed (prior build) — profile/checkpoint model (issues #77/#79/#80/#81/#82)
+> layered over the original slot system (#44). The TS interface at the
+> bottom is the engine-agnostic origin; the prior-build mapping is in "Profile +
 > checkpoint model" first, then the legacy "Slot model" it builds on.
 > **Author**: User + Claude
 > **Last Updated**: 2026-06-01
 
-## Profile + checkpoint model (Godot, issues #77/#79/#80/#81/#82)
+---
+
+## Three.js implementation (current — 2026-10-09)
+
+The web/Three.js runtime uses a **simple localStorage-based save system** — no
+profiles, checkpoints, slots, or test harnesses. All save/load
+logic lives in `src/main.js`.
+
+| Element | Value |
+|---|---|
+| Storage key | `sgu.save` (single localStorage entry) |
+| Save version | `SAVE_VERSION = 1` |
+| Migration | `migrateSave(s)` — bumps `s.version` to `SAVE_VERSION`; v0→v1 has no structural changes yet (hook for future migrations) |
+| Save trigger | `saveGame()` — called on quest step changes, chapter completion, and after load |
+| Load trigger | `loadGame()` — restores chapter/step/flags, RPG state, FTL, growth, countdown; rewinds planet-side steps to the gate |
+| Save guard | `gameStarted` flag — saves are skipped until a game is actually running |
+| Public API | `window.__save = { saveGame, loadGame, hasSave, clear }` (dev/debug) |
+
+### Serialized state shape
+
+```json
+{
+  "version": 1,
+  "chapter": "<chapter_id>",
+  "stepIndex": 0,
+  "flags": ["flag1", "flag2"],
+  "lastScan": null,
+  "deck": 0,
+  "ftl": { "window": 0, "cooldown": 0 },
+  "growth": [0, 0, 0],
+  "countdown": null,
+  "savedAt": 1696848000000
+}
+```
+
+### What the prior-build sections below describe (historical context)
+
+The sections below document the **prior-build implementation** — profiles,
+checkpoints, slot rotation, test suites, `SaveStore`/`SaveManager`
+autoloads, `user://` paths, etc. None of these exist in the Three.js codebase.
+They are preserved as design reference for when the save system is re-mapped
+onto the web implementation (localStorage → IndexedDB, profiles, etc.).
+
+## Profile + checkpoint model (prior build, issues #77/#79/#80/#81/#82)
 
 The shipped save system groups saves under named **profiles** (one per
 playthrough). Each profile owns a **checkpoint timeline** — the player never
@@ -107,20 +150,20 @@ migration can always fall back to the original layout):
 
 | Suite | Proves |
 |---|---|
-| `tests/save/save_store_test.gd` | Pure `SaveStore` units: slot/checkpoint round-trip, ring eviction, permanence, delete-refusal, flat→profile migration + idempotency, the headless-isolation loss regression |
-| `tests/save/profile_orchestration.tscn` | `SaveManager` orchestration over live autoloads: ring, manual, episode (idempotent), permanence under pressure, targeted + Continue resume |
-| `tests/save/load_browser.tscn` | Two-level title browser populate/sections/ring/resume/back/delete against the real `title.gd` |
-| `tests/save/ingame_ui.tscn` | In-game save + profile-management UI |
-| `tests/save/integration.tscn` | **End-to-end across a simulated restart**: New Game → ring rolls → manual → episode → "quit" (re-resolve from disk) → two-level browse → targeted + Continue resume; plus **migration safety** (lossless, source-preserved, idempotent, validated-by-resume) |
+| Save store unit suite | Pure `SaveStore` units: slot/checkpoint round-trip, ring eviction, permanence, delete-refusal, flat→profile migration + idempotency, the headless-isolation loss regression |
+| Profile orchestration suite | Orchestration over live autoloads: ring, manual, episode (idempotent), permanence under pressure, targeted + Continue resume |
+| Load browser suite | Two-level title browser populate/sections/ring/resume/back/delete against the real title screen |
+| In-game UI suite | In-game save + profile-management UI |
+| Integration suite | **End-to-end across a simulated restart**: New Game → ring rolls → manual → episode → "quit" (re-resolve from disk) → two-level browse → targeted + Continue resume; plus **migration safety** (lossless, source-preserved, idempotent, validated-by-resume) |
 
 Run all of them with `tests/run.sh save` (or `tests/run.sh save-integration`
 for just the capstone suite).
 
 ---
 
-## Slot model (Godot, issue #44 — legacy layer the profiles model builds on)
+## Slot model (prior build, issue #44 — legacy layer the profiles model builds on)
 
-The shipped Godot implementation uses **save slots**: one directory per slot
+The shipped prior-build implementation uses **save slots**: one directory per slot
 under a `saves_root`, each holding the snapshot, its rotating backups, and a
 lightweight metadata sidecar.
 

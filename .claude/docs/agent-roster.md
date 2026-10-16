@@ -55,7 +55,7 @@ domain lead) should delegate to specialists.
 
 ⚠️ This repo is web-era only: the 2026-09-08 re-pivot replaced the Godot stack
 with vanilla Three.js (see `.claude/docs/technical-preferences.md`). No
-Godot/Unity/Unreal specialist agents exist in `.claude/agents/` — those were
+Unity/Unreal specialist agents exist in `.claude/agents/` — those were
 removed with the engine. For engine questions, use the general specialist
 above (`engine-programmer`, `technical-artist`, `performance-analyst`) backed by
 the technical-preferences doc.

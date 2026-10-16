@@ -98,7 +98,7 @@ Uses the diffuse texture as the bump map when no dedicated bump exists. Saves te
   discrete open/close/tween chains (crates, lids), `THREE.Vector3.lerp` for continuous
   camera/velocity blends (`src/kino.js` `state.vel.lerp(...)`), with an EasingFunctions-style
   helper (smoothstep `k*k*(3-2*k)` already in `src/components.js:71`) for power3-inOut-style
-  curves. No ggez tween system exists post-2026-09-08 re-pivot (`abfb5ed`).
+  curves. No old engine tween system exists post-2026-09-08 re-pivot (`abfb5ed`).
 
 ### 9. Drag-vs-Click Disambiguation
 - Track `mousedown` position, compare to `mouseup`

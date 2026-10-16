@@ -1,13 +1,16 @@
 # Player Controller (Third-Person)
 
-> **⚠️ STALE engine mapping — ggez-era sections superseded by the 2026-09-08 Three.js re-pivot**
+> **⚠️ Engine mapping updated — Three.js web era (2026-09-08 re-pivot)**
 >
-> Engine-specific sections below (`ggez Physics (Crashcat)` kinematic body,
-> `ggez Gameplay Runtime` system registration/update loop) reference the ggez
-> framework removed in `abfb5ed` — the Three.js-era repo runs plain `src/*.js` +
-> `index.html` (`build.sh`). The movement/interaction controller design (walk,
+> Engine-specific sections have been updated from the old framework
+> (removed in `abfb5ed`) to Three.js equivalents: `THREE.Raycaster` /
+> manual collision replaces the old Physics kinematic body,
+> `requestAnimationFrame` replaces the old Gameplay Runtime system
+> registration, and `THREE.AnimationMixer` replaces the old
+> animation pipeline. The movement/interaction controller design (walk,
 > sprint, squeeze/duck/climb, contextual traversal rules) remains reference
-> until re-mapped onto the web implementation.
+> until implemented in the web codebase (`src/*.js` + `index.html`, built
+> via `build.sh`).
 
 > **Status**: Designed
 > **Author**: User + Claude
@@ -164,11 +167,12 @@ feel Eli's growth because you lived it.
   grounded state
 
 **Animation tooling**: All character animations (locomotion, interactions,
-fidgets, traversals) use the ggez animation pipeline (`@ggez/anim-core`,
-`@ggez/anim-runtime`, `@ggez/anim-three`) for skeletal animation playback,
-blending, and layering. Animations are authored externally (Mixamo, Blender,
-or motion capture) and imported through the ggez animation editor. The
-phone-light overlay and fidgets use additive animation layers so they blend
+fidgets, traversals) use Three.js `THREE.AnimationMixer` with
+`THREE.AnimationClip` and `THREE.AnimationAction` for skeletal animation
+playback, blending, and layering. Animations are authored externally (Mixamo,
+Blender, or motion capture) and imported as glTF/GLB. The
+phone-light overlay and fidgets use additive animation layers (via
+`AnimationAction.blendMode = THREE.AdditiveBlending`) so they blend
 with the base locomotion state.
 
 ### Interactions with Other Systems
@@ -176,9 +180,9 @@ with the base locomotion state.
 | System | Direction | Interface |
 |--------|-----------|-----------|
 | **Event Bus** | Outbound (publish) | Publishes: `player:interact` (payload: interactable ID, action type), `player:entered:section` (payload: section ID, first-visit flag), `player:kino:deployed` (payload: position, direction). Does NOT publish per-frame position — other systems read it directly. |
-| **ggez Physics (Crashcat)** | Bidirectional | Controller owns a Crashcat kinematic rigid body for Eli. Reads ground contact and collision normals. Writes velocity each frame. Raycasts for interactable detection. |
-| **ggez Gameplay Runtime** | Inbound (lifecycle) | Controller registers as a system via `createGameplayRuntime()`. Receives `update(delta)` at 60 FPS. Initializes on scene mount, cleans up on scene dispose. |
-| **ggez Animation Pipeline** | Outbound (drive) | Controller sets animation states (walk, sprint, idle, fidget, interact, traverse). Uses animation layers for additive overlays (phone light, fidgets). |
+| **Three.js Raycaster** | Bidirectional | Controller manages Eli's collision via `THREE.Raycaster` for ground detection and interactable targeting. Manual velocity integration for kinematic movement. Reads ground contact and collision normals from raycast results. |
+| **`requestAnimationFrame` loop** | Inbound (lifecycle) | Controller update called each frame via `requestAnimationFrame` at ~60 FPS. Initializes on scene mount, cleans up on scene dispose. |
+| **`THREE.AnimationMixer`** | Outbound (drive) | Controller sets animation states (walk, sprint, idle, fidget, interact, traverse). Uses `AnimationAction` layers for additive overlays (phone light, fidgets). |
 | **Camera System** *(downstream, undesigned)* | Outbound (position/rotation) | Exposes `getPosition()`, `getRotation()`, and `getVelocity()` for the Camera System to follow. Camera reads these directly each frame (not via events). During traversals and dialogue, controller signals the Camera to use authored camera positions. |
 | **Ship Exploration** *(downstream, undesigned)* | Outbound (events) | `player:entered:section` triggers section discovery logic. Ship Exploration reads player position to determine which section Eli is in. |
 | **Stargate & Planetary Runs** *(downstream, undesigned)* | Bidirectional | Planetary Runs system can override controller spawn position when gating to a planet. Controller publishes `player:interact` when using the Stargate. |
@@ -276,10 +280,10 @@ Eli limps with reduced speed for `injury_duration` seconds. No death.
 
 | System | Dependency Type | Interface |
 |--------|----------------|-----------|
-| ggez Gameplay Runtime | Hard | Provides the update loop, system registration, scene lifecycle |
-| ggez Physics (Crashcat) | Hard | Provides kinematic body, ground detection, raycasting, collision |
-| ggez Animation Pipeline | Hard | Provides skeletal animation playback, blending, additive layers |
-| ggez Render Pipeline | Soft | Provides outline glow for interactable highlighting |
+| `requestAnimationFrame` loop | Hard | Provides the update loop, scene lifecycle |
+| Three.js Raycaster / manual collision | Hard | Provides ground detection, raycasting, collision (replaces old Physics) |
+| `THREE.AnimationMixer` | Hard | Provides skeletal animation playback, blending, additive layers (replaces old animation pipeline) |
+| Three.js Render Pipeline | Soft | Provides outline glow for interactable highlighting |
 | Event Bus | Hard | Publishes `player:*` events for cross-system communication |
 
 **Downstream (depends on this system):**

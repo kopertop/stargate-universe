@@ -1,7 +1,7 @@
 # A repair beat is parts + a hands-on puzzle, not a button press
 
 **Context:** The web build restored Destiny's power with one `E` press on the relay. Playtest note: "repairing power is
-too simple, it should be more like the original minigame, or require parts to fix." The Godot build already had the
+too simple, it should be more like the original minigame, or require parts to fix." The reference prototype already had the
 answer: search three crates (large fuse = wrong size, small fuse = right, rations = consolation), seat the fuse, then a
 wire-matching hotwire panel with a VOID decoy.
 

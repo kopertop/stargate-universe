@@ -1,11 +1,10 @@
 # Stargate & Planetary Runs
 
-> **⚠️ STALE engine references — ggez-era mapping, superseded by the 2026-09-08 Three.js re-pivot**
+> **⚠️ Engine mapping updated — Three.js web era (2026-09-08 re-pivot)**
 
-> References to `planet.gd`, `kino_drone.gd`, and ggez scene loading describe an
-> engine that no longer exists — the Three.js-era repo runs `src/*.js` + `data/`.
-> The design (planet catalog, gate flow, mission triage) remains reference until
-> re-mapped onto the web implementation.
+> Engine mapping updated to Three.js web era (`src/*.js` + `data/`). The
+> design (planet catalog, gate flow, mission triage) remains reference until
+> implemented in the web codebase.
 
 > **Status**: Designed
 > **Author**: User + Claude
@@ -20,14 +19,14 @@ which planets are reachable, what resources and hazards each offers, and manages
 the full gate-to-planet-to-ship lifecycle. It coordinates existing systems rather
 than reimplementing their mechanics: the Timer system runs the departure countdown,
 the Resource system handles collection, the Player Controller governs movement on
-the planet surface, and ggez Scene Management loads and unloads planet environments.
+the planet surface, and Three.js scene management loads and unloads planet environments.
 
 The system owns three things: **planet data** (a catalog of planet definitions with
 resource tables, hazard types, environment configs, and narrative hooks), **gate
 flow** (the state machine from FTL drop → dial → wormhole → planet → return), and
 **mission structure** (objectives, time pressure, and the triage decisions the
-player faces on each run). Planets are authored as ggez scenes with resource nodes
-and hazard zones placed in the World Editor. The Stargate system loads these scenes,
+player faces on each run). Planets are authored as Three.js scenes with resource nodes
+and hazard zones placed in the level editor. The Stargate system loads these scenes,
 configures the Timer with the appropriate countdown, and lets the player loose.
 
 The player's core decision on every run is triage: "I have 15 minutes. Do I grab
@@ -84,7 +83,7 @@ and clues to Destiny's mission — but only if you budget your time well.
 > _Implementation note:_ a Kino must **leave the gate's crossing radius once
 > before it can cross** (an "arm" latch) — otherwise a Kino that *spawns* on a
 > gate (recon drone by the planet's return gate, or one that just arrived in the
-> gate room) would instantly bounce straight back. See `kino_drone.gd`
+> gate room) would instantly bounce straight back. See `src/kino_drone.js`
 > `_try_gate_crossing` / `_gate_armed`. Gate-open state is the planet-agnostic
 > `GameState.is_gate_open()`.
 
@@ -98,7 +97,7 @@ and clues to Destiny's mission — but only if you budget your time well.
 2. **Planet catalog**: Each reachable planet is defined as a `PlanetDefinition`:
    - `id`: string (e.g., `"planet-s1e03-desert"`)
    - `name`: string (Ancient designation, becomes readable with knowledge tiers)
-   - `sceneId`: string (ggez scene to load)
+   - `sceneId`: string (Three.js scene to load)
    - `tier`: enum — `Safe`, `Moderate`, `Dangerous`, `Hostile`
    - `atmosphere`: enum — `Breathable`, `Thin`, `Toxic`, `None`
    - `environment`: enum — `Temperate`, `Desert`, `Ice`, `Jungle`, `Volcanic`, `Ruins`
@@ -132,7 +131,7 @@ and clues to Destiny's mission — but only if you budget your time well.
 
 5. **Scene transition**: Walking through the active gate triggers a scene load:
    - Current scene (gate room) is suspended, not unloaded
-   - Planet scene loads via ggez Scene Management
+   - Planet scene loads via Three.js scene management
    - Player spawns at the planet-side gate with the same controller/camera
    - The planet-side Stargate is active (event horizon visible) — it's the way
      home, and per the KEY RULE above it stays crossable in both directions for
@@ -188,9 +187,9 @@ and clues to Destiny's mission — but only if you budget your time well.
    Kino Remote: resources gathered, POIs discovered, time remaining when
    returned. No score screen — just information through the in-world UI.
 
-### Procedural Generation (Godot implementation — issues #85–#93)
+### Procedural Generation (web implementation — issues #85–#93)
 
-The Godot build does not author one ggez scene per planet; it **generates** each
+The Three.js web build does not author one scene per planet; it **generates** each
 planet at dial time from a `PlanetSpec` and a per-biome data block, so every gate
 run yields a semi-random, resource-appropriate, walkable world. This replaces the
 hand-authored `PlanetDefinition` catalog above for runtime; the catalog fields
@@ -200,7 +199,7 @@ survive as the data the spec carries.
   resource_table: Dictionary, hazard_params: Dictionary, name: String }`.
   `PlanetGenerator.build(world, spec)` consumes it: it streams a near-infinite,
   walkable terrain (a single global `height_at()` height field — gentle enough
-  that worst-case local slope stays well under the CharacterBody3D floor limit, so
+  that worst-case local slope stays well under the player's floor-climb limit, so
   the player never has to jump), seats the return Stargate at the home anchor,
   scatters deterministic resource clusters + POIs + walk-around props, and lays
   the biome's hazards (heat/water drain, toxin oxygen drain, jungle damage traps,
@@ -231,7 +230,7 @@ survive as the data the spec carries.
 - **Kino scan profile** (issue #93): `GameState.planet_scan_profile(spec)` returns
   a render-ready summary of the upcoming planet — biome label, breathability +
   composition, temperature, radiation/toxins, hazard type, gate window, and the
-  resource labels the run will yield (scarcest first). `planet.gd` layers this
+  resource labels the run will yield (scarcest first). `src/planet.js` layers this
   onto the Kino recon HUD's atmosphere readout (`AtmoReadout.render`) so the
   player reads "what's down there" **before/while choosing to cross**, extending
   the existing Kino recon + compass surfaces.
@@ -263,7 +262,7 @@ survive as the data the spec carries.
 | **Resource & Inventory** | Outbound (source) | Calls `addResource(type, amount)` when player gathers from nodes or auto-collects. Planet definitions specify resource tables. Primary source for Water, Food, Lime, and specialized resources. |
 | **Player Controller** | Reads | Uses same controller on planets. Radial menu shows planet-specific actions ("Gather", "Examine", "Dial"). Subscribes to `player:interact` for resource node and gate interactions. |
 | **Camera System** | Reads | Same third-person rig. Auto-framing registers planet POIs. Cinematic mode for auto-return sequence. |
-| **ggez Scene Management** | Outbound (loader) | Loads planet scenes on gate entry, suspends/resumes gate room scene. Manages planet scene lifecycle. |
+| **Three.js Scene Mgmt** | Outbound (loader) | Loads planet scenes on gate entry, suspends/resumes gate room scene. Manages planet scene lifecycle. |
 | **Event Bus** | Bidirectional | Publishes: `gate:dial:started`, `gate:activated`, `gate:closed`, `planet:entered`, `planet:returned`, `planet:resource:gathered`, `planet:poi:discovered`. Subscribes to timer events, player interactions, episode triggers. |
 | **Ship State** | Reads | Reads sensor condition to determine planet scan detail level (planet selection evolution). Reads FTL drive condition for cooldown duration. |
 | **Episode Narrative** *(undesigned)* | Bidirectional | Episodes specify which planets appear per FTL drop. Episodes can trigger hostile encounters on planets. Planet discoveries can trigger narrative events. `narrativeHooks` in planet data. |
@@ -389,7 +388,7 @@ as part of this system's save state (for mid-run save/load).
 | Timer & Pressure | Hard | Gate window countdown, FTL cooldown, suit air timer |
 | Resource & Inventory | Hard | `addResource()` for gathered resources, story items for suit unlock |
 | Event Bus | Hard | All gate/planet events, timer subscriptions |
-| ggez Scene Mgmt | Hard | Planet scene loading/unloading/suspension |
+| Three.js Scene Mgmt | Hard | Planet scene loading/unloading/suspension |
 | Ship State | Soft | Sensor condition for scan detail, FTL condition for cooldown |
 | Ship Exploration | Soft | Gate room must be accessible |
 | Save/Load (interface) | Hard (contract) | Serialize gate state + on-planet progress |

@@ -1,39 +1,47 @@
 # Stargate Universe — Deployment Targets
 
-## ⚠️ STALE — pre-re-pivot deployment doc, superseded by the 2026-09-08 Three.js re-pivot
+Current stack: vanilla ES modules (`src/*.js`) loaded via import maps in a single
+`index.html`, Three.js 0.180 from CDN (or vendored by `build.sh` for offline). Build
+is `./build.sh` → `dist/` + `dist/sgu-destiny-html5.zip` (itch.io-ready). No Vite,
+no TypeScript, no bundler — the browser loads modules directly.
 
-This doc describes the pre-pivot Vite/Cloudflare/bun stack (`package.json` scripts,
-`public/sw.js`, `wrangler.toml`, `functions/`, `src/systems/fullscreen.ts`) that the
-re-pivot removed (abfb5ed, "chore: remove godot, kenney kit, vite/ggez and mixamo
-tooling; move the three.js game to the repo root"). None of those paths exist in the
-web-era tree. The current build path is a single static HTML bundle: `./build.sh` →
-`dist/` + itch.io zip (`sgu-destiny-html5.zip`). PWA / Electron / iPad packaging
-remain plausible directions for the web stack but must be re-written against the
-current tree before use.
-
-Target matrix: **Chrome/Edge PWA**, **Electron desktop** (Mac/Windows/Linux), **iPad** (native wrapper).
+Target matrix: **PWA**, **Electron desktop** (Mac/Windows/Linux), **iPad** (native wrapper).
 Android/Steam Deck aren't first-class but likely work via the same Electron build with minor tweaks.
 
 ---
 
 ## 1. PWA (current baseline)
 
-The Vite build already produces a static site: `dist/` served over HTTPS.
-Cloudflare Pages is wired via `wrangler.toml` and `functions/`.
+`build.sh` produces a static site: `dist/` containing `index.html`, `src/`, `data/`,
+`vendor/`, and `assets/`. Serve over HTTPS and it's installable.
 
 **Already set up:**
-- Vite 7 + `bun run build`
-  - `public/sw.js` — minimal service worker present (CACHE_VERSION=v2), precaches build output + crew assets
-  - `public/manifest.webmanifest` — present with app name, icons, display: fullscreen, orientation: landscape
-  - `<link rel="manifest" href="/manifest.webmanifest">` already wired in `index.html`
-  - Icons at 192/512 shipped under `public/icons/`
+- `index.html` with `<meta name="viewport">` and import map for Three.js
+- `build.sh` vendors Three.js into `dist/vendor/` so the build works offline
+- Game saves to `localStorage` (see `src/rpg.js`)
 
-**Outstanding polish:**
-1. Bump `CACHE_VERSION` in `sw.js` on each release
-2. Validate icon paths in the manifest match actual files under `public/icons/`
+**Outstanding work:**
+1. Add a `dist/manifest.webmanifest` — app name, icons (192/512), `display: fullscreen`,
+   `orientation: landscape`. Reference it from `index.html`:
+   `<link rel="manifest" href="./manifest.webmanifest">`
+2. Add a `dist/sw.js` — minimal service worker to precache `index.html`, `src/`, `data/`,
+   `vendor/`, and `assets/`. Register it from `index.html`:
+   ```html
+   <script>navigator.serviceWorker?.register('./sw.js')</script>
+   ```
+3. Ship icons under `dist/icons/` (192px + 512px).
+4. Bump a cache version in `sw.js` on each release to force update.
 
 Install experience: Chrome → ⋮ → "Install Stargate Universe". On install, the game opens
 windowless in a dedicated PWA frame — no browser chrome, no address bar.
+
+**Note:** `build.sh` would need to copy the manifest, sw.js, and icons into `dist/`.
+Add lines after the asset copy section:
+```bash
+cp "$HERE"/manifest.webmanifest "$HERE/sw.js" "$DIST/"
+mkdir -p "$DIST/icons"
+cp "$HERE"/icons/*.png "$DIST/icons/"
+```
 
 ---
 
@@ -41,60 +49,54 @@ windowless in a dedicated PWA frame — no browser chrome, no address bar.
 
 **Why Electron over Tauri:**
 - Tauri v2 is lighter (native WebView) but **Tauri's WebView is Safari-based on macOS** — no
-  WebGPU, so our renderer falls back to WebGL and MToon shaders regress. Non-starter.
+  WebGPU, so our renderer falls back to WebGL and shaders regress. Non-starter.
 - Electron bundles Chromium → WebGPU + full parity with the web dev experience.
 - Trade-off: 80–120 MB download. For a cinematic single-player RPG, fine.
 
 ### Structure
 
-Add a new workspace package rather than cluttering `stargate-universe` root:
+Add a new directory alongside `src/`:
 
 ```
 stargate-universe/
 ├── electron/
 │   ├── package.json              ← electron-builder + electron dep
-│   ├── main.ts                   ← window setup, IPC, menu bar
-│   ├── preload.ts                ← expose native APIs to the renderer
+│   ├── main.js                   ← window setup, IPC, menu bar
+│   ├── preload.js                ← expose native APIs to the renderer
 │   └── build.config.json         ← codesigning, notarization, icons
 ├── src/...                       ← unchanged — same code serves web + desktop
-└── package.json                  ← adds "electron" script that runs vite + electron together
+├── index.html                    ← unchanged
+└── build.sh                      ← adds electron packaging step
 ```
 
-### Main-process responsibilities (`electron/main.ts`)
+### Main-process responsibilities (`electron/main.js`)
 
-```ts
-import { app, BrowserWindow, Menu, globalShortcut } from "electron";
+```js
+const { app, BrowserWindow, Menu, globalShortcut } = require("electron");
+const path = require("path");
 
 const createWindow = () => {
-	const win = new BrowserWindow({
-		width: 1600,
-		height: 900,
-		fullscreen: true,              // always fullscreen on boot
-		fullscreenable: true,
-		autoHideMenuBar: true,
-		webPreferences: {
-			preload: path.join(__dirname, "preload.js"),
-			contextIsolation: true,
-			nodeIntegration: false,
-			webgl: true,
-			// Chromium flag for WebGPU is already default in recent electron.
-			// If missing: app.commandLine.appendSwitch("enable-unsafe-webgpu");
-		},
-	});
-	if (process.env.NODE_ENV === "development") {
-		win.loadURL("http://localhost:5173");
-	} else {
-		win.loadFile(path.join(__dirname, "../dist/index.html"));
-	}
-	Menu.setApplicationMenu(null);     // no native menu bar
+    const win = new BrowserWindow({
+        width: 1600,
+        height: 900,
+        fullscreen: true,
+        fullscreenable: true,
+        autoHideMenuBar: true,
+        webPreferences: {
+            preload: path.join(__dirname, "preload.js"),
+            contextIsolation: true,
+            nodeIntegration: false,
+            webgl: true,
+        },
+    });
+    win.loadFile(path.join(__dirname, "../dist/index.html"));
+    Menu.setApplicationMenu(null);
 };
 
 app.whenReady().then(() => {
-	createWindow();
-	// Block Cmd-Q / Cmd-W / F11 / Alt-F4 from nuking the game mid-session.
-	// Players can still quit via the in-game menu.
-	globalShortcut.register("CommandOrControl+W", () => { /* swallow */ });
-	globalShortcut.register("F11", () => { /* swallow */ });
+    createWindow();
+    globalShortcut.register("CommandOrControl+W", () => { /* swallow */ });
+    globalShortcut.register("F11", () => { /* swallow */ });
 });
 ```
 
@@ -104,18 +106,19 @@ app.whenReady().then(() => {
 For roaming saves + cloud sync later, use `app.getPath("userData")` from the main
 process + an IPC bridge:
 
-```ts
-// preload.ts
+```js
+// preload.js
+const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("sguNative", {
-	readSave: (slot: string) => ipcRenderer.invoke("save:read", slot),
-	writeSave: (slot: string, data: string) => ipcRenderer.invoke("save:write", slot, data),
-	listSlots: () => ipcRenderer.invoke("save:list"),
+    readSave: (slot) => ipcRenderer.invoke("save:read", slot),
+    writeSave: (slot, data) => ipcRenderer.invoke("save:write", slot, data),
+    listSlots: () => ipcRenderer.invoke("save:list"),
 });
 ```
 
-Then `save-manager.ts` can detect the native surface and prefer it:
-```ts
-const store = (window as any).sguNative ?? localStorageAdapter;
+Then `src/rpg.js` can detect the native surface and prefer it:
+```js
+const store = window.sguNative ?? localStorageAdapter;
 ```
 
 ### Packaging + signing
@@ -128,21 +131,21 @@ Use `electron-builder`. Targets:
 ```json
 // electron/package.json
 {
-	"build": {
-		"appId": "com.kopertop.stargate-universe",
-		"productName": "Stargate Universe",
-		"directories": { "output": "release" },
-		"files": ["dist/**/*", "electron/dist/**/*"],
-		"mac": {
-			"category": "public.app-category.games",
-			"target": ["dmg"],
-			"hardenedRuntime": true,
-			"entitlements": "electron/entitlements.mac.plist",
-			"notarize": { "teamId": "YOUR_TEAM_ID" }
-		},
-		"win": { "target": ["nsis", "msi"] },
-		"linux": { "target": ["AppImage", "deb"], "category": "Game" }
-	}
+    "build": {
+        "appId": "com.kopertop.stargate-universe",
+        "productName": "Stargate Universe",
+        "directories": { "output": "release" },
+        "files": ["dist/**/*", "electron/dist/**/*"],
+        "mac": {
+            "category": "public.app-category.games",
+            "target": ["dmg"],
+            "hardenedRuntime": true,
+            "entitlements": "electron/entitlements.mac.plist",
+            "notarize": { "teamId": "YOUR_TEAM_ID" }
+        },
+        "win": { "target": ["nsis", "msi"] },
+        "linux": { "target": ["AppImage", "deb"], "category": "Game" }
+    }
 }
 ```
 
@@ -151,26 +154,25 @@ outside the Mac App Store.
 
 ### Asset delivery
 
-Current setup streams VRMs + audio from R2 in production. For Electron, consider:
+Current setup streams audio from R2 in production (URLs in `src/music.js`).
+VRMs and models are bundled by `build.sh` into `dist/assets/`. For Electron, consider:
 - **Ship bundled:** include assets in the `.app` / `.exe`. Faster first-load,
-  larger download (~500 MB with all VRMs + audio).
+  larger download (~500 MB with all audio).
 - **Download-on-first-run:** ship a thin installer, fetch assets on first launch
   with a progress screen. Smaller initial download, requires internet at install.
 
 For launch, bundle everything. Cloudflare R2 egress is free but latency hits 3–4s
-on cold VRM fetch; bundled reads are instant.
+on cold audio fetch; bundled reads are instant.
 
 ### Dev loop
 
-```json
-// stargate-universe/package.json
-"scripts": {
-	"electron:dev":  "run-p dev electron:watch",
-	"electron:watch": "tsc -p electron/tsconfig.json --watch & wait-on http://localhost:5173 && electron electron/dist/main.js",
-	"electron:pack": "bun run build && electron-builder --dir",
-	"electron:dist": "bun run build && electron-builder"
-}
+```bash
+./build.sh                              # build dist/ (web build)
+cd electron && npx electron-builder     # package into release/
 ```
+
+For dev with hot reload, run a simple static server (`npx http-server dist/`)
+and point `electron/main.js` at the URL instead of the file path.
 
 ---
 
@@ -196,11 +198,12 @@ better iOS 17/18 support, first-class SwiftUI interop if we need it.
 
 ```bash
 cd stargate-universe
-bun add @capacitor/core @capacitor/ios
-bunx cap init "Stargate Universe" "com.kopertop.sgu" --web-dir=dist
-bunx cap add ios
-bun run build && bunx cap sync
-bunx cap open ios       # opens Xcode
+./build.sh                                  # produce dist/
+npm install @capacitor/core @capacitor/ios
+npx cap init "Stargate Universe" "com.kopertop.sgu" --web-dir=dist
+npx cap add ios
+npx cap sync
+npx cap open ios       # opens Xcode
 ```
 
 **What the wrapper gets us:**
@@ -209,7 +212,7 @@ bunx cap open ios       # opens Xcode
 - Haptic taptics on UI select (Capacitor `@capacitor/haptics`)
 - Game Center sign-in + achievements (small Swift plugin)
 - iCloud save sync (`@capacitor-community/icloud-documents`)
-- App-background audio pause (already handled by our `visibilitychange` listener)
+- App-background audio pause (already handled by `visibilitychange` listener in `src/main.js`)
 
 ### Renderer plan on iPad
 
@@ -217,12 +220,11 @@ bunx cap open ios       # opens Xcode
 iPadOS 18+, but Apple may reject the app for using unstable APIs. Verdict: ship
 WebGL path first; flip WebGPU on when Apple stabilizes it.
 
-Our `createWebGPURenderer({ forceWebGL })` already supports the `?webgl=1` flag.
-For iPad, hard-code `forceWebGL: true` based on a platform detect in `app.ts`:
-
-```ts
+The current renderer (`src/main.js`) uses `THREE.WebGLRenderer`. No changes needed
+for WebGL — it's already the default. If WebGPU is added later, detect at runtime:
+```js
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-const forceWebGL = isIOS || new URLSearchParams(location.search).has("webgl");
+// If using WebGPU renderer in the future, force WebGL on iOS
 ```
 
 **Performance budget:** M1 iPad Pro crushes this. M2 Air, too. A4-era iPad 8th gen
@@ -231,10 +233,10 @@ will not — cap target to iPad 9th gen / M1+ and advertise accordingly.
 ### Controls on iPad
 
 - **Touchscreen:** virtual joystick (left thumb) + look-at-touch (right thumb).
-  The engine's `InputManager` already has `setTouchMovement()` — just need to
-  render the thumbsticks. Example lib: [nipplejs](https://github.com/yoannmoinet/nipplejs).
+  The engine's input module (`src/input.js`) handles keyboard/mouse — touch controls
+  would need to be added. Example lib: [nipplejs](https://github.com/yoannmoinet/nipplejs).
 - **Apple Game Controller** (MFi / Xbox / PS5 controllers over Bluetooth): Capacitor
-  exposes standard `navigator.getGamepads()` — our InputManager picks them up
+  exposes standard `navigator.getGamepads()` — `src/input.js` picks them up
   with zero additional work. ✅
 - **Keyboard** (Magic Keyboard / Folio): same story — standard HTML key events.
 
@@ -262,13 +264,13 @@ Capacitor is enough.
 ## 4. Recommended rollout order
 
 1. **PWA install** — weekend task. Gives iPad + Android users a taste without store
-   review. `npm run build && deploy` unchanged.
+   review. `./build.sh` unchanged; just add manifest + sw.js + icons.
 2. **Electron desktop** — ~2 weeks to set up properly with codesigning. Shippable
    on [itch.io](https://itch.io) same week.
 3. **Steam via Electron** — add the Steamworks plugin for achievements + cloud
    saves. itch.io first for feedback; Steam once the game is stable.
 4. **Capacitor iPad** — 3–4 weeks including App Store submission dance. Blocks on
-   WebGL parity being visually acceptable (MToon regression testing).
+   WebGL parity being visually acceptable.
 5. **Android via Capacitor** — same wrapper, different target. Mostly free.
 
 ---
@@ -277,8 +279,8 @@ Capacitor is enough.
 
 - **WebXR / VR / AR** — not a stated goal.
 - **Switch, PS5, Xbox consoles** — require Unity/Unreal-level porting. Not realistic
-  for a three.js + Chromium stack.
-- **Direct-to-Metal renderer** — three.js/WebGPU path is plenty fast on M-series.
+  for a Three.js + Chromium stack.
+- **Direct-to-Metal renderer** — Three.js/WebGPU path is plenty fast on M-series.
 
 ---
 
@@ -286,16 +288,20 @@ Capacitor is enough.
 
 None of these are blocking — they're cleanup that makes target-switching easier:
 
-- [x] Audio context suspend/resume on tab blur (already in `main.ts`)
-- [x] Fullscreen + Escape lock on first gesture (already in `systems/fullscreen.ts`)
-- [ ] Platform detect in `app.ts` — force WebGL on iOS, WebGPU otherwise
+- [x] Audio context suspend/resume on tab blur (already in `src/main.js`)
+- [x] Fullscreen + Escape lock on first gesture (already in `src/main.js`)
+- [ ] Platform detect in `src/main.js` — force WebGL on iOS (already default,
+      but add explicit `isIOS` guard if WebGPU is added later)
 - [ ] Save storage adapter — `localStorage` (default) vs native IPC on Electron vs
       iCloud doc on iOS. Swap at runtime based on `window.sguNative` presence.
+      Current save logic is in `src/rpg.js` (`save()` / `load()` functions).
 - [ ] Asset resolver: support `capacitor://localhost/assets/...` and `file://` for
-      bundled Electron assets alongside the existing R2/Vite paths.
-- [ ] Service worker + manifest for PWA.
+      bundled Electron assets alongside the existing R2 / CDN paths.
+      Current asset URLs are constructed in `src/music.js` (audio) and
+      `src/assets.js` (model/texture paths).
+- [ ] Service worker + manifest for PWA (see Section 1).
 
 These slot into existing files — no architectural shift required. The fact that
-we already separate input (engine InputManager), audio (AudioManager), and asset
-resolution (resolveAssetUrl) from the game code means each deployment target
-just swaps implementations at the edges.
+input (`src/input.js`), audio (`src/music.js`), and asset resolution (`src/assets.js`)
+are already separate modules means each deployment target just swaps implementations
+at the edges.

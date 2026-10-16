@@ -3,7 +3,7 @@
 // frame while recording, so the video is smooth even when the window is occluded or the machine is slow.
 export const createRecorder = (glCanvas, hud, { fps = 30, base = '/rec', quality = 0.86 } = {}) => {
 	const c = document.createElement('canvas'); const ctx = c.getContext('2d');
-	let active = false, frames = 0, name = '', chain = Promise.resolve();
+	let active = false, frames = 0, name = '', chain = /** @type {Promise<any>} */(Promise.resolve());
 	const fit = () => { const k = Math.min(1, 1024 / glCanvas.width), w = Math.round(glCanvas.width * k) & ~1, h = Math.round(glCanvas.height * k) & ~1; if (c.width !== w || c.height !== h) { c.width = w; c.height = h; } }; // even dims for yuv420p
 	const box = (x, y, w, h) => { ctx.fillStyle = 'rgba(8,8,12,0.72)'; ctx.fillRect(x, y, w, h); ctx.strokeStyle = 'rgba(212,168,82,0.8)'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h); };
 	const text = (s, x, y, size = 22, color = '#f5ebcc', weight = '') => { ctx.font = `${weight} ${size}px -apple-system, system-ui, sans-serif`; ctx.fillStyle = '#000'; ctx.fillText(s, x + 2, y + 2); ctx.fillStyle = color; ctx.fillText(s, x, y); };
@@ -23,7 +23,7 @@ export const createRecorder = (glCanvas, hud, { fps = 30, base = '/rec', quality
 	const tick = async () => {
 		if (!active) return; compose();
 		const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', quality)); const i = frames++;
-		chain = chain.then(() => post(`${base}/frame?name=${encodeURIComponent(name)}&i=${i}`, blob)).catch(() => {}); // strictly ordered
+		chain = chain.then(() => post(`${base}/frame?name=${encodeURIComponent(name)}&i=${i}`, blob)).catch(() => { /** strict ordering — swallow frame errors */ }); // strictly ordered
 		await chain;
 	};
 	const start = async (n = 'gameplay') => { name = n.replace(/\.(mp4|webm)$/, ''); fit(); frames = 0; await post(`${base}/start?name=${encodeURIComponent(name)}&fps=${fps}`); active = true; return `recording ${name}.mp4 at ${fps} fps (${c.width}×${c.height})`; };

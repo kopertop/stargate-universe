@@ -1,0 +1,20 @@
+{
+  "name": "stargate-universe",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Stargate Universe — Destiny: a web/Three.js game loaded via ES import maps",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "typecheck": "tsc --noEmit -p jsconfig.json",
+    "lint": "eslint src/*.js tests/*.js",
+    "build": "./build.sh"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "@types/three": "^0.186.0",
+    "eslint": "^9.39.5",
+    "three": "0.180.0",
+    "typescript": "^5.6.0"
+  }
+}

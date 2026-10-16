@@ -1,13 +1,11 @@
 # Game Concept: Stargate Universe — The Destiny Mission
 
-> **⚠️ STALE engine mapping — ggez-era platform config superseded by the 2026-09-08 Three.js re-pivot**
+> **⚠️ Engine mapping updated — Three.js web era (2026-09-08 re-pivot)**
 >
-> The engine/physics config block (`Engine: ggez (Three.js 0.181 framework)`,
-> `Physics: Crashcat`) references the ggez framework removed in `abfb5ed` —
-> the Three.js-era repo runs plain `src/*.js` + `index.html` (`build.sh`).
+> The engine/physics config block has been updated from the old `Crashcat`
+> to plain Three.js (`src/*.js` + `index.html`, built via `build.sh`).
 > The concept itself (Eli aboard Destiny, exploration-survival pillars,
-> episode arcs) remains canonical reference until the tech sections are
-> re-mapped onto the web implementation.
+> episode arcs) remains canonical reference.
 
 *Created: 2026-03-29*
 *Status: Draft*
@@ -30,7 +28,7 @@
 | Aspect | Detail |
 | ---- | ---- |
 | **Genre** | Third-person exploration-survival with narrative choice |
-| **Platform** | PC (Web/Desktop via ggez + Three.js) |
+| **Platform** | PC (Web/Desktop via Three.js) |
 | **Target Audience** | Exploration gamers + Stargate fans (see Player Profile) |
 | **Player Count** | Single-player |
 | **Session Length** | 30-90 minutes (one "episode" per session) |
@@ -283,8 +281,8 @@ shit out of it" problem-solving, 2001: A Space Odyssey's sense of cosmic scale.
 
 | Consideration | Assessment |
 | ---- | ---- |
-| **Engine** | ggez (Three.js 0.181 framework) — already configured. WebGPU renderer with WebGL fallback |
-| **Physics** | Crashcat (ggez built-in) — character movement, object interaction |
+| **Engine** | Three.js (plain `src/*.js` + `index.html`) — already configured. WebGPU renderer with WebGL fallback |
+| **Physics** | Manual collision via `THREE.Raycaster` — character movement, object interaction (replaces Crashcat) |
 | **Key Technical Challenges** | Large ship interior rendering (occlusion culling critical), atmospheric lighting pipeline, episode/save state management, dialogue/choice system |
 | **Art Style** | Atmospheric sci-fi — dark corridors, volumetric fog, glowing Ancient tech, moody lighting. AI-assisted asset creation (Meshy/Tripo for models, atmospheric rendering hides imperfections) |
 | **Art Pipeline Complexity** | Medium — AI-generated base models + manual cleanup + heavy reliance on lighting/atmosphere |

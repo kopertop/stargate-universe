@@ -21,7 +21,7 @@ export const CLIPS = {
 const loader = new GLTFLoader();
 let cache = null;
 const loadAssets = async () => {
-	cache ??= Promise.all([loader.loadAsync(MODEL_URL), loader.loadAsync(EXTRA_CLIPS_URL)]);
+	cache ??= Promise.all([loader.loadAsync(MODEL_URL), loader.loadAsync(EXTRA_CLIPS_URL)]).catch((e) => { console.error('[SGU] Player model load failed:', e); cache = null; throw e; });
 	return cache;
 };
 
@@ -43,6 +43,8 @@ export const loadPlayer = async ({ tint = 0x9d978d } = {}) => {
 		const c = a.clone(); c.tracks = c.tracks.filter((t) => !t.name.startsWith('root.position') && !t.name.startsWith('Armature.')); clips.set(c.name, c);
 	}
 	const mixer = new THREE.AnimationMixer(model);
+	/** @param {keyof typeof CLIPS} key
+	 * @param {THREE.AnimationActionLoopStyles} [loop] */
 	const act = (key, loop = THREE.LoopRepeat) => { const name = CLIPS[key] ?? key; const c = clips.get(name); if (!c) throw new Error(`missing clip ${name}`); const a = mixer.clipAction(c); a.setLoop(loop, loop === THREE.LoopOnce ? 1 : Infinity); a.clampWhenFinished = loop === THREE.LoopOnce; return a; };
 	const loco = Object.fromEntries(['idle', 'fidget', 'walk', 'carry', 'run', 'sprint', 'air'].map((k) => [k, act(CLIPS[k])]));
 	for (const a of Object.values(loco)) { a.play(); a.setEffectiveWeight(0); }
@@ -106,7 +108,8 @@ export const loadPlayer = async ({ tint = 0x9d978d } = {}) => {
 			for (const b of colliders) {
 				if (b.circle) continue;
 				if (p.x + r > b.min.x && p.x - r < b.max.x && p.z + r > b.min.z && p.z - r < b.max.z && b.min.y < p.y + 1.2 && b.max.y > p.y + 0.1) { // only boxes overlapping the player's height band (decks stack)
-					if (axis === 'x') p.x = vel.x > 0 ? b.min.x - r : b.max.x + r; else p.z = vel.z > 0 ? b.min.z - r : b.max.z + r;
+					const v = vel[axis]; // moving: stop at the face you hit; standing still (already inside after a big step or a corner squeeze): leave by the nearest face
+					p[axis] = Math.abs(v) > 1e-3 ? (v > 0 ? b.min[axis] - r : b.max[axis] + r) : (p[axis] < (b.min[axis] + b.max[axis]) / 2 ? b.min[axis] - r : b.max[axis] + r);
 				}
 			}
 		}
